@@ -358,7 +358,7 @@ end
 
 function G.Evaluate(unit)
   if InCombat() then return nil end
-  if Call(_G.UnitIsDead, unit) or Call(_G.UnitIsPlayer, unit) then G.Release(unit) return nil end
+  if Call(_G.UnitIsDead, unit) or (S.IsPlayerUnit and S.IsPlayerUnit(unit)) or Call(_G.UnitIsPlayer, unit) then G.Release(unit) return nil end
   local list = G.PlateEntries(unit)
   if #list == 0 then G.Release(unit) return nil end
   local plate = type(_G.C_NamePlate) == "table" and Call(_G.C_NamePlate.GetNamePlateForUnit, unit)

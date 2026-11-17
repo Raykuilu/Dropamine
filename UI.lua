@@ -5368,12 +5368,15 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
     hintFS:Hide()
   end
 
-  -- Fine barre native en bas (texture / couleur de la compétence), sans texte.
+  -- Fine barre en bas, alignée sur le texte : elle commence au bord gauche
+  -- du titre (jamais sous l'icône ronde) et finit au même retrait droit.
   if maxv and maxv > 0 and not light then
     local hold = CreateFrame("Frame", nil, f)
-    hold:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 7, 6)
-    hold:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -7, 6)
-    local bw = dw - 14
+    hold:SetPoint("LEFT", titleFS, "LEFT", 0, 0)
+    hold:SetPoint("RIGHT", titleFS, "RIGHT", 0, 0)
+    hold:SetPoint("BOTTOM", f, "BOTTOM", 0, 6)
+    local textRight = 8
+    local bw = math.max(8, dw - (7 + iconSize + 7) - textRight)
     local okB, sbar = pcall(CreateFrame, "StatusBar", nil, hold)
     if not (okB and sbar) then sbar = CreateFrame("Frame", nil, hold) end
     hold._styleSkill = opts.skillId
@@ -5550,7 +5553,7 @@ function UI:PlayLevelUp(level)
     { kind = "levelup", variant = "gold", big = true })
   if f then
     self:AttachFlareFx(f, true)
-    if ns.OptOff("levelUpSound") and type(PlaySound) == "function" then
+    if ns.SoundOk("levelUpSound") and type(PlaySound) == "function" then
       local kit = self:LevelUpSoundKit()
       if kit then pcall(PlaySound, kit) end
       self._lastLevelUpSound = kit or "aucun kit"
@@ -5763,6 +5766,13 @@ function UI:FlushSkillDiff()
         if f and not limited then self._dropLast[fold] = t end
       end
       self._skillDrops = (self._skillDrops or 0) + 1
+      if ns.Dopamine and ns.Dopamine.OnRise then
+        local cat = ns.LookupCatalog and ns.LookupCatalog(s.name)
+        pcall(ns.Dopamine.OnRise, {
+          name = s.name, id = skillId or (cat and cat.id), fold = fold,
+          from = pr, to = cr, delta = d, max = maxS, kind = cat and cat.kind, icon = icon,
+        })
+      end
     end
   end
   local okC, snap = pcall(ns.Collect)

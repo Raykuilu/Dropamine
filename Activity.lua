@@ -288,6 +288,46 @@ function A.LinksFor(skill)
   return out
 end
 
+-- La fenêtre ouverte contient-elle au moins une recette qui fait encore monter
+-- le métier (orange / jaune / verte) ? Toutes grises : pas de surbrillance.
+-- API absente ou liste vide : on garde l'ancien comportement (true).
+-- Résultat gardé 1 s pour ne pas relire la liste à chaque rafraîchissement.
+local giveT, giveV = -10, true
+local SKILLUP = { optimal = true, medium = true, easy = true }
+function A.WindowGivesSkill()
+  local now = (type(GetTime) == "function" and GetTime()) or 0
+  if now - giveT < 1 then return giveV end
+  giveT = now
+  local seen, any = 0, false
+  local function scan(count, info)
+    if type(count) ~= "function" or type(info) ~= "function" then return end
+    local ok, n = pcall(count)
+    if not ok or type(n) ~= "number" then return end
+    for i = 1, math.min(n, 400) do
+      local ok2, _, a, b = pcall(info, i)
+      if ok2 then
+        local kind = (type(b) == "string" and (SKILLUP[b] or b == "trivial" or b == "header") and b) or a
+        if kind ~= "header" and type(kind) == "string" then
+          seen = seen + 1
+          if SKILLUP[kind] then any = true return end
+        end
+      end
+    end
+  end
+  local tf = _G.TradeSkillFrame
+  local cf = _G.CraftFrame
+  if tf and tf.IsShown and tf:IsShown() then scan(_G.GetNumTradeSkills, _G.GetTradeSkillInfo) end
+  if not any and cf and cf.IsShown and cf:IsShown() then scan(_G.GetNumCrafts, _G.GetCraftInfo) end
+  if not any and seen == 0 then
+    -- rien de lisible (autre fenêtre, API différente) : on ne retire rien
+    if not (tf and tf.IsShown and tf:IsShown()) and not (cf and cf.IsShown and cf:IsShown()) then giveV = true return true end
+    scan(_G.GetNumTradeSkills, _G.GetTradeSkillInfo)
+    if seen == 0 then giveV = true return true end
+  end
+  giveV = any
+  return any
+end
+
 -- Entrées de surbrillance (clés au format de Target : "id:<métier>")
 function A.Entries()
   if not A.Enabled() then return nil end
@@ -303,7 +343,7 @@ function A.Entries()
   end
   if A.cast then mark(A.cast.skill, "direct", "en cours : " .. tostring(A.cast.name or A.FR[A.cast.skill])) end
   if A.window then
-    mark(A.window, "indirect", "fenêtre du métier ouverte")
+    if A.WindowGivesSkill() then mark(A.window, "indirect", "fenêtre du métier ouverte") end
     for _, l in ipairs(A.LinksFor(A.window)) do mark(l.skill, "link", l.why) end
   end
   if A.pole then mark("fishing", "indirect", "canne à pêche équipée") end
@@ -441,6 +481,7 @@ local function stopCast(ev, unit)
   A.Refresh("fin du sort")
 end
 local function window(ev)
+  giveT = -10
   if ev == "TRADE_SKILL_SHOW" or ev == "TRADE_SKILL_LIST_UPDATE" or ev == "TRADE_SKILL_DATA_SOURCE_CHANGED" or ev == "TRADE_SKILL_NAME_UPDATE" then A._apiOpen = true end
   if ev == "CRAFT_SHOW" then A._apiOpen, A._craftOpen = true, true end
   local s = A.ReadWindow()
@@ -491,7 +532,12 @@ function A.HookFrames()
     local f = _G[n]
     if type(f) == "table" and f.HookScript and not A.hooked[n] then
       A.hooked[n] = true
-      pcall(f.HookScript, f, "OnShow", function() window("OnShow " .. n) later("OnShow " .. n) end)
+      pcall(f.HookScript, f, "OnShow", function()
+        A._apiOpen = true
+        A._jobEv = "OnShow " .. n
+        if ns.ProfJob and ns.ProfJob.Schedule then ns.ProfJob.Schedule("OnShow " .. n)
+        else window("OnShow " .. n) later("OnShow " .. n) end
+      end)
       pcall(f.HookScript, f, "OnHide", function() closed("OnHide " .. n) end)
     end
   end
@@ -501,7 +547,13 @@ if ns.On then
   for _, e in ipairs({ "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_CHANNEL_START" }) do ns.On(e, startCast) end
   for _, e in ipairs({ "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_CHANNEL_STOP", "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_FAILED" }) do ns.On(e, stopCast) end
   for _, e in ipairs({ "TRADE_SKILL_SHOW", "TRADE_SKILL_UPDATE", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_DATA_SOURCE_CHANGED", "TRADE_SKILL_NAME_UPDATE", "CRAFT_SHOW", "CRAFT_UPDATE" }) do
-    ns.On(e, function(ev) window(ev) later(ev) A.HookFrames() end)
+    ns.On(e, function(ev)
+      if ev == "TRADE_SKILL_SHOW" or ev == "TRADE_SKILL_LIST_UPDATE" or ev == "TRADE_SKILL_DATA_SOURCE_CHANGED" or ev == "TRADE_SKILL_NAME_UPDATE" or ev == "TRADE_SKILL_UPDATE" then A._apiOpen = true end
+      if ev == "CRAFT_SHOW" or ev == "CRAFT_UPDATE" then A._apiOpen, A._craftOpen = true, true end
+      A._jobEv = ev
+      if ns.ProfJob and ns.ProfJob.Schedule then ns.ProfJob.Schedule(ev) else window(ev) later(ev) end
+      A.HookFrames()
+    end)
   end
   for _, e in ipairs({ "TRADE_SKILL_CLOSE", "CRAFT_CLOSE" }) do
     ns.On(e, function(ev) closed(ev) if C_Timer and type(C_Timer.After) == "function" then C_Timer.After(0, function() closed(ev) end) end end)

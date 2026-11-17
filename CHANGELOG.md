@@ -4,6 +4,26 @@ All notable changes to Dropamine (formerly OSRS Total Level) are documented here
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.5.0] — 2026-11-17
+
+### Fixed
+- **Profession windows no longer hitch when switching tabs.** `TRADE_SKILL_*`, `CRAFT_*` and frame `OnShow` hooks share one deferred job (`C_Timer.After` ~0.25 s, a single pending flag). Recipes are scanned only when the key (profession, recipe count, skill rank) changes, in batches of about 25 per frame. Tiles are repainted only when their highlight level actually changes. Nothing is scanned in combat, and the batch `OnUpdate` is cleared when the job ends. `/drop perf` reports scan count and milliseconds per scan.
+- **Enemy players light up.** An honorable target (`UnitIsPlayer` or a `Player` GUID, `UnitIsEnemy` / `UnitCanAttack`, `UnitIsPVP` when that function exists, not a trivial level) turns the PvP tile green — subtle on target, strong while you are in combat with them. Equipped weapons and Defence follow the same rules as for creatures. Players are not treated as creatures (no skinning, loot or XP highlight; `UnitCreatureType` is nil). The nameplate marker is green when the player is worth honor, grey when the level is trivial.
+- **Toast progress bar no longer runs under the round icon.** On every toast and in all three themes, the thin bar starts at the title’s left edge and ends at the same right inset as the text.
+- **An open profession window highlights its tile only when a recipe can still gain a point.** If every visible recipe is grey, the green “window open” highlight stays off. Linked professions are unchanged. If the recipe list cannot be read, the previous behaviour is kept. The result is cached for one second.
+- **The profession-tile spell button no longer flickers the tooltip.** Moving onto the secure button does not re-fire the tile’s `OnEnter`, and the tile’s `OnLeave` runs only when the pointer actually leaves the button.
+
+### Added
+- **Session combo.** Each skill point within 60 s of the previous raises a shown multiplier (x2, x3…). It steps down after you stop. The best combo is saved. `/drop combo`.
+- **OSRS-style dings.** A short built-in sound on a skill point, another on a profession tier (75 / 150 / 225 / 300). No audio files are shipped. `/drop son point`, `/drop son palier`.
+- **Max celebration.** A large golden animation when a profession or weapon skill reaches its maximum. `/drop max`, `/drop son max`.
+- **Daily challenge.** One stable goal per day among the character’s skills (for example “+5 en Dépeçage”), progress in the tooltip, a visual reward once on completion. `/drop defi`.
+- **Personal records.** Most points in a session and best hour, with a “Nouveau record !” toast. `/drop records`.
+- **Next-point bar.** A thin bar under the active tile when a measured estimate exists. The `OnUpdate` runs only while that bar is showing, and not in combat. `/drop barre`.
+- **Collection.** First-time skinned creature types and fished items, per character, with an “N découverts” line in the tooltip. `/drop collection`.
+- **Master sound switch.** `/drop sons` gates every sound. Each sound has its own toggle, default off. Existing sound defaults (level-up, scanner) are unchanged.
+- **Click a profession tile to open it** (out of combat). A secure spell button (`SecureActionButtonTemplate`, `type1` only) is placed at absolute coordinates over the hovered tile — First Aid, Cooking, Tailoring, Leatherworking, Blacksmithing, Engineering, Alchemy, Enchanting, and Mining (Smelting). The same click still selects the tile. Right-click and Shift-click are unchanged. In combat the click only selects. Tooltip: « Clic : ouvrir le métier ». Setting « Clic : ouvrir le métier » in Métiers (default on), `/drop ouvrir`.
+
 ## [3.4.3] — 2026-11-17
 
 ### Fixed

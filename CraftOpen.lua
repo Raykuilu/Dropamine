@@ -224,6 +224,155 @@ function CO.Disarm()
   return true
 end
 
+-- Cases du panneau : métiers qui ont une fenêtre (CO.SPELLS). Pas Dépeçage,
+-- Herboristerie, Pêche, ni les autres cases. Hors combat seulement.
+CO.TILE_HINT = "Clic : ouvrir le métier"
+function CO.Openable(d)
+  if not (d and d.id and not d.placeholder and CO.SPELLS[d.id]) then return nil end
+  -- 3.5.0 : désactivé (clignotement en jeu) ; à réactiver plus tard
+  do return nil end
+  return d.id
+end
+function CO.TileButton()
+  if CO.tileBtn then return CO.tileBtn end
+  if InCombat() then return nil end
+  local ok, b = pcall(CreateFrame, "Button", "DropamineTileOpen", UIParent, "SecureActionButtonTemplate")
+  if not (ok and b) then return nil end
+  b._osrsOwn = true
+  if b.RegisterForClicks then pcall(b.RegisterForClicks, b, "LeftButtonUp", "RightButtonUp") end
+  if b.SetFrameStrata then pcall(b.SetFrameStrata, b, "DIALOG") end
+  if b.SetFrameLevel then pcall(b.SetFrameLevel, b, 80) end
+  b:Hide()
+  b:HookScript("PreClick", function(self, button)
+    if InCombat() or type(self.SetAttribute) ~= "function" then return end
+    local shift = type(_G.IsShiftKeyDown) == "function" and _G.IsShiftKeyDown()
+    if button ~= "LeftButton" or shift then
+      self:SetAttribute("type1", nil)
+      self:SetAttribute("spell1", nil)
+    elseif self._tileSkill then
+      self:SetAttribute("type1", "spell")
+      self:SetAttribute("spell1", CO.SpellName(self._tileSkill))
+    end
+  end)
+  b:HookScript("PostClick", function(self, button)
+    local tile = self._tile
+    local data = tile and tile.data
+    local shift = type(_G.IsShiftKeyDown) == "function" and _G.IsShiftKeyDown()
+    if data and button ~= "RightButton" and shift and ns.QoL and ns.QoL.ShareTile and ns.Opt("partage") then
+      pcall(ns.QoL.ShareTile, data)
+    elseif data and button == "RightButton" then
+      if shift and UI and UI.CycleGoal then pcall(UI.CycleGoal, UI, data)
+      elseif UI and UI.PromptGoal then pcall(UI.PromptGoal, UI, data) end
+    elseif data and UI and UI.SelectTile then
+      pcall(UI.SelectTile, UI, data)
+    end
+    if not InCombat() and self._tileSkill and type(self.SetAttribute) == "function" then
+      self:SetAttribute("type1", "spell")
+      self:SetAttribute("spell1", CO.SpellName(self._tileSkill))
+    end
+  end)
+  -- le bouton recouvre la case : on garde l'infobulle de la case tant que la
+  -- souris reste dessus, et on ne fait le « départ » de la case qu'en le quittant
+  b:SetScript("OnLeave", function(self)
+    local tile = self._tile
+    CO.DisarmTile()
+    if tile and CO.baseLeave then pcall(CO.baseLeave, tile) end
+  end)
+  CO.tileBtn = b
+  return b
+end
+function CO.OverTileButton()
+  local b = CO.tileBtn
+  if not (b and b.IsShown and b:IsShown()) then return false end
+  if b.IsMouseOver then
+    local ok, over = pcall(b.IsMouseOver, b)
+    if ok and over then return true end
+  end
+  if type(_G.GetMouseFocus) ~= "function" then return false end
+  local ok, f = pcall(_G.GetMouseFocus)
+  return ok and f == b
+end
+function CO.ArmTile(tile)
+  if InCombat() or not tile then return false end
+  local skill = CO.Openable(tile.data)
+  if not skill then return false end
+  local b = CO.TileButton()
+  if not b or type(b.SetAttribute) ~= "function" then return false end
+  local l = tile.GetLeft and tile:GetLeft()
+  local bt = tile.GetBottom and tile:GetBottom()
+  local w = tile.GetWidth and tile:GetWidth()
+  local h = tile.GetHeight and tile:GetHeight()
+  if not (N(l) and N(bt) and N(w) and N(h) and w > 0 and h > 0) then return false end
+  local s = (tile.GetEffectiveScale and tile:GetEffectiveScale()) or 1
+  local us = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+  local k = (N(s) and N(us) and us > 0) and (s / us) or 1
+  b:ClearAllPoints()
+  b:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", l * k, bt * k)
+  b:SetSize(w * k, h * k)
+  b:SetAttribute("type1", "spell")
+  b:SetAttribute("spell1", CO.SpellName(skill))
+  if b.SetAttribute then b:SetAttribute("type2", nil) end
+  b._tile, b._tileSkill = tile, skill
+  b:Show()
+  CO.stats.tileArmed = (CO.stats.tileArmed or 0) + 1
+  return true
+end
+function CO.DisarmTile()
+  local b = CO.tileBtn
+  if not b or InCombat() then return false end
+  b:Hide()
+  b._tile, b._tileSkill = nil, nil
+  return true
+end
+if ns.On then
+  ns.On("PLAYER_REGEN_DISABLED", function()
+    local b = CO.tileBtn
+    if not b then return end
+    b._tile, b._tileSkill = nil, nil
+    pcall(b.Hide, b)
+  end)
+end
+if ns.Icons and ns.Icons.OnEnter then
+  local baseEnter = ns.Icons.OnEnter
+  function ns.Icons.OnEnter(self, ...)
+    local b = CO.tileBtn
+    if b and b._tile == self and b.IsShown and b:IsShown() then return end
+    baseEnter(self, ...)
+    pcall(CO.ArmTile, self)
+  end
+end
+if ns.Icons and ns.Icons.OnLeave then
+  local baseLeave = ns.Icons.OnLeave
+  CO.baseLeave = baseLeave
+  function ns.Icons.OnLeave(self, ...)
+    local b = CO.tileBtn
+    if b and b._tile == self and CO.OverTileButton() then return end
+    baseLeave(self, ...)
+    if b and b._tile == self then CO.DisarmTile() end
+  end
+end
+if ns.Compact and ns.Compact.FillTooltip then
+  local baseTip = ns.Compact.FillTooltip
+  function ns.Compact.FillTooltip(tt, d, tile)
+    local m = baseTip(tt, d, tile)
+    if tt and d and CO.Openable(d) and tt.AddLine then
+      pcall(tt.AddLine, tt, CO.TILE_HINT, 0.6, 0.6, 0.6)
+    end
+    return m
+  end
+end
+ns.SlashExt = ns.SlashExt or {}
+ns.SlashExt.ouvrir = function(rest)
+  local on = ns.ParseOnOff(rest, ns.Opt("openProf"))
+  if not ns.db then return end
+  ns.db.ui = ns.db.ui or {}
+  if on then ns.db.ui.openProf = nil else ns.db.ui.openProf = false end
+  if not on then CO.DisarmTile() end
+  if ns.Print then ns.Print("clic pour ouvrir le métier " .. (on and "activé." or "désactivé.")) end
+end
+ns.HelpExt = ns.HelpExt or {}
+ns.HelpExt[#ns.HelpExt + 1] = "/drop ouvrir on|off : clic gauche sur une case de métier ouvre sa fenêtre (hors combat)"
+
 ------------------------------------------------------------------------------
 -- Branchements : toasts de recettes
 ------------------------------------------------------------------------------

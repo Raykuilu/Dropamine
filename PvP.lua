@@ -544,10 +544,15 @@ if ns.On then ns.On("ADDON_LOADED", function() pcall(PV.HookWindows) end) end
 -- Repères sur les barres de nom des joueurs ennemis
 ------------------------------------------------------------------------------
 PV.active, PV.pool, PV.pending = {}, {}, {}
+-- Gris = niveau trivial (formule Classic de Target.GreyLevel). GetQuestDifficultyColor
+-- n'existe pas sur tous les clients 1.x : on ne bloque plus le repère s'il manque.
+-- S'il existe et contredit la formule, la formule gagne (26 contre 27 n'est pas gris).
 function PV.IsGrey(unit)
   local lvl = N(Call(_G.UnitLevel, unit))
   if not lvl then return nil end
-  if lvl <= 0 then return false end              -- « ?? » : nettement plus haut, jamais gris
+  if lvl <= 0 then return false end
+  local pl = N(Call(_G.UnitLevel, "player")) or 1
+  if ns.Target and ns.Target.GreyLevel then return lvl <= ns.Target.GreyLevel(pl) end
   if type(_G.GetQuestDifficultyColor) ~= "function" then return nil end
   local col = Call(_G.GetQuestDifficultyColor, lvl)
   local trivial = _G.QuestDifficultyColors and _G.QuestDifficultyColors.trivial
@@ -555,15 +560,37 @@ function PV.IsGrey(unit)
   if col == trivial then return true end
   return N(col.r) == N(trivial.r) and N(col.g) == N(trivial.g) and N(col.b) == N(trivial.b)
 end
--- true = honneur, false = pas d'honneur, nil = pas un joueur ennemi / inconnu
-function PV.HonorFor(unit)
-  if not Call(_G.UnitIsPlayer, unit) then return nil end
-  if not Call(_G.UnitCanAttack, "player", unit) then return nil end
-  local mine, theirs = Call(_G.UnitFactionGroup, "player"), Call(_G.UnitFactionGroup, unit)
-  if not (mine and theirs) or mine == theirs then return nil end
-  local grey = PV.IsGrey(unit)
-  if grey == nil then return nil end
+-- true = honneur, false = ennemi mais gris, nil = pas un joueur ennemi.
+-- Table (cible déjà lue) ou unité.
+function PV.HonorFromTarget(tg)
+  if type(tg) ~= "table" or not tg.player then return nil end
+  if tg.dead then return nil end
+  if not tg.attackable and not tg.enemy then return nil end
+  if tg.pvp == false then return nil end
+  if tg.faction and tg.myFaction and tg.faction == tg.myFaction then return nil end
+  local lvl = N(tg.level)
+  if not lvl then return nil end
+  if lvl <= 0 then return true end
+  local pl = N(tg.playerLevel) or N(Call(_G.UnitLevel, "player")) or 1
+  local grey = (ns.Target and ns.Target.GreyLevel) and (lvl <= ns.Target.GreyLevel(pl)) or false
   return not grey
+end
+function PV.HonorFor(unit)
+  if type(unit) == "table" then return PV.HonorFromTarget(unit) end
+  local player = (ns.Scanner and ns.Scanner.IsPlayerUnit and ns.Scanner.IsPlayerUnit(unit)) or (Call(_G.UnitIsPlayer, unit) and true or false)
+  if not player then return nil end
+  local attack = Call(_G.UnitCanAttack, "player", unit) and true or false
+  local enemy = type(_G.UnitIsEnemy) == "function" and Call(_G.UnitIsEnemy, "player", unit) and true or false
+  if not attack and not enemy then return nil end
+  local pvp
+  if type(_G.UnitIsPVP) == "function" then pvp = Call(_G.UnitIsPVP, unit) and true or false end
+  local tg = {
+    player = true, dead = Call(_G.UnitIsDead, unit) and true or false,
+    attackable = attack, enemy = enemy, pvp = pvp,
+    faction = Call(_G.UnitFactionGroup, unit), myFaction = Call(_G.UnitFactionGroup, "player"),
+    level = N(Call(_G.UnitLevel, unit)), playerLevel = N(Call(_G.UnitLevel, "player")),
+  }
+  return PV.HonorFromTarget(tg)
 end
 local function Acquire()
   local m = table.remove(PV.pool)
@@ -600,6 +627,7 @@ function PV.Evaluate(unit)
   PV.active[unit] = m
   local c = honor and PV.GREEN or PV.GREY
   m.ring:SetVertexColor(c[1], c[2], c[3], 1)
+  if m.icon.SetVertexColor then pcall(m.icon.SetVertexColor, m.icon, c[1], c[2], c[3], 1) end
   if m.icon.SetDesaturated then pcall(m.icon.SetDesaturated, m.icon, not honor) end
   m._honor = honor
   m:ClearAllPoints()
