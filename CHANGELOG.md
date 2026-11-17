@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Next-point bar.** A thin bar under the active tile when a measured estimate exists. The `OnUpdate` runs only while that bar is showing, and not in combat. `/drop barre`.
 - **Collection.** First-time skinned creature types and fished items, per character, with an “N découverts” line in the tooltip. `/drop collection`.
 - **Master sound switch.** `/drop sons` gates every sound. Each sound has its own toggle, default off. Existing sound defaults (level-up, scanner) are unchanged.
+- **Click a profession tile to open it** (out of combat). A secure spell button (`SecureActionButtonTemplate`, `type1` only) is placed at absolute coordinates over the hovered tile — First Aid, Cooking, Tailoring, Leatherworking, Blacksmithing, Engineering, Alchemy, Enchanting, and Mining (Smelting). The same click still selects the tile. Right-click and Shift-click are unchanged. In combat the click only selects. Tooltip: « Clic : ouvrir le métier ». Setting « Clic : ouvrir le métier » in Métiers (default on), `/drop ouvrir`.
 
 ## [3.4.3] — 2026-11-17
 
