@@ -1,0 +1,11 @@
+package-as: Dropamine
+
+# The packager builds from a git tag and uses ## X-Curse-Project-ID in the .toc.
+# Ignore local tooling and docs so they do not end up in the game's AddOns folder.
+ignore:
+  - tests
+  - tools
+  - refs
+  - docs
+  - .github
+  - .gitignore

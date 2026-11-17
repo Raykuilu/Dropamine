@@ -1,0 +1,287 @@
+-- Dropamine 3.3.7 — mise en page redimensionnable du panneau compact.
+--   * /drop colonnes <1|2|5|10> : 10 cases (9 compétences + Niveau total) en
+--     1 × 10, 2 × 5, 5 × 2 (défaut) ou 10 × 1 ; ordre des cases inchangé,
+--     Niveau total toujours la DERNIÈRE ;
+--   * poignée de redimensionnement (coin bas-droit, NOTRE cadre) : en la
+--     glissant, le panneau saute à la disposition valide la plus proche ;
+--     inactive et cachée quand le panneau est verrouillé (/drop verrou on) ;
+--   * /drop taille <50-200> : échelle du panneau (%, au pour cent près) ;
+--   * mémorisé (SavedVariables) ; le coin HAUT-GAUCHE du panneau reste en place.
+-- Coût : rien au repos ; l'OnUpdate de la poignée n'existe que pendant le
+-- glissement (retiré au relâchement).
+local ADDON, ns = ...
+local UI, W, P, I = ns.UI, ns.Window, ns.Panel, ns.Icons
+local H = UI._H
+local RectOf, SizeOf = H.RectOf, H.SizeOf
+local N = ns.N
+local L = {}
+ns.Layout = L
+
+L.VALID = { 1, 2, 3, 5, 10 }   -- 3.3.13 : 3 colonnes (carré 3 × 3 + barre Niveau total)
+L.BASE_COLS, L.BASE_W = 5, 262          -- largeur de liste historique (5 colonnes)
+L.SCALE_MIN, L.SCALE_MAX = 50, 200   -- 3.3.12 : plage élargie, pas de 1 %
+local function DB() ns.db.ui = ns.db.ui or {} return ns.db.ui end
+local function say(m) print("|cffffd100Dropamine|r : " .. m) end
+local function IsValid(n) for _, v in ipairs(L.VALID) do if v == n then return true end end return false end
+
+function L.Cols() local c = N(DB().cols) return (c and IsValid(c)) and c or L.BASE_COLS end
+function L.Scale() local s = N(DB().scale) if not s then return 100 end return math.max(L.SCALE_MIN, math.min(L.SCALE_MAX, math.floor(s + 0.5))) end
+-- largeur de la liste pour n colonnes (même marge que la grille 5 colonnes)
+-- 3.3.12 : suit la taille dynamique des cases (marges de liste fixes)
+L.LIST_PAD = L.BASE_W - L.BASE_COLS * (40 + 8)
+function L.ListW(cols) return L.LIST_PAD + (cols or L.Cols()) * (I.TILE + I.HGAP) end
+function L.Rows(cols) local n = (UI.snapshot and UI.snapshot.tiles and #UI.snapshot.tiles or 9) + 1 return math.ceil(n / (cols or L.Cols())) end
+
+-- W.LIST_W suit la disposition avant chaque mise en forme du panneau
+local baseApplyMode = P.ApplyMode
+function P.ApplyMode(...)
+  W.LIST_W = L.ListW()
+  return baseApplyMode(...)
+end
+
+local function TopLeft(f)
+  local l, _, t = RectOf(f)
+  return l, t
+end
+local function Anchor(f, l, t)
+  if not (l and t) then return end
+  f:ClearAllPoints()
+  f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", l, t)
+  if P.SavePos then P.SavePos(f) end
+end
+
+function L.Apply(keep)
+  local f = W.frame
+  if not f then return end
+  local l, t = TopLeft(f)
+  -- 3.3.12 : jamais de SetScale (le bord grossissait) ; la taille agit sur la grille
+  if f.SetScale then pcall(f.SetScale, f, 1) end
+  if I.SetMetrics then I.SetMetrics(L.Scale() / 100) end
+  P.ApplyMode()
+  if W.IsShown() then pcall(W.Layout) if UI.ApplyView then pcall(UI.ApplyView, UI) end end
+  if keep ~= false then Anchor(f, l, t) end
+  if L.grip then L.PlaceGrip() end
+  if ns.Chrome and ns.Chrome.RescaleAll then pcall(ns.Chrome.RescaleAll) end   -- 3.3.9 : coins à taille native
+  L.applied = { cols = L.Cols(), rows = L.Rows(), w = SizeOf(f), scale = L.Scale() }
+  return L.applied
+end
+
+function L.SetCols(n)
+  n = N(n)
+  if not (n and IsValid(n)) then return nil end
+  if n == L.Cols() and L.applied and L.applied.cols == n then return n end
+  DB().cols = (n ~= L.BASE_COLS) and n or nil
+  L.Apply()
+  return n
+end
+function L.SetScale(v)
+  v = N(v)
+  if not v then return nil end
+  v = math.max(L.SCALE_MIN, math.min(L.SCALE_MAX, math.floor(v + 0.5)))
+  local same = (v == L.Scale()) and L.applied and L.applied.scale == v
+  DB().scale = (v ~= 100) and v or nil
+  if same then return v end
+  -- taille dynamique : mesures de la grille recalculées, panneau remis en page,
+  -- coin haut-gauche conservé (L.Apply), bord / coins à épaisseur native
+  if W.frame then
+    L.Apply()
+    if UI.Refresh then pcall(UI.Refresh, UI, true) end
+    pcall(L.Center)
+  elseif I.SetMetrics then
+    I.SetMetrics(v / 100)
+  end
+  return v
+end
+
+------------------------------------------------------------------------------
+-- Poignée de redimensionnement
+------------------------------------------------------------------------------
+L.GRIP = 10
+function L.Candidates()
+  local out = {}
+  for _, c in ipairs(L.VALID) do
+    local rows = L.Rows(c)
+    local lh = select(1, (function() local saved = W.LIST_W W.LIST_W = L.ListW(c) local h = P.CompactListHeight() W.LIST_W = saved return h end)())
+    out[#out + 1] = { cols = c, w = L.ListW(c) + 2 * P.CPAD, h = P.CTOP + lh + P.CPAD, rows = rows }
+  end
+  return out
+end
+-- disposition valide la plus proche d'une taille voulue (w, h) en pixels du panneau
+function L.Nearest(w, h)
+  local best, bd
+  for _, c in ipairs(L.Candidates()) do
+    local d = (c.w - w) ^ 2 + (c.h - h) ^ 2
+    if not bd or d < bd then best, bd = c, d end
+  end
+  return best
+end
+local function Cursor()
+  local x, y = 0, 0
+  if type(_G.GetCursorPosition) == "function" then x, y = _G.GetCursorPosition() end
+  local s = (W.frame and W.frame.GetEffectiveScale and N(W.frame:GetEffectiveScale())) or 1
+  if s <= 0 then s = 1 end
+  return (N(x) or 0) / s, (N(y) or 0) / s
+end
+function L.DragStep()
+  local d = L.drag
+  if not d then return end
+  local x, y = Cursor()
+  local c = L.Nearest(d.w + (x - d.x), d.h + (d.y - y))
+  if c and c.cols ~= L.Cols() then L.SetCols(c.cols) end
+end
+function L.StartDrag()
+  if DB().locked then return false end
+  local f = W.frame
+  local w, h = SizeOf(f)
+  local x, y = Cursor()
+  L.drag = { x = x, y = y, w = w or 0, h = h or 0 }
+  L.grip:SetScript("OnUpdate", function() L.DragStep() end)
+  return true
+end
+function L.StopDrag()
+  if L.drag then L.DragStep() end
+  L.drag = nil
+  if L.grip then L.grip:SetScript("OnUpdate", nil) end
+end
+function L.PlaceGrip()
+  local g = L.grip
+  g:ClearAllPoints()
+  g:SetPoint("BOTTOMRIGHT", W.frame, "BOTTOMRIGHT", 0, 0)
+  if DB().locked then g:Hide() g:EnableMouse(false) else g:Show() g:EnableMouse(true) end
+end
+function L.BuildGrip()
+  local f = W.frame
+  if not f or L.grip then return L.grip end
+  local g = CreateFrame("Frame", nil, f)
+  g._osrsOwn = true
+  g:SetSize(L.GRIP, L.GRIP)
+  pcall(g.SetFrameLevel, g, (f.GetFrameLevel and f:GetFrameLevel() or 1) + 20)
+  g.tex = g:CreateTexture(nil, "OVERLAY")
+  g.tex:SetAllPoints(g)
+  pcall(g.tex.SetTexture, g.tex, "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+  g:SetScript("OnMouseDown", function() L.StartDrag() end)
+  g:SetScript("OnMouseUp", function() L.StopDrag() end)
+  g:SetScript("OnHide", function() L.StopDrag() end)
+  g:SetScript("OnEnter", function(self)
+    if P.SetHover then P.SetHover(true) end
+    if GameTooltip then
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:SetText("Disposition : " .. L.Cols() .. " × " .. L.Rows(), 1, 0.82, 0)
+      GameTooltip:AddLine("Glisser : 1, 2, 3, 5 ou 10 colonnes · /drop colonnes · /drop taille", 0.8, 0.8, 0.8)
+      GameTooltip:Show()
+    end
+  end)
+  g:SetScript("OnLeave", function() if P.SetHover then P.SetHover(false) end if GameTooltip then GameTooltip:Hide() end end)
+  L.grip = g
+  L.PlaceGrip()
+  return g
+end
+
+------------------------------------------------------------------------------
+-- 3.3.8 : CENTRAGE EXACT. La taille du panneau est calculée depuis la grille
+-- réellement posée : même marge L.MARGIN sur les 4 côtés (le bord de
+-- l'infobulle est symétrique, il ne déséquilibre rien), pour toute
+-- disposition et toute /drop taille (l'échelle s'applique au tout). La poignée
+-- de déplacement (bande du haut) et celle de redimensionnement (coin) se posent
+-- PAR-DESSUS la marge sans réserver de place.
+------------------------------------------------------------------------------
+L.MARGIN = 12   -- 3.3.17 : = écart vertical de la grille (marges homogènes)
+function L.GridRect()
+  local Lx, Rx, Tx, Bx
+  for _, t in ipairs(UI.embed and UI.embed.tiles or {}) do
+    if t.data and t.IsShown and t:IsShown() then
+      local l, r, tp, b = RectOf(t)
+      if l then
+        Lx = Lx and math.min(Lx, l) or l
+        Rx = Rx and math.max(Rx, r) or r
+        Tx = Tx and math.max(Tx, tp) or tp
+        Bx = Bx and math.min(Bx, b) or b
+      end
+    end
+  end
+  return Lx, Rx, Tx, Bx
+end
+function L.Center()
+  local f, list = W.frame, W.list
+  if not (f and list and P.IsExpanded and not P.IsExpanded()) then return nil end
+  local gl, gr, gt, gb = L.GridRect()
+  local fl, _, ft = RectOf(f)
+  if not (gl and fl) then return nil end
+  local M = L.MARGIN
+  -- 3.3.11 : marge du haut agrandie quand une pastille « N prêt » dépasse
+  -- au-dessus d'une case de la 1re rangée (elle n'empiète plus sur le bord)
+  local MT = M + ((L.TopExtra and L.TopExtra(gt)) or 0)
+  local ox, oy = L._listX or P.CPAD, L._listY or -P.CTOP
+  ox = ox + (M - (gl - fl))
+  oy = oy - (MT - (ft - gt))
+  list:ClearAllPoints()
+  list:SetPoint("TOPLEFT", f, "TOPLEFT", ox, oy)
+  L._listX, L._listY = ox, oy
+  f:SetSize((gr - gl) + 2 * M, (gt - gb) + M + MT)
+  if P.handle then
+    P.handle:ClearAllPoints()
+    P.handle:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    P.handle:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
+    P.handle:SetHeight(M)
+  end
+  if L.grip then L.PlaceGrip() end
+  L.margins = { M, M, MT, M }   -- gauche, droite, haut, bas
+  return true
+end
+-- ApplyMode repose la liste à (CPAD, -CTOP) : on repart de là à chaque fois
+local baseAM2 = P.ApplyMode
+function P.ApplyMode(...)
+  L._listX, L._listY = nil, nil
+  local r = { baseAM2(...) }
+  pcall(L.Center)
+  return unpack(r)
+end
+local baseWLayout = W.Layout
+function W.Layout(...)
+  local r = { baseWLayout(...) }
+  pcall(L.Center)
+  return unpack(r)
+end
+local baseAV = UI.ApplyView
+function UI:ApplyView(...)
+  local r = { baseAV(self, ...) }
+  if W.frame and W.IsShown() then pcall(L.Center) end
+  return unpack(r)
+end
+
+-- construction / verrou
+local baseBuild = W.Build
+function W.Build(...)
+  W.LIST_W = L.ListW()
+  local r = { baseBuild(...) }
+  if W.frame then
+    if W.frame.SetScale then pcall(W.frame.SetScale, W.frame, L.Scale() / 100) end
+    L.BuildGrip()
+  end
+  return unpack(r)
+end
+if W.frame then L.BuildGrip() end
+local baseVerrou = ns.SlashExt.verrou
+ns.SlashExt.verrou = function(...)
+  baseVerrou(...)
+  if L.grip then L.StopDrag() L.PlaceGrip() end
+end
+
+ns.SlashExt.colonnes = function(rest)
+  local n = L.SetCols((rest or ""):match("^%s*(%d+)"))
+  if n then say("disposition : " .. n .. " colonne" .. (n > 1 and "s" or "") .. " × " .. L.Rows(n) .. " rangée" .. (L.Rows(n) > 1 and "s" or ""))
+  else say("colonnes : " .. L.Cols() .. " (usage : /drop colonnes 1|2|3|5|10)") end
+end
+ns.SlashExt.taille = function(rest)
+  local v = L.SetScale((rest or ""):match("^%s*(%d+)"))
+  if v then say("taille du panneau : " .. v .. " %") else say("taille : " .. L.Scale() .. " % (usage : /drop taille 50-200)") end
+end
+ns.HelpExt = ns.HelpExt or {}
+ns.HelpExt[#ns.HelpExt + 1] = "/drop colonnes 1|2|3|5|10 : disposition (poignée du coin bas-droit) · /drop taille 50-200 : échelle (%) ; poignée = taille (Alt+glisser = colonnes)"
+local baseDebug = W.DebugLines
+W.DebugLines = function()
+  local out = baseDebug()
+  out[#out + 1] = "  disposition : " .. L.Cols() .. " × " .. L.Rows() .. ", taille " .. L.Scale() .. " %, poignée " .. tostring(L.grip and L.grip:IsShown() and "active" or "cachée (verrou)")
+    .. " ; cadre : " .. tostring(W.tipLook or ("toasts (" .. tostring(W.tipLookWhy) .. ")"))
+  return out
+end
