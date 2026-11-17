@@ -491,7 +491,12 @@ function A.HookFrames()
     local f = _G[n]
     if type(f) == "table" and f.HookScript and not A.hooked[n] then
       A.hooked[n] = true
-      pcall(f.HookScript, f, "OnShow", function() window("OnShow " .. n) later("OnShow " .. n) end)
+      pcall(f.HookScript, f, "OnShow", function()
+        A._apiOpen = true
+        A._jobEv = "OnShow " .. n
+        if ns.ProfJob and ns.ProfJob.Schedule then ns.ProfJob.Schedule("OnShow " .. n)
+        else window("OnShow " .. n) later("OnShow " .. n) end
+      end)
       pcall(f.HookScript, f, "OnHide", function() closed("OnHide " .. n) end)
     end
   end
@@ -501,7 +506,13 @@ if ns.On then
   for _, e in ipairs({ "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_CHANNEL_START" }) do ns.On(e, startCast) end
   for _, e in ipairs({ "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_CHANNEL_STOP", "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_FAILED" }) do ns.On(e, stopCast) end
   for _, e in ipairs({ "TRADE_SKILL_SHOW", "TRADE_SKILL_UPDATE", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_DATA_SOURCE_CHANGED", "TRADE_SKILL_NAME_UPDATE", "CRAFT_SHOW", "CRAFT_UPDATE" }) do
-    ns.On(e, function(ev) window(ev) later(ev) A.HookFrames() end)
+    ns.On(e, function(ev)
+      if ev == "TRADE_SKILL_SHOW" or ev == "TRADE_SKILL_LIST_UPDATE" or ev == "TRADE_SKILL_DATA_SOURCE_CHANGED" or ev == "TRADE_SKILL_NAME_UPDATE" or ev == "TRADE_SKILL_UPDATE" then A._apiOpen = true end
+      if ev == "CRAFT_SHOW" or ev == "CRAFT_UPDATE" then A._apiOpen, A._craftOpen = true, true end
+      A._jobEv = ev
+      if ns.ProfJob and ns.ProfJob.Schedule then ns.ProfJob.Schedule(ev) else window(ev) later(ev) end
+      A.HookFrames()
+    end)
   end
   for _, e in ipairs({ "TRADE_SKILL_CLOSE", "CRAFT_CLOSE" }) do
     ns.On(e, function(ev) closed(ev) if C_Timer and type(C_Timer.After) == "function" then C_Timer.After(0, function() closed(ev) end) end end)
