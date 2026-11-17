@@ -79,6 +79,10 @@ Options.SECTIONS = {
       set = function(v) ns.SetOpt("tipCompact", v and true or false) if ns.Tip then ns.Tip.Sync() end end },
     { type = "check", key = "styleMetiers", label = "Habiller la fenêtre Métiers", default = true, cmd = "/drop style on|off",
       help = "Barres et encadrés au style de Dropamine dans la fenêtre du jeu." },
+    { type = "check", key = "openProf", label = "Clic : ouvrir le métier", default = true, cmd = "/drop ouvrir on|off",
+      help = "Clic gauche sur une case de métier ouvre sa fenêtre, hors combat.",
+      get = function() return not (DBui().openProf == false) end,
+      set = function(v) if v then DBui().openProf = nil else DBui().openProf = false end end },
   } },
   { id = "pvp", title = "JcJ", desc = "Honneur, victoires honorables et repères sur les ennemis.", items = {
     { type = "check", key = "pvp", label = "Case JcJ", default = true, cmd = "/drop pvp on|off",
