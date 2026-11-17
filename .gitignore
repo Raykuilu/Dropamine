@@ -1,0 +1,25 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+.luarc.json
+
+# Packaged zips (produced by the packager / local builds)
+*.zip
+
+# Python tooling (preview / border generators)
+__pycache__/
+*.pyc
+*.pyo
+
+# Local-only trees that must not ship in the CurseForge package
+tests/
+tools/
+refs/
+
+# QC previews generated next to the source tree
+preview*.png
+*_preview.png

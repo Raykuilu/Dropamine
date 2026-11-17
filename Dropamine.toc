@@ -1,0 +1,46 @@
+## Interface: 16001
+## Title: Dropamine
+## Notes: Le Skills tab façon OSRS : tes compétences d'un coup d'œil, chaque +1 qui tombe, et ce qui monte sur ta cible.
+## Author: Raykuilu
+## Version: 3.4.3
+## X-License: MIT
+## IconTexture: Interface\AddOns\Dropamine\Media\Dropamine-Icon
+# ## X-Curse-Project-ID: <ID CurseForge à mettre ici une fois le projet créé — ne pas inventer>
+## SavedVariables: DropamineDB, OSRS_TotalLevelDB
+## X-Game: Forever
+
+Catalog.lua
+Core.lua
+Style.lua
+UI.lua
+Chrome.lua
+NativeLook.lua
+View.lua
+Data\ScannerDB.lua
+Scanner.lua
+Craft.lua
+Options.lua
+QoL.lua
+Window.lua
+Icons.lua
+Panel.lua
+Compact.lua
+Links.lua
+Gather.lua
+Target.lua
+Layout.lua
+Notif.lua
+Tip.lua
+CraftOpen.lua
+Skin.lua
+Theme.lua
+PvP.lua
+Wide.lua
+EditMode.lua
+FirstLayout.lua
+ToggleIcon.lua
+PosGuard.lua
+Polish.lua
+ClassicTheme.lua
+Activity.lua
+DebugWindow.lua

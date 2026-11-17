@@ -1,0 +1,30 @@
+# Fields to add to Dropamine.toc (do not invent a project ID)
+
+The 3.3.17 source toc currently has:
+
+    ## Interface: 16001
+    ## Title: Dropamine
+    ## Notes: Le Skills tab façon OSRS : tes compétences d'un coup d'œil, chaque +1 qui tombe, et ce qui monte sur ta cible.
+    ## Author: Raykuilu
+    ## Version: 3.3.17
+    ## SavedVariables: DropamineDB, OSRS_TotalLevelDB
+    ## X-Game: Forever
+
+Add these lines (after Author / Version is a good place):
+
+    ## X-License: MIT
+    ## IconTexture: Interface\AddOns\Dropamine\Media\Dropamine-Icon
+    ## X-Curse-Project-ID: 000000
+
+Replace 000000 with the numeric project ID CurseForge shows on the project
+once you have created it. The BigWigs packager reads this field to know where
+to upload. Leave the placeholder in the repo until that ID exists — do not
+guess one.
+
+Optional, once the GitHub repo URL is known:
+
+    ## X-Website: https://github.com/YOUR_USER/Dropamine
+    ## X-Localizations: frFR, enUS
+
+The 64x64 icon lives at repo/Media/Dropamine-Icon.tga (copy it into the addon's
+Media/ folder when you merge the source). No file extension in the toc path.

@@ -1,0 +1,606 @@
+-- Dropamine 2.7.0 : qualité de vie.
+-- Tout est mesuré ou lu en jeu ; rien n'est inventé. Chaque fonction se coupe
+-- dans les options (/drop options) et par commande. Secret-safe, rien en combat
+-- qui touche à l'équipement.
+local ADDON, ns = ...
+local Q = {}
+ns.QoL = Q
+
+local function N(v) return ns.N(v) end
+local function Call(fn, ...)
+  if type(fn) ~= "function" then return nil end
+  local r = { pcall(fn, ...) }
+  if not r[1] then return nil end
+  return unpack(r, 2)
+end
+local function Str(v)
+  if type(v) ~= "string" or ns.IsSecret(v) then return nil end
+  return v
+end
+local function InCombat()
+  return (type(InCombatLockdown) == "function" and Call(InCombatLockdown)) and true or false
+end
+local function Today()
+  local d = Call(date, "%Y-%m-%d")
+  return Str(d) or tostring(math.floor(((type(time) == "function" and time()) or 0) / 86400))
+end
+local function UI() return ns.UI end
+local function Drop(icon, title, sub, opts)
+  local ui = UI()
+  if ui and ui.SpawnDrop then return ui:SpawnDrop(icon, title, sub, nil, nil, nil, opts or { kind = "qol" }) end
+end
+
+-- Seuils de jalons personnels (choix d'affichage, pas des données de jeu).
+Q.RANK_MILESTONES = { 150, 225, 300 }
+Q.TOTAL_MILESTONES = { 500, 1000, 1500, 2000 }
+Q.PRE_PALIER_GAP = 5
+
+-- Options (panneau + commandes) ------------------------------------------------
+Q.OPTIONS = {
+  { section = "Qualité de vie (2.7.0)" },
+  { type = "check", key = "eta", label = "Estimation « 125 dans ~40 min » (rythme mesuré)", default = true, cmd = "/drop eta on|off", refresh = true },
+  { type = "check", key = "prepalier", label = "Rappel avant le palier (max − 5)", default = true, cmd = "/drop prepalier on|off" },
+  { type = "check", key = "historique", label = "Historique 7 jours dans le détail", default = true, cmd = "/drop historique on|off", refresh = true },
+  { type = "check", key = "alts", label = "Comparaison des personnages (bandeau)", default = true, cmd = "/drop alts on|off" },
+  { type = "check", key = "jalons", label = "Jalons personnels (premier 150, total 1000…)", default = true, cmd = "/drop jalons on|off" },
+  { type = "check", key = "peche", label = "Prises de pêche par zone", default = true, cmd = "/drop peche on|off" },
+  { type = "check", key = "defense", label = "Rappel discret : Défense contre adversaires gris", default = true, cmd = "/drop defense on|off" },
+  { type = "check", key = "recapLogout", label = "Récap de session à la déconnexion (toast + ligne)", default = true, cmd = "/drop recap on|off" },
+  { type = "check", key = "courses", label = "Liste de courses de l'objectif (recettes connues)", default = true, cmd = "/drop courses on|off", refresh = true },
+  { type = "check", key = "partage", label = "Maj+clic sur une tuile : insérer « Dépeçage 161/225 » dans le chat", default = true, cmd = "/drop partage on|off" },
+  { type = "check", key = "maitreArmes", label = "Rappel maître d'armes (arme non apprise)", default = true, cmd = "/drop maitre on|off" },
+  { type = "check", key = "armePrincipale", label = "Rappel de l'arme principale", default = true, cmd = "/drop arme on|off" },
+}
+if ns.Options then
+  for _, it in ipairs(Q.OPTIONS) do ns.Options.EXTRA[#ns.Options.EXTRA + 1] = it end
+end
+
+local function toggleCmd(key, label)
+  return function(rest)
+    local v = ns.ParseOnOff(rest, ns.Opt(key))
+    if ns.Options then ns.Options.Set(key, v) else ns.SetOpt(key, v) end
+    ns.Print(label .. (v and " : activé." or " : désactivé."))
+  end
+end
+ns.SlashExt.eta = toggleCmd("eta", "estimation du temps")
+ns.SlashExt.prepalier = toggleCmd("prepalier", "rappel avant palier")
+ns.SlashExt.historique = toggleCmd("historique", "historique 7 jours")
+ns.SlashExt.alts = toggleCmd("alts", "comparaison des personnages")
+ns.SlashExt.jalons = toggleCmd("jalons", "jalons personnels")
+ns.SlashExt.defense = toggleCmd("defense", "rappel de Défense")
+ns.SlashExt.partage = toggleCmd("partage", "Maj+clic → chat")
+ns.SlashExt.maitre = toggleCmd("maitreArmes", "rappel maître d'armes")
+ns.SlashExt.peche = toggleCmd("peche", "prises de pêche par zone")
+ns.SlashExt["pêche"] = ns.SlashExt.peche
+
+-- Données par personnage -------------------------------------------------------
+function Q.C()
+  local c = ns.CharDB()
+  c.history = c.history or {}        -- [AAAA-MM-JJ] = { total = n, ranks = { [id] = r } }
+  c.milestones = c.milestones or {}  -- [clé] = true
+  c.prePaliers = c.prePaliers or {}  -- [id] = max déjà signalé
+  c.fishing = c.fishing or {}        -- [zone] = { catches = n, items = { [itemID] = n } }
+  return c
+end
+function Q.Global()
+  local db = ns.EnsureDB()
+  db.weaponMasters = db.weaponMasters or {}  -- [id d'arme] = { npc, zone, when }
+  return db
+end
+
+-- 1. Instantané : historique, alts, jalons, pré-palier -----------------------
+function Q.OnSnapshot(snap)
+  if not snap or (snap.liveCount or 0) <= 0 then return end
+  local c = Q.C()
+  local total = N(snap.total) or 0
+  -- historique quotidien (dernier état de la journée)
+  local day = Today()
+  local ranks = {}
+  for _, d in ipairs(snap.tiles or {}) do
+    if d.id and N(d.current) and not d.placeholder then ranks[d.id] = N(d.current) end
+  end
+  c.history[day] = { total = total, ranks = ranks }
+  Q.PruneHistory(c)
+  -- alts
+  c.lastTotal = total
+  c.lastMax = N(snap.totalMax)
+  c.lastLevel = N(ns.GetPlayerLevel and ns.GetPlayerLevel())
+  local _, cls = Call(UnitClass, "player")
+  c.class = Str(cls) or c.class
+  c.lastSeenDay = day
+  -- jalons et pré-palier
+  local first = not c.milestonesSeeded
+  for _, d in ipairs(snap.tiles or {}) do
+    local cur, cap = N(d.current) or 0, N(d.apiMax) or 0
+    if (d.kind == "profession" or d.kind == "secondary") and not d.placeholder then
+      for _, m in ipairs(Q.RANK_MILESTONES) do
+        local key = "rank" .. m
+        if cur >= m and not c.milestones[key] then
+          c.milestones[key] = d.id
+          if not first and ns.Opt("jalons") then
+            Drop(d.icon, "Jalon : premier " .. m .. " !", (d.name or "") .. " " .. cur, { variant = "gold", kind = "jalon", hint = "Premier métier à " .. m .. " sur ce personnage" })
+          end
+        end
+      end
+      if cap > 0 and cur >= cap - Q.PRE_PALIER_GAP and cur < cap and c.prePaliers[d.id] ~= cap then
+        c.prePaliers[d.id] = cap
+        if not first and ns.Opt("prepalier") then
+          Drop(d.icon, "Bientôt le palier : " .. (d.name or "") .. " " .. cur .. "/" .. cap, "Prévois le passage chez le maître", { kind = "prepalier", hint = "Encore " .. (cap - cur) .. " rang(s)" })
+        end
+      end
+    end
+  end
+  for _, m in ipairs(Q.TOTAL_MILESTONES) do
+    local key = "total" .. m
+    if total >= m and not c.milestones[key] then
+      c.milestones[key] = true
+      if not first and ns.Opt("jalons") then
+        Drop(ns.LEVEL_ICON, "Jalon : niveau total " .. m .. " !", "Niveau total " .. total, { variant = "gold", kind = "jalon" })
+      end
+    end
+  end
+  c.milestonesSeeded = true
+end
+
+function Q.PruneHistory(c)
+  local keys = {}
+  for k in pairs(c.history) do keys[#keys + 1] = k end
+  table.sort(keys)
+  while #keys > 30 do c.history[table.remove(keys, 1)] = nil end
+end
+
+-- Série des 7 derniers jours connus (valeur du total ou d'une compétence).
+function Q.Series(id)
+  local c = Q.C()
+  local keys = {}
+  for k in pairs(c.history) do keys[#keys + 1] = k end
+  table.sort(keys)
+  local out = {}
+  for i = math.max(1, #keys - 6), #keys do
+    local h = c.history[keys[i]]
+    local v = id and h.ranks and h.ranks[id] or (not id and h.total) or nil
+    if v then out[#out + 1] = { day = keys[i], value = v } end
+  end
+  return out
+end
+
+-- 2. Mini-graphe 7 jours dans le détail --------------------------------------
+function Q.UpdateGraph(f, d)
+  if not f then return end
+  local g = f.osrsGraph
+  local id = d and d.id or nil
+  local series = (ns.Opt("historique") and Q.Series(id)) or {}
+  if #series < 2 then
+    if g then g:Hide() end
+
+    return nil
+  end
+  if not g then
+    g = CreateFrame("Frame", nil, f)
+    g.bars = {}
+    g.label = g:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    g.label:SetPoint("BOTTOMLEFT", g, "TOPLEFT", 0, 1)
+    f.osrsGraph = g
+  end
+  g:ClearAllPoints()
+  -- v2.8.4 : placé sous le contenu par UI:StackDetailFooter (repli : sous le défilement)
+  if f.scroll then
+    g:SetPoint("TOPLEFT", f.scroll, "BOTTOMLEFT", 6, -16)
+    g:SetPoint("TOPRIGHT", f.scroll, "BOTTOMRIGHT", -6, -16)
+  else
+    g:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 30)
+    g:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 30)
+  end
+  g:SetHeight(24)
+  local lo, hi = math.huge, -math.huge
+  for _, p in ipairs(series) do lo = math.min(lo, p.value) hi = math.max(hi, p.value) end
+  local span = hi - lo
+  local w = (f.GetWidth and N(f:GetWidth()) or 200) - 44
+  if w < 70 then w = 70 end
+  local bw = math.floor(w / 7) - 3
+  for i = 1, 7 do
+    local b = g.bars[i]
+    if not b then
+      b = g:CreateTexture(nil, "ARTWORK")
+      pcall(b.SetTexture, b, "Interface\\Buttons\\WHITE8X8")
+      g.bars[i] = b
+    end
+    local p = series[i]
+    if p then
+      local h = (span > 0) and (4 + 20 * (p.value - lo) / span) or 12
+      b:ClearAllPoints()
+      b:SetPoint("BOTTOMLEFT", g, "BOTTOMLEFT", (i - 1) * (bw + 3), 0)
+      b:SetSize(bw, h)
+      pcall(b.SetVertexColor, b, 0.25, 0.25, 0.75, 0.9)
+      b._value = p.value
+      b:Show()
+    else
+      b:Hide()
+    end
+  end
+  local delta = series[#series].value - series[1].value
+  g.label:SetText(#series .. " derniers jours : " .. ((delta >= 0) and "+" or "") .. delta)
+  g.series = series
+  g:Show()
+  return series
+end
+
+-- 3. Estimation du temps (rythme mesuré dans la session) ----------------------
+function Q.ETALine(d)
+  if not d or not ns.Opt("eta") then return nil end
+  local cur = N(d.current) or 0
+  if d.kind == "level" then
+    local xp, maxxp = ns.GetPlayerXPSafe and ns.GetPlayerXPSafe()
+    xp, maxxp = N(xp), N(maxxp)
+    local spu = ns.Rate.SecondsPerUnit("xp")
+    if xp and maxxp and spu and maxxp > xp then
+      return "Niveau " .. (cur + 1) .. " dans " .. ns.FormatDuration(spu * (maxxp - xp)) .. " (rythme mesuré)"
+    end
+    return nil
+  end
+  local g = ns.GetGoal(d.id)
+  local target = (g and g.rank > cur and g.rank) or N(d.apiMax)
+  if not target or target <= cur then return nil end
+  local eta = ns.Rate.ETA("skill:" .. tostring(d.id), cur, target)
+  if not eta then return nil end
+  return tostring(target) .. " dans " .. ns.FormatDuration(eta) .. " (rythme mesuré)"
+end
+
+-- 4. Liste de courses de l'objectif (recettes connues, composants en sac) ----
+function Q.ShoppingList(d)
+  if not d or not ns.Opt("courses") then return nil end
+  local g = ns.GetGoal(d.id)
+  if not g or g.rank <= (N(d.current) or 0) then return nil end
+  local rec = ns.CharDB().recipes and ns.CharDB().recipes[d.id]
+  if not rec then return nil end
+  local useful = {}
+  local order = { optimal = 3, medium = 2, easy = 1 }
+  for _, r in ipairs(rec.list or {}) do
+    if order[r.diff or ""] then useful[#useful + 1] = r end
+  end
+  table.sort(useful, function(a, b) return order[a.diff] > order[b.diff] end)
+  if #useful == 0 then return { "Courses : aucune recette orange / jaune / verte connue pour l'objectif." } end
+  local lines = { "Courses pour l'objectif " .. g.rank .. " (par fabrication) :" }
+  local DFR = ns.Scanner and ns.Scanner.DIFF_FR or {}
+  for i = 1, math.min(3, #useful) do
+    local r = useful[i]
+    local parts = {}
+    for _, rg in ipairs(r.reagents or {}) do
+      local have = rg.id and N(Call(GetItemCount, rg.id)) or nil
+      local nm = rg.name or (rg.id and Str(Call(GetItemInfo, rg.id))) or ("objet " .. tostring(rg.id))
+      local s = nm .. " ×" .. tostring(rg.count or 1)
+      if have then s = s .. " (en sac " .. have .. ((have < (rg.count or 1)) and ", manque " .. ((rg.count or 1) - have) or "") .. ")" end
+      parts[#parts + 1] = s
+    end
+    lines[#lines + 1] = "• " .. r.name .. " (" .. (DFR[r.diff] or r.diff) .. ") : " .. table.concat(parts, ", ")
+  end
+  return lines
+end
+
+ns.SlashExt.courses = function(rest)
+  local low = (rest or ""):lower()
+  if low == "on" or low == "off" then return toggleCmd("courses", "liste de courses")(low) end
+  local c = ns.CharDB()
+  local any = false
+  local snap = UI() and UI().snapshot or ns.Collect()
+  for _, d in ipairs(snap.tiles or {}) do
+    local l = (not d.placeholder) and Q.ShoppingList(d) or nil
+    if l then any = true for _, x in ipairs(l) do ns.Print(x) end end
+  end
+  if not any then ns.Print("courses : fixe un objectif de Cuisine / Secourisme (clic droit) et ouvre le métier une fois pour lire les recettes.") end
+end
+
+-- 5. Pêche : prises par zone --------------------------------------------------
+function Q.Zone()
+  return Str(Call(GetRealZoneText)) or Str(Call(GetZoneText)) or "?"
+end
+function Q.OnLootFishing()
+  if not ns.Opt("peche") then return nil end
+  if type(IsFishingLoot) ~= "function" or not Call(IsFishingLoot) then return nil end
+  local zone = Q.Zone()
+  local c = Q.C()
+  local z = c.fishing[zone] or { catches = 0, items = {} }
+  c.fishing[zone] = z
+  z.catches = z.catches + 1
+  local n = N(Call(GetNumLootItems)) or 0
+  for slot = 1, n do
+    local link = Str(Call(GetLootSlotLink, slot))
+    local id = link and N(link:match("item:(%d+)"))
+    if id then z.items[id] = (z.items[id] or 0) + 1 end
+  end
+  return zone, z.catches
+end
+function Q.FishingLines()
+  if not ns.Opt("peche") then return nil end
+  local c = Q.C()
+  local zone = Q.Zone()
+  local lines = {}
+  local here = c.fishing[zone]
+  lines[#lines + 1] = "Prises ici (" .. zone .. ") : " .. (here and here.catches or 0)
+  local zs = {}
+  for z, v in pairs(c.fishing) do if z ~= zone then zs[#zs + 1] = { z, v.catches } end end
+  table.sort(zs, function(a, b) return a[2] > b[2] end)
+  for i = 1, math.min(3, #zs) do lines[#lines + 1] = "  " .. zs[i][1] .. " : " .. zs[i][2] end
+  return lines
+end
+
+-- Lignes du panneau de détail --------------------------------------------------
+function Q.DetailLines(d)
+  local out = {}
+  local eta = Q.ETALine(d)
+  if eta then out[#out + 1] = eta end
+  if d and d.id == "fishing" then
+    for _, l in ipairs(Q.FishingLines() or {}) do out[#out + 1] = l end
+  end
+  for _, l in ipairs(Q.ShoppingList(d) or {}) do out[#out + 1] = l end
+  return out
+end
+
+-- 6. Info-bulle du bandeau : autres personnages -------------------------------
+function Q.AltTooltip(tt)
+  if not ns.Opt("alts") or not tt then return 0 end
+  local db = ns.EnsureDB()
+  local me = ns.CharKey()
+  local rows = {}
+  for key, c in pairs(db.chars or {}) do
+    if key ~= me and N(c.lastTotal) then rows[#rows + 1] = { key, c } end
+  end
+  if #rows == 0 then return 0 end
+  table.sort(rows, function(a, b) return (a[2].lastTotal or 0) > (b[2].lastTotal or 0) end)
+  pcall(tt.AddLine, tt, " ")
+  pcall(tt.AddLine, tt, "Autres personnages", 1, 0.82, 0)
+  local mine = N(Q.C().lastTotal) or 0
+  for _, r in ipairs(rows) do
+    local c = r[2]
+    local diff = c.lastTotal - mine
+    local right = tostring(c.lastTotal) .. " (" .. ((diff >= 0) and "+" or "") .. diff .. ")"
+    local left = r[1]:gsub("%-.*$", "") .. (c.lastLevel and (" · niv. " .. c.lastLevel) or "")
+    pcall(tt.AddDoubleLine, tt, left, right, 1, 1, 1, 1, 1, 1)
+  end
+  return #rows
+end
+
+-- 7. Récap de session ----------------------------------------------------------
+function Q.SessionStart()
+  local c = ns.CharDB()
+  c.session.startRanks = nil
+  c.session.startXP = nil
+  Q._sessionXP = 0
+end
+function Q.EnsureStartRanks(snap)
+  local c = ns.CharDB()
+  if c.session.startRanks or not snap or (snap.liveCount or 0) <= 0 then return end
+  local r = {}
+  for _, d in ipairs(snap.tiles or {}) do if d.id and N(d.current) then r[d.id] = { n = d.name, v = N(d.current) } end end
+  c.session.startRanks = r
+end
+function Q.RecapLine()
+  local c = ns.CharDB()
+  local snap = UI() and UI().snapshot
+  if not snap then local ok, s2 = pcall(ns.Collect) snap = ok and s2 or nil end
+  if not snap then return nil end
+  local parts = {}
+  local gain = ns.SessionGain(snap.total)
+  parts[#parts + 1] = "niveau total " .. ((gain or 0) >= 0 and "+" or "") .. tostring(gain or 0)
+  local xp = UI() and UI()._sessionXP or 0
+  if xp > 0 then parts[#parts + 1] = "+" .. xp .. " XP" end
+  local start = c.session.startRanks or {}
+  for _, d in ipairs(snap.tiles or {}) do
+    local s = start[d.id]
+    local cur = N(d.current)
+    if s and cur and cur > s.v then parts[#parts + 1] = (d.name or d.id) .. " +" .. (cur - s.v) end
+  end
+  local started = N(c.session.started)
+  local now = (type(time) == "function" and time()) or nil
+  local dur = (started and now and now > started) and ns.FormatDuration(now - started) or nil
+  return "Session : " .. table.concat(parts, ", ") .. (dur and (" (" .. dur:gsub("^~", "") .. ")") or "")
+end
+ns.SlashExt.recap = function(rest)
+  local low = (rest or ""):lower()
+  if low == "on" or low == "off" then return toggleCmd("recapLogout", "récap à la déconnexion")(low) end
+  local l = Q.RecapLine()
+  ns.Print(l or "récap indisponible (compétences pas encore lues).")
+end
+
+-- 8. Maj+clic : insérer « Dépeçage 161/225 » dans la zone de saisie du chat ---
+function Q.ShareText(d)
+  if not d then return nil end
+  local cur = N(d.current) or 0
+  local cap = N(d.apiMax) or 0
+  local name = (d.combatTile and d.skillName) or d.name or "?"
+  return name .. " " .. cur .. ((cap > 0) and ("/" .. cap) or "")
+end
+function Q.ShareTile(d)
+  local text = Q.ShareText(d)
+  if not text then return false end
+  local eb = Call(_G.ChatEdit_GetActiveWindow)
+  if type(eb) == "table" and eb.Insert then
+    pcall(eb.Insert, eb, text)
+    return true
+  end
+  if type(_G.ChatFrame_OpenChat) == "function" then
+    pcall(_G.ChatFrame_OpenChat, text)
+    return true
+  end
+  return false
+end
+
+-- 9. Maîtres d'armes vus en jeu (fenêtre d'entraîneur) -------------------------
+function Q.OnTrainerShow()
+  local n = N(Call(GetNumTrainerServices)) or 0
+  if n <= 0 then return 0 end
+  local npc = Str(Call(UnitName, "npc")) or "?"
+  local zone = Q.Zone()
+  local found = 0
+  for i = 1, n do
+    local name, _, category = Call(GetTrainerServiceInfo, i)
+    name = Str(name)
+    if name and category ~= "header" then
+      local e = ns.LookupCatalog and ns.LookupCatalog(name)
+      if e and (e.kind == "melee" or e.kind == "ranged") then
+        Q.Global().weaponMasters[e.id] = { npc = npc, zone = zone, when = Today() }
+        found = found + 1
+      end
+    end
+  end
+  return found
+end
+
+Q._warnedWeapon = {}
+function Q.CheckUnlearnedWeapon()
+  if not ns.Opt("maitreArmes") or InCombat() then return nil end
+  local info = ns.GetEquippedItemInfo(ns.GetInventorySlot("main"))
+  if not info then return nil end
+  local id = ns.MapWeaponSubtype(info.subType, N(info.classID), N(info.subclassID))
+  if not id then return nil end
+  local snap = ns.SkillRankSnapshot and ns.SkillRankSnapshot() or {}
+  local e = ns.CatalogById(id)
+  if not e then return nil end
+  local live = snap[ns.Fold(e.name)]
+  if live and (N(live.rank) or 0) > 0 then return nil end
+  local m = Q.Global().weaponMasters[id]
+  if not m then return nil end  -- rien de vu en jeu : pas de rappel
+  if Q._warnedWeapon[id] then return nil end
+  Q._warnedWeapon[id] = true
+  Drop(info.texture or e.icon, e.name .. " : compétence non apprise", "Maître d'armes vu : " .. m.npc, { kind = "maitre", hint = m.zone })
+  return m
+end
+
+-- 10. Arme principale : mémoriser, rappeler, remettre (hors combat) ------------
+function Q.MainWeaponHint()
+  if not ns.Opt("armePrincipale") then return nil end
+  local c = ns.CharDB()
+  local mw = c.mainWeapon
+  if not mw or not mw.id then return nil end
+  local cur = N(Call(GetInventoryItemID, "player", ns.GetInventorySlot("main")))
+  if cur == mw.id then return nil end
+  return "Arme principale : " .. tostring(mw.name or mw.id) .. " — /drop arme pour la remettre (hors combat)"
+end
+ns.SlashExt.arme = function(rest)
+  local low = (rest or ""):lower()
+  local c = ns.CharDB()
+  if low == "on" or low == "off" then return toggleCmd("armePrincipale", "rappel de l'arme principale")(low) end
+  if low == "principale" or low == "set" or low == "memoriser" or low == "mémoriser" then
+    local info = ns.GetEquippedItemInfo(ns.GetInventorySlot("main"))
+    if not info or not N(info.id) then ns.Print("aucune arme en main.") return end
+    c.mainWeapon = { id = N(info.id), name = Str(info.name) }
+    ns.Print("arme principale mémorisée : " .. tostring(info.name or info.id) .. ".")
+    return
+  end
+  local mw = c.mainWeapon
+  if not mw then ns.Print("aucune arme principale. Équipe-la puis /drop arme principale.") return end
+  if InCombat() then ns.Print("en combat : remets " .. tostring(mw.name or mw.id) .. " après le combat.") return end
+  local cur = N(Call(GetInventoryItemID, "player", ns.GetInventorySlot("main")))
+  if cur == mw.id then ns.Print(tostring(mw.name or mw.id) .. " est déjà en main.") return end
+  if N(Call(GetItemCount, mw.id)) == 0 then ns.Print(tostring(mw.name or mw.id) .. " n'est pas dans tes sacs.") return end
+  local ok = pcall(EquipItemByName, mw.id)
+  ns.Print(ok and ("arme principale remise : " .. tostring(mw.name or mw.id) .. ".") or "échange refusé par le jeu.")
+end
+
+-- 11. Défense : adversaire gris (une fois par session) -------------------------
+function Q.CheckDefenseTarget()
+  if not ns.Opt("defense") or Q._defenseWarned then return nil end
+  if not Call(UnitCanAttack, "player", "target") then return nil end
+  local lvl = N(Call(UnitLevel, "target"))
+  if not lvl or lvl <= 0 then return nil end
+  local col = Call(GetQuestDifficultyColor, lvl)
+  local trivial = _G.QuestDifficultyColors and _G.QuestDifficultyColors.trivial
+  local isGray = type(col) == "table" and trivial and col == trivial
+  if not isGray and type(col) == "table" and type(trivial) == "table" then
+    isGray = N(col.r) == N(trivial.r) and N(col.g) == N(trivial.g) and N(col.b) == N(trivial.b)
+  end
+  if not isGray then return nil end
+  local snap = ns.SkillRankSnapshot and ns.SkillRankSnapshot() or {}
+  local def = snap[ns.Fold("Défense")]
+  if not def then return nil end
+  local cur, maxv = N(def.rank) or 0, N(def.max) or 0
+  if maxv <= 0 then maxv = (N(ns.GetPlayerLevel()) or 0) * (ns.WEAPON_RANK_PER_LEVEL or 5) end
+  if cur >= maxv then return nil end
+  Q._defenseWarned = true
+  local e = ns.CatalogById("defense")
+  Drop(e and e.icon, "Défense " .. cur .. "/" .. maxv, "Adversaire gris (niveau " .. lvl .. ")", { kind = "defense", light = true })
+  return true
+end
+
+-- Événements -------------------------------------------------------------------
+if ns.On then
+  ns.On("PLAYER_ENTERING_WORLD", function()
+    if Q._sessionHandled then return end
+    Q._sessionHandled = true
+    if ns.sessionFresh then Q.SessionStart() end
+  end)
+  ns.On("LOOT_OPENED", function() pcall(Q.OnLootFishing) end)
+  ns.On("TRAINER_SHOW", function() pcall(Q.OnTrainerShow) end)
+  ns.On("PLAYER_EQUIPMENT_CHANGED", function() pcall(Q.CheckUnlearnedWeapon) end)
+  ns.On("PLAYER_TARGET_CHANGED", function() if not InCombat() then pcall(Q.CheckDefenseTarget) end end)
+  ns.On("PLAYER_REGEN_DISABLED", function() pcall(Q.CheckDefenseTarget) end)
+  -- 3.3.16 : le récap n'est plus écrit à PLAYER_LOGOUT (caché par l'écran de
+  -- chargement) mais au DÉBUT du compte à rebours de déconnexion / sortie :
+  -- toast visible pendant le décompte + ligne de chat ; annulé par LOGOUT_CANCEL.
+  ns.On("PLAYER_CAMPING", function() Q.LogoutRecap("déconnexion") end)
+  ns.On("PLAYER_QUITING", function() Q.LogoutRecap("sortie du jeu") end)
+  ns.On("LOGOUT_CANCEL", function() Q.CancelLogoutRecap() end)
+  if type(hooksecurefunc) == "function" then
+    -- crochets POST-appel (sûrs, rien n'est remplacé) : déconnexion instantanée
+    -- (auberge) ou client qui n'envoie pas l'événement
+    for _, fn in ipairs({ "Logout", "Quit" }) do
+      if type(_G[fn]) == "function" then pcall(hooksecurefunc, fn, function() Q.LogoutRecap(fn == "Quit" and "sortie du jeu" or "déconnexion") end) end
+    end
+  end
+end
+Q.LOGOUT_SECONDS = 20          -- compte à rebours standard (hors auberge / ville)
+Q.recapStats = { shown = 0, cancelled = 0, skipped = 0 }
+function Q.LogoutRecap(why)
+  if not ns.Opt("recapLogout") then return nil end
+  local now = (type(GetTime) == "function" and GetTime()) or 0
+  if Q._recapAt and now - Q._recapAt < 3 then
+    Q.recapStats.skipped = Q.recapStats.skipped + 1      -- événement + crochet : une seule fois
+    return Q._recapToast or nil
+  end
+  Q._recapAt = now
+  local ok, l = pcall(Q.RecapLine)
+  if not (ok and l) then return nil end
+  ns.Print(l)
+  Q.recapStats.shown = Q.recapStats.shown + 1
+  Q._recapToast = false
+  local U = UI()
+  if U and U.SpawnDrop and not InCombat() then
+    local body = l:gsub("^Session : ", "")
+    local okT, t = pcall(U.SpawnDrop, U, "Interface\\AddOns\\Dropamine\\Media\\SkillsTab",
+      "Récap de session — " .. tostring(why or "déconnexion"), body, nil, nil, "",
+      { hold = Q.LOGOUT_SECONDS, dedupeKey = "osrs-logout-recap", kind = "recap" })
+    if okT and t then Q._recapToast = t end
+  end
+  return Q._recapToast
+end
+function Q.CancelLogoutRecap()
+  local t = Q._recapToast
+  Q._recapAt, Q._recapToast = nil, nil
+  if t and t._dismiss then t._dismiss() Q.recapStats.cancelled = Q.recapStats.cancelled + 1 return true end
+  return false
+end
+-- Point de départ des rangs de la session (au premier instantané lisible).
+local prevOnSnap = Q.OnSnapshot
+Q.OnSnapshot = function(snap)
+  Q.EnsureStartRanks(snap)
+  return prevOnSnap(snap)
+end
+
+ns.HelpExt[#ns.HelpExt + 1] = "/drop recap : résumé de la session (/drop recap on|off : toast + ligne au début du compte à rebours de déconnexion)"
+ns.HelpExt[#ns.HelpExt + 1] = "/drop courses : composants des recettes utiles pour tes objectifs"
+ns.HelpExt[#ns.HelpExt + 1] = "/drop arme principale : mémoriser l'arme en main · /drop arme : la remettre (hors combat)"
+ns.HelpExt[#ns.HelpExt + 1] = "/drop eta|prepalier|historique|alts|jalons|peche|defense|partage|maitre on|off"
+
+ns.DebugExt[#ns.DebugExt + 1] = function()
+  local c = Q.C()
+  local out = { "— Qualité de vie (v2.7.0) —" }
+  local nh, nf = 0, 0
+  for _ in pairs(c.history) do nh = nh + 1 end
+  for _, z in pairs(c.fishing) do nf = nf + (z.catches or 0) end
+  local nm = 0
+  for _ in pairs(Q.Global().weaponMasters) do nm = nm + 1 end
+  out[#out + 1] = string.format("  historique : %d jour(s) ; prises de pêche : %d ; maîtres d'armes vus : %d", nh, nf, nm)
+  out[#out + 1] = "  rythme XP : " .. tostring(ns.Rate.SecondsPerUnit("xp") and "mesuré" or "pas encore") .. " ; arme principale : " .. tostring(c.mainWeapon and (c.mainWeapon.name or c.mainWeapon.id) or "aucune")
+  out[#out + 1] = "  API : IsFishingLoot " .. tostring(type(_G.IsFishingLoot) == "function") .. ", GetTrainerServiceInfo " .. tostring(type(_G.GetTrainerServiceInfo) == "function") .. ", GetQuestDifficultyColor " .. tostring(type(_G.GetQuestDifficultyColor) == "function") .. ", ChatEdit_GetActiveWindow " .. tostring(type(_G.ChatEdit_GetActiveWindow) == "function") .. ", EquipItemByName " .. tostring(type(_G.EquipItemByName) == "function")
+  return out
+end
