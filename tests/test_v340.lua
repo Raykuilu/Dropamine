@@ -5077,67 +5077,23 @@ do
   if ns.Theme and ns.Theme.Set then ns.Theme.Set("flare") end
 end
 
-print("== 3.5.0 : clic gauche sur un métier ouvre sa fenêtre (bouton sécurisé, hors combat) ==")
+print("== 3.5.0 : clic pour ouvrir un métier désactivé (clignotement) ==")
 do
   local CO = ns.CraftOpen
-  ok(CO.Openable({ id = "cooking", name = "Cuisine" }) == "cooking" and CO.Openable({ id = "mining" }) == "mining", "Cuisine et Minage (Fondre) sont ouvrables")
-  ok(CO.Openable({ id = "firstaid" }) and CO.Openable({ id = "tailoring" }) and CO.Openable({ id = "enchanting" }) and CO.Openable({ id = "blacksmithing" }), "fenêtres de métier : secourisme, couture, enchantement, forge")
-  ok(not CO.Openable({ id = "skinning" }) and not CO.Openable({ id = "herbalism" }) and not CO.Openable({ id = "fishing" }) and not CO.Openable({ id = "defense", kind = "defense" }), "Dépeçage, Herboristerie, Pêche et les autres cases : clic inchangé")
-  ok(ns.Options.Find("openProf") and ns.Options.Get("openProf") == true and ns.Options.Find("openProf").default == true, "Métiers : « Clic : ouvrir le métier », activé par défaut")
+  ok(CO.Openable({ id = "cooking", name = "Cuisine" }) == nil and CO.Openable({ id = "mining" }) == nil and CO.Openable({ id = "firstaid" }) == nil, "3.5.0 : CO.Openable renvoie nil (ouverture au clic coupée)")
+  ok(not CO.Openable({ id = "skinning" }) and not CO.Openable({ id = "fishing" }), "Dépeçage et Pêche : toujours pas d'ouverture")
   local tile = CreateFrame("Button", nil, _G.UIParent)
   tile:SetSize(36, 36)
   tile:SetPoint("CENTER", _G.UIParent, "CENTER", 20, -10)
   tile.data = { id = "cooking", name = "Cuisine" }
   tile:Show()
-  ok(CO.ArmTile(tile) and CO.tileBtn and CO.tileBtn:IsShown() and CO.tileBtn:GetParent() == _G.UIParent, "hors combat : bouton sécurisé visible, enfant d'UIParent")
-  local b = CO.tileBtn
-  local p = b.points and b.points[1]
-  ok(p and p[2] == _G.UIParent and b:GetAttribute("type1") == "spell" and b:GetAttribute("spell1") == CO.SpellName("cooking") and b:GetAttribute("type2") == nil, "coordonnées absolues, type1 = sort du métier, pas de type2")
-  local selected, prompted, shared
-  local rSel, rPrompt = ns.UI.SelectTile, ns.UI.PromptGoal
-  ns.UI.SelectTile = function(_, d) selected = d.id end
-  ns.UI.PromptGoal = function(_, d) prompted = d.id end
-  local rShare = ns.QoL and ns.QoL.ShareTile
-  if ns.QoL then ns.QoL.ShareTile = function(d) shared = d.id return true end end
-  for _, fn in ipairs(b.hooks.PostClick or {}) do fn(b, "LeftButton") end
-  ok(selected == "cooking" and not prompted, "clic gauche : la case est sélectionnée (PostClick, non sécurisé)")
-  selected = nil
-  local rShift = _G.IsShiftKeyDown
-  _G.IsShiftKeyDown = function() return true end
-  for _, fn in ipairs(b.hooks.PreClick or {}) do fn(b, "LeftButton") end
-  ok(b:GetAttribute("type1") == nil, "Maj+clic : le sort n'est pas lancé")
-  for _, fn in ipairs(b.hooks.PostClick or {}) do fn(b, "LeftButton") end
-  ok(shared == "cooking" and selected ~= "cooking", "Maj+clic : partage, pas la sélection")
-  _G.IsShiftKeyDown = function() return false end
-  for _, fn in ipairs(b.hooks.PreClick or {}) do fn(b, "RightButton") end
-  for _, fn in ipairs(b.hooks.PostClick or {}) do fn(b, "RightButton") end
-  ok(prompted == "cooking", "clic droit : objectif, comme avant")
-  _G.IsShiftKeyDown = rShift
-  ns.UI.SelectTile, ns.UI.PromptGoal = rSel, rPrompt
-  if ns.QoL then ns.QoL.ShareTile = rShare end
-  CO.DisarmTile()
-  ok(not b:IsShown(), "sortie de la case : bouton caché")
-  local rIC = _G.InCombatLockdown
-  _G.InCombatLockdown = function() return true end
-  ok(CO.ArmTile(tile) == false, "en combat : pas de bouton, le clic ne fait que sélectionner")
-  b:Show()
-  fire("PLAYER_REGEN_DISABLED")
-  ok(not b:IsShown() and b._tile == nil, "PLAYER_REGEN_DISABLED : bouton caché, sans SetAttribute")
-  _G.InCombatLockdown = rIC
-  ns.db.ui.openProf = false
-  ok(CO.Openable({ id = "alchemy" }) == nil and CO.ArmTile(tile) == false, "réglage désactivé : plus d'ouverture")
-  ns.db.ui.openProf = nil
+  ok(CO.ArmTile(tile) == false and not (CO.tileBtn and CO.tileBtn:IsShown()), "aucun bouton sécurisé posé sur la case")
   local tip = _G.GameTooltip
   tip.lines = {}
   ns.Compact.FillTooltip(tip, { id = "leatherworking", name = "Travail du cuir", kind = "profession", current = 10, apiMax = 300 }, tile)
   local hint = false
   for _, l in ipairs(tip.lines or {}) do if l.t and l.t:find("Clic : ouvrir le métier", 1, true) then hint = true end end
-  ok(hint, "infobulle : « Clic : ouvrir le métier »")
-  tip.lines = {}
-  ns.Compact.FillTooltip(tip, { id = "fishing", name = "Pêche", kind = "secondary", current = 1, apiMax = 300 }, tile)
-  hint = false
-  for _, l in ipairs(tip.lines or {}) do if l.t and l.t:find("Clic : ouvrir le métier", 1, true) then hint = true end end
-  ok(not hint, "Pêche : pas cette ligne")
+  ok(not hint, "infobulle : plus de « Clic : ouvrir le métier »")
 end
 
 print(failures == 0 and "TOTAL  OK  tous les tests v3.5.0 ont réussi" or ("TOTAL  FAIL  " .. failures .. " échec(s)"))

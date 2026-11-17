@@ -229,7 +229,8 @@ end
 CO.TILE_HINT = "Clic : ouvrir le métier"
 function CO.Openable(d)
   if not (d and d.id and not d.placeholder and CO.SPELLS[d.id]) then return nil end
-  if ns.db and ns.db.ui and ns.db.ui.openProf == false then return nil end
+  -- 3.5.0 : désactivé (clignotement en jeu) ; à réactiver plus tard
+  do return nil end
   return d.id
 end
 function CO.TileButton()
