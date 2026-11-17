@@ -89,11 +89,22 @@ Every item below is implemented in the 3.4.0 source; nothing is planned or hoped
 
 **Commands & settings**
 - `/drop` or `/dropamine`; `/drop help` (short, grouped) and `/drop help tout` (everything).
-- Settings in 5 groups (Display & theme, Professions & highlights, PvP, Notifications, Advanced), one help line per setting, “Defaults” button.
+- Settings in 5 groups (Display & theme, Professions & highlights, PvP, Notifications, Advanced), one help line per setting, “Defaults” button. 3.5.0 adds the combo, the next-point bar, the collection, the daily challenge, the max celebration, records, and a sound toggle for each sound.
 - Settings imported automatically from OSRS Total Level.
+
+**Dopamine (3.5.0)**
+- Session combo: points within 60 s raise a shown multiplier (x2, x3…) that steps down when you stop; best combo is kept.
+- Two built-in dings (game sound kits only): one on a skill point, another on a profession tier.
+- Golden celebration when a profession or weapon skill hits its maximum.
+- One daily challenge among your skills (“+5 in Skinning”), progress in the tooltip, a reward once when it is done.
+- Personal records: most points in a session and best hour, “Nouveau record !” toast.
+- Thin next-point bar under the active tile when a measured estimate exists.
+- Collection: first skinned creature types and fished items per character, “N discovered” in the tooltip.
+- Master “Sons” switch; every sound has its own toggle (off by default, including the existing level-up and scanner sounds’ previous defaults).
 
 **Performance**
 - Fully event-driven; while idle nothing runs (no polling, no animation).
+- Switching profession windows is one deferred job: recipes are rescanned only when the profession, recipe count or rank changes, in small batches, and only the tiles whose highlight changed are refreshed. `/drop perf` prints scan count and time.
 - Cached results (target, links, tooltips), pooled frames.
 - No secure-frame changes, no Blizzard frame modified (safe hooks only); `/drop perf` and `/drop debug` to check.
 
@@ -308,8 +319,19 @@ Anciennement *OSRS Total Level*. Client : **WoW Forever** (`Interface: 16001`). 
 - Réglages en 5 groupes (Affichage & thème, Métiers & surlignage, JcJ, Notifications, Avancé), une phrase d'aide par réglage, bouton « Valeurs par défaut ».
 - Réglages repris automatiquement depuis OSRS Total Level.
 
+**Dopamine (3.5.0)**
+- Combo de session : un point dans les 60 s monte le multiplicateur affiché (x2, x3…) ; il redescend quand tu t’arrêtes. Le meilleur combo est gardé.
+- Deux sons du jeu (aucun fichier audio) : un à chaque point, un autre au palier de métier.
+- Célébration dorée quand un métier ou une arme atteint son maximum.
+- Un défi par jour parmi tes compétences (« +5 en Dépeçage »), progression dans l’infobulle, récompense visuelle une fois.
+- Records : le plus de points dans une session et la meilleure heure, toast « Nouveau record ! ».
+- Fine barre du prochain point sous la case en cours, seulement quand une estimation existe.
+- Collection : premiers types de créatures dépecés et premiers poissons, par personnage, « N découverts » dans l’infobulle.
+- Interrupteur « Sons » ; chaque son a sa case (coupés par défaut, y compris les sons déjà présents).
+
 **Performance**
 - Tout est piloté par les événements ; au repos, rien ne tourne (aucune lecture périodique, aucune animation).
+- Changer de fenêtre de métier ne relance qu’un seul travail différé : les recettes ne sont relues que si le métier, le nombre de recettes ou le rang change, par petits lots, et seules les cases dont la surbrillance change sont repeintes. `/drop perf` indique le nombre de lectures et leur durée.
 - Calculs mis en cache (cible, liens, infobulles), cadres réutilisés.
 - Rien sur les cadres sécurisés, aucun cadre Blizzard modifié (crochets sûrs seulement) ; `/drop perf` et `/drop debug` pour vérifier.
 

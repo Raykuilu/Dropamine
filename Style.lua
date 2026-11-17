@@ -787,8 +787,8 @@ function Style.HookRoots()
     if type(root) == "table" and root.HookScript and not flags.StyleHooked then
       flags.StyleHooked = true
       pcall(root.HookScript, root, "OnShow", function()
-        Style.Probe(true)
-        if ns.UI and ns.UI.Refresh then pcall(ns.UI.Refresh, ns.UI, true) end
+        if ns.ProfJob and ns.ProfJob.Schedule then ns.ProfJob.Schedule("style")
+        else Style.Probe(false) end
       end)
     end
   end
@@ -803,7 +803,7 @@ if ns.On then
   ns.On("PLAYER_LOGIN", function() pcall(Style.HookRoots) end)
   ns.On("TRADE_SKILL_SHOW", function()
     Style.HookRoots()
-    Style.Probe(true)
-    if ns.UI and ns.UI.Refresh then pcall(ns.UI.Refresh, ns.UI, true) end
+    if ns.ProfJob and ns.ProfJob.Schedule then ns.ProfJob.Schedule("style")
+    else Style.Probe(false) end
   end)
 end

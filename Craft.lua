@@ -126,20 +126,14 @@ function Craft.Store(skill, list, source)
 end
 
 -- Enchantement (fenêtre « Craft » sur les clients classiques).
-function Craft.ReadCraftWindow()
-  if InCombat() then return nil, "combat" end
-  local n = N(Call(_G.GetNumCrafts))
-  if not n or n <= 0 then return nil, "aucune recette" end
-  local lineName = Str(Call(_G.GetCraftDisplaySkillLine)) or Str(Call(_G.GetCraftName))
-  local id = lineName and ns.Style and ns.Style.SkillIdForText(lineName)
-  if not id then return nil, "fenêtre inconnue : " .. tostring(lineName) end
-  local DIFF = { optimal = "optimal", medium = "medium", easy = "easy", trivial = "trivial" }
-  local list = {}
-  for i = 1, n do
+local CRAFT_DIFF = { optimal = "optimal", medium = "medium", easy = "easy", trivial = "trivial" }
+function Craft.ReadCraftRange(i0, i1, list)
+  list = list or {}
+  for i = i0, i1 do
     local name, _, kind, nAvail = Call(_G.GetCraftInfo, i)
     name, kind = Str(name), Str(kind)
     if name and kind and kind ~= "header" then
-      local r = { name = name, diff = DIFF[kind] or kind, reagents = {}, avail = N(nAvail), icon = Call(_G.GetCraftIcon, i) }
+      local r = { name = name, diff = CRAFT_DIFF[kind] or kind, reagents = {}, avail = N(nAvail), icon = Call(_G.GetCraftIcon, i) }
       for j = 1, (N(Call(_G.GetCraftNumReagents, i)) or 0) do
         local rn, _, cnt = Call(_G.GetCraftReagentInfo, i, j)
         local link = Call(_G.GetCraftReagentItemLink, i, j)
@@ -148,6 +142,21 @@ function Craft.ReadCraftWindow()
       list[#list + 1] = r
     end
   end
+  return list
+end
+function Craft.CraftIdentity()
+  local name = Str(Call(_G.GetCraftDisplaySkillLine)) or Str(Call(_G.GetCraftName))
+  local n = N(Call(_G.GetNumCrafts)) or 0
+  local id = name and ns.Style and ns.Style.SkillIdForText and ns.Style.SkillIdForText(name) or nil
+  local rank = (id and S and S.RankOf and S.RankOf(id)) or 0
+  return id, n, rank or 0, name
+end
+function Craft.ReadCraftWindow()
+  if InCombat() then return nil, "combat" end
+  local id, n, _, lineName = Craft.CraftIdentity()
+  if not n or n <= 0 then return nil, "aucune recette" end
+  if not id then return nil, "fenêtre inconnue : " .. tostring(lineName) end
+  local list = Craft.ReadCraftRange(1, n, {})
   if #list == 0 then return nil, "aucune recette" end
   return Craft.Store(id, list, "GetCraftInfo")
 end
@@ -493,7 +502,8 @@ if ns.On then
   ns.On("PLAYER_LOGIN", function() Craft.HookUnitTooltip() Craft.Update(true) end)
   ns.On("BAG_UPDATE_DELAYED", function() Craft.OnBags() end)
   ns.On("PLAYER_REGEN_ENABLED", function() if Craft._pending then Craft.Update(false) end end)
-  local function readCraft()
+  local function readCraft(ev)
+    if ns.ProfJob and ns.ProfJob.Schedule then ns.ProfJob.Schedule(ev or "craft") return end
     if InCombat() then return end
     local ok, id, n = pcall(Craft.ReadCraftWindow)
     if ok and id and S then S.lastRead = tostring(id) .. " : " .. tostring(n) end

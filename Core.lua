@@ -1439,6 +1439,12 @@ function ns.OptOff(name)
   local ui = ns.db and ns.db.ui
   return ui and ui[name] == true or false
 end
+-- 3.5.0 : interrupteur « Sons ». nil = ouvert (les sons déjà réglés ne se
+-- taisent pas). Chaque son reste coupé tant que sa propre case n'est pas cochée.
+function ns.SoundOk(name)
+  if ns.db and ns.db.ui and ns.db.ui.sounds == false then return false end
+  return ns.OptOff(name)
+end
 
 -- Rythme mesuré dans la session (pour « ~N min par rang », « 125 dans ~40 min »).
 -- Rien n'est stocké hors session ; aucune valeur inventée : il faut au moins
@@ -1728,7 +1734,8 @@ ns.On("UNIT_STATS", function(_, unit)
   if unit and unit ~= "player" then return end
   requestRefresh()
 end)
-ns.On("TRADE_SKILL_LIST_UPDATE", function() requestRefresh() end)
+-- 3.5.0 : TRADE_SKILL_LIST_UPDATE ne reconstruit plus toute la grille.
+-- Le métier ouvert passe par ProfJob (un seul passage différé).
 ns.On("PLAYER_XP_UPDATE", function()
   if ns.UI and ns.UI.OnXPUpdate then ns.UI:OnXPUpdate() end
   requestRefresh()
@@ -2058,6 +2065,7 @@ ns.HELP_SHORT = {
   "  Objectifs : clic droit sur une case · /drop objectif <compétence> <rang> · objectif clear",
   "  JcJ : /drop pvp on|off · pvp marques on|off",
   "  Notifications : /drop drops on|off · notif dessus|dessous|detache · recap",
+  "  Dopamine : /drop combo · defi · records · barre · collection · sons on|off",
   "  Plus : /drop help tout (toutes les commandes) · /drop debug (rapport copiable) · debug metier",
 }
 local function slashHelpAll()
