@@ -270,13 +270,23 @@ function CO.TileButton()
       self:SetAttribute("spell1", CO.SpellName(self._tileSkill))
     end
   end)
-  b:SetScript("OnLeave", function() CO.DisarmTile() end)
+  -- le bouton recouvre la case : on garde l'infobulle de la case tant que la
+  -- souris reste dessus, et on ne fait le « départ » de la case qu'en le quittant
+  b:SetScript("OnLeave", function(self)
+    local tile = self._tile
+    CO.DisarmTile()
+    if tile and CO.baseLeave then pcall(CO.baseLeave, tile) end
+  end)
   CO.tileBtn = b
   return b
 end
 function CO.OverTileButton()
   local b = CO.tileBtn
   if not (b and b.IsShown and b:IsShown()) then return false end
+  if b.IsMouseOver then
+    local ok, over = pcall(b.IsMouseOver, b)
+    if ok and over then return true end
+  end
   if type(_G.GetMouseFocus) ~= "function" then return false end
   local ok, f = pcall(_G.GetMouseFocus)
   return ok and f == b
@@ -324,15 +334,20 @@ end
 if ns.Icons and ns.Icons.OnEnter then
   local baseEnter = ns.Icons.OnEnter
   function ns.Icons.OnEnter(self, ...)
+    local b = CO.tileBtn
+    if b and b._tile == self and b.IsShown and b:IsShown() then return end
     baseEnter(self, ...)
     pcall(CO.ArmTile, self)
   end
 end
 if ns.Icons and ns.Icons.OnLeave then
   local baseLeave = ns.Icons.OnLeave
+  CO.baseLeave = baseLeave
   function ns.Icons.OnLeave(self, ...)
+    local b = CO.tileBtn
+    if b and b._tile == self and CO.OverTileButton() then return end
     baseLeave(self, ...)
-    if CO.tileBtn and CO.tileBtn._tile == self and not CO.OverTileButton() then CO.DisarmTile() end
+    if b and b._tile == self then CO.DisarmTile() end
   end
 end
 if ns.Compact and ns.Compact.FillTooltip then
