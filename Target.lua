@@ -67,15 +67,26 @@ local function Rank(id) return (S.RankOf and S.RankOf(id)) or nil end
 function T.ReadTarget()
   local u = "target"
   if not Call(_G.UnitExists, u) then return nil end
-  local npc, pinfo = S.UnitNpcID(u)
+  -- Joueur d'abord : UnitCreatureType est nil, et un GUID « Player » ne doit
+  -- pas être relu comme un PNJ (dépeçage / butin / type de créature).
+  local isPlayer = (S.IsPlayerUnit and S.IsPlayerUnit(u)) or (Call(_G.UnitIsPlayer, u) and true or false)
+  local npc, pinfo
+  if not isPlayer then npc, pinfo = S.UnitNpcID(u) end
+  local pvp
+  if type(_G.UnitIsPVP) == "function" then pvp = Call(_G.UnitIsPVP, u) and true or false end
+  local enemy = type(_G.UnitIsEnemy) == "function" and Call(_G.UnitIsEnemy, "player", u) and true or false
   local t = {
     name = Str(Call(_G.UnitName, u)), level = N(Call(_G.UnitLevel, u)), npc = npc,
     dead = Call(_G.UnitIsDead, u) and true or false,
-    player = Call(_G.UnitIsPlayer, u) and true or false,
+    player = isPlayer and true or false,
     attackable = Call(_G.UnitCanAttack, "player", u) and true or false,
     tapped = Call(_G.UnitIsTapDenied, u) and true or false,
+    pvp = pvp, enemy = enemy,
+    faction = Str(Call(_G.UnitFactionGroup, u)),
+    myFaction = Str(Call(_G.UnitFactionGroup, "player")),
+    playerLevel = N(Call(_G.UnitLevel, "player")),
   }
-  if npc and S.NoteUnit then local _, seen = S.NoteUnit(u) if seen then t.ctype, t.family = seen.ctype, seen.family end end
+  if npc and not isPlayer and S.NoteUnit then local _, seen = S.NoteUnit(u) if seen then t.ctype, t.family = seen.ctype, seen.family end end
   return t
 end
 
@@ -306,7 +317,8 @@ function T.BeingHit()
   return Call(_G.UnitIsUnit, "targettarget", "player") and true or false
 end
 function T.SwingSig()
-  return (T.Meleeing() and "m" or "-") .. (T.Shooting() and "r" or "-") .. (T.BeingHit() and "h" or "-")
+  local vs = (Call(_G.UnitAffectingCombat, "player") and Call(_G.UnitAffectingCombat, "target")) and "c" or "-"
+  return (T.Meleeing() and "m" or "-") .. (T.Shooting() and "r" or "-") .. (T.BeingHit() and "h" or "-") .. vs
 end
 function T.EquipDebug()
   local e = T.Equipped()
@@ -329,14 +341,19 @@ function T.Compute(tg)
   end
   T.notes = {}
   if not tg then return out end
-  local pl = N(Call(_G.UnitLevel, "player")) or 1
+  local pl = N(tg.playerLevel) or N(Call(_G.UnitLevel, "player")) or 1
   local tl = tg.level
   local skull = (tl == nil or tl <= 0)
   local effLevel = skull and (pl + 10) or tl
-  local fightable = tg.attackable and not tg.dead and not tg.player
-  -- Niveau (XP)
+  -- Un joueur ennemi (attaquable ou UnitIsEnemy, flag JcJ si l'API existe)
+  -- suit les règles de combat d'un monstre. Pas d'XP, pas de butin, pas de
+  -- dépeçage : UnitCreatureType est nil et le GUID est de type Player.
+  local mob = not tg.player
+  local hostile = tg.player and not tg.dead and (tg.attackable or tg.enemy) and tg.pvp ~= false
+  local fightable = (mob and tg.attackable and not tg.dead) or hostile
+  -- Niveau (XP) : jamais sur un joueur
   local cap = (ns.GetLevelCap and ns.GetLevelCap()) or 60
-  if fightable and not tg.tapped and pl < cap then
+  if mob and tg.attackable and not tg.dead and not tg.tapped and pl < cap then
     local grey = T.GreyLevel(pl)
     if skull or tl > grey then
       mark("level", "direct", "XP : cible niveau " .. (skull and "??" or tl) .. " (grise si ≤ " .. grey .. ")")
@@ -404,10 +421,19 @@ function T.Compute(tg)
         if ok and key then
           if strong then why = why .. ((k == "defense") and "" or " (tu frappes)")
           elseif k ~= "defense" then why = why .. " (frappe pour la faire monter)" end
+          if tg.player then why = why .. " · joueur" end
           mark(key, strong and "direct" or "indirect", why)
           out[key].combat = true
         end
       end
+    end
+  end
+  -- Case JcJ : ennemi honorable. Discret sur la cible, fort en combat avec lui.
+  if hostile and ns.PvP and ns.PvP.HonorFromTarget then
+    local okH, honor = pcall(ns.PvP.HonorFromTarget, tg)
+    if okH and honor then
+      local strong = T.Meleeing() or T.BeingHit() or (Call(_G.UnitAffectingCombat, "player") and Call(_G.UnitAffectingCombat, "target"))
+      mark("id:pvp", strong and "direct" or "indirect", "JcJ : ennemi honorable" .. (strong and " (en combat)" or " (ciblé)"))
     end
   end
   -- Butin : Cuisine / Secourisme (recettes connues non grises)
@@ -470,6 +496,7 @@ end
 local function CacheKey(tg)
   local pl = N(Call(_G.UnitLevel, "player")) or 0
   return table.concat({ tostring(tg.npc or tg.name), tostring(tg.level), tostring(tg.dead), tostring(tg.tapped), tostring(tg.attackable),
+    tostring(tg.player), tostring(tg.pvp), tostring(tg.enemy),
     tostring(pl), tostring(ns.Craft and ns.Craft._ver), tostring(S._learnVer), tostring(T._rankVer or 0), T.CombatSig(), T.FormSig(), T.Equipped().sig, T.SwingSig() }, "|")
 end
 function T.Result(tg)
@@ -529,8 +556,19 @@ end
 function T.Paint()
   T.stats.paints = T.stats.paints + 1
   local res = T.current or {}
+  local tiles = UI.embed and UI.embed.tiles or {}
+  local prev = T._lvlSig or {}
+  local sig = {}
+  for _, t in ipairs(tiles) do
+    local key = t.data and t:IsShown() and T.KeyFor(t.data)
+    local e = key and res[key]
+    sig[t] = e and e.level or "-"
+  end
   local n = 0
-  for _, t in ipairs(UI.embed and UI.embed.tiles or {}) do
+  for _, t in ipairs(tiles) do
+    if prev[t] == sig[t] then
+      if sig[t] ~= "-" then n = n + 1 end
+    else
     local key = t.data and t:IsShown() and T.KeyFor(t.data)
     local e = key and res[key]
     if e then
@@ -551,12 +589,14 @@ function T.Paint()
       if t._osrsTgt then t._osrsTgt:Hide() t._osrsTgt._level = nil end
       if t._tgtLit then t._tgtLit = nil if ns.Theme and ns.Theme.BevelColor then pcall(ns.Theme.BevelColor, t) end end
     end
+    end
   end
+  T._lvlSig = sig
   T.shown = n
   return n
 end
 function T.Clear()
-  T.current, T.target = nil, nil
+  T.current, T.target, T._lvlSig = nil, nil, nil
   for _, t in ipairs(UI.embed and UI.embed.tiles or {}) do
     t._tgtWhy = nil
     if t._osrsTgt then t._osrsTgt:Hide() t._osrsTgt._level = nil end

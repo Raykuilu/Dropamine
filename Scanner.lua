@@ -198,15 +198,24 @@ end
 -- npcID d'une unité : GUID, sinon (ni joueur, ni objet) nom localisé.
 -- 2e valeur : { raw, path, kind, how } pour /drop scanner pourquoi et /drop debug.
 Scanner.lastUnitParse = {}
+-- Joueur : UnitIsPlayer, ou GUID de type Player (Classic « Player-… » / 0x0…).
+-- Un joueur n'a pas de type de créature : on ne le traite jamais comme un PNJ,
+-- même si le GUID a été lu trop loin et qu'un nombre en sort.
+function Scanner.IsPlayerUnit(unit)
+  if Call(UnitIsPlayer, unit) then return true end
+  local g = Scanner.ParseGUID(Call(UnitGUID, unit))
+  return (g and g.kind == "Player") and true or false
+end
 function Scanner.UnitNpcID(unit)
   local raw = Call(UnitGUID, unit)
   local g = Scanner.ParseGUID(raw)
   local info = { unit = unit, raw = (type(raw) == "string" and not (ns.IsSecret and ns.IsSecret(raw))) and raw or (raw == nil and "nil" or "protégé"),
     path = g and g.path or "aucun GUID", kind = g and g.kind }
   Scanner.lastUnitParse[unit or "?"] = info
+  if Call(UnitIsPlayer, unit) then info.how, info.kind = "rejeté (UnitIsPlayer)", "Player" return nil, info end
+  if g and g.kind == "Player" then info.how, info.kind = "rejeté (GUID Player)", "Player" return nil, info end
   if g and g.npc then info.how = "GUID" return g.npc, info end
   if g and g.kind and not Scanner.NPC_KINDS[g.kind] and g.kind ~= "Inconnu" then info.how = "rejeté (" .. g.kind .. ")" return nil, info end
-  if Call(UnitIsPlayer, unit) then info.how = "rejeté (UnitIsPlayer)" return nil, info end
   if not Call(UnitExists, unit) and raw == nil then info.how = "aucune unité" return nil, info end
   local id, how = Scanner.NpcByName(Call(UnitName, unit), Call(UnitLevel, unit))
   info.how = id and ("repli " .. how) or ("introuvable (" .. tostring(how) .. ")")
@@ -517,6 +526,70 @@ function Scanner.InferSkillFromRecipes(list)
 end
 
 local REL_DIFF_FALLBACK = { [0] = "optimal", [1] = "medium", [2] = "easy", [3] = "trivial" }
+-- Une tranche de la liste classique (ProfJob la découpe par ~25). partial = en-tête replié.
+function Scanner.ReadTradeRange(i0, i1, list)
+  local partial = false
+  list = list or {}
+  i0, i1 = i0 or 1, i1 or i0
+  for i = i0, i1 do
+    local name, kind, nAvail, expanded = Call(_G.GetTradeSkillInfo, i)
+    name, kind = CleanRecipeName(name), Str(kind)
+    if kind == "header" or kind == "subheader" then
+      if expanded == false or expanded == 0 then partial = true end
+    elseif name and kind then
+      local r = { name = name, diff = DIFF_NAMES[kind] or kind, reagents = {}, avail = N(nAvail),
+        icon = Str(Call(_G.GetTradeSkillIcon, i)) or N(Call(_G.GetTradeSkillIcon, i)) }
+      local nr = N(Call(_G.GetTradeSkillNumReagents, i)) or 0
+      for j = 1, nr do
+        local rn, _, cnt = Call(_G.GetTradeSkillReagentInfo, i, j)
+        local id = Scanner.ItemIDFromLink(Call(_G.GetTradeSkillReagentItemLink, i, j))
+        r.reagents[#r.reagents + 1] = { id = id, name = Str(rn), count = N(cnt) or 1 }
+      end
+      list[#list + 1] = r
+    end
+  end
+  return list, partial
+end
+function Scanner.TradeFiltersPartial()
+  if type(_G.GetTradeSkillSubClassFilter) == "function" and Call(_G.GetTradeSkillSubClassFilter, 0) == false then return true end
+  if type(_G.GetTradeSkillInvSlotFilter) == "function" and Call(_G.GetTradeSkillInvSlotFilter, 0) == false then return true end
+  return false
+end
+-- Rang + nombre de lignes, sans lire les recettes (clé de cache).
+function Scanner.TradeIdentity()
+  local name, rank = Call(_G.GetTradeSkillLine)
+  name = Str(name)
+  if name == "UNKNOWN" then name = nil end
+  local n = N(Call(_G.GetNumTradeSkills)) or 0
+  local id = name and ns.Style and ns.Style.SkillIdForText and ns.Style.SkillIdForText(name) or nil
+  if not id and ns.Activity and ns.Activity.SkillInText then id = ns.Activity.SkillInText(name) end
+  local rnk = N(rank)
+  if not rnk and id and Scanner.RankOf then rnk = Scanner.RankOf(id) end
+  return id, n, rnk or 0, name
+end
+function Scanner.CommitTradeList(list, partial, lineName, lineSrc, source)
+  Scanner.lastReadInfo = { line = lineName, lineSrc = lineSrc, source = source, n = list and #list or 0, partial = partial }
+  if not list or #list == 0 then return nil, "aucune recette lue" end
+  local id = lineName and ns.Style and ns.Style.SkillIdForText(lineName) or nil
+  if not id then id = Scanner.InferSkillFromRecipes(list) end
+  if not id then return nil, "métier inconnu : " .. tostring(lineName) end
+  local inferred = Scanner.InferSkillFromRecipes(list)
+  if inferred and inferred ~= id then
+    Scanner.lastReadInfo.rejected = tostring(id) .. " ≠ " .. tostring(inferred)
+    return nil, "liste d'un autre métier (" .. tostring(inferred) .. ")"
+  end
+  local c = ns.CharDB()
+  local prev = c.recipes and c.recipes[id]
+  if ns.Craft and ns.Craft.Store then return ns.Craft.Store(id, list, source) end
+  if prev and prev.list then
+    local seen = {}
+    for _, r in ipairs(list) do seen[r.name] = true end
+    for _, r in ipairs(prev.list) do if r.name and not seen[r.name] then list[#list + 1] = r end end
+  end
+  c.recipes = c.recipes or {}
+  c.recipes[id] = { when = (type(time) == "function" and time()) or 0, list = list, source = source }
+  return id, #list
+end
 function Scanner.ReadRecipes()
   if InCombat() then return nil, "combat" end
   local lineName, lineSrc = Scanner.TradeLineName()
@@ -526,26 +599,8 @@ function Scanner.ReadRecipes()
   local source
   if nTS and nTS > 0 and type(_G.GetTradeSkillInfo) == "function" then
     source = "GetTradeSkillInfo"
-    for i = 1, nTS do
-      local name, kind, nAvail, expanded = Call(_G.GetTradeSkillInfo, i)
-      name, kind = CleanRecipeName(name), Str(kind)
-      if kind == "header" or kind == "subheader" then
-        if expanded == false or expanded == 0 then partial = true end
-      elseif name and kind then
-        local r = { name = name, diff = DIFF_NAMES[kind] or kind, reagents = {}, avail = N(nAvail),
-          icon = Str(Call(_G.GetTradeSkillIcon, i)) or N(Call(_G.GetTradeSkillIcon, i)) }
-        local nr = N(Call(_G.GetTradeSkillNumReagents, i)) or 0
-        for j = 1, nr do
-          local rn, _, cnt = Call(_G.GetTradeSkillReagentInfo, i, j)
-          local id = Scanner.ItemIDFromLink(Call(_G.GetTradeSkillReagentItemLink, i, j))
-          r.reagents[#r.reagents + 1] = { id = id, name = Str(rn), count = N(cnt) or 1 }
-        end
-        list[#list + 1] = r
-      end
-    end
-    -- filtres natifs actifs (lecture seule) : la liste peut être partielle
-    if type(_G.GetTradeSkillSubClassFilter) == "function" and Call(_G.GetTradeSkillSubClassFilter, 0) == false then partial = true end
-    if type(_G.GetTradeSkillInvSlotFilter) == "function" and Call(_G.GetTradeSkillInvSlotFilter, 0) == false then partial = true end
+    list, partial = Scanner.ReadTradeRange(1, nTS, list)
+    if Scanner.TradeFiltersPartial() then partial = true end
   elseif type(_G.C_TradeSkillUI) == "table" and type(_G.C_TradeSkillUI.GetAllRecipeIDs) == "function" then
     source = "C_TradeSkillUI"
     local T = _G.C_TradeSkillUI
@@ -584,33 +639,7 @@ function Scanner.ReadRecipes()
       end
     end
   end
-  Scanner.lastReadInfo = { line = lineName, lineSrc = lineSrc, source = source, n = #list, partial = partial }
-  if #list == 0 then return nil, "aucune recette lue" end
-  local id = lineName and ns.Style and ns.Style.SkillIdForText(lineName) or nil
-  if not id then id = Scanner.InferSkillFromRecipes(list) end
-  if not id then return nil, "métier inconnu : " .. tostring(lineName) end
-  -- 3.3.5 : nom de ligne périmé (changement de fenêtre de métier) : une liste
-  -- reconnue comme celle d'un AUTRE métier n'est jamais rangée sous celui-ci.
-  local inferred = Scanner.InferSkillFromRecipes(list)
-  if inferred and inferred ~= id then
-    Scanner.lastReadInfo.rejected = tostring(id) .. " ≠ " .. tostring(inferred)
-    return nil, "liste d'un autre métier (" .. tostring(inferred) .. ")"
-  end
-  -- lecture partielle (en-têtes repliés / filtres) : on GARDE les recettes déjà connues
-  local c = ns.CharDB()
-  local prev = c.recipes and c.recipes[id]
-  -- 3.3.5 : la fusion est TOUJOURS faite (Craft.Store / Craft.Merge), lecture
-  -- partielle détectée ou non : une recherche ou un filtre non détecté ne doit
-  -- plus effacer des recettes connues.
-  if ns.Craft and ns.Craft.Store then return ns.Craft.Store(id, list, source) end
-  if prev and prev.list then
-    local seen = {}
-    for _, r in ipairs(list) do seen[r.name] = true end
-    for _, r in ipairs(prev.list) do if r.name and not seen[r.name] then list[#list + 1] = r end end
-  end
-  c.recipes = c.recipes or {}
-  c.recipes[id] = { when = (type(time) == "function" and time()) or 0, list = list, source = source }
-  return id, #list
+  return Scanner.CommitTradeList(list, partial, lineName, lineSrc, source)
 end
 
 -- Meilleure difficulté utile d'une créature pour une compétence (recettes connues).
@@ -782,6 +811,12 @@ end
 
 function Scanner.OnPlateAdded(unit)
   if not Scanner.Enabled() or not ns.Opt("scannerIcons") or InCombat() then return nil end
+  if Scanner.IsPlayerUnit(unit) then
+    local plate = type(_G.C_NamePlate) == "table" and Call(_G.C_NamePlate.GetNamePlateForUnit, unit)
+    local m = plate and Scanner.marks[plate]
+    if m then m:Hide() end
+    return nil
+  end
   local plate = type(_G.C_NamePlate) == "table" and Call(_G.C_NamePlate.GetNamePlateForUnit, unit)
   if type(plate) ~= "table" then return nil end
   local id, seen = Scanner.NoteUnit(unit)
@@ -814,7 +849,7 @@ function Scanner.OnPlateAdded(unit)
     local lines = ns.Craft and ns.Craft.MatchLines(seen and seen.name, matches) or {}
     ns.UI:SpawnDrop(e and e.icon, lines[1] or ((e and e.name or skill) .. " : " .. tostring(seen and seen.name)), lines[2], nil, nil, nil,
       { kind = "scanner", hint = lines[3], hintRaw = true })
-    if ns.OptOff("scannerSound") and type(PlaySound) == "function" then
+    if ((ns.SoundOk and ns.SoundOk("scannerSound")) or (not ns.SoundOk and ns.OptOff("scannerSound"))) and type(PlaySound) == "function" then
       local kit = _G.SOUNDKIT and _G.SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON
       if kit then pcall(PlaySound, kit) end
     end
@@ -970,22 +1005,14 @@ if ns.On then
   ns.On("PLAYER_REGEN_ENABLED", function() pcall(Scanner.RescanPlates) end)
   -- v2.8.1 : TRADE_SKILL_UPDATE tombe à chaque fabrication → une lecture
   -- regroupée (0,3 s) au lieu d'une par événement.
-  local function readNow()
-    Scanner._readTimer = nil
+  -- 3.5.0 : SHOW / UPDATE / LIST_UPDATE / OnShow passent par UN seul travail
+  -- différé (ProfJob). L'ancien délai propre au scanner en faisait un de plus.
+  local function readRecipes(ev)
+    if ns.ProfJob and ns.ProfJob.Schedule then ns.ProfJob.Schedule(ev or "recipes") return end
     if InCombat() then Scanner._recipesPending = true return end
     local ok, id, n = pcall(Scanner.ReadRecipes)
     Scanner.lastRead = ok and (tostring(id) .. " : " .. tostring(n)) or tostring(id)
     Scanner.reads = (Scanner.reads or 0) + 1
-  end
-  local function readRecipes()
-    if InCombat() then Scanner._recipesPending = true return end
-    if Scanner._readTimer then return end
-    if type(_G.C_Timer) == "table" and type(_G.C_Timer.After) == "function" then
-      Scanner._readTimer = true
-      _G.C_Timer.After(0.3, readNow)
-    else
-      readNow()
-    end
   end
   ns.On("PLAYER_REGEN_ENABLED", function() if Scanner._recipesPending then Scanner._recipesPending = false readRecipes() end end)
   ns.On("TRADE_SKILL_SHOW", readRecipes)

@@ -1,22 +1,24 @@
-# CurseForge screenshot upload list
+# Screenshots
 
-Upload the files in `curseforge/img/` (and the logo separately as the project
-avatar). Captions are bilingual so you can paste either column.
+The GitHub README uses these files from `docs/img/` (relative paths). English cards are the ones on the README; French cards are the same layouts for a French page.
 
-Player chat and other characters' names have been cropped out. Theme shots
-are QC previews of 3.3.17, not in-game captures — say so in the caption.
+| File | Where |
+| --- | --- |
+| `banner-dropamine.png` | Top of the README |
+| `card-how-en.png` | How it works |
+| `card-notifs-en.png` | Live notifications |
+| `card-highlight-en.png` | What lights up |
+| `card-skills-en.png` | The grid |
+| `card-professions-en.png` | Professions |
+| `card-nameplates-en.png` | Nameplates |
+| `card-themes-en.png` | Themes |
+| `panel-leger.png` | In-game gallery |
+| `toast-metier.png` | In-game gallery |
+| `toast-xp.png` | In-game gallery |
+| `gain-plus1.png` | In-game gallery |
+| `tooltip-cerf-metiers.png` | In-game gallery |
+| `nameplate-cerf.png` | In-game gallery |
 
-No clean in-game screenshot of a tile tooltip, the PvP tile, or a nameplate
-marker was available in the attachment set. Add those later from a character
-screen if you can, still avoiding other players' names.
+French twins, not embedded in the English README: `card-how-fr.png`, `card-notifs-fr.png`, `card-highlight-fr.png`, `card-skills-fr.png`, `card-professions-fr.png`, `card-nameplates-fr.png`, `card-themes-fr.png`.
 
-| File | Order | Caption (EN) | Légende (FR) |
-| --- | ---: | --- | --- |
-| `img/panel-grid.png` | 1 | The compact OSRS-style skills grid (Flare theme, in game). | La grille compacte façon OSRS (thème Flare, en jeu). |
-| `img/panel-in-world.png` | 2 | The panel stays out of the way while you farm. | Le panneau reste sous la main, sans te gêner en farm. |
-| `img/toasts.png` | 3 | +1 and XP toasts, with cap reminder and a time estimate. | Toasts +1 et XP, avec rappel de palier et estimation de temps. |
-| `img/theme-flare.png` | 4 | Flare theme (default). QC preview of 3.3.17, not an in-game shot. | Thème Flare (défaut). Aperçu QC de la 3.3.17, pas une capture en jeu. |
-| `img/theme-leger.png` | 5 | Léger theme — floating tiles, no frame. QC preview of 3.3.17. | Thème Léger — cases flottantes, sans cadre. Aperçu QC de la 3.3.17. |
-| `img/theme-classic.png` | 6 | Classic theme — Blizzard tooltip border, action-button frames and a status-bar total. QC preview of 3.3.17. | Thème Classic — bord d'infobulle, cadres de bouton d'action et barre d'état Blizzard. Aperçu QC de la 3.3.17. |
-
-The same files, with the same captions, also live in `repo/docs/img/` for the GitHub README.
+Other shots kept in `docs/img/` and not used on the README: `panel-flare.png`, `highlight-farouche.png`, `nameplate-ours.png`, `theme-flare.png`, `theme-leger.png`, `theme-classic.png`, `toasts.png`, `tooltip-cuisine.png`, `tooltip-elementaire.png`.
