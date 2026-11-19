@@ -57,11 +57,12 @@ D.OPTIONS = {
 }
 if ns.Options then
   local H = ns.Options.EXTRA_HOME
-  H.combo, H.nextBar = "display", "display"
+  H.combo, H.nextBar = "notif", "display"
   H.collection, H.daily = "prof", "prof"
-  H.maxFx, H.records, H.sounds = "notif", "notif", "notif"
-  H.soundSkill, H.soundPalier, H.soundMax = "notif", "notif", "notif"
-  H.soundDaily, H.soundRecord = "notif", "notif"
+  H.maxFx, H.records = "notif", "notif"
+  H.sounds = "sounds"
+  H.soundSkill, H.soundPalier, H.soundMax = "sounds", "sounds", "sounds"
+  H.soundDaily, H.soundRecord = "sounds", "sounds"
   for _, it in ipairs(D.OPTIONS) do ns.Options.EXTRA[#ns.Options.EXTRA + 1] = it end
 end
 
@@ -113,8 +114,8 @@ D.CLASSIC = {
   soundDaily = "igQuestListComplete",
   soundRecord = "LevelUp",
 }
-function D.Play(key)
-  if not ns.SoundOk(key) then return nil end
+function D.Play(key, force)
+  if not force and not ns.SoundOk(key) then return nil end
   if type(_G.PlaySound) ~= "function" then return nil end
   local S = _G.SOUNDKIT
   if type(S) == "table" then
