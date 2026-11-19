@@ -856,7 +856,7 @@ end
 --    la grille 5 colonnes existante ne change pas de largeur).
 ------------------------------------------------------------------------------
 UI.NO_FOOT = true
-P.TOTAL_ICON = "Interface\\AddOns\\Dropamine\\Media\\SkillsTab"   -- nos 3 piliers (pas le portrait)
+P.TOTAL_ICON = "Interface\\AddOns\\Dropamine\\Media\\SkillsTab"   -- 3.5.20 : La Fiole (pas le portrait)
 function P.TotalTile()
   local d = UI.TOTAL_DATA
   local snap = UI.snapshot

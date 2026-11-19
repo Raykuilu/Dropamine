@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.5.20
+- In-game logo updated to "La Fiole": the minimap button, the addon-list icon (IconTexture), the character skills tab, the total-level tile, the session recap toast and the classic view toggle now use the new flask instead of the old drop / three pillars.
+- Textures: Media/Dropamine-Icon.tga is now 128×128 (detailed master, addon list); Media/SkillsTab.tga and SkillsTab.png are 64×64 (simplified master, in-game uses); new Media/Dropamine-Icon-32.tga (32×32, minimap fallback); Media/Dropamine-Logo.png is the 512×512 detailed flask. All TGA files are 32-bit uncompressed, power-of-two, with alpha.
+- The flask is drawn with its own transparency: no 8% crop and no round mask on the minimap / total-bar icon, so the tip of the vial is not cut off.
+
+---
+
+- Logo en jeu mis à jour : « La Fiole ». Le bouton de minicarte, l'icône de la liste d'addons (IconTexture), l'onglet Compétences, la case de niveau total, le toast de récap de session et le basculeur de vue classique utilisent maintenant la nouvelle fiole, à la place de l'ancienne goutte / des trois piliers.
+- Textures : Media/Dropamine-Icon.tga passe en 128×128 (master détaillé, liste d'addons) ; Media/SkillsTab.tga et SkillsTab.png font 64×64 (master simplifié, usages en jeu) ; nouveau Media/Dropamine-Icon-32.tga (32×32, repli de la minicarte) ; Media/Dropamine-Logo.png est la fiole détaillée en 512×512. Tous les TGA sont 32 bits non compressés, en puissance de 2, avec alpha.
+- La fiole est dessinée avec sa propre transparence : plus de recadrage de 8 % ni de masque rond sur l'icône de minicarte / barre total, pour ne pas couper la pointe de la fiole.
+
 ## 3.5.19
 - All of the addon's own texts now follow the game language: toasts, tooltips, panel and tile labels, session recap, chat messages, /drop help and the options panel. French client → French (word for word as before); English client (enUS / enGB) → English; any other client language → English.
 - New setting "Language" (Options › Display & theme) and command /drop lang auto|en|fr (also /drop langue). Saved per account (DropamineDB.ui.lang), "auto" by default; "Defaults" does not reset it. After a change, a popup offers /reload so texts already on screen are translated too.

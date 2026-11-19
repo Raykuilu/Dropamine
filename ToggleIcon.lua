@@ -1,10 +1,10 @@
 -- Dropamine — 3.3.16 : icône du bouton de minicarte (3.4.2 : seul bouton
 -- d'ouverture, le bouton du micro menu est retiré) = MÊME rendu que la petite
--- icône de la barre total : Media/SkillsTab (3 piliers) recadrée (ICON_CROP),
--- masquée (Media/OSRS-IconMask) et entourée du bord biseauté bronze
--- (Theme.PlaceBevel). L'icône (bord compris) tient DANS le cadre du bouton :
--- plus de débordement. Nos boutons seulement (enfants d'UIParent / minicarte),
--- rien de natif n'est touché.
+-- icône de la barre total : Media/SkillsTab (« La Fiole », 3.5.20), sans
+-- recadrage ni masque rond (la silhouette de la fiole est déjà dans l'alpha),
+-- entourée du bord biseauté bronze (Theme.PlaceBevel). L'icône (bord compris)
+-- tient DANS le cadre du bouton : plus de débordement. Nos boutons seulement
+-- (enfants d'UIParent / minicarte), rien de natif n'est touché.
 local ADDON, ns = ...
 local UI, W, Th = ns.UI, ns.Window, ns.Theme
 if not (UI and Th) then return end
@@ -23,17 +23,8 @@ function TI.Apply(b, size)
   if not ic then
     ic = b:CreateTexture(nil, "ARTWORK", nil, 3)
     pcall(ic.SetTexture, ic, TI.ICON)
-    local c = ns.STYLE.ICON_CROP or { 0.08, 0.92, 0.08, 0.92 }
-    if ic.SetTexCoord then pcall(ic.SetTexCoord, ic, c[1], c[2], c[3], c[4]) end
-    if b.CreateMaskTexture and ic.AddMaskTexture then
-      local ok, m = pcall(b.CreateMaskTexture, b)
-      if ok and m then
-        pcall(m.SetTexture, m, Th.ICON_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-        m:SetAllPoints(ic)
-        pcall(ic.AddMaskTexture, ic, m)
-        ic._tiMask = m
-      end
-    end
+    -- 3.5.20 : fiole en alpha, pas de recadrage ni de masque rond (ça coupait la pointe).
+    if ic.SetTexCoord then pcall(ic.SetTexCoord, ic, 0, 1, 0, 1) end
     b._tiIcon = ic
     b.icon = b.icon or ic
     TI.stats.skinned = TI.stats.skinned + 1
