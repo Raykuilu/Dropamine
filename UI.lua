@@ -1,5 +1,6 @@
 -- Dropamine 2.5.0 — vue OSRS dans l'onglet Comp. natif, fenêtre de secours /drop
 local ADDON, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 if type(ns) ~= "table" then ns = _G.Dropamine or {} end
 local UI = {}
 ns.UI = UI
@@ -99,7 +100,7 @@ local function SafeStep(label, fn, ...)
     UI._errPrinted = UI._errPrinted or {}
     if not UI._errPrinted[label] and ns.Print then
       UI._errPrinted[label] = true
-      ns.Print("|cffff4040erreur|r " .. tostring(label) .. " : " .. tostring(err))
+      ns.Print(Tr["|cffff4040erreur|r "] .. tostring(label) .. " : " .. tostring(err))
     end
   end
   return ok, err
@@ -279,16 +280,16 @@ end
 local function ContributionLine(d)
   if not d then return "" end
   if d.kind == "stat" then
-    return "Non inclus dans le total (caractéristique)."
+    return Tr["Non inclus dans le total (caractéristique)."]
   end
   if d.excludedMonte then
-    return "Affichée mais non incluse : aucun plafond de Monte n'est documenté."
+    return Tr["Affichée mais non incluse : aucun plafond de Monte n'est documenté."]
   end
   if d.combatTile and d.skillName and d.skillName ~= d.name then
-    return "Compte dans le total : +" .. tostring(d.current or 0) .. "  (" .. d.skillName .. ")"
+    return Tr["Compte dans le total : +"] .. tostring(d.current or 0) .. "  (" .. d.skillName .. ")"
   end
   if d.inTotal then
-    return "Compte dans le total : +" .. tostring(d.current or 0)
+    return Tr["Compte dans le total : +"] .. tostring(d.current or 0)
   end
   return ""
 end
@@ -1109,7 +1110,7 @@ local function FitBarText(fs, cur, cap, width, label)
   local avail = (width or 80) - 4
   -- Style Métiers : « Cuisine 78/150 » centré dans la barre quand ça tient.
   if label and label ~= "" and cap > 0 then
-    fs:SetText(label .. " : " .. tostring(cur) .. "/" .. tostring(cap))
+    fs:SetText(label .. Tr[" : "] .. tostring(cur) .. "/" .. tostring(cap))
     local okL, lw = pcall(fs.GetStringWidth, fs)
     lw = okL and ns.N(lw) or nil
     if lw and lw <= avail then return fs:GetText(), true end
@@ -1427,7 +1428,7 @@ function UI:UpdateCraftBadge(t, d)
     b.fs:SetTextColor(1.00, 0.85, 0.00)
     t.craftBadge = b
   end
-  local txt = tostring(n) .. " prêt" .. ((n > 1) and "s" or "")
+  local txt = tostring(n) .. ((n > 1) and Tr[" prêts"] or Tr[" prêt"])
   b.fs:SetText(txt)
   local w = 6 * #txt
   if b.fs.GetStringWidth then local ok, v = pcall(b.fs.GetStringWidth, b.fs) if ok and ns.N(v) and v > 0 then w = v end end
@@ -1469,14 +1470,14 @@ function UI:DetailExtraLines(d)
   local g = ns.GetGoal(self:GoalKey(d))
   if g then
     local left = g.rank - cur
-    lines[#lines + 1] = "Objectif : " .. tostring(g.rank) .. ((left > 0) and (" (encore " .. tostring(left) .. ")") or "")
+    lines[#lines + 1] = Tr["Objectif : "] .. tostring(g.rank) .. ((left > 0) and (Tr[" (encore "] .. tostring(left) .. ")") or "")
   end
   if ns.Opt("paliers") and self:IsCapped(d, cur, cap) then
-    lines[#lines + 1] = "Palier atteint (" .. tostring(cap) .. ") : va voir ton maître pour le suivant."
+    lines[#lines + 1] = Tr["Palier atteint ("] .. tostring(cap) .. Tr[") : va voir ton maître pour le suivant."]
   end
   local lag = ns.Opt("rappel") and self:WeaponLagInfo(d) or nil
   if lag then
-    lines[#lines + 1] = "Compétence d'arme sous-montée : " .. tostring(lag.name) .. " " .. tostring(lag.cur) .. "/" .. tostring(lag.max)
+    lines[#lines + 1] = Tr["Compétence d'arme sous-montée : "] .. tostring(lag.name) .. " " .. tostring(lag.cur) .. "/" .. tostring(lag.max)
   end
   if ns.QoL and ns.QoL.DetailLines then
     local okQ, extra = pcall(ns.QoL.DetailLines, d)
@@ -1496,8 +1497,8 @@ function UI:EnsureGoalPopup()
     if data and v then UI:ApplyGoal(data, v) end
   end
   _G.StaticPopupDialogs.OSRS_TOTALLEVEL_GOAL = {
-    text = "Objectif pour %s (actuel %s) :",
-    button1 = "Valider", button2 = "Annuler", button3 = "Effacer",
+    text = Tr["Objectif pour %s (actuel %s) :"],
+    button1 = Tr["Valider"], button2 = Tr["Annuler"], button3 = Tr["Effacer"],
     hasEditBox = 1, maxLetters = 4, timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
     OnShow = function(p, data)
       local eb = editOf(p)
@@ -1568,11 +1569,13 @@ function UI:FindTileByName(name)
   self.snapshot = snap
   local want = ns.Fold(name or "")
   if want == "" then return nil end
+  local ce = ns.LookupCatalog and ns.LookupCatalog(name)   -- 3.5.19 : nom FR ou EN
   for _, list in ipairs({ snap.tiles or {}, snap.allTiles or {} }) do
     for i = 1, #list do
       local d = list[i]
       if ns.Fold(d.name or "") == want or ns.Fold(d.skillName or "") == want then return d end
-      if want == "niveau" and d.kind == "level" then return d end
+      if ce and ce.id and d.id == ce.id then return d end
+      if (want == "niveau" or want == "level") and d.kind == "level" then return d end
     end
   end
   return nil
@@ -1583,26 +1586,26 @@ function UI:SlashGoal(rest)
   local onoff = rest:lower()
   if onoff == "on" or onoff == "off" then
     ns.SetOpt("objectifs", onoff == "on")
-    ns.Print("drops d'objectif " .. ((onoff == "on") and "activés." or "désactivés."))
+    ns.Print(Tr["drops d'objectif "] .. ((onoff == "on") and Tr["activés."] or Tr["désactivés."]))
     return
   end
   local low = string.lower(rest)
   if rest == "" then
     local c = ns.CharDB()
     local any = false
-    for k, g in pairs(c.goals) do any = true ns.Print("objectif : " .. tostring(g.name or k) .. " → " .. tostring(g.rank)) end
-    if not any then ns.Print("aucun objectif. Usage : /drop objectif <compétence> <rang> | /drop objectif clear") end
+    for k, g in pairs(c.goals) do any = true ns.Print(Tr["objectif : "] .. tostring(g.name or k) .. " → " .. tostring(g.rank)) end
+    if not any then ns.Print(Tr["aucun objectif. Usage : /drop objectif <compétence> <rang> | /drop objectif clear"]) end
     return
   end
   local clearWhat = low:match("^clear%s*(.*)$") or low:match("^effacer%s*(.*)$")
   if clearWhat then
     if clearWhat == "" then
       ns.ClearGoal(nil)
-      ns.Print("objectifs effacés.")
+      ns.Print(Tr["objectifs effacés."])
     else
       local d = self:FindTileByName(rest:match("^%S+%s+(.+)$"))
-      if d and ns.ClearGoal(self:GoalKey(d)) then ns.Print("objectif effacé : " .. self:GoalLabel(d))
-      else ns.Print("aucun objectif pour « " .. tostring(clearWhat) .. " ».") end
+      if d and ns.ClearGoal(self:GoalKey(d)) then ns.Print(Tr["objectif effacé : "] .. self:GoalLabel(d))
+      else ns.Print(Tr["aucun objectif pour « "] .. tostring(clearWhat) .. Tr[" »."]) end
     end
     self:Refresh(true)
     return
@@ -1610,13 +1613,13 @@ function UI:SlashGoal(rest)
   local name, num = rest:match("^(.-)%s+(%d+)%s*$")
   local d = name and self:FindTileByName(name)
   if not d then
-    ns.Print("compétence introuvable : « " .. tostring(name or rest) .. " ». Usage : /drop objectif <compétence> <rang>")
+    ns.Print(Tr["compétence introuvable : « "] .. tostring(name or rest) .. Tr[" ». Usage : /drop objectif <compétence> <rang>"])
     return
   end
   if self:ApplyGoal(d, num) then
-    ns.Print("objectif : " .. self:GoalLabel(d) .. " → " .. tostring(num))
+    ns.Print(Tr["objectif : "] .. self:GoalLabel(d) .. " → " .. tostring(num))
   else
-    ns.Print("objectif refusé : il doit dépasser le rang actuel (" .. tostring(d.current) .. ").")
+    ns.Print(Tr["objectif refusé : il doit dépasser le rang actuel ("] .. tostring(d.current) .. ").")
   end
 end
 
@@ -1643,13 +1646,13 @@ function UI:CheckMilestones(snap)
     if g and cur >= g.rank then
       ns.ClearGoal(key)
       c.goalsDone[key] = g.rank
-      if ns.Opt("objectifs") then self:SpawnDrop(d.icon, "Objectif atteint : " .. self:GoalLabel(d) .. " " .. tostring(g.rank),
-        "Clic droit sur la tuile pour le suivant", cur, (cap > 0) and cap or nil, nil, { variant = "gold", skillId = d.id, kind = "goal" }) end
+      if ns.Opt("objectifs") then self:SpawnDrop(d.icon, Tr["Objectif atteint : "] .. self:GoalLabel(d) .. " " .. tostring(g.rank),
+        Tr["Clic droit sur la tuile pour le suivant"], cur, (cap > 0) and cap or nil, nil, { variant = "gold", skillId = d.id, kind = "goal" }) end
     end
     if self:IsCapped(d, cur, cap) and c.caps[key] ~= cap then
       c.caps[key] = cap
       if not seeding and ns.Opt("paliers") then
-        self:SpawnDrop(d.icon, "Palier atteint — va voir ton maître",
+        self:SpawnDrop(d.icon, Tr["Palier atteint — va voir ton maître"],
           self:GoalLabel(d) .. " " .. tostring(cur) .. " / " .. tostring(cap), cur, cap, nil, { variant = "palier", skillId = d.id, kind = "palier" })
       end
     end
@@ -1666,7 +1669,7 @@ function UI:CheckMilestones(snap)
       local state = st and st.state
       local prevCap = c.profCaps[key]
       if not seeding and prevCap and cap > prevCap then
-        self:PlayRankMilestone(d, "Nouveau rang : " .. tostring(d.name), "maximum " .. tostring(cap))
+        self:PlayRankMilestone(d, Tr["Nouveau rang : "] .. tostring(d.name), Tr["maximum "] .. tostring(cap))
       elseif not seeding and state == "available" and c.rankStates[key] and c.rankStates[key] ~= "available" then
         self:PlayRankMilestone(d, tostring(d.name), st.note)
       end
@@ -1726,12 +1729,12 @@ end
 function UI:FooterText(snap)
   local total = snap.total or snap.ficTotal or 0
   local tmax = snap.totalMax or snap.ficMax or ns.TOTAL_MAX or 2460
-  local base = "Niveau total : " .. tostring(total) .. " / " .. tostring(tmax)
+  local base = Tr["Niveau total : "] .. tostring(total) .. " / " .. tostring(tmax)
   if not ns.Opt("session") or (snap.liveCount or 0) <= 0 then return base, base end
   local gain = ns.DailyGains(snap)
   if not gain or gain == 0 then return base, base end
   local sign = (gain >= 0) and "+" or ""
-  return base .. " (" .. sign .. tostring(gain) .. " aujourd'hui)", base .. " (" .. sign .. tostring(gain) .. ")"
+  return base .. " (" .. sign .. tostring(gain) .. Tr[" aujourd'hui)"], base .. " (" .. sign .. tostring(gain) .. ")"
 end
 
 -- Grille compacte : emplacements sur le fond du panneau, sans cadre extérieur.
@@ -1840,7 +1843,7 @@ function UI:GroupTiles(tiles)
   end
   local out = {}
   for g = 1, 3 do
-    if #groups[g] > 0 then out[#out + 1] = { title = UI.GROUP_TITLES[g], tiles = groups[g] } end
+    if #groups[g] > 0 then out[#out + 1] = { title = Tr[UI.GROUP_TITLES[g]], tiles = groups[g] } end
   end
   return out
 end
@@ -1986,26 +1989,26 @@ end
 -- (3.0.0 : déplacé dans View.lua)
 function UI:FillBreakdownTooltip(tt, snap)
   if not tt then return end
-  tt:AddLine("Niveau total", GOLD[1], GOLD[2], GOLD[3])
+  tt:AddLine(Tr["Niveau total"], GOLD[1], GOLD[2], GOLD[3])
   if not snap then return end
   local total = snap.total or snap.ficTotal or 0
   local tmax = snap.totalMax or snap.ficMax or ns.TOTAL_MAX
-  tt:AddLine("Total : " .. tostring(total) .. " / " .. tostring(tmax), 1, 1, 1)
+  tt:AddLine(Tr["Total : "] .. tostring(total) .. " / " .. tostring(tmax), 1, 1, 1)
   if snap.breakdown then
-    tt:AddLine("Détail", GOLD[1], GOLD[2], GOLD[3])
+    tt:AddLine(Tr["Détail"], GOLD[1], GOLD[2], GOLD[3])
     for i = 1, #snap.breakdown do
       local b = snap.breakdown[i]
-      tt:AddLine(b.name .. " : +" .. tostring(b.value), 0.85, 0.85, 0.85)
+      tt:AddLine(b.name .. Tr[" : +"] .. tostring(b.value), 0.85, 0.85, 0.85)
     end
   end
   local gain, list = ns.DailyGains(snap)
   if gain and gain > 0 then
-    tt:AddLine("Aujourd'hui : +" .. tostring(gain), GOLD[1], GOLD[2], GOLD[3])
+    tt:AddLine(Tr["Aujourd'hui : +"] .. tostring(gain), GOLD[1], GOLD[2], GOLD[3])
     for _, e in ipairs(list) do tt:AddLine(e.name .. " +" .. tostring(e.gain), 0.25, 1, 0.25) end
   end
   tt:AddLine(" ", 1, 1, 1)
-  if ns.TOTAL_FORMULA_FR then tt:AddLine(ns.TOTAL_FORMULA_FR, 0.7, 0.7, 0.7, true) end
-  if ns.MONTE_NOTE_FR then tt:AddLine(ns.MONTE_NOTE_FR, 0.7, 0.65, 0.4, true) end
+  if ns.TOTAL_FORMULA_FR then tt:AddLine(Tr[ns.TOTAL_FORMULA_FR], 0.7, 0.7, 0.7, true) end
+  if ns.MONTE_NOTE_FR then tt:AddLine(Tr[ns.MONTE_NOTE_FR], 0.7, 0.65, 0.4, true) end
 end
 
 -- Panneau de droite : on ne pose PLUS de texte par-dessus la barre native.
@@ -3012,14 +3015,14 @@ function UI:DetailDescriptionFor(d, liveInfo)
   end
   if not d then return "" end
   if d.kind == "level" then
-    return "Niveau du personnage, sur " .. tostring(ns.GetLevelCap and ns.GetLevelCap() or 60)
-      .. ". Il compte dans le total (règles détaillées : survol du titre ou du bandeau)."
+    return Tr["Niveau du personnage, sur "] .. tostring(ns.GetLevelCap and ns.GetLevelCap() or 60)
+      .. Tr[". Il compte dans le total (règles détaillées : survol du titre ou du bandeau)."]
   end
   if d.kind == "stat" then
-    return "Caractéristique déjà visible sur la fiche de personnage. Elle est affichée ici uniquement sur demande (/drop stats) et n'entre pas dans le total : aucun plafond n'est documenté pour Forever."
+    return Tr["Caractéristique déjà visible sur la fiche de personnage. Elle est affichée ici uniquement sur demande (/drop stats) et n'entre pas dans le total : aucun plafond n'est documenté pour Forever."]
   end
   if d.excludedMonte then
-    return "Compétence de Monte. Elle est affichée si elle est apprise, mais elle n'entre pas dans le total : aucun plafond n'est documenté pour Forever."
+    return Tr["Compétence de Monte. Elle est affichée si elle est apprise, mais elle n'entre pas dans le total : aucun plafond n'est documenté pour Forever."]
   end
   return ""
 end
@@ -3233,7 +3236,7 @@ function UI:FillOwnDetail(d, liveInfo)
   self:EnsureDetailTitle(f)
   if f.sub then
     if d.kind == "level" then
-      f.sub:SetText("Niveau " .. tostring(ns.N(d.current) or 0))
+      f.sub:SetText(Tr["Niveau "] .. tostring(ns.N(d.current) or 0))
       f.sub:Show()
     else
       f.sub:SetText("")
@@ -3273,7 +3276,7 @@ function UI:FillOwnDetail(d, liveInfo)
   end
   local isCombat = (d.kind == "melee" or d.kind == "ranged" or d.kind == "feral" or d.kind == "defense")
   if d.placeholder then
-    desc = "|cff808080" .. tostring(d.placeholderNote or "Emplacement libre.") .. "|r"
+    desc = "|cff808080" .. tostring(d.placeholderNote or Tr["Emplacement libre."]) .. "|r"
   else
     local prog = {}
     local st = ns.RankStatus and ns.RankStatus(d, cur, cap)
@@ -3305,15 +3308,15 @@ function UI:FillOwnDetail(d, liveInfo)
           local ls = split(stx)
           table.remove(ls, 1)   -- l'en-tête devient une barre de section
           for i = 1, #ls do ls[i] = NL and NL.TwoTone(ls[i]) or ls[i] end
-          add("Statistiques", ls)
+          add(Tr["Statistiques"], ls)
         end
       end
     end
-    local pr = { title = "Progression", lines = prog }
+    local pr = { title = Tr["Progression"], lines = prog }
     if #prog > 0 then table.insert(sections, 1, pr) end
     if ns.Craft and ns.Craft.DetailText and d.id then
       local okC, ct = pcall(ns.Craft.DetailText, d.id)
-      if okC and ct and ct ~= "" then add("Recettes", split(ct)) end
+      if okC and ct and ct ~= "" then add(Tr["Recettes"], split(ct)) end
     end
   end
   f.desc:SetText(desc)
@@ -3512,7 +3515,7 @@ function UI:FitContribLine(f, line)
   if fits() then return end
   SetFontSafe(fs, "GameFontNormalSmall")
   if fits() then return end
-  fs:SetText((short:gsub("Compte dans le total", "Total")))
+  fs:SetText((short:gsub(Tr["Compte dans le total"], Tr["Total"])))
 end
 
 function UI:HideDetailRows(f)
@@ -3584,7 +3587,7 @@ function UI:ShowDetailBreakdown(snap)
   self:SetNativeDetailShown(false)
   local total = snap.total or 0
   local tmax = snap.totalMax or ns.TOTAL_MAX
-  f.title:SetText("Niveau total")
+  f.title:SetText(Tr["Niveau total"])
   self:EnsureDetailTitle(f)
   if f.sub then f.sub:SetText("") f.sub:Hide() end
   self:AnchorDetailBar(f)
@@ -3601,17 +3604,17 @@ function UI:ShowDetailBreakdown(snap)
   local lines = {}
   for i = 1, #(snap.breakdown or {}) do
     local b = snap.breakdown[i]
-    lines[#lines + 1] = NL and NL.TwoTone(b.name .. " : +" .. tostring(b.value)) or (b.name .. " : +" .. tostring(b.value))
+    lines[#lines + 1] = NL and NL.TwoTone(b.name .. Tr[" : +"] .. tostring(b.value)) or (b.name .. Tr[" : +"] .. tostring(b.value))
   end
-  local sections = { { title = "Détail", lines = lines } }
+  local sections = { { title = Tr["Détail"], lines = lines } }
   local gain, glist = ns.DailyGains(snap)
   if gain and gain > 0 then
-    local tl = { NL and NL.TwoTone("Total : +" .. tostring(gain)) or ("Total : +" .. tostring(gain)) }
+    local tl = { NL and NL.TwoTone(Tr["Total : +"] .. tostring(gain)) or (Tr["Total : +"] .. tostring(gain)) }
     for _, e in ipairs(glist) do tl[#tl + 1] = "|cff40ff40" .. e.name .. " +" .. tostring(e.gain) .. "|r" end
-    sections[#sections + 1] = { title = "Aujourd'hui", lines = tl }
+    sections[#sections + 1] = { title = Tr["Aujourd'hui"], lines = tl }
   end
   self._todayItems = gain and gain > 0 and #glist or 0
-  f.desc:SetText(ns.TOTAL_SHORT_FR or "")
+  f.desc:SetText(Tr[ns.TOTAL_SHORT_FR or ""])
   f.desc:Show()
   self:LayoutDetailDesc(f)
   self:RenderDetailSections(f, sections)
@@ -3680,7 +3683,8 @@ function UI:ReapplySelection()
   return d
 end
 
-UI.TOTAL_DATA = { kind = "total", id = "total", name = "Niveau total" }
+-- 3.5.19 : nom lu à l'affichage (langue choisie après le chargement)
+UI.TOTAL_DATA = setmetatable({ kind = "total", id = "total" }, { __index = function(_, k) if k == "name" then return Tr["Niveau total"] end end })
 function UI:SelectTile(d)
   if not d then return end
   if d.kind == "total" then
@@ -3816,13 +3820,13 @@ function UI:EnsureViewToggle(f)
     if not btn then btn, used = CreateFrame("Button", "DropamineViewToggle", f), false end
   end
   btn:SetSize(110, 20)
-  if btn.SetText then pcall(btn.SetText, btn, "Vue classique") end
+  if btn.SetText then pcall(btn.SetText, btn, Tr["Vue classique"]) end
   btn:SetScript("OnClick", function() UI:ToggleView() end)
   self.viewToggle = btn
   if not (btn.GetFontString and btn:GetFontString()) and btn.CreateFontString then
     local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetAllPoints()
-    fs:SetText("Vue classique")
+    fs:SetText(Tr["Vue classique"])
     btn.fs = fs
   end
   return btn
@@ -3898,7 +3902,7 @@ end
 function UI:SetViewToggleText()
   local b = self.viewToggle
   if not b then return end
-  local label = self:IsOsrsView() and "Vue classique" or "Vue OSRS"
+  local label = self:IsOsrsView() and Tr["Vue classique"] or Tr["Vue OSRS"]
   if b.SetText then pcall(b.SetText, b, label) end
   if b.fs then b.fs:SetText(label) end
   self:SizeViewToggle()
@@ -4221,7 +4225,7 @@ function UI:BuildStandalone()
     self.title = Text(f, "GameFontNormal", "CENTER")
     self.title:SetPoint("TOP", 0, -8)
   end
-  self.title:SetText("Niveau total")
+  self.title:SetText(Tr["Niveau total"])
   local portrait = (type(f.portrait) == "table" and f.portrait) or (f.PortraitContainer and f.PortraitContainer.portrait)
   if portrait and SetPortraitTexture then pcall(SetPortraitTexture, portrait, "player") end
   self.subtitle = Text(f, "GameFontHighlightSmall", "LEFT")
@@ -4259,12 +4263,12 @@ function UI:Refresh(force)
   SafeStep("objectifs / paliers", self.CheckMilestones, self, snap)
   SafeStep("style métiers", self.ApplyProfessionStyle, self)
   if self.title then
-    self.title:SetText("Niveau total")
+    self.title:SetText(Tr["Niveau total"])
   end
   if self.subtitle then
     local name = snap.playerName or ""
     if name ~= "" then
-      self.subtitle:SetText(name .. "  ·  niveau " .. tostring(snap.level or 0))
+      self.subtitle:SetText(name .. Tr["  ·  niveau "] .. tostring(snap.level or 0))
     else
       self.subtitle:SetText("")
     end
@@ -4338,7 +4342,7 @@ function UI:OpenSkillTab(after)
             SafeStep("ouverture Comp.", function() UI:HookSkillFrame() UI:ApplyView() end)
             if after then SafeStep("après ouverture", after) end
           else
-            ns.Print("onglet Comp. introuvable : ouvrez la fiche du personnage (C) puis l'onglet Comp.")
+            ns.Print(Tr["onglet Comp. introuvable : ouvrez la fiche du personnage (C) puis l'onglet Comp."])
           end
         end
       end)
@@ -4348,7 +4352,7 @@ function UI:OpenSkillTab(after)
   if not f then return false end
   if ns.InCombat and ns.InCombat() then
     ns.AfterCombat("openskilltab", function() UI:OpenSkillTab() end)
-    ns.Print("en combat : la fenêtre s'ouvrira à la fin du combat.")
+    ns.Print(Tr["en combat : la fenêtre s'ouvrira à la fin du combat."])
     return true
   end
   if self.frame and self.frame.Hide then self.frame:Hide() end
@@ -4448,8 +4452,12 @@ function UI:BuildMinimap()
   b:RegisterForClicks("LeftButtonUp")
   b:RegisterForDrag("LeftButton")
   b:SetScript("OnClick", function(self)
-    if self.moved then self.moved = false return end
-    -- Clic : ouvrir l'onglet Comp. si possible, sinon la fenêtre de secours.
+    -- 3.5.5 : seul le clic qui TERMINE un glisser est ignoré (avant, un glisser
+    -- relâché hors du bouton avalait le clic suivant : bouton « sans effet »)
+    local moved = self.moved
+    self.moved = false
+    if moved and type(GetTime) == "function" and (GetTime() - (self._dragStop or 0)) < 0.3 then return end
+    -- Clic : ouvrir / fermer le panneau (chemin protégé, voir SafeOpen.lua)
     UI:Toggle()
   end)
   local function minimapDragUpdate(self)
@@ -4475,6 +4483,7 @@ function UI:BuildMinimap()
   end)
   b:SetScript("OnDragStop", function(self)
     self.dragging = false
+    self._dragStop = type(GetTime) == "function" and GetTime() or 0
     if self._freeMoving and self.StopMovingOrSizing then
       self:StopMovingOrSizing()
       self._freeMoving = false
@@ -4485,12 +4494,11 @@ function UI:BuildMinimap()
     if not GameTooltip then return end
     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
     local snap = UI.snapshot or (ns.Collect and ns.Collect())
-    GameTooltip:AddLine("Niveau total", GOLD[1], GOLD[2], GOLD[3])
+    GameTooltip:AddLine(Tr["Niveau total"], GOLD[1], GOLD[2], GOLD[3])
     if snap then
-      GameTooltip:AddLine("Total : " .. tostring(snap.total or snap.ficTotal or 0) .. " / " .. tostring(snap.totalMax or snap.ficMax or 0), 1, 1, 1)
+      GameTooltip:AddLine(Tr["Total : "] .. tostring(snap.total or snap.ficTotal or 0) .. " / " .. tostring(snap.totalMax or snap.ficMax or 0), 1, 1, 1)
     end
-    GameTooltip:AddLine("Clic : ouvrir l'onglet Comp.", 0.7, 0.7, 0.7)
-    GameTooltip:AddLine("/drop  onglet Comp.   /drop debug", 0.55, 0.55, 0.55)
+    GameTooltip:AddLine(Tr["Clic : ouvrir / fermer"], 0.7, 0.7, 0.7)
     GameTooltip:Show()
   end)
   b:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
@@ -4872,7 +4880,7 @@ function UI:BuildDrops()
   local hfs = Text(handle, "GameFontNormalSmall", "CENTER")
   hfs:SetPoint("CENTER", 0, 0)
   hfs:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
-  hfs:SetText("Drops  ·  glisser pour déplacer")
+  hfs:SetText(Tr["Drops  ·  glisser pour déplacer"])
   handle:Hide()
   f.handle = handle
 
@@ -4894,7 +4902,7 @@ function UI:BuildDrops()
   local ovfs = Text(ov, "GameFontNormal", "CENTER")
   ovfs:SetPoint("CENTER", 0, 0)
   ovfs:SetTextColor(0.85, 0.95, 1)
-  ovfs:SetText("Drops  ·  glisser pour déplacer")
+  ovfs:SetText(Tr["Drops  ·  glisser pour déplacer"])
   ov:Hide()
   f.editOverlay, f.editLabel = ov, ovfs
 
@@ -4937,17 +4945,39 @@ function UI:ToggleDropsMove()
     if f._osrsMoving then f.handle:Show() else f.handle:Hide() end
   end
   if f._osrsMoving then
-    ns.Print("déplace le cadre des drops, puis /drop drops move pour figer.")
+    ns.Print(Tr["déplace le cadre des drops, puis /drop drops move pour figer."])
   else
     SaveFramePos(f, "dropsPos")
-    ns.Print("position des drops enregistrée.")
+    ns.Print(Tr["position des drops enregistrée."])
   end
 end
 
--- v2.7.1 : sens d'empilement (« Vers le bas » par défaut, « Vers le haut »).
+-- 3.5.1 : sens d'empilement en position libre (« Vers le haut » par défaut,
+-- « Vers le bas », « Sur place »). En position accrochée, Notif.lua force
+-- haut / bas selon dessus / dessous.
+UI.PILE_OFF, UI.PILE_MAX = 4, 3
+UI.PILE_FADE = { 1, 0.80, 0.60 }
 function UI:DropDir()
   local d = ns.db and ns.db.ui and ns.db.ui.dropDir
-  return (d == "haut") and "haut" or "bas"
+  if d == "haut" or d == "bas" or d == "place" then return d end
+  return "haut"
+end
+
+local function ToastAlpha(frame, a)
+  if not frame or not frame.SetAlpha then return end
+  local fade = frame._pileHidden and 0 or (frame._pileFade or 1)
+  pcall(frame.SetAlpha, frame, (a or 1) * fade)
+end
+
+local function EnsurePileShade(t)
+  if t._shade then return t._shade end
+  if not t.CreateTexture then return nil end
+  local sh = t:CreateTexture(nil, "OVERLAY")
+  sh:SetAllPoints(t)
+  pcall(sh.SetTexture, sh, "Interface\\Buttons\\WHITE8X8")
+  if sh.SetDrawLayer then pcall(sh.SetDrawLayer, sh, "OVERLAY", 7) end
+  t._shade = sh
+  return sh
 end
 
 -- v2.7.2 : support posé sur le chat → même largeur que le chat, collé à son
@@ -5007,7 +5037,7 @@ function UI:SetDropsSnapChat(on)
     local cl, ct, cw = self:ChatRect()
     if not cl then
       if ns.db and ns.db.ui then ns.db.ui.dropsSnapChat = false end
-      ns.Print("cadre de chat introuvable : impossible d'y coller les drops.")
+      ns.Print(Tr["cadre de chat introuvable : impossible d'y coller les drops."])
       return false
     end
     f._snapW = math.floor(cw + 0.5)
@@ -5035,8 +5065,9 @@ function UI:PlaceDropsHandle()
   local h = f and f.handle
   if not h then return end
   h:ClearAllPoints()
-  if self:DropDir() == "haut" then
-    -- Les drops montent : la poignée passe sous le support.
+  local dir = self:DropDir()
+  if dir == "haut" or dir == "place" then
+    -- Les drops montent ou s'empilent sur place : la poignée passe sous le support.
     h:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 0, 0)
     h:SetPoint("TOPRIGHT", f, "BOTTOMRIGHT", 0, 0)
   else
@@ -5045,24 +5076,27 @@ function UI:PlaceDropsHandle()
   end
 end
 
--- Recalcule la taille du support (= premier drop) en gardant fixe le bord
--- d'où partent les drops (haut en « vers le bas », bas en « vers le haut »).
+-- Recalcule la taille du support (= premier drop, + décalage pile en « sur place »)
+-- en gardant fixe le bord d'ancrage (haut en « vers le bas », bas autrement).
 function UI:ApplyDropsLayout()
   local f = self.dropsFrame
   if not f then return end
   local newH = self:DropFirstHeight()
+  local dir = self:DropDir()
+  local extra = (dir == "place") and ((self.PILE_MAX or 3) - 1) * (self.PILE_OFF or 4) or 0
   local oldH = f._osrsHeight or newH
-  if newH ~= oldH and f.GetLeft and f.GetBottom then
+  local oldExtra = f._osrsPile or 0
+  if (newH + extra) ~= (oldH + oldExtra) and f.GetLeft and f.GetBottom then
     local l, b = f:GetLeft(), f:GetBottom()
     if type(l) == "number" and type(b) == "number" then
-      if self:DropDir() == "bas" then b = b + (oldH - newH) end
+      if dir == "bas" then b = b + (oldH + oldExtra) - (newH + extra) end
       f:ClearAllPoints()
       f:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", l, b)
       if ns.db and ns.db.ui then ns.db.ui.dropsPos = { point = "BOTTOMLEFT", relativePoint = "BOTTOMLEFT", x = l, y = b } end
     end
   end
-  f:SetSize(self:DropWidth(), newH)
-  f._osrsHeight = newH
+  f:SetSize(self:DropWidth() + extra, newH + extra)
+  f._osrsHeight, f._osrsPile = newH, extra
   self:PlaceDropsHandle()
   self:PackDrops()
 end
@@ -5070,19 +5104,74 @@ end
 function UI:PackDrops()
   local parent = self.dropsStack or self.dropsFrame
   if not parent or not self.dropsActive then return end
-  local up = self:DropDir() == "haut"
-  local y = 0
-  for i = 1, #self.dropsActive do
-    local t = self.dropsActive[i]
-    if t and t.ClearAllPoints then
-      t:ClearAllPoints()
-      if up then
-        -- Premier drop collé au bord bas du support, les suivants au-dessus.
-        t:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 0, y)
-      else
-        t:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -y)
+  local dir = self:DropDir()
+  local n = #self.dropsActive
+  local pile = dir == "place"
+  local off, maxv = self.PILE_OFF or 4, self.PILE_MAX or 3
+  local fades = self.PILE_FADE or { 1, 0.80, 0.60 }
+  local baseLvl = (parent.GetFrameLevel and parent:GetFrameLevel()) or 1
+  if pile then
+    for i = 1, n do
+      local t = self.dropsActive[i]
+      if t and t.ClearAllPoints then
+        t:ClearAllPoints()
+        local depth = n - i
+        if depth >= maxv then
+          t._pileHidden, t._pileFade = true, 0
+          if t._shade then t._shade:Hide() end
+          if t.Hide then pcall(t.Hide, t) end
+          ToastAlpha(t, 0)
+          if t.EnableMouse then pcall(t.EnableMouse, t, false) end
+        else
+          t._pileHidden, t._pileFade = nil, fades[depth + 1] or 0.5
+          if t.Show then pcall(t.Show, t) end
+          t:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", depth * off, depth * off)
+          if t.SetFrameLevel then pcall(t.SetFrameLevel, t, baseLvl + (maxv - depth) + 1) end
+          if depth > 0 then
+            local sh = EnsurePileShade(t)
+            if sh then
+              sh:SetVertexColor(0, 0, 0, 0.18 * depth)
+              sh:Show()
+            end
+            if t.EnableMouse then pcall(t.EnableMouse, t, false) end
+          else
+            if t._shade then t._shade:Hide() end
+            if t.EnableMouse and not self._inEditMode then pcall(t.EnableMouse, t, true) end
+          end
+          ToastAlpha(t, 1)
+        end
       end
-      y = y + (t._h or TOAST_H) + TOAST_GAP
+    end
+    return
+  end
+  local y = 0
+  if dir == "haut" then
+    -- Le plus récent reste à l'ancre (bas du support), les plus anciens montent.
+    for i = n, 1, -1 do
+      local t = self.dropsActive[i]
+      if t and t.ClearAllPoints then
+        t._pileHidden, t._pileFade = nil, 1
+        if t._shade then t._shade:Hide() end
+        t:ClearAllPoints()
+        if t.Show then pcall(t.Show, t) end
+        t:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 0, y)
+        y = y + (t._h or TOAST_H) + TOAST_GAP
+        ToastAlpha(t, 1)
+      end
+    end
+  else
+    -- Vers le bas : comportement historique (le plus ancien en haut, les suivants en dessous).
+    for i = 1, n do
+      local t = self.dropsActive[i]
+      if t and t.ClearAllPoints then
+        t._pileHidden, t._pileFade = nil, 1
+        if t._shade then t._shade:Hide() end
+        t:ClearAllPoints()
+        if t.Show then pcall(t.Show, t) end
+        t:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -y)
+        y = y + (t._h or TOAST_H) + TOAST_GAP
+        ToastAlpha(t, 1)
+      end
     end
   end
 end
@@ -5104,7 +5193,7 @@ end
 function UI:WireDropMouse(f)
   if not f or not f.SetScript then return end
   if f.EnableMouse then pcall(f.EnableMouse, f, not self._inEditMode) end
-  f:SetScript("OnEnter", function(self) self._hover = true if self.SetAlpha then pcall(self.SetAlpha, self, 1) end end)
+  f:SetScript("OnEnter", function(self) self._hover = true ToastAlpha(self, 1) end)
   f:SetScript("OnLeave", function(self) self._hover = false if self._restart then self._restart() end end)
   f:SetScript("OnMouseUp", function(self, button)
     -- mode édition / déplacement : jamais d'ouverture (le clic sert au glisser)
@@ -5166,7 +5255,7 @@ function UI:DropTargetData(target)
     for _, d in ipairs(tiles) do if d.id == id and not d.placeholder then return d end end
     local e = ns.CatalogById and ns.CatalogById(id)
     local nm = e and e.name
-    for _, d in ipairs(tiles) do if d.combatTile and nm and d.skillName == nm then return d end end
+    for _, d in ipairs(tiles) do if d.combatTile and nm and (d.catName == nm or d.skillName == ns.CatalogDisplayName(e)) then return d end end
     for _, d in ipairs(tiles) do if d.id == id then return d end end
   end
   return nil
@@ -5175,7 +5264,7 @@ end
 function UI:OpenFromDrop(target, drop)
   if ns.InCombat and ns.InCombat() then
     ns.AfterCombat("openfromdrop", function() UI:OpenFromDrop(target) end)
-    ns.Print("en combat : la fenêtre s'ouvrira à la fin du combat.")
+    ns.Print(Tr["en combat : la fenêtre s'ouvrira à la fin du combat."])
     return "queued"
   end
   if self._openingFromDrop then return "busy" end
@@ -5389,7 +5478,7 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   f.titleFS, f.subFS = titleFS, subFS
   self.dropsActive[#self.dropsActive + 1] = f
   self:PackDrops()
-  if f.SetAlpha then pcall(f.SetAlpha, f, 0) end
+  ToastAlpha(f, 0)
   if f.Show then pcall(f.Show, f) end
 
   -- Aperçu d'édition : pas de fondu, on le garde visible.
@@ -5401,7 +5490,7 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   f._kills = opts.accumulate and opts.accumulate.kills or nil
   f._quest = opts.accumulate and opts.accumulate.quest or nil
   f._target = { kind = opts.kind, skillId = opts.skillId, skillName = opts.skillName }
-  f._restart = function() if t > TOAST_FADEIN then t = TOAST_FADEIN end if f.SetAlpha then pcall(f.SetAlpha, f, 1) end end
+  f._restart = function() if t > TOAST_FADEIN then t = TOAST_FADEIN end ToastAlpha(f, 1) end
   f._hold = ns.N(opts.hold)
   -- 3.3.16 : fermeture anticipée (fondu de sortie immédiat)
   f._dismiss = function() f._hover = nil local h = f._hold or UI:DropHold() if t < TOAST_FADEIN + h then t = TOAST_FADEIN + h end end
@@ -5411,12 +5500,16 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   self:WireDropMouse(f)
   f:SetScript("OnUpdate", function(self, elapsed)
     if self._editPreview then
-      if self.SetAlpha then pcall(self.SetAlpha, self, 1) end
+      ToastAlpha(self, 1)
+      return
+    end
+    if self._pileHidden then
+      ToastAlpha(self, 0)
       return
     end
     if self._hover then
       t = TOAST_FADEIN
-      if self.SetAlpha then pcall(self.SetAlpha, self, 1) end
+      ToastAlpha(self, 1)
       return
     end
     t = t + (elapsed or 0.03)
@@ -5439,7 +5532,7 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
       end
       return
     end
-    if self.SetAlpha then pcall(self.SetAlpha, self, a) end
+    ToastAlpha(self, a)
   end)
   return f
 end
@@ -5541,15 +5634,15 @@ end
 function UI:LevelTotalLine()
   local snap = self.snapshot
   local total = snap and ns.N(snap.total or snap.ficTotal)
-  if total then return "Niveau total : " .. tostring(total + 1) .. " (+1)" end
-  return "Niveau total : +1"
+  if total then return Tr["Niveau total : "] .. tostring(total + 1) .. " (+1)" end
+  return Tr["Niveau total : +1"]
 end
 
 function UI:PlayLevelUp(level)
   level = ns.N(level) or ns.GetPlayerLevel()
   self._pendingLevelPulse = true
   if not ns.Opt("levelUpAnim") then return nil end
-  local f = self:SpawnDrop(ns.LEVEL_ICON, "Niveau " .. tostring(level) .. " atteint !", self:LevelTotalLine(), nil, nil, nil,
+  local f = self:SpawnDrop(ns.LEVEL_ICON, Tr["Niveau "] .. tostring(level) .. Tr[" atteint !"], self:LevelTotalLine(), nil, nil, nil,
     { kind = "levelup", variant = "gold", big = true })
   if f then
     self:AttachFlareFx(f, true)
@@ -5560,6 +5653,19 @@ function UI:PlayLevelUp(level)
     end
   end
   self:PulseLevelTile()
+  -- 3.5.4 : niveaux pairs = nouveaux sorts chez le maître de classe (notif sous le level-up + son)
+  if f and level and level >= 2 and level % 2 == 0 then
+    local ui = self
+    local function spellToast()
+      local g = ui:SpawnDrop("Interface\\Icons\\INV_Misc_Book_09", Tr["Nouveaux sorts"], Tr["Va voir ton maître de classe"], nil, nil, nil,
+        { kind = "spells", variant = "gold", light = true })
+      if g and ns.SoundOk("levelUpSound") and type(PlaySound) == "function" then
+        local kit = (type(SOUNDKIT) == "table" and SOUNDKIT.IG_QUEST_LOG_OPEN) or 844
+        pcall(PlaySound, kit)
+      end
+    end
+    if type(C_Timer) == "table" and C_Timer.After then C_Timer.After(1.5, spellToast) else spellToast() end
+  end
   return f
 end
 
@@ -5609,8 +5715,8 @@ end
 function UI.XPTitle(n, o)
   local k = o and o._kills or 0
   local parts = {}
-  if k >= 2 then parts[#parts + 1] = tostring(k) .. " monstres" end
-  if o and o._quest then parts[#parts + 1] = "quête" end
+  if k >= 2 then parts[#parts + 1] = tostring(k) .. Tr[" monstres"] end
+  if o and o._quest then parts[#parts + 1] = Tr["quête"] end
   return "+" .. tostring(n) .. " XP" .. ((#parts > 0) and (" (" .. table.concat(parts, ", ") .. ")") or "")
 end
 
@@ -5677,7 +5783,7 @@ function UI:OnXPUpdate()
     maxxp = ns.N(maxxp) or 0
     cur = ns.N(cur) or 0
     local pct = (maxxp > 0) and (cur / maxxp * 100) or 0
-    local sub = string.format("Niveau %s · %.0f %%", tostring(level or 0), pct)
+    local sub = string.format(Tr["Niveau %s · %.0f %%"], tostring(level or 0), pct)
     self._sessionXP = (self._sessionXP or 0) + delta
     ns.Rate.Note("xp", self._sessionXP)
     local hint = self:XPHint(cur, maxxp, level)
@@ -5750,11 +5856,11 @@ function UI:FlushSkillDiff()
     local s, pr, cr, fold = r.s, r.pr, r.cr, r.fold
     local d = cr - pr
     if d > 0 and d < cr then
-      local icon, skillId = self:SkillDropIcon(s.name)
+      local icon, skillId = self:SkillDropIcon(s.name, s.headerName, s.skillID)
       ns.Rate.Note("skill:" .. tostring(skillId or fold), cr)
       local title = (s.name or "") .. " +" .. tostring(d)
       local maxS = ns.N(s.max) or 0
-      local subS = (maxS > 0) and ("Rang " .. tostring(cr) .. " / " .. tostring(maxS)) or ("Rang " .. tostring(cr))
+      local subS = (maxS > 0) and (Tr["Rang "] .. tostring(cr) .. " / " .. tostring(maxS)) or (Tr["Rang "] .. tostring(cr))
       local hintS = self:SkillHint(skillId or fold, skillId, cr, maxS)
       local last = self._dropLast[fold]
       local limited = last and (t - last) >= 0 and (t - last) < UI.DROP_RATE
@@ -5788,12 +5894,12 @@ function UI:SkillHint(rateKey, skillId, cur, maxv)
   local g = skillId and ns.GetGoal(skillId)
   if g and g.rank > cur then
     local eta = ns.FormatDuration(ns.Rate.ETA("skill:" .. tostring(rateKey), cur, g.rank))
-    return "Objectif " .. g.rank .. " : encore " .. (g.rank - cur) .. (eta and (" (" .. eta .. ")") or "")
+    return string.format(Tr["Objectif %s : encore %s"], tostring(g.rank), tostring(g.rank - cur)) .. (eta and (" (" .. eta .. ")") or "")
   end
   local spu = ns.Rate.SecondsPerUnit("skill:" .. tostring(rateKey))
-  if spu then return ns.FormatDuration(spu) .. " par rang (mesuré)" end
-  if maxv and maxv > cur then return "Palier " .. maxv .. " : encore " .. (maxv - cur) end
-  if maxv and maxv > 0 and cur >= maxv then return "Palier atteint" end
+  if spu then return ns.FormatDuration(spu) .. Tr[" par rang (mesuré)"] end
+  if maxv and maxv > cur then return string.format(Tr["Palier %s : encore %s"], tostring(maxv), tostring(maxv - cur)) end
+  if maxv and maxv > 0 and cur >= maxv then return Tr["Palier atteint"] end
   return nil
 end
 
@@ -5803,12 +5909,12 @@ function UI:XPHint(cur, maxxp, level)
   local left = maxxp - cur
   local nextL = (ns.N(level) or 0) + 1
   local spu = ns.Rate.SecondsPerUnit("xp")
-  if spu then return "Niveau " .. nextL .. " dans " .. ns.FormatDuration(spu * left) end
-  return "Encore " .. left .. " XP avant le niveau " .. nextL
+  if spu then return string.format(Tr["Niveau %s dans %s"], tostring(nextL), tostring(ns.FormatDuration(spu * left))) end
+  return string.format(Tr["Encore %s XP avant le niveau %s"], tostring(left), tostring(nextL))
 end
 
 -- Icône d'un drop de compétence = exactement celle de la tuile de la grille.
-function UI:SkillDropIcon(name)
+function UI:SkillDropIcon(name, header, skillLine)
   local want = ns.Fold(name or "")
   local snap = self.snapshot
   if not snap then
@@ -5819,22 +5925,32 @@ function UI:SkillDropIcon(name)
     for i = 1, #list do
       local d = list[i]
       if ns.Fold(d.skillName or "") == want or ns.Fold(d.name or "") == want then
-        if d.icon then return d.icon, d.id end
+        if d.icon and not (ns.IconMissing and ns.IconMissing(d.icon)) then return d.icon, d.id end
       end
     end
   end
-  local e = ns.LookupCatalog and ns.LookupCatalog(name)
-  if not e and ns.Style and ns.Style.SkillIdForText then
-    local id = ns.Style.SkillIdForText(name)
-    e = id and ns.CATALOG_BY_ID and ns.CATALOG_BY_ID[id]
+  local ce = ns.LookupCatalog and ns.LookupCatalog(name)   -- 3.5.19 : nom FR ou EN → même case
+  for _, list in ipairs({ snap and snap.tiles or {}, snap and snap.allTiles or {} }) do
+    for i = 1, #list do
+      local d = list[i]
+      if ce and ce.id and d.id == ce.id and d.icon and not (ns.IconMissing and ns.IconMissing(d.icon)) then return d.icon, d.id end
+    end
   end
-  if e and e.icon then return e.icon, e.id end
-  return ns.IconForSkillName(name, nil) or ns.FALLBACK_ICON, nil
+  -- 3.5.18 : catalogue (noms exacts Forever : « Masse »…), ligne de compétence,
+  -- icône générique d'arme ; « ? » seulement pour une compétence inconnue hors armes
+  local icon, id = ns.ResolveSkillIcon(name, header, skillLine)
+  if icon then return icon, id end
+  return ns.FALLBACK_ICON, nil
 end
 
 -- « Votre compétence en Dépeçage est maintenant de 162. » → nom, rang.
 function UI:ParseSkillMessage(msg)
   if type(msg) ~= "string" then return nil end
+  -- 3.5.19 : modèle du client (ERR_SKILL_UP_SI) d'abord, quelle que soit la langue
+  if ns.MatchGlobal then
+    local n0, r0 = ns.MatchGlobal("ERR_SKILL_UP_SI", msg)
+    if n0 and ns.N(r0) then return n0, ns.N(r0) end
+  end
   local okM, name, rank = pcall(string.match, msg, "en (.-) est maintenant de (%d+)")
   if okM and name then return name, ns.N(rank) end
   okM, name, rank = pcall(string.match, msg, "Your skill in (.-) has increased to (%d+)")
@@ -5930,7 +6046,7 @@ function UI:HookEditMode()
       if type(lib.AddFrame) == "function" then
         pcall(lib.AddFrame, lib, frame, enter, exit)
       elseif type(lib.RegisterFrame) == "function" then
-        pcall(lib.RegisterFrame, lib, frame, "Drops Niveau total")
+        pcall(lib.RegisterFrame, lib, frame, Tr["Drops Niveau total"])
       elseif type(lib.RegisterAddOnFrame) == "function" then
         pcall(lib.RegisterAddOnFrame, lib, frame)
       end
@@ -5951,7 +6067,7 @@ function UI:ShowEditPreview()
     return
   end
   local book = ns.LEVEL_ICON or "Interface\\Icons\\INV_Misc_Book_11"
-  local f = self:SpawnDrop(book, "+0 XP", "Aperçu — mode édition", 1, 1, "", { hint = "Glisser pour déplacer" })
+  local f = self:SpawnDrop(book, Tr["+0 XP"], Tr["Aperçu — mode édition"], 1, 1, "", { hint = Tr["Glisser pour déplacer"] })
   if f then
     f._editPreview = true
     if f.EnableMouse then pcall(f.EnableMouse, f, true) end   -- glisser l'aperçu = déplacer le support

@@ -175,7 +175,12 @@ if P and P.ApplyTipAlpha then
     local X = P.tip
     if not (X and X.skin and X.host) then return baseATA(kb, kr) end
     local ba = math.min(1, (Sk.BG[4] or 1) * (kb or 1))
-    X.bgColor, X.borderColor = { Sk.BG[1], Sk.BG[2], Sk.BG[3], 1 }, { Sk.TINT[1], Sk.TINT[2], Sk.TINT[3], 1 }
+    -- 3.5.3 : tables réutilisées (appelé à chaque image pendant le fondu)
+    local bc, tc = X.bgColor, X.borderColor
+    if type(bc) ~= "table" then bc = {} X.bgColor = bc end
+    if type(tc) ~= "table" then tc = {} X.borderColor = tc end
+    bc[1], bc[2], bc[3], bc[4] = Sk.BG[1], Sk.BG[2], Sk.BG[3], 1
+    tc[1], tc[2], tc[3], tc[4] = Sk.TINT[1], Sk.TINT[2], Sk.TINT[3], 1
     Sk.Paint(X.host, ba)
     X.bgAlpha, X.borderAlpha = ba, 1
   end

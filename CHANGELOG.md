@@ -1,8 +1,237 @@
 # Changelog
 
+## 3.5.19
+- All of the addon's own texts now follow the game language: toasts, tooltips, panel and tile labels, session recap, chat messages, /drop help and the options panel. French client → French (word for word as before); English client (enUS / enGB) → English; any other client language → English.
+- New setting "Language" (Options › Display & theme) and command /drop lang auto|en|fr (also /drop langue). Saved per account (DropamineDB.ui.lang), "auto" by default; "Defaults" does not reset it. After a change, a popup offers /reload so texts already on screen are translated too.
+- Locale tables: Locales/enUS.lua and Locales/frFR.lua (key = original French text, missing keys fall back to French text). 868 texts translated + 39 skill names of the catalog (tiles such as "Skinning", "Two-Handed Swords", "Total level").
+- Names given by the game (professions, skills, items, recipes, creatures read from the client) stay exactly as the client returns them. Recipe and item names from the addon's own Forever database follow the client language (English names on non-French clients).
+- English aliases for commands, French ones still work: /drop columns, size, opacity, lock, alerts, activity, recipes, links, unlearned, tooltip, open, tiers, reminder, bar, challenge, sounds, sound, fade, bg, pretier, history, milestones, fishing, shopping, share, master, weapon; arguments light, green, yellow, tier, above, below, detach, up, down, full, skill, duration, icons, compact, default, main…
+- Parsing of game messages uses the client's own templates first (ERR_SKILL_UP_SI for skill-ups, LOOT_ITEM_SELF / LOOT_ITEM_PUSHED_SELF for loot, ITEM_MIN_SKILL for "Requires Mining (75)"), then the built-in French / English patterns as before.
+- Decimal comma only in French (K/D 2,5 / K/D 2.5; character stats).
+- /drop debug reports and /drop perf stay in French (developer diagnostics).
+
+---
+
+- Tous les textes propres à l'addon suivent maintenant la langue du jeu : toasts, infobulles, libellés du panneau et des cases, récap de session, messages dans le chat, aide /drop et panneau d'options. Client français → français (mot pour mot comme avant) ; client anglais (enUS / enGB) → anglais ; toute autre langue du client → anglais.
+- Nouveau réglage « Langue » (Options › Affichage & thème) et commande /drop lang auto|en|fr (aussi /drop langue). Enregistré par compte (DropamineDB.ui.lang), « auto » par défaut ; « Valeurs par défaut » ne le change pas. Après un changement, une fenêtre propose /reload pour traduire aussi les textes déjà affichés.
+- Tables de langue : Locales/enUS.lua et Locales/frFR.lua (clé = texte français d'origine, clé absente → texte français). 868 textes traduits + 39 noms de compétences du catalogue (cases « Skinning », « Two-Handed Swords », « Total level »…).
+- Les noms donnés par le jeu (métiers, compétences, objets, recettes, créatures lus dans le client) restent exactement tels que le client les renvoie. Les noms de recettes et d'objets de la base Forever de l'addon suivent la langue du client (noms anglais hors client français).
+- Alias anglais des commandes, les commandes françaises restent valables : /drop columns, size, opacity, lock, alerts, activity, recipes, links, unlearned, tooltip, open, tiers, reminder, bar, challenge, sounds, sound, fade, bg, pretier, history, milestones, fishing, shopping, share, master, weapon ; arguments light, green, yellow, tier, above, below, detach, up, down, full, skill, duration, icons, compact, default, main…
+- La lecture des messages du jeu utilise d'abord les modèles du client (ERR_SKILL_UP_SI pour les montées de compétence, LOOT_ITEM_SELF / LOOT_ITEM_PUSHED_SELF pour le butin, ITEM_MIN_SKILL pour « Requiert Minage (75) »), puis les motifs français / anglais intégrés comme avant.
+- Virgule décimale seulement en français (K/D 2,5 / K/D 2.5 ; caractéristiques).
+- Les rapports /drop debug et /drop perf restent en français (diagnostic développeur).
+
+## 3.5.18
+- Fix: weapon skill toasts and tiles no longer show the red "?" icon. On Forever weapon skills have singular names ("Masse", "Hache", "Épée", "Dague", "Arc"…), which the catalog did not know (it only had "Masses", "Maces"…), so "Masse +5" fell back to the question mark. Every weapon skill now resolves by exact name (French and English, singular and plural, "à une main" / "one-handed", ’ or ' apostrophes, accents), then by skill line ID (Axes 44, Maces 54, Swords 43, Daggers 173, Bows 45…), then a generic weapon icon: never a "?" and never a blank weapon tile. Dual Wield ("Ambidextrie") has its own icon. All icons checked against the game's file list.
+- Weapon skills matched by these names now also feed the melee / ranged tiles (rank of the right weapon).
+- /drop debug: "Icônes des armes (3.5.18)" line, each weapon skill read with its skill line, resolved icon and how it was found.
+
+---
+
+- Correctif : les toasts et cases de compétences d'armes n'affichent plus l'icône « ? » rouge. Sur Forever, les compétences d'armes ont des noms au singulier (« Masse », « Hache », « Épée », « Dague », « Arc »…) que le catalogue ne connaissait pas (il n'avait que « Masses », « Maces »…) : « Masse +5 » retombait sur le point d'interrogation. Chaque compétence d'arme est maintenant trouvée par son nom exact (français et anglais, singulier et pluriel, « à une main » / « one-handed », apostrophes ’ ou ', accents), puis par l'identifiant de sa ligne de compétence (Haches 44, Masses 54, Épées 43, Dagues 173, Arcs 45…), puis une icône d'arme générique : jamais de « ? » ni de case d'arme vide. L'Ambidextrie a sa propre icône. Toutes les icônes vérifiées dans la liste des fichiers du jeu.
+- Les compétences d'armes reconnues par ces noms alimentent aussi les cases Mêlée / Distance (rang de la bonne arme).
+- /drop debug : ligne « Icônes des armes (3.5.18) », chaque compétence d'arme lue avec sa ligne de compétence, l'icône résolue et la façon dont elle a été trouvée.
+
+## 3.5.17 (test build)
+- Recipe toast click goes through a secure button: the game runs a macro calling the same function as its own "new recipe" alert, "/run ProfessionsUtil.OpenProfessionFrameToRecipe(<id>)". The ID is Forever's recipe ID, found by NAME in C_TradeSkillUI.GetAllRecipeIDs / GetRecipeInfo when the toast is created (profession window open) or when the toast is hovered, otherwise the toast's spell ID. The button's attributes are set out of combat only, on hover and again at the click. In combat: nothing happens and the toast stays.
+- Removed: every insecure selection from the click path (C_TradeSkillUI.OpenRecipe, the verification loop, reading the Professions window). That loop was the likely cause of "Échec d'une action d'interface liée à un programme d'interface personnalisée".
+- If ProfessionsUtil is missing, or with /drop toast off: the toast only opens the profession (secure spell), with no selection.
+- On by default in this test build. /drop toast on|off.
+- /drop debug: "clic toast sécurisé (3.5.17)" line (state, recipe name, resolved ID and its source, macro text, combat).
+- 3.5.16 pixel-snap fixes kept.
+
+---
+
+- Le clic sur le toast de recette passe par un bouton sécurisé : le jeu exécute une macro qui appelle la même fonction que sa propre alerte « nouvelle recette », « /run ProfessionsUtil.OpenProfessionFrameToRecipe(<id>) ». L'identifiant est celui de la recette sur Forever, trouvé par le NOM dans C_TradeSkillUI.GetAllRecipeIDs / GetRecipeInfo à la création du toast (fenêtre du métier ouverte) ou au survol, sinon l'identifiant de sort du toast. Les attributs du bouton ne sont posés que hors combat, au survol puis au clic. En combat : rien, et le toast reste.
+- Retiré : toute sélection non sécurisée du chemin du clic (C_TradeSkillUI.OpenRecipe, la boucle de vérification, la lecture de la fenêtre Métiers). Cette boucle était la cause probable de « Échec d'une action d'interface liée à un programme d'interface personnalisée ».
+- Si ProfessionsUtil est absent, ou avec /drop toast off : le toast ouvre seulement le métier (sort sécurisé), sans sélection.
+- Actif par défaut dans cette version de test. /drop toast on|off.
+- /drop debug : ligne « clic toast sécurisé (3.5.17) » (état, nom de la recette, id résolu et sa provenance, texte de la macro, combat).
+- Corrections au pixel de 3.5.16 conservées.
+
+## 3.5.16
+- Recipe toast click: the recipe is now found and checked by NAME. On Forever the Professions window uses a recipe ID different from the spell ID kept by the toast (e.g. 3763 vs 1229432 for "Ceinture élégante en cuir"): the recipe was selected on screen, but our ID check failed and OpenRecipe was called 5 times. Now: when the window is ready, C_TradeSkillUI.GetAllRecipeIDs / GetRecipeInfo find the recipe whose name matches the toast (then the toast's ID, then the crafted item); the recipe shown is read by name (rank "[1]" ignored); we stop as soon as it matches. The first call now waits until the recipe list has been filled (TRADE_SKILL_LIST_UPDATE + 0.25 s, or 1.2 s after the window is ready): before, it could leave before the list and the window stayed on the first recipe ("Tente du camp"). At most 2 tries, 0.35 s apart; far fewer protected calls, to avoid the "interface action failed" message. The toast keeps the recipe name. Every call protected, no writes to the game's frames.
+- Main window no longer shifts by a pixel when a recipe toast appears: positions, list offset and size are rounded to whole pixels (PixelUtil at the effective scale); nothing is re-anchored or resized when nothing changed; if the window is anchored by another point than its top-left corner, that corner is put back after a size change; the saved position is stored in whole pixels. The room for the "N prêts" badge above the first row stays reserved once seen (remembered), so its appearance with a recipe toast no longer pushes the grid down.
+- /drop debug: "sélection de recette (3.5.16)" line (name searched, toast ID, resolved ID, name shown, tries, result) and a count of top-left re-pins on the Layout line.
+
+---
+
+- Clic sur le toast de recette : la recette est maintenant trouvée et vérifiée par son NOM. Sur Forever, la fenêtre Métiers utilise un identifiant de recette différent de l'identifiant du sort retenu par le toast (ex. 3763 contre 1229432 pour « Ceinture élégante en cuir ») : la recette était bien sélectionnée à l'écran, mais notre vérification par identifiant échouait et OpenRecipe était appelé 5 fois. Désormais : fenêtre prête, C_TradeSkillUI.GetAllRecipeIDs / GetRecipeInfo trouvent la recette dont le nom correspond au toast (puis l'identifiant du toast, puis l'objet fabriqué) ; la recette affichée est lue par son nom (rang « [1] » ignoré) ; arrêt dès qu'elle correspond. Le premier appel attend maintenant que la liste des recettes soit remplie (TRADE_SKILL_LIST_UPDATE + 0,25 s, ou 1,2 s après que la fenêtre est prête) : avant, il pouvait partir avant la liste et la fenêtre restait sur la 1re recette (« Tente du camp »). 2 essais au plus, à 0,35 s d'écart ; beaucoup moins d'appels, pour éviter le message « Échec d'une action d'interface ». Le toast retient le nom de la recette. Chaque appel protégé, aucune écriture dans les cadres du jeu.
+- La fenêtre principale ne se décale plus d'un pixel à l'apparition d'un toast de recette : positions, décalage de la liste et taille arrondis au pixel entier (PixelUtil à l'échelle effective) ; rien n'est ré-ancré ni redimensionné quand rien n'a changé ; si la fenêtre est ancrée par un autre point que son coin haut-gauche, ce coin est reposé après un changement de taille ; la position mémorisée est enregistrée en pixels entiers. La place de la pastille « N prêts » au-dessus de la 1re rangée reste réservée une fois vue (mémorisée) : son apparition avec un toast de recette ne pousse plus la grille vers le bas.
+- /drop debug : ligne « sélection de recette (3.5.16) » (nom cherché, id du toast, id résolu, nom affiché, tentatives, résultat) et compteur de coin haut-gauche re-fixé sur la ligne Disposition.
+
+## 3.5.15
+- Toasts: text always fully readable. After a toast is created (and when its text is updated), every line is measured (GetUnboundedStringWidth, otherwise GetStringWidth). If a line is wider than the space available, it wraps onto 2 lines at most and the toast grows taller; the stack is laid out again. Width, style and fonts unchanged. Applies to every toast (skills, level, recipes, notifications). New file ToastFit.lua.
+- "New spells" toast (even levels): shorter title, "Nouveaux sorts", body "Va voir ton maître de classe" (before: "Nouveaux sorts à apprendre  Va voir ton…", cut off).
+- /drop debug: "Textes des toasts (3.5.15)" line (toasts measured, lines wrapped, lines still too long, last fit).
+
+---
+
+- Toasts : texte toujours lisible en entier. À la création d'un toast (et quand son texte change), chaque ligne est mesurée (GetUnboundedStringWidth, sinon GetStringWidth). Si elle dépasse la place disponible, elle passe à la ligne (2 lignes au plus) et le toast grandit en hauteur ; la pile est remise en place. Largeur, style et polices inchangés. Vaut pour tous les toasts (compétences, niveau, recettes, notifications). Nouveau fichier ToastFit.lua.
+- Toast « nouveaux sorts » (niveaux pairs) : titre raccourci, « Nouveaux sorts », texte « Va voir ton maître de classe » (avant : « Nouveaux sorts à apprendre  Va voir ton… », coupé).
+- /drop debug : ligne « Textes des toasts (3.5.15) » (toasts mesurés, lignes passées à la ligne, lignes encore trop longues, dernier ajustement).
+
+## 3.5.14
+- Recipe toast ("new recipe" / "N ready"): clicking it opens the profession window AND now selects the recipe on Forever's modern Professions window. Before, the selection was sent as soon as the window appeared, before the window had finished loading and picked its own default recipe, so ours was immediately overwritten.
+- Now: wait until the window is shown on the right profession, C_TradeSkillUI.IsTradeSkillReady (when available) and the data source is stable, then a short delay; select with C_TradeSkillUI.OpenRecipe(recipeID) only (public API: the game's own code does the selection); check by reading the recipe shown, and retry a few times if needed.
+- The toast now keeps the recipe ID (spell), not the crafted item. If the ID is not in the window's list: lookup by name, then by crafted item (GetRecipeSchematic outputItemID).
+- No writes to the game's frames, no filters, no search box: the "Create" button stays safe (no taint).
+- /drop debug: "sélection de recette (3.5.14)" line (recipe, recipeID and its source, OpenRecipe calls, game response, recipe shown, result, steps).
+
+---
+
+- Toast de recette (« nouvelle recette » / « N prêts ») : le clic ouvre la fenêtre du métier ET sélectionne maintenant la recette dans la fenêtre Métiers récente de Forever. Avant, la sélection partait dès l'apparition de la fenêtre, avant qu'elle ait fini de charger et choisi sa propre recette par défaut : la nôtre était aussitôt écrasée.
+- Désormais : attente que la fenêtre soit affichée sur le bon métier, que C_TradeSkillUI.IsTradeSkillReady (s'il existe) le confirme et que les données soient stables, puis un court délai ; sélection par C_TradeSkillUI.OpenRecipe(recipeID) seulement (API publique : c'est le code du jeu qui sélectionne) ; vérification en lisant la recette affichée, quelques nouveaux essais si besoin.
+- Le toast retient maintenant l'identifiant de la recette (sort), pas l'objet fabriqué. Si cet identifiant n'est pas dans la liste de la fenêtre : recherche par le nom, puis par l'objet fabriqué (GetRecipeSchematic outputItemID).
+- Aucune écriture dans les cadres du jeu, aucun filtre, aucune zone de recherche : le bouton « Créer » reste sûr (aucune souillure).
+- /drop debug : ligne « sélection de recette (3.5.14) » (recette, recipeID et sa provenance, appels à OpenRecipe, réponse du jeu, recette affichée, résultat, étapes).
+
+## 3.5.13
+- Window size kept when hiding / showing: the window was built with a frame scale equal to the saved size, while the size is carried by the tiles since 3.3.12: the two mechanisms could disagree and the window could come back to the default size after hiding and showing. Now the window is always built at frame scale 1 with the tiles at the saved size, and every show checks the saved size, columns and list width and restores them if anything changed them (top-left corner kept). The size is still saved as soon as you resize.
+- Position kept: the "window back in view" repair no longer forgets the saved position when the window has no rectangle yet right after being shown; it first puts it back at the saved position, and only falls back to the screen centre if that position is itself off-screen.
+- Skinning tile (and Herbalism, Fishing): skill lines read from the game, parent line first (before, the first line found could be a child line); the line list is rebuilt while it is empty; if a line does not open the right profession, the next one is tried (then 393 / 182 / 356). "Already open on this profession → close" now compares the profession name (parent or child). A quick double click no longer opens and then closes the window. The profession spell button (Smelting, etc.) left on another tile is put away when the tile's own secure button is placed: never two secure buttons at once.
+- /drop debug: "Clics des cases (3.5.13)" line with the tile under the secure button, the profession spell button, the profession shown in the window and, for each gathering profession, the lines tried and the result; Layout line "taille mémorisée (3.5.13)".
+
+---
+
+- Taille de la fenêtre conservée en la masquant / affichant : la fenêtre était construite avec une échelle de cadre égale à la taille mémorisée, alors que la taille passe par les cases depuis 3.3.12 : les deux mécanismes pouvaient se contredire et la fenêtre revenir à la taille par défaut après masquer / afficher. Désormais la fenêtre est toujours construite à l'échelle 1 avec les cases à la taille mémorisée, et chaque affichage vérifie la taille, les colonnes et la largeur de liste mémorisées et les repose si quelque chose les a changées (coin haut-gauche conservé). La taille reste enregistrée dès le redimensionnement.
+- Position conservée : la réparation « panneau remis en vue » n'oublie plus la position mémorisée quand la fenêtre n'a pas encore de rectangle juste après l'affichage ; elle la repose d'abord à la position mémorisée, et ne passe au centre de l'écran que si cette position est elle-même hors écran.
+- Case Dépeçage (et Herboristerie, Pêche) : lignes de compétence lues dans le jeu, la ligne parente d'abord (avant : la première trouvée, parfois une ligne « enfant ») ; liste refaite tant qu'elle est vide ; si une ligne n'ouvre pas le bon métier, la suivante est essayée (puis 393 / 182 / 356). « Déjà ouverte sur ce métier → fermer » compare maintenant le nom du métier (parent ou enfant). Un double clic rapide n'ouvre plus puis ne referme plus la fenêtre. Le bouton de sort des métiers (Fondre, etc.) resté sur une autre case est rangé quand le bouton sécurisé de la case est posé : jamais deux boutons sécurisés à la fois.
+- /drop debug : ligne « Clics des cases (3.5.13) » avec la case sous le bouton sécurisé, le bouton de sort des métiers, le métier affiché dans la fenêtre et, pour chaque métier de récolte, les lignes essayées et le résultat ; ligne Disposition « taille mémorisée (3.5.13) ».
+
+## 3.5.12
+- PvP, weapon (melee, ranged, feral) and Defense tiles: a click simply opens the Character frame. The game runs "/click CharacterMicroButton" through the secure button placed over the tile, out of combat. The search for and switching of the PvP / Skills tabs is removed (it did not work on Forever), along with its chat messages, the hooks on the sheet's tabs and the related debug lines. Tooltip: "Clic : fiche du personnage".
+- Level tile: unchanged (opens or closes the Character frame).
+- Gathering tiles (Skinning, Herbalism, Fishing): on Forever they have their own profession window. A click opens it (C_TradeSkillUI.OpenTradeSkill; skill line read from the game, otherwise 393 / 182 / 356) and closes it if it is already open. Fishing no longer casts. Tooltip: "Clic : ouvrir le métier". Crafting professions and Mining (Smelting) keep their secure spell button.
+- "N prêts" badge: Skinning, Herbalism and Fishing are now included when their window has recipes (for example Skinning's "Chaise du camp").
+- Still no taint: no ToggleCharacter, ShowUIPanel or spell cast from the addon's code; the secure button's settings are only changed out of combat.
+- /drop debug: a single "Clics des cases (3.5.12)" line.
+
+---
+
+- Cases JcJ, armes (mêlée, distance, farouche) et Défense : un clic ouvre simplement la fiche du personnage. Le jeu exécute « /click CharacterMicroButton » par le bouton sécurisé posé sur la case, hors combat. La recherche et le changement des onglets JcJ / Compétences sont retirés (ils ne marchaient pas sur Forever), avec leurs messages dans le chat, les crochets sur les onglets de la fiche et les lignes de debug associées. Infobulle : « Clic : fiche du personnage ».
+- Case Niveau : inchangée (ouvre ou ferme la fiche).
+- Cases des métiers de récolte (Dépeçage, Herboristerie, Pêche) : sur Forever, elles ont leur propre fenêtre de métier. Un clic l'ouvre (C_TradeSkillUI.OpenTradeSkill ; ligne de compétence lue dans le jeu, sinon 393 / 182 / 356) et la referme si elle est déjà ouverte. La Pêche ne se lance plus. Infobulle : « Clic : ouvrir le métier ». Les métiers de fabrication et le Minage (Fondre) gardent leur bouton de sort sécurisé.
+- Pastille « N prêts » : Dépeçage, Herboristerie et Pêche sont pris en compte quand leur fenêtre a des recettes (par exemple « Chaise du camp » au Dépeçage).
+- Toujours aucune souillure : ni ToggleCharacter, ni ShowUIPanel, ni lancer de sort depuis le code de l'addon ; les réglages du bouton sécurisé ne changent que hors combat.
+- /drop debug : une seule ligne « Clics des cases (3.5.12) ».
+
+## 3.5.11
+- Level tile: a click opens or closes the Character frame. The game itself runs "/click CharacterMicroButton" through a secure button placed over the tile on hover, out of combat.
+- Fishing tile: a click casts Fishing (secure spell button; the localized spell name is read from its ID, otherwise "Pêche" / "Fishing").
+- Weapon skill tiles (melee, ranged, feral) and Defense: a click opens the Character frame on its Skills tab, with the same secure macro as the PvP tab.
+- PvP and Skills tabs are now recognised automatically, read-only and without running any game script: from their icon (honor icon = PvP; "jack of all trades" icon, otherwise the stats icon = Skills), their fields, the tooltip seen on hover or your own click (remembered). The macro can only click a tab that is, or contains, a named button. Otherwise the sheet opens and you click the tab yourself.
+- Hint messages ("clique sur l'onglet…") are shown only once per session, no longer on every click.
+- Tooltips only advertise clicks that work: "Clic : fiche du personnage", "Clic : pêcher", "Clic : onglet Compétences", and "Clic : ouvrir le métier" for professions with a window (Mining = Smelting). Skinning and Herbalism have no click action and show no click line.
+- /drop debug: for each side tab, its icon, what it was recognised as and whether /click is possible, plus every named button under the Character frame.
+- Still no taint: no ToggleCharacter, ShowUIPanel or spell cast from the addon's code; the secure buttons' settings are only changed out of combat.
+
+---
+
+- Case Niveau : un clic ouvre ou ferme la fiche du personnage. C'est le jeu qui exécute « /click CharacterMicroButton », par un bouton sécurisé posé sur la case au survol, hors combat.
+- Case Pêche : un clic lance Pêche (bouton de sort sécurisé ; nom du sort lu par son identifiant, sinon « Pêche » / « Fishing »).
+- Cases d'armes (mêlée, distance, farouche) et Défense : un clic ouvre la fiche sur l'onglet Compétences, avec la même macro sécurisée que l'onglet JcJ.
+- Les onglets JcJ et Compétences sont maintenant reconnus automatiquement, en lecture seule et sans exécuter de script du jeu : par leur icône (icône honneur = JcJ ; icône « touche-à-tout », sinon l'icône statistiques = Compétences), leurs champs, l'infobulle vue au survol ou ton propre clic (retenu). La macro ne peut cliquer qu'un onglet qui est, ou contient, un bouton nommé. Sinon, la fiche s'ouvre et tu cliques toi-même sur l'onglet.
+- Les messages d'aide (« clique sur l'onglet… ») ne s'affichent qu'une fois par session, plus à chaque clic.
+- Les infobulles n'annoncent que les clics qui marchent : « Clic : fiche du personnage », « Clic : pêcher », « Clic : onglet Compétences », et « Clic : ouvrir le métier » pour les métiers qui ont une fenêtre (Minage = Fondre). Dépeçage et Herboristerie n'ont pas d'action au clic et n'affichent aucune ligne de clic.
+- /drop debug : pour chaque onglet latéral, son icône, ce qu'il a été reconnu comme et si /click est possible, plus tous les boutons nommés sous la fiche.
+- Toujours aucune souillure : ni ToggleCharacter, ni ShowUIPanel, ni lancer de sort depuis le code de l'addon ; les réglages des boutons sécurisés ne changent que hors combat.
+
+## 3.5.10
+- Fix (taint): the errors "attempt to compare a secret number value (execution tainted by 'Dropamine')" when pressing C or when the mouse leaves the player health bar came from 3.5.8, which opened the Character frame from the addon's own code. Fields written then (lockShow of the health bar) stayed tainted for the whole session. A /reload clears them, and since 3.5.9 the addon never opens the sheet itself.
+- Audit: Dropamine no longer runs any script of the Character frame tabs. The PvP tab is no longer clicked by the addon, and its tooltip is no longer forced open. The tooltip is read passively when you hover a tab, and the tab is learned when you click it yourself; both are read-only hooks. That tab is remembered and then clicked by the secure macro when it is a named button. Otherwise the sheet opens and a short message asks you to click the PvP tab once.
+- Audit result: no global or Blizzard function is replaced (only post-hooks), no SetScript on game frames, no SetCVar, no UIPanelWindows change, and the panel is never anchored to the Character frame (its position is only read).
+
+---
+
+- Correctif (souillure) : les erreurs « attempt to compare a secret number value (execution tainted by 'Dropamine') » en appuyant sur C ou en quittant la barre de vie du joueur venaient de la 3.5.8, qui ouvrait la fiche depuis le code de l'addon. Les champs écrits à ce moment-là (lockShow de la barre de vie) restaient souillés toute la session. Un /reload les efface, et depuis la 3.5.9 l'addon n'ouvre plus jamais la fiche lui-même.
+- Audit : Dropamine n'exécute plus aucun script des onglets de la fiche. L'onglet JcJ n'est plus cliqué par l'addon et son infobulle n'est plus ouverte de force. L'infobulle est lue passivement au survol, et l'onglet est appris quand tu cliques toi-même dessus ; ce sont deux crochets en lecture seule. L'onglet est retenu, puis cliqué par la macro sécurisée s'il s'agit d'un bouton nommé. Sinon, la fiche s'ouvre et un court message te demande de cliquer une fois sur l'onglet JcJ.
+- Résultat de l'audit : aucune globale ni fonction du jeu remplacée (seulement des post-crochets), aucun SetScript sur les cadres du jeu, aucun SetCVar, UIPanelWindows jamais modifié, et le panneau n'est jamais ancré à la fiche (sa position est seulement lue).
+
+## 3.5.9
+- Fix: clicking the PvP tile no longer triggers the Lua error "attempt to compare a secret number value (execution tainted by 'Dropamine')". The addon itself opened the Character frame (ToggleCharacter), which tainted the game's own opening code. The Character frame is now opened by the game: out of combat, hovering the PvP tile places a secure button over it that runs "/click CharacterMicroButton", then clicks the PvP tab when that tab is a named button. If the sheet is already open, only the tab is switched. With no secure way to open it, a short hint is shown: "ouvre la fiche (C), puis clique à nouveau sur la case JcJ".
+- In combat: nothing is opened, just a short message.
+- Review of every open path: no more ToggleCharacter, ShowUIPanel or spell cast from the addon's own code. Profession tiles and recipe toasts already use secure buttons, and the direct call into the Professions recipe list is removed (C_TradeSkillUI.OpenRecipe is kept).
+- /drop debug: the "Onglet JcJ de la fiche" line shows the secure button, the tab used by /click and the last path taken.
+
+---
+
+- Correctif : un clic sur la case JcJ ne déclenche plus l'erreur Lua « attempt to compare a secret number value (execution tainted by 'Dropamine') ». L'addon ouvrait lui-même la fiche du personnage (ToggleCharacter), ce qui souillait l'ouverture du jeu. La fiche est maintenant ouverte par le jeu : hors combat, au survol de la case JcJ, un bouton sécurisé la recouvre et lance « /click CharacterMicroButton », puis clique sur l'onglet JcJ quand cet onglet est un bouton nommé. Si la fiche est déjà ouverte, seul l'onglet change. Sans moyen sécurisé de l'ouvrir, un court message s'affiche : « ouvre la fiche (C), puis clique à nouveau sur la case JcJ ».
+- En combat : rien n'est ouvert, juste un court message.
+- Revue de toutes les ouvertures : plus aucun ToggleCharacter, ShowUIPanel ni lancer de sort depuis le code de l'addon. Les cases de métier et les toasts de recette passent déjà par des boutons sécurisés, et l'appel direct à la liste des recettes de la fenêtre Métiers est retiré (C_TradeSkillUI.OpenRecipe est conservé).
+- /drop debug : la ligne « Onglet JcJ de la fiche » indique le bouton sécurisé, l'onglet utilisé par /click et le dernier chemin suivi.
+
+## 3.5.8
+- Fix: the "N prêts" badge and the craftable recipes in profession tooltips are back on WoW Forever. Since 3.5.0 the profession window was only read through the old API (GetTradeSkillInfo), which this client does not have: nothing was read, so no badge, and the tooltip kept asking to open the profession window. Recipes are now read from the modern Professions window (C_TradeSkillUI): learned recipes, skill-up colour (grey when the game says it no longer gives points), required reagents and the craftable count. Windows of other players, guild or NPC crafting are ignored.
+- Profession tiles ("Clic : ouvrir le métier") and recipe toasts: the modern Professions window is now recognised (no second cast that would close it), and the recipe is selected with the game's own C_TradeSkillUI.OpenRecipe.
+- /drop debug: new "Lecture des métiers (3.5.8)" line (API used, last window read, result).
+
+---
+
+- Correctif : la pastille « N prêts » et les recettes réalisables dans les infobulles des métiers reviennent sur WoW Forever. Depuis la 3.5.0, la fenêtre du métier n'était lue que par l'ancienne API (GetTradeSkillInfo), absente de ce client : rien n'était lu, donc pas de pastille, et l'infobulle demandait sans fin d'ouvrir la fenêtre du métier. Les recettes sont maintenant lues dans la fenêtre Métiers moderne (C_TradeSkillUI) : recettes apprises, couleur de progression (gris quand le jeu dit qu'elle ne donne plus de points), composants obligatoires et nombre réalisable. Les fenêtres d'un autre joueur, de guilde ou d'un PNJ sont ignorées.
+- Cases de métier (« Clic : ouvrir le métier ») et toasts de recette : la fenêtre Métiers moderne est reconnue (pas de second lancer qui la refermerait), et la recette est sélectionnée par la fonction du jeu C_TradeSkillUI.OpenRecipe.
+- /drop debug : nouvelle ligne « Lecture des métiers (3.5.8) » (API utilisée, dernière fenêtre lue, résultat).
+
+## 3.5.7
+- Fix: clicking the PvP tile no longer says "fenêtre JcJ introuvable". On WoW Forever the PvP window (season, rank, rank points, rewards) is a tab of the Character frame. The click now opens the Character frame (it never closes it if it is already open) and selects its PvP tab. The tab is recognised by its text, its tooltip or, as a last resort, by trying each tab until the sheet's title shows "JcJ" or "points de rang" appears. The tab it finds is remembered for the session.
+- In combat nothing is touched: a short message, and the tab opens when combat ends.
+- /drop debug: new "Onglet JcJ de la fiche" section (tabs found, the tab chosen and how it was checked).
+
+---
+
+- Correctif : un clic sur la case JcJ ne répond plus « fenêtre JcJ introuvable ». Sur WoW Forever, la fenêtre JcJ (saison, rang, points de rang, récompenses) est un onglet de la fiche du personnage. Le clic ouvre maintenant la fiche (sans la refermer si elle est déjà ouverte) et choisit son onglet JcJ. L'onglet est reconnu par son texte, son infobulle ou, en dernier recours, en essayant chaque onglet jusqu'à ce que le titre de la fiche affiche « JcJ » ou que « points de rang » apparaisse. L'onglet trouvé est retenu pour la session.
+- En combat, rien n'est touché : message court, l'onglet s'ouvre à la fin du combat.
+- /drop debug : nouvelle section « Onglet JcJ de la fiche » (onglets trouvés, onglet retenu et comment il a été vérifié).
+
+## 3.5.6
+- Fix: the panel could stay invisible with /drop and the minimap button (no Lua error). Its default position was anchored to the Character frame, which has no position on screen until it has been opened once (or when another addon such as FlareUI or AtlasLoot moves or hides it). The panel is now always placed on the screen itself: next to the Character frame only when that frame is open, otherwise centred, and always kept on screen.
+- Fix: a panel that was "open" but not actually visible is now opened again (and brought back into view) by the next click, instead of being closed.
+- /drop debug: the "Ouverture protégée" line now shows whether the panel is on screen and what it is anchored to.
+
+---
+
+- Correctif : le panneau pouvait rester invisible avec /drop et le bouton de minicarte (sans erreur Lua). Sa place par défaut était ancrée sur la fiche du personnage, qui n'a aucune position à l'écran tant qu'elle n'a pas été ouverte une fois (ou quand un autre addon, FlareUI ou AtlasLoot, la déplace ou la cache). Le panneau est désormais toujours placé sur l'écran lui-même : à côté de la fiche seulement si elle est ouverte, sinon au centre, et toujours retenu à l'écran.
+- Correctif : un panneau « ouvert » mais pas réellement visible est rouvert (et remis en vue) au clic suivant, au lieu d'être fermé.
+- /drop debug : la ligne « Ouverture protégée » indique si le panneau est à l'écran et sur quoi il est ancré.
+
+## 3.5.5
+- Toasts de recette : « Clic : ouvrir la recette » fonctionne. Le clic ouvre la fenêtre du métier et sélectionne la recette (catégories repliées dépliées, filtres remis à « Tout » seulement si la recette restait cachée). Sélection en un seul passage borné : aucune boucle ouvre / ferme, jamais deux lancers du sort, rien sur une fenêtre déjà ouverte.
+- Cases de métier : « Clic : ouvrir le métier » réactivé (désactivé en 3.5.0), mêmes garde-fous ; option /drop ouvrir on|off.
+- Clics sécurisés compatibles avec le réglage « Action à l'appui de la touche » (ActionButtonUseKeyDown) des clients récents : c'est probablement ce qui rendait ces clics muets.
+- Case JcJ : « Clic : fenêtre JcJ » essaie l'onglet Honneur puis les autres fenêtres JcJ, vérifie que l'une s'est ouverte, sinon le dit dans le chat ; en combat, ouverture à la fin du combat.
+- Infobulles : retrait de « Clic : détail à droite » (plus de volet de détail) ; « Maj + clic : partager » n'apparaît que si l'option est active.
+- Ouverture du panneau protégée (bouton de minicarte, /drop) : une erreur n'est plus muette (message dans le chat, détail dans /drop debug) et le panneau s'affiche quand même, remis en vue s'il était invisible ou hors écran. Vise le cas « le panneau ne s'ouvre pas avec AtlasLoot ».
+- Bouton de minicarte : un glisser relâché hors du bouton n'avale plus le clic suivant.
+- Correctif : /drop hit lisait une variable globale indéfinie.
+
+## 3.5.4
+- Records : plus d'enchaînement de « Nouveau record ! » à chaque point. Le record de session ne s'annonce qu'à des paliers croissants (25, 50, 100, 200…) et jamais sous 25 points ; le record horaire une seule fois par heure.
+- Niveaux pairs : notif « Nouveaux sorts à apprendre » sous celle du level-up, avec un son.
+
+## 3.5.3
+- Performance : plus de micro-gels au survol (cases, barre, infobulles d'unité et d'objet).
+- Rangs de compétence lus au plus une fois par seconde pour les infobulles (relus aussitôt après un gain, un niveau ou un changement d'équipement), au lieu d'une relecture complète à chaque ligne.
+- Infobulle de case mémorisée (au plus un calcul par seconde, recalculée dès que la grille change).
+- Infobulle de créature : mêmes lignes réutilisées pendant 1 s quand le jeu la rafraîchit.
+- « À apprendre bientôt » et recettes apprises : résultats mémorisés au lieu d'être recalculés à chaque survol.
+- Normalisation des noms mémorisée (des milliers de remplacements de texte en moins par infobulle).
+- Passer d'une case à l'autre ne relance plus le repeint du panneau.
+- Correctif : la lueur dorée du passage de niveau (toast et case Niveau) fait maintenant tout le tour, sur les 4 côtés, dans les 3 thèmes.
+
+## 3.5.2
+- Correctif : la barre Niveau total disparaissait au login alors que l'option était cochée.
+- Correctif : erreur Lua « secret string » à l'ouverture de la fenêtre JcJ (textes protégés ignorés).
+
+
 All notable changes to Dropamine (formerly OSRS Total Level) are documented here. The 3.3.x notes are taken from the addon's in-tree README and test headers. Command names below use `/drop` (also `/dropamine`).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## [3.5.1] — 2026-11-17
+
+### Added
+- **Segmented total-level bar.** The thin “Niveau total” gauge (all themes and layouts) is split into three sources, in native order: character level (muted red `#9D473A`), weapon skills + Defence including Feral Combat (muted blue `#54689A`), and professions, primary and secondary (muted green `#4F7F3E`). Colors are sampled from the three pillars of the total-level icon (`Media/SkillsTab`), desaturated ~40 %, slightly darkened, and warmed with a parchment-gold tint. Hovering the bar shows each source as points / max. No click action.
+- **Toast direction in free position.** Edit mode → Notifications now adds “Sens des notifs”: Vers le haut (default when the toasts are freely placed — the newest stays at the anchor, older ones move up), Vers le bas (previous downward stack), and Sur place (a card pile at the anchor, 4 px up and right, at most 3 visible, slightly faded and darkened by depth). Saved in the profile (`dropDir`). Anchored above or below the panel is unchanged. `/drop drops sens haut|bas|place`.
 
 ## [3.5.0] — 2026-11-17
 

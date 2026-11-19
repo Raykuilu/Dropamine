@@ -10,6 +10,7 @@
 -- (Translation / Alpha / Scale). Aucun cadre natif touché. Le report des
 -- toasts en fin de combat est inchangé (on n'agit qu'à leur disparition).
 local ADDON, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local UI = ns.UI
 local H = UI._H
 local V = ns.View
@@ -40,12 +41,12 @@ local function TwoTone(l) local NL = ns.NativeLook return (NL and NL.TwoTone and
 -- même texte que la ligne « Compte dans le total » du volet (UI.lua)
 function C.ContributionLine(d)
   if not d then return "" end
-  if d.kind == "stat" then return "Non inclus dans le total (caractéristique)." end
-  if d.excludedMonte then return "Affichée mais non incluse : aucun plafond de Monte n'est documenté." end
+  if d.kind == "stat" then return Tr["Non inclus dans le total (caractéristique)."] end
+  if d.excludedMonte then return Tr["Affichée mais non incluse : aucun plafond de Monte n'est documenté."] end
   if d.combatTile and d.skillName and d.skillName ~= d.name then
-    return "Compte dans le total : +" .. tostring(d.current or 0) .. "  (" .. d.skillName .. ")"
+    return Tr["Compte dans le total : +"] .. tostring(d.current or 0) .. "  (" .. d.skillName .. ")"
   end
-  if d.inTotal then return "Compte dans le total : +" .. tostring(d.current or 0) end
+  if d.inTotal then return Tr["Compte dans le total : +"] .. tostring(d.current or 0) end
   return ""
 end
 
@@ -55,7 +56,7 @@ local function HistoryLine(id)
   local ok, series = pcall(Q.Series, id)
   if not ok or type(series) ~= "table" or #series < 2 then return nil end
   local delta = series[#series].value - series[1].value
-  return #series .. " derniers jours : " .. ((delta >= 0) and "+" or "") .. delta
+  return #series .. Tr[" derniers jours : "] .. ((delta >= 0) and "+" or "") .. delta
 end
 
 -- Modèle : { title = , lines = { { text, r, g, b, wrap, header = bool } } }
@@ -68,18 +69,18 @@ function C.TooltipModel(d)
   local NL = ns.NativeLook
   if d.kind == "total" then
     local snap = UI.snapshot
-    m.title = "Niveau total"
+    m.title = Tr["Niveau total"]
     local total = snap and (snap.total or snap.ficTotal) or 0
     local tmax = snap and (snap.totalMax or snap.ficMax) or ns.TOTAL_MAX or 2460
-    add("Total " .. tostring(total) .. " / " .. tostring(tmax), 1, 1, 1)
-    add(ns.TOTAL_SHORT_FR, 1, 1, 1, true)
+    add(Tr["Total "] .. tostring(total) .. " / " .. tostring(tmax), 1, 1, 1)
+    add(Tr[ns.TOTAL_SHORT_FR], 1, 1, 1, true)
     local det = {}
     for _, b in ipairs(snap and snap.breakdown or {}) do det[#det + 1] = TwoTone(b.name .. " : +" .. tostring(b.value)) end
-    if #det > 0 then header("Détail") for _, l in ipairs(det) do add(l, 1, 1, 1) end end
+    if #det > 0 then header(Tr["Détail"]) for _, l in ipairs(det) do add(l, 1, 1, 1) end end
     local gain, glist = ns.DailyGains and ns.DailyGains(snap)
     if gain and gain > 0 then
-      header("Aujourd'hui")
-      add(TwoTone("Total : +" .. tostring(gain)), 1, 1, 1)
+      header(Tr["Aujourd'hui"])
+      add(TwoTone(Tr["Total : +"] .. tostring(gain)), 1, 1, 1)
       for _, e in ipairs(glist or {}) do add(e.name .. " +" .. tostring(e.gain), GAIN_GREEN[1], GAIN_GREEN[2], GAIN_GREEN[3]) end
     end
     local hl = HistoryLine(nil)
@@ -91,25 +92,25 @@ function C.TooltipModel(d)
   local cur = N(d.current) or 0
   -- barre du volet → ligne « rang / max » (XP pour le Niveau)
   if d.placeholder then
-    add(d.notLearnedTag or "Pas encore appris", 0.62, 0.55, 0.45)
+    add(d.notLearnedTag or Tr["Pas encore appris"], 0.62, 0.55, 0.45)
   elseif d.kind == "level" then
     if cap <= 0 then cap = ns.GetLevelCap and ns.GetLevelCap() or 60 end
-    add("Niveau " .. cur .. " / " .. cap, 1, 1, 1)
+    add(Tr["Niveau "] .. cur .. " / " .. cap, 1, 1, 1)
     local xp = UI.LevelBarXP and UI:LevelBarXP(cur, cap) or nil
     if xp and N(xp.max) and xp.max > 0 then
       local pct = math.floor((xp.cur or 0) / xp.max * 100 + 0.5)
-      add("XP " .. tostring(xp.cur) .. " / " .. tostring(xp.max) .. " (" .. pct .. " %)" .. ((N(xp.rested) and xp.rested > 0) and ("  ·  reposé " .. tostring(xp.rested)) or ""), 0.8, 0.8, 0.8)
+      add("XP " .. tostring(xp.cur) .. " / " .. tostring(xp.max) .. " (" .. pct .. " %)" .. ((N(xp.rested) and xp.rested > 0) and (Tr["  ·  reposé "] .. tostring(xp.rested)) or ""), 0.8, 0.8, 0.8)
     end
   elseif d.kind == "stat" then
     add((d.name or "") .. "  " .. tostring(cur), 1, 1, 1)
   elseif cap > 0 then
-    add("Rang " .. cur .. " / " .. cap, 1, 1, 1)
+    add(Tr["Rang "] .. cur .. " / " .. cap, 1, 1, 1)
   else
     add(tostring(cur), 1, 1, 1)
   end
   -- description
   local desc
-  if d.placeholder then desc = "|cff808080" .. tostring(d.placeholderNote or "Emplacement libre.") .. "|r"
+  if d.placeholder then desc = "|cff808080" .. tostring(d.placeholderNote or Tr["Emplacement libre."]) .. "|r"
   else desc = UI.DetailDescriptionFor and UI:DetailDescriptionFor(d, nil) or "" end
   local isCombat = (d.kind == "melee" or d.kind == "ranged" or d.kind == "feral" or d.kind == "defense")
   local sections = {}
@@ -129,7 +130,7 @@ function C.TooltipModel(d)
     end
     local extra = UI.DetailExtraLines and UI:DetailExtraLines(d) or ""
     for _, l in ipairs(split(extra)) do prog[#prog + 1] = TwoTone(l) end
-    sec("Progression", prog)
+    sec(Tr["Progression"], prog)
     if isCombat then
       local cached = NL and NL.Cached and NL.Cached(d.skillName or d.name)
       if cached then
@@ -146,13 +147,13 @@ function C.TooltipModel(d)
           local ls = split(stx)
           table.remove(ls, 1)
           for i = 1, #ls do ls[i] = TwoTone(ls[i]) end
-          sec("Statistiques", ls)
+          sec(Tr["Statistiques"], ls)
         end
       end
     end
     if ns.Craft and ns.Craft.DetailText and d.id then
       local okC, ct = pcall(ns.Craft.DetailText, d.id)
-      if okC and ct and ct ~= "" then sec("Recettes", split(ct)) end
+      if okC and ct and ct ~= "" then sec(Tr["Recettes"], split(ct)) end
     end
   end
   for _, l in ipairs(split(desc)) do add(l, 1, 1, 1, true) end
@@ -169,14 +170,30 @@ function C.TooltipModel(d)
 end
 
 C.HINT = "Clic droit : objectif  ·  Maj + clic : partager"
-function C.FillTooltip(tt, d, tile)
+C.HINT_NOSHARE = "Clic droit : objectif"
+-- 3.5.3 : modèle d'infobulle mémorisé par case (au plus un calcul par seconde,
+-- recalculé aussitôt si la grille a été relue) : plus de reconstruction
+-- complète à chaque passage de la souris.
+C.TIP_TTL = 1
+C._tipMemo = setmetatable({}, { __mode = "k" })
+function C.ModelFor(d)
+  if type(d) ~= "table" then return C.TooltipModel(d) end
+  local now = ns.NowSec and ns.NowSec() or 0
+  local e = C._tipMemo[d]
+  if e and e.snap == UI.snapshot and (now - e.t) < C.TIP_TTL then return e.m end
   local m = C.TooltipModel(d)
+  C._tipMemo[d] = { snap = UI.snapshot, t = now, m = m }
+  return m
+end
+function C.FillTooltip(tt, d, tile)
+  local m = C.ModelFor(d)
   tt:SetText(m.title, GOLD[1], GOLD[2], GOLD[3])
   for _, l in ipairs(m.lines) do tt:AddLine(l[1], l[2], l[3], l[4], l[5]) end
   if d and d.kind == "total" and ns.QoL and ns.QoL.AltTooltip then pcall(ns.QoL.AltTooltip, tt) end
   if d and d.kind ~= "total" and not d.placeholder then
     tt:AddLine(" ", 1, 1, 1)
-    tt:AddLine(C.HINT, 0.6, 0.6, 0.6)
+    -- 3.5.5 : « Maj + clic : partager » seulement si l'option est active
+    tt:AddLine(Tr[(ns.Opt and not ns.Opt("partage")) and C.HINT_NOSHARE or C.HINT], 0.6, 0.6, 0.6)
   end
   C.lastTooltip = m
   return m

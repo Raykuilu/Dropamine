@@ -8,7 +8,8 @@ if type(ns) ~= "table" then
 end
 _G.Dropamine = ns
 ns.ADDON = ADDON
-ns.VERSION = "3.3.18"
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
+ns.VERSION = "3.5.19"
 
 
 -- v2.5.0 : valeurs « secrètes » de Forever (UnitStat, UnitXP… en combat).
@@ -239,14 +240,14 @@ function ns.RankStatus(d, cur, cap)
   if kind == "level" then
     local lvl = ns.N(d.current) or PlayerLevel() or 0
     local lcap = ns.GetLevelCap and ns.GetLevelCap() or 60
-    if lvl >= lcap then return { col = ns.GOLD_NEUTRAL, state = "max", note = "Niveau maximum atteint." } end
+    if lvl >= lcap then return { col = ns.GOLD_NEUTRAL, state = "max", note = Tr["Niveau maximum atteint."] } end
     local xp = ns.LevelXPInfo()
     if not xp then return nil end
     local pct = xp.cur / xp.max
     local col = (pct < t.redBelow) and t.red or ((pct <= t.greenAbove) and t.yellow or t.green)
-    local note = string.format("XP : %d / %d (%d %%)", xp.cur, xp.max, math.floor(pct * 100))
+    local note = string.format(Tr["XP : %d / %d (%d %%)"], xp.cur, xp.max, math.floor(pct * 100))
     if xp.rested and xp.rested > 0 then
-      note = note .. string.format("\nXP reposée : %d (%d %% du niveau)", xp.rested, math.floor(xp.rested / xp.max * 100 + 0.5))
+      note = note .. string.format(Tr["\nXP reposée : %d (%d %% du niveau)"], xp.rested, math.floor(xp.rested / xp.max * 100 + 0.5))
     end
     return { col = col, state = "xp", pct = pct, note = note, xp = xp }
   end
@@ -254,29 +255,29 @@ function ns.RankStatus(d, cur, cap)
   if tiers and (kind == "profession" or kind == "secondary") and cap > 0 then
     local final = ns.PROF_FINAL_CAP
     if cap >= final then
-      if cur >= final then return { col = ns.GOLD_NEUTRAL, state = "max", note = "Rang maximum (" .. final .. ")." } end
-      return { col = t.yellow, state = "final", note = string.format("encore %d points avant %d", final - cur, final) }
+      if cur >= final then return { col = ns.GOLD_NEUTRAL, state = "max", note = Tr["Rang maximum ("] .. final .. ")." } end
+      return { col = t.yellow, state = "final", note = string.format(Tr["encore %d points avant %d"], final - cur, final) }
     end
     local nx = tiers[cap]
     local atCap = cur >= cap
     if not nx or not nx.skill then
-      local why = "Seuil du rang suivant non documenté par WoW Forever."
-      if nx and nx.level then why = why .. " (niveau " .. nx.level .. " requis)" end
+      local why = Tr["Seuil du rang suivant non documenté par WoW Forever."]
+      if nx and nx.level then why = why .. Tr[" (niveau "] .. nx.level .. Tr[" requis)"] end
       return { col = atCap and t.red or t.yellow, state = atCap and "blocked" or "unknown", note = why }
     end
     local lvl = PlayerLevel()
     local missSkill = math.max(0, nx.skill - cur)
     local missLevel = (nx.level and lvl and lvl < nx.level) and nx.level or nil
     if missSkill == 0 and not missLevel then
-      local note = ns.RANK_TEXT.available
-      if nx.src == "livre" then note = "Rang supérieur disponible (" .. nx.rank .. " : livre)" end
-      if nx.src == "quête" then note = "Rang supérieur disponible (" .. nx.rank .. " : quête)" end
+      local note = Tr[ns.RANK_TEXT.available]
+      if nx.src == "livre" then note = Tr["Rang supérieur disponible ("] .. Tr[nx.rank] .. Tr[" : livre)"] end
+      if nx.src == "quête" then note = Tr["Rang supérieur disponible ("] .. Tr[nx.rank] .. Tr[" : quête)"] end
       return { col = t.green, state = "available", note = note }
     end
     local parts = {}
-    if missSkill > 0 then parts[#parts + 1] = string.format("encore %d points de métier", missSkill) end
-    if missLevel then parts[#parts + 1] = string.format("niveau %d requis", missLevel) end
-    local note = nx.rank .. " : " .. table.concat(parts, " et ")
+    if missSkill > 0 then parts[#parts + 1] = string.format(Tr["encore %d points de métier"], missSkill) end
+    if missLevel then parts[#parts + 1] = string.format(Tr["niveau %d requis"], missLevel) end
+    local note = Tr[nx.rank] .. Tr[" : "] .. table.concat(parts, Tr[" et "])
     -- Rouge : bloqué au maximum actuel sans rang apprenable (il manque des niveaux).
     if atCap and missLevel then return { col = t.red, state = "blocked", note = note } end
     return { col = t.yellow, state = "missing", note = note }
@@ -285,8 +286,8 @@ function ns.RankStatus(d, cur, cap)
     -- Forever ne documente pas la règle toucher / compétence : on compare
     -- seulement le rang au maximum actuel lu en jeu (aucun % de toucher annoncé).
     local gap = cap - cur
-    if gap <= 0 then return { col = t.green, state = "weaponMax", note = "Au maximum actuel (" .. cap .. ")." } end
-    local note = string.format("encore %d points avant ton maximum actuel (%d)", gap, cap)
+    if gap <= 0 then return { col = t.green, state = "weaponMax", note = Tr["Au maximum actuel ("] .. cap .. ")." } end
+    local note = string.format(Tr["encore %d points avant ton maximum actuel (%d)"], gap, cap)
     if gap >= ns.WEAPON_RED_GAP then return { col = t.red, state = "weaponFar", note = note } end
     return { col = t.yellow, state = "weaponBelow", note = note }
   end
@@ -305,13 +306,56 @@ end
 -- Icône d'une tuile / d'une compétence (pour les drops : jamais le portrait).
 ns.LEVEL_ICON = "Interface\\Icons\\INV_Misc_Book_11"
 
-function ns.IconForSkillName(name, kind)
+-- 3.5.18 : icône absente = nil, 0, chaîne vide ou point d'interrogation (134400)
+function ns.IconMissing(icon)
+  if icon == nil or icon == 0 or icon == "" then return true end
+  if icon == 134400 then return true end
+  if type(icon) == "string" then
+    local l = icon:lower():gsub("/", "\\")
+    if l:find("inv_misc_questionmark", 1, true) then return true end
+  end
+  if ns.IsSecret and ns.IsSecret(icon) then return true end
+  return false
+end
+local WEAPON_WORDS = { "hache", "masse", "epee", "dague", "baton", "arc", "arbalete", "arme", "baguette", "pugilat", "hast",
+  "axe", "mace", "sword", "dagger", "stave", "staff", "bow", "gun", "crossbow", "thrown", "wand", "fist", "polearm", "unarmed", "mains nues" }
+function ns.LooksLikeWeapon(name, header)
+  local h = ns.Fold(header or "")
+  if h == "competences d armes" or h == "weapon skills" or h == "armes" then return true end
+  local n = ns.Fold(name or "")
+  for _, w in ipairs(WEAPON_WORDS) do
+    if n == w or n:find("^" .. w) then return true end
+  end
+  return false
+end
+-- icône d'une compétence : catalogue (nom exact, alias), ligne de compétence,
+-- icônes annexes (Ambidextrie), puis icône générique d'arme, jamais « ? »
+function ns.ResolveSkillIcon(name, header, skillLine)
+  local e = ns.LookupCatalog and ns.LookupCatalog(name)
+  if e and not ns.IconMissing(e.icon) then return e.icon, e.id, "catalogue" end
+  local ln = ns.N(skillLine)
+  if ln and ns.CATALOG_BY_LINE and ns.CATALOG_BY_LINE[ln] then
+    local le = ns.CATALOG_BY_LINE[ln]
+    return le.icon, le.id, "ligne " .. ln
+  end
+  if ln and ns.EXTRA_SKILL_LINES and ns.EXTRA_SKILL_LINES[ln] then return ns.EXTRA_SKILL_LINES[ln], nil, "ligne " .. ln end
+  local x = ns.EXTRA_SKILL_ICONS and ns.EXTRA_SKILL_ICONS[ns.Fold(name or "")]
+  if x then return x, nil, "annexe" end
+  if ns.Style and ns.Style.SkillIdForText then
+    local ok, id = pcall(ns.Style.SkillIdForText, name)
+    local se = ok and id and ns.CATALOG_BY_ID and ns.CATALOG_BY_ID[id]
+    if se and not ns.IconMissing(se.icon) then return se.icon, se.id, "texte" end
+  end
+  if ns.LooksLikeWeapon(name, header) then return ns.WEAPON_FALLBACK_ICON, nil, "arme (générique)" end
+  return nil, nil, "aucune"
+end
+
+function ns.IconForSkillName(name, kind, header, skillLine)
   if kind == "level" or ns.Fold(name or "") == "niveau" then
     return ns.LEVEL_ICON
   end
-  local e = ns.LookupCatalog and ns.LookupCatalog(name)
-  if e and e.icon then return e.icon end
-  return ns.FALLBACK_ICON
+  local icon = ns.ResolveSkillIcon(name, header, skillLine)
+  return icon or ns.FALLBACK_ICON
 end
 
 -- Arme équipée → compétence (emplacements 16 = main, 18 = distance) ----------
@@ -470,13 +514,36 @@ function ns.SkillRankSnapshot()
         name = s.name,
         rank = ns.N(s.rank) or 0,
         max = ns.N(s.max) or 0,
-        icon = ns.IconForSkillName(s.name, nil),
+        icon = ns.IconForSkillName(s.name, nil, s.headerName, s.skillID),
         index = s.index,
       }
     end
   end
+  -- 3.5.3 : la dernière lecture complète sert aussi aux infobulles (cache)
+  if not (ns.InCombat and ns.InCombat()) then
+    ns._rankSnap, ns._rankSnapAt = map, ns.NowSec()
+  end
   return map
 end
+
+-- 3.5.3 : lecture pour les infobulles (survol d'unité, d'objet, de case).
+-- Avant : chaque Scanner.RankOf relisait TOUTES les lignes de compétence
+-- (des dizaines de fois par infobulle → micro-gels). Maintenant : au plus
+-- une lecture par seconde, et une relecture dès qu'un événement de
+-- compétence / niveau / équipement marque le cache comme périmé.
+-- Lecture seule pour l'appelant (table partagée).
+ns.RANK_SNAP_TTL = 1
+function ns.NowSec()
+  if type(GetTime) == "function" then local ok, v = pcall(GetTime) if ok and type(v) == "number" then return v end end
+  return 0
+end
+function ns.SkillRankSnapshotCached()
+  local snap, at = ns._rankSnap, ns._rankSnapAt
+  if snap and at and (ns.NowSec() - at) < ns.RANK_SNAP_TTL then return snap end
+  if snap and ns.InCombat and ns.InCombat() then return snap end   -- valeurs secrètes : on garde la dernière
+  return ns.SkillRankSnapshot()
+end
+function ns.InvalidateRankSnapshot() ns._rankSnapAt = nil end
 
 ns.TOTAL_FORMULA_FR = "Niveau total = niveau du personnage + rangs des 2 métiers principaux + Cuisine + Pêche + Secourisme + les tuiles de combat affichées (Mêlée, 2e tuile de combat, Défense). Mêlée = compétence de l'arme en main principale (emplacement 16) ; si rien n'est équipé, Mains nues ; si le type d'arme est inconnu, meilleure mêlée. 2e tuile selon la classe : Baguettes (Démoniste, Mage, Prêtre), Combat farouche (Druide), arme à distance équipée sinon meilleure compétence à distance connue (Chasseur, Guerrier, Voleur) ; Paladin et Chaman : aucune. Si la compétence n'est pas trouvée, la tuile n'est pas affichée ni comptée. Les caractéristiques sont affichées mais non comptées. La Monte, si elle est apprise, est affichée mais exclue du total (aucun plafond n'est documenté pour Forever). Plafond de comparaison au niveau 60 avec 3 tuiles de combat : 60 + 2×300 + 3×300 + 3×300 = 2460."
 
@@ -821,7 +888,8 @@ local function makeTile(entry, rank, apiMax, extra)
   local t = {
     key = id,
     id = entry.id,
-    name = entry.name,
+    name = ns.CatalogDisplayName(entry),   -- 3.5.19 : nom affiché selon la langue
+    catName = entry.name,                  -- nom FR du catalogue (clés internes)
     section = entry.section,
     kind = entry.kind,
     capKind = entry.capKind,
@@ -858,9 +926,12 @@ local function makeCombatTile(label, kind, entry, live, icon)
   }
   local t = makeTile(entry, live and live.rank or 0, live and live.max or 0, extra)
   t.name = label
-  t.skillName = entry and entry.name or label
+  t.skillName = entry and ns.CatalogDisplayName(entry) or label
   t.kind = kind
-  t.icon = icon or (entry and entry.icon) or ns.FALLBACK_ICON
+  -- 3.5.18 : jamais de « ? » sur une case de combat
+  if ns.IconMissing(icon) then icon = nil end
+  local eIcon = entry and not ns.IconMissing(entry.icon) and entry.icon or nil
+  t.icon = icon or eIcon or ns.WEAPON_FALLBACK_ICON
   t.inTotal = true
   t.horsTotal = false
   t.learned = (ns.N(t.current) or 0) > 0
@@ -897,13 +968,15 @@ function ns.ReadCombatStats()
   ns._combatStats = st
   return st, false
 end
-local function F1(x) return (string.format("%.1f", x):gsub("%.", ",")) end
-local function F2(x) return (string.format("%.2f", x):gsub("%.", ",")) end
+-- 3.5.19 : virgule décimale en français seulement
+local function Dec(s) if ns.IsFrench and ns.IsFrench() then s = s:gsub("%.", ",") end return s end
+local function F1(x) return Dec(string.format("%.1f", x)) end
+local function F2(x) return Dec(string.format("%.2f", x)) end
 local function DmgLines(out, label, mn, mx, speed)
   if not (mn and mx) or mx <= 0 then return end
-  out[#out + 1] = label .. " : " .. math.floor(mn + 0.5) .. " – " .. math.floor(mx + 0.5)
+  out[#out + 1] = label .. Tr[" : "] .. math.floor(mn + 0.5) .. " – " .. math.floor(mx + 0.5)
   if speed and speed > 0 then
-    out[#out + 1] = "Vitesse : " .. F2(speed) .. " s   DPS : " .. F1((mn + mx) / 2 / speed)
+    out[#out + 1] = Tr["Vitesse : "] .. F2(speed) .. Tr[" s   DPS : "] .. F1((mn + mx) / 2 / speed)
   end
 end
 -- kind : "melee" | "feral" | "ranged" | "defense". Texte vide si rien de lisible.
@@ -912,18 +985,18 @@ function ns.CombatStatsText(kind)
   if not st then return "" end
   local out = {}
   if kind == "melee" or kind == "feral" then
-    DmgLines(out, "Dégâts", st.mMin, st.mMax, st.mSpeed)
-    if st.oSpeed and st.oSpeed > 0 then DmgLines(out, "Main gauche", st.oMin, st.oMax, st.oSpeed) end
+    DmgLines(out, Tr["Dégâts"], st.mMin, st.mMax, st.mSpeed)
+    if st.oSpeed and st.oSpeed > 0 then DmgLines(out, Tr["Main gauche"], st.oMin, st.oMax, st.oSpeed) end
   elseif kind == "ranged" then
-    DmgLines(out, "Dégâts", st.rMin, st.rMax, st.rSpeed)
+    DmgLines(out, Tr["Dégâts"], st.rMin, st.rMax, st.rSpeed)
   elseif kind == "defense" then
-    if st.armor then out[#out + 1] = "Armure : " .. math.floor(st.armor + 0.5) end
-    if st.dodge then out[#out + 1] = "Esquive : " .. F2(st.dodge) .. " %" end
-    if st.parry then out[#out + 1] = "Parade : " .. F2(st.parry) .. " %" end
-    if st.block then out[#out + 1] = "Blocage : " .. F2(st.block) .. " %" end
+    if st.armor then out[#out + 1] = Tr["Armure : "] .. math.floor(st.armor + 0.5) end
+    if st.dodge then out[#out + 1] = Tr["Esquive : "] .. F2(st.dodge) .. " %" end
+    if st.parry then out[#out + 1] = Tr["Parade : "] .. F2(st.parry) .. " %" end
+    if st.block then out[#out + 1] = Tr["Blocage : "] .. F2(st.block) .. " %" end
   end
   if #out == 0 then return "" end
-  local head = "|cffffd100Statistiques|r" .. (cached and " |cff808080(avant le combat)|r" or "")
+  local head = Tr["|cffffd100Statistiques|r"] .. (cached and Tr[" |cff808080(avant le combat)|r"] or "")
   return head .. "\n" .. table.concat(out, "\n")
 end
 
@@ -949,7 +1022,7 @@ function ns.ResolveSecondCombat(byName)
     local e = ns.CatalogById(mode)
     local live = ns.LiveForEntry(byName, e)
     if e and Rank(live) > 0 then
-      t = makeCombatTile(live.name or e.name, (mode == "feral") and "feral" or "ranged", e, live, e.icon)
+      t = makeCombatTile(live.name or ns.CatalogDisplayName(e), (mode == "feral") and "feral" or "ranged", e, live, e.icon)
     end
   else
     local req = ns.GetEquippedItemInfo(ns.GetInventorySlot("ranged"))
@@ -972,7 +1045,7 @@ function ns.ResolveSecondCombat(byName)
       end
     end
     if e and live then
-      t = makeCombatTile(live.name or e.name, "ranged", e, live, icon or e.icon)
+      t = makeCombatTile(live.name or ns.CatalogDisplayName(e), "ranged", e, live, icon or e.icon)
       t.equippedTexture = icon
     end
   end
@@ -988,7 +1061,7 @@ function ns.ResolveCombatTiles(byName)
   local defE = ns.CatalogById("defense")
   local defLive = ns.LiveForEntry(byName, defE)
   if defE and defLive and (ns.N(defLive.rank) or 0) > 0 then
-    defense = makeCombatTile("Défense", "defense", defE, defLive, defE.icon)
+    defense = makeCombatTile(Tr["Défense"], "defense", defE, defLive, defE.icon)
     defense._ord = 830
   end
 
@@ -1014,7 +1087,7 @@ function ns.ResolveCombatTiles(byName)
     meleeIcon = meleeE and meleeE.icon
   end
   if meleeE and meleeLive and (ns.N(meleeLive.rank) or 0) > 0 then
-    melee = makeCombatTile("Mêlée", "melee", meleeE, meleeLive, meleeIcon)
+    melee = makeCombatTile(Tr["Mêlée"], "melee", meleeE, meleeLive, meleeIcon)
     melee._ord = 810
     melee.equippedTexture = meleeIcon
   end
@@ -1037,7 +1110,7 @@ local function Placeholder(kind, id, name, icon, cap, ord)
   return {
     key = "slot:" .. id, id = (kind == "secondary") and id or nil, name = name, kind = kind,
     icon = icon, current = 0, apiMax = cap or 0, inTotal = false, horsTotal = false, learned = false,
-    placeholder = true, placeholderNote = ns.PLACEHOLDER_NOTE[kind], _ord = ord,
+    placeholder = true, placeholderNote = Tr[ns.PLACEHOLDER_NOTE[kind]], _ord = ord,
     combatTile = (kind == "melee" or kind == "ranged" or kind == "defense") or nil,
   }
 end
@@ -1045,7 +1118,7 @@ ns.PlaceholderTile = Placeholder
 
 function ns.AddPlaceholders(shown, tiles, nProfs, melee, second, defense)
   for i = (nProfs or 0) + 1, 2 do
-    shown[#shown + 1] = Placeholder("profession", "prof" .. i, "Métier à choisir", nil, 75, 700 + i)
+    shown[#shown + 1] = Placeholder("profession", "prof" .. i, Tr["Métier à choisir"], nil, 75, 700 + i)
   end
   local have = {}
   for _, t in ipairs(shown) do if t.id then have[t.id] = true end end
@@ -1054,21 +1127,21 @@ function ns.AddPlaceholders(shown, tiles, nProfs, melee, second, defense)
       local e = ns.CatalogById(id)
       local ord = 0
       for i, t in ipairs(tiles or {}) do if t.id == id then ord = t._ord or i end end
-      local ph = Placeholder("secondary", id, e and e.name or id, e and e.icon, 75, ord)
-      ph.notLearnedTag = "non appris"
+      local ph = Placeholder("secondary", id, e and ns.CatalogDisplayName(e) or id, e and e.icon, 75, ord)
+      ph.notLearnedTag = Tr["non appris"]
       shown[#shown + 1] = ph
     end
   end
   local lvl = ns.GetPlayerLevel and ns.N(ns.GetPlayerLevel()) or 1
   if not melee then
     local e = ns.CatalogById("unarmed")
-    shown[#shown + 1] = Placeholder("melee", "melee", "Mêlée", e and e.icon, (lvl or 1) * 5, 810)
+    shown[#shown + 1] = Placeholder("melee", "melee", Tr["Mêlée"], e and e.icon, (lvl or 1) * 5, 810)
   end
   -- v2.8.2 : pas d'emplacement libre pour la 2e tuile de combat (classe sans
   -- arme à distance / compétence introuvable) : la grille se tasse.
   if not defense then
     local e = ns.CatalogById("defense")
-    shown[#shown + 1] = Placeholder("defense", "defense", "Défense", e and e.icon, (lvl or 1) * 5, 830)
+    shown[#shown + 1] = Placeholder("defense", "defense", Tr["Défense"], e and e.icon, (lvl or 1) * 5, 830)
   end
 end
 
@@ -1117,16 +1190,48 @@ function ns.ComputeTotals(tiles)
       counted = counted + 1
       local label = t.name
       if t.combatTile and t.kind == "melee" then
-        label = "Mêlée (" .. (t.skillName or t.name) .. ")"
+        label = Tr["Mêlée ("] .. (t.skillName or t.name) .. ")"
       elseif t.kind == "feral" or (t.combatTile and t.kind == "ranged") then
         label = t.name
       elseif t.kind == "level" then
-        label = "Niveau"
+        label = Tr["Niveau"]
       end
-      breakdown[#breakdown + 1] = { name = label, value = v, kind = t.kind, id = t.id, skill = t.skillName or t.name, cached = t.cached }
+      breakdown[#breakdown + 1] = { name = label, value = v, kind = t.kind, id = t.id, skill = t.skillName or t.name, skillKey = t.catName or t.skillName or t.name, cached = t.cached }
     end
   end
   return total, ns.TOTAL_MAX, breakdown, realSum, counted
+end
+
+-- 3.5.1 : trois sources du total, dans l'ordre natif (Niveau, combat, métiers).
+ns.TOTAL_SEGMENT_DEFS = {
+  { key = "level",       label = "Niveau",            kinds = { level = true } },
+  { key = "combat",      label = "Armes et Défense",  kinds = { melee = true, ranged = true, feral = true, defense = true } },
+  { key = "professions", label = "Métiers",           kinds = { profession = true, secondary = true } },
+}
+
+function ns.ComputeTotalSegments(tiles)
+  local segs = {}
+  for i, def in ipairs(ns.TOTAL_SEGMENT_DEFS) do
+    segs[i] = { key = def.key, label = Tr[def.label], cur = 0, max = 0 }
+  end
+  if not tiles then return segs end
+  for i = 1, #tiles do
+    local t = tiles[i]
+    if t.inTotal then
+      for s, def in ipairs(ns.TOTAL_SEGMENT_DEFS) do
+        if def.kinds[t.kind] then
+          segs[s].cur = segs[s].cur + (ns.N(t.current) or 0)
+          local cap = ns.N(t.apiMax) or 0
+          if t.kind == "level" and cap <= 0 then
+            cap = (ns.GetLevelCap and ns.GetLevelCap()) or 60
+          end
+          segs[s].max = segs[s].max + cap
+          break
+        end
+      end
+    end
+  end
+  return segs
 end
 
 
@@ -1316,6 +1421,7 @@ function ns.Collect()
 
   ns.SortDisplayTiles(shown)
   local total, totalMax, breakdown, realSum, counted = ns.ComputeTotals(shown)
+  local segments = ns.ComputeTotalSegments(shown)
 
   return {
     tiles = shown,
@@ -1324,6 +1430,7 @@ function ns.Collect()
     total = total,
     totalMax = totalMax,
     breakdown = breakdown,
+    segments = segments,
     realSum = realSum,
     counted = counted,
     ficTotal = total,
@@ -1488,11 +1595,11 @@ end
 function ns.FormatDuration(sec)
   sec = ns.N(sec)
   if not sec then return nil end
-  if sec < 90 then return "~1 min" end
+  if sec < 90 then return Tr["~1 min"] end
   local m = math.floor(sec / 60 + 0.5)
-  if m < 90 then return "~" .. m .. " min" end
+  if m < 90 then return "~" .. m .. Tr[" min"] end
   local h = math.floor(m / 60)
-  return string.format("~%d h %02d", h, m - h * 60)
+  return string.format(Tr["~%d h %02d"], h, m - h * 60)
 end
 
 -- v2.5.0 : options et données par personnage -------------------------------
@@ -1631,13 +1738,13 @@ function ns.DailyGains(snap)
   local base = c.daily.base
   local total, list = 0, {}
   for _, b in ipairs(snap.breakdown) do
-    local key = (b.kind == "level") and "level" or ns.Fold(tostring(b.skill or b.name))
+    local key = (b.kind == "level") and "level" or ns.Fold(tostring(b.skillKey or b.skill or b.name))
     local v = ns.N(b.value) or 0
     if base[key] == nil then base[key] = v end
     local g = v - (ns.N(base[key]) or v)
     if g > 0 then
       total = total + g
-      list[#list + 1] = { name = DAILY_LABEL[b.kind] or tostring(b.skill or b.name), gain = g, key = key }
+      list[#list + 1] = { name = (DAILY_LABEL[b.kind] and Tr[DAILY_LABEL[b.kind]]) or tostring(b.skill or b.name), gain = g, key = key }
     end
   end
   table.sort(list, function(a, b2) if a.gain ~= b2.gain then return a.gain > b2.gain end return a.name < b2.name end)
@@ -1660,13 +1767,18 @@ function ns.On(event, fn)
   handlers[event][#handlers[event] + 1] = fn
   return true
 end
+-- 3.5.3 : cache des rangs (infobulles) périmé à chaque changement réel
+for _, ev in ipairs({ "SKILL_LINES_CHANGED", "CHAT_MSG_SKILL", "PLAYER_LEVEL_UP", "LEARNED_SPELL_IN_TAB",
+  "PLAYER_EQUIPMENT_CHANGED", "TRADE_SKILL_UPDATE", "CRAFT_UPDATE" }) do
+  ns.On(ev, function() ns.InvalidateRankSnapshot() end)
+end
 frame:SetScript("OnEvent", function(_, event, ...)
   local list = handlers[event]
   if not list then return end
   for i = 1, #list do
     local ok, err = pcall(list[i], event, ...)
     if not ok and ns.Print then
-      ns.Print("|cffff4040erreur|r [" .. tostring(event) .. "] " .. tostring(err))
+      ns.Print(Tr["|cffff4040erreur|r ["] .. tostring(event) .. "] " .. tostring(err))
     end
   end
 end)
@@ -1681,7 +1793,7 @@ ns.On("ADDON_LOADED", function(_, name)
     if ns.MigrateOldDB() then
       initDB()
       if ns.Window and ns.Window.Layout then pcall(ns.Window.Layout) end
-      ns.Print("réglages de l'ancien OSRS_TotalLevel importés. Supprime le dossier Interface\\AddOns\\OSRS_TotalLevel puis /reload.")
+      ns.Print(Tr["réglages de l'ancien OSRS_TotalLevel importés. Supprime le dossier Interface\\AddOns\\OSRS_TotalLevel puis /reload."])
     end
     return
   end
@@ -1693,7 +1805,7 @@ end)
 ns.On("PLAYER_LOGIN", function()
   if ns._announceMigration then
     ns._announceMigration = nil
-    ns.Print("réglages de l'ancien OSRS_TotalLevel importés. Tu peux supprimer le dossier Interface\\AddOns\\OSRS_TotalLevel.")
+    ns.Print(Tr["réglages de l'ancien OSRS_TotalLevel importés. Tu peux supprimer le dossier Interface\\AddOns\\OSRS_TotalLevel."])
   end
 end)
 ns.On("PLAYER_LOGIN", function() requestRefresh() if ns.UI and ns.UI.HookSkillFrame then ns.UI:HookSkillFrame() end end)
@@ -2052,7 +2164,7 @@ function ns.PrintDebug()
   for i = 1, #lines do
     if type(print) == "function" then print(PREFIX .. lines[i]) end
   end
-  ns.Print("Copie ce bloc (ou une capture) et envoie-le moi si une API manque encore.")
+  ns.Print(Tr["Copie ce bloc (ou une capture) et envoie-le moi si une API manque encore."])
 end
 
 -- Slash ---------------------------------------------------------------------
@@ -2067,29 +2179,62 @@ ns.HELP_SHORT = {
   "  Notifications : /drop drops on|off · notif dessus|dessous|detache · recap",
   "  Dopamine : /drop combo · defi · records · barre · collection · sons on|off",
   "  Plus : /drop help tout (toutes les commandes) · /drop debug (rapport copiable) · debug metier",
+  "  Langue : /drop lang auto|en|fr (auto = langue du jeu)",
 }
 local function slashHelpAll()
-  ns.Print("/drop : ouvrir ou fermer le panneau (aussi : clic sur le bouton de minicarte)")
-  ns.Print("/drop reset : remettre le panneau à sa place par défaut")
-  ns.Print("/drop minimap : afficher ou cacher le bouton de minicarte")
-  ns.Print("/drop debug : rapport technique dans une fenêtre copiable (Ctrl+C) ; /drop debug metier : seulement le métier en cours")
-  ns.Print("/drop drops on|off|move : notifications de gain (afficher, cacher, déplacer)")
-  ns.Print("/drop stats on|off : afficher les 5 caractéristiques dans la grille (désactivé par défaut)")
-  ns.Print("/drop couleurs palier|vert|jaune : couleur des chiffres")
-  ns.Print("/drop objectif <compétence> <rang> : fixer un objectif (ou clic droit sur une case, Maj+clic droit = palier suivant)")
-  ns.Print("/drop objectif clear [compétence] : effacer les objectifs ; /drop objectif : les lister")
-  ns.Print("/drop paliers on|off · /drop session on|off · /drop rappel on|off")
-  for i = 1, #ns.HelpExt do ns.Print(ns.HelpExt[i]) end
+  ns.Print(Tr["/drop : ouvrir ou fermer le panneau (aussi : clic sur le bouton de minicarte)"])
+  ns.Print(Tr["/drop reset : remettre le panneau à sa place par défaut"])
+  ns.Print(Tr["/drop minimap : afficher ou cacher le bouton de minicarte"])
+  ns.Print(Tr["/drop debug : rapport technique dans une fenêtre copiable (Ctrl+C) ; /drop debug metier : seulement le métier en cours"])
+  ns.Print(Tr["/drop drops on|off|move : notifications de gain (afficher, cacher, déplacer)"])
+  ns.Print(Tr["/drop stats on|off : afficher les 5 caractéristiques dans la grille (désactivé par défaut)"])
+  ns.Print(Tr["/drop couleurs palier|vert|jaune : couleur des chiffres"])
+  ns.Print(Tr["/drop objectif <compétence> <rang> : fixer un objectif (ou clic droit sur une case, Maj+clic droit = palier suivant)"])
+  ns.Print(Tr["/drop objectif clear [compétence] : effacer les objectifs ; /drop objectif : les lister"])
+  ns.Print(Tr["/drop paliers on|off · /drop session on|off · /drop rappel on|off"])
+  ns.Print(Tr["/drop lang auto|en|fr : langue des textes de l'addon (auto = langue du jeu ; anglais par défaut hors client français)"])
+  for i = 1, #ns.HelpExt do ns.Print(Tr[ns.HelpExt[i]]) end
 end
 local function slashHelp(rest)
   rest = (rest or ""):lower()
   if rest:find("tout", 1, true) or rest:find("all", 1, true) then return slashHelpAll() end
   for _, l in ipairs(ns.HELP_SHORT) do
-    if type(print) == "function" then print(l) end
+    if type(print) == "function" then print(Tr[l]) end
   end
 end
 
+-- 3.5.19 : alias anglais des commandes (les noms français restent valables).
+ns.CMD_ALIAS = {
+  columns = "colonnes", size = "taille", opacity = "opacite", lock = "verrou", alerts = "alertes",
+  activity = "activite", recipes = "recettes", links = "liens", unlearned = "nonapprises", tooltip = "infobulle",
+  open = "ouvrir", tiers = "paliers", tier = "paliers", reminder = "rappel", bar = "barre", challenge = "defi", sounds = "sons",
+  sound = "son", fade = "fondu", bg = "fond", pretier = "prepalier", history = "historique", milestones = "jalons",
+  fishing = "peche", shopping = "courses", share = "partage", master = "maitre", weapon = "arme",
+  goals = "objectif", colour = "couleurs", colours = "couleurs", categories = "categories",
+}
+ns.ARG_ALIAS = {
+  light = "leger", green = "vert", yellow = "jaune", tier = "palier", above = "dessus", below = "dessous",
+  detach = "detache", detached = "detache", up = "haut", down = "bas", stack = "place", full = "complet", skill = "comp",
+  duration = "duree", opacity = "opacite", sound = "son", marks = "marques", icons = "icones", compact = "compacte",
+  default = "defaut", direction = "sens", main = "principale", challenge = "defi", prof = "metier",
+  record = "record", point = "point", why = "pourquoi", all = "tout",
+}
+local NO_ARG_ALIAS = { objectif = true, objectifs = true, goal = true, debug = true, diag = true, apis = true,
+  hitdebug = true, hit = true, lang = true, langue = true, language = true, courses = true }
+function ns.NormalizeSlash(msg)
+  msg = tostring(msg or "")
+  local lead, cmd, rest = msg:match("^(%s*)(%S*)(.*)$")
+  if not cmd or cmd == "" then return msg end
+  local low = cmd:lower()
+  if ns.CMD_ALIAS[low] and not ns.SlashExt[low] then low = ns.CMD_ALIAS[low] cmd = low end
+  if not NO_ARG_ALIAS[low] then
+    rest = rest:gsub("(%S+)", function(w) return ns.ARG_ALIAS[w:lower()] or w end)
+  end
+  return lead .. cmd .. rest
+end
+
 local function slashHandler(msg)
+  msg = ns.NormalizeSlash(msg)
   local cmd = (msg or ""):match("^%s*(%S*)") or ""
   cmd = cmd:lower()
   local ext = ns.SlashExt[cmd]
@@ -2099,18 +2244,20 @@ local function slashHandler(msg)
     return
   end
   if cmd == "" or cmd == "show" or cmd == "toggle" or cmd == "afficher" then
-    if ns.UI and ns.UI.Toggle then ns.UI:Toggle() end
+    -- 3.5.5 : plus jamais muet (voir SafeOpen.lua)
+    if ns.UI and ns.UI.Toggle then ns.UI:Toggle()
+    else ns.Print(Tr["|cffff4040le panneau n'a pas pu se charger|r (erreur au chargement de l'addon) : /reload, puis /drop debug."]) end
   elseif cmd == "comp" or cmd == "skills" or cmd == "competences" or cmd == "compétences" then
     -- 3.2.0 : la vue OSRS est une fenêtre à part ; l'onglet Comp. natif reste intact.
     if ns.UI and ns.UI.Show then ns.UI:Show() end
   elseif cmd == "grille" or cmd == "grid" or cmd == "dessin" then
     -- 3.2.0 : la grille des lignes natives (3.1.0) est retirée : une seule
     -- vue OSRS, entièrement dessinée par l'addon.
-    ns.Print("vue OSRS : fenêtre unique dessinée par l'addon (3.2.0). Les lignes natives ne sont plus déplacées.")
+    ns.Print(Tr["vue OSRS : fenêtre unique dessinée par l'addon (3.2.0). Les lignes natives ne sont plus déplacées."])
   elseif cmd == "vue" or cmd == "view" or cmd == "toggleview" then
     if ns.UI and ns.UI.ToggleView then
       ns.UI:ToggleView()
-      ns.Print(ns.UI:IsOsrsView() and "vue OSRS (onglet Comp.)." or "vue classique (liste Forever).")
+      ns.Print(ns.UI:IsOsrsView() and Tr["vue OSRS (onglet Comp.)."] or Tr["vue classique (liste Forever)."])
     end
   elseif cmd == "drops" or cmd == "drop" or cmd == "xp" then
     local rest = (msg or ""):match("^%s*%S+%s*(%S*)") or ""
@@ -2129,7 +2276,7 @@ local function slashHandler(msg)
       else on = not (ns.db.ui.dropsEnabled ~= false) end
       ns.db.ui.dropsEnabled = on
       if ns.UI and ns.UI.ApplyDropsEnabled then ns.UI:ApplyDropsEnabled() end
-      ns.Print("drops " .. (on and "activés." or "désactivés."))
+      ns.Print(Tr["drops "] .. (on and Tr["activés."] or Tr["désactivés."]))
     end
   elseif cmd == "stats" or cmd == "stat" or cmd == "caracs" or cmd == "caractéristiques" then
     local rest = (msg or ""):match("^%s*%S+%s*(%S*)") or ""
@@ -2142,7 +2289,7 @@ local function slashHandler(msg)
     else on = not (ns.db.ui.showStats == true) end
     ns.db.ui.showStats = on
     if ns.UI and ns.UI.Refresh then ns.UI:Refresh(true) end
-    ns.Print("caractéristiques " .. (on and "affichées dans la grille." or "masquées (déjà sur la fiche)."))
+    ns.Print(Tr["caractéristiques "] .. (on and Tr["affichées dans la grille."] or Tr["masquées (déjà sur la fiche)."]))
   elseif cmd == "icon" or cmd == "icone" or cmd == "icône" then
     local rest = (msg or ""):match("^%s*%S+%s*(%S*)") or ""
     rest = rest:lower()
@@ -2154,7 +2301,7 @@ local function slashHandler(msg)
     else on = not (ns.db.ui.customTabIcon ~= false) end
     ns.db.ui.customTabIcon = on
     if ns.UI and ns.UI.ApplyTabIcon then ns.UI:ApplyTabIcon() end
-    ns.Print("icône de l'onglet Comp. " .. (on and "personnalisée." or "d'origine."))
+    ns.Print(Tr["icône de l'onglet Comp. "] .. (on and Tr["personnalisée."] or Tr["d'origine."]))
   elseif cmd == "couleurs" or cmd == "couleur" or cmd == "colors" or cmd == "color" then
     local rest = (msg or ""):match("^%s*%S+%s*(%S*)") or ""
     rest = rest:lower()
@@ -2163,12 +2310,12 @@ local function slashHandler(msg)
       ns.SetColorMode(rest)
       if ns.UI and ns.UI.Refresh then ns.UI:Refresh(true) end
       local label = rest
-      if rest == "palier" then label = "palier (rouge < 50 %, jaune 50-75 %, vert > 75 %)"
-      elseif rest == "vert" then label = "vert (tous les chiffres)"
-      else label = "jaune (or natif, tous les chiffres)" end
-      ns.Print("couleur des chiffres : " .. label .. ".")
+      if rest == "palier" then label = Tr["palier (rouge < 50 %, jaune 50-75 %, vert > 75 %)"]
+      elseif rest == "vert" then label = Tr["vert (tous les chiffres)"]
+      else label = Tr["jaune (or natif, tous les chiffres)"] end
+      ns.Print(Tr["couleur des chiffres : "] .. label .. ".")
     else
-      ns.Print("couleur actuelle : " .. ns.GetColorMode() .. ". Usage : /drop couleurs palier|vert|jaune")
+      ns.Print(Tr["couleur actuelle : "] .. Tr[ns.GetColorMode()] .. Tr[". Usage : /drop couleurs palier|vert|jaune"])
     end
   elseif cmd == "objectif" or cmd == "objectifs" or cmd == "goal" then
     local rest = (msg or ""):match("^%s*%S+%s*(.-)%s*$") or ""
@@ -2185,22 +2332,23 @@ local function slashHandler(msg)
     ns.db.ui[key] = on
     if ns.UI and ns.UI.Refresh then ns.UI:Refresh(true) end
     local labels = {
-      paliers = "annonces de palier", session = "gains de session", rappel = "rappel d'arme sous-montée",
+      paliers = Tr["annonces de palier"], session = Tr["gains de session"], rappel = Tr["rappel d'arme sous-montée"],
     }
-    ns.Print(labels[key] .. (on and " activé(e)s." or " désactivé(e)s."))
+    ns.Print(labels[key] .. (on and Tr[" activé(e)s."] or Tr[" désactivé(e)s."]))
   elseif cmd == "hitdebug" or cmd == "hit" then
+    local rest = (msg or ""):match("^%s*%S+%s*(.-)%s*$") or ""   -- 3.5.5 : n'est plus une globale indéfinie
     if ns.UI and ns.UI.HitDebug then ns.UI:HitDebug(rest) end
   elseif cmd == "debug" or cmd == "diag" or cmd == "apis" then
     ns.PrintDebug((msg or ""):match("^%s*%S+%s*(.-)%s*$"))
   elseif cmd == "reset" or cmd == "resetpos" then
     if ns.UI and ns.UI.ResetPositions then
       ns.UI:ResetPositions()
-      ns.Print("positions réinitialisées.")
+      ns.Print(Tr["positions réinitialisées."])
     end
   elseif cmd == "minimap" or cmd == "minicarte" then
     if ns.UI and ns.UI.ToggleMinimap then
       local shown = ns.UI:ToggleMinimap()
-      ns.Print(shown and "bouton de minicarte affiché." or "bouton de minicarte caché.")
+      ns.Print(shown and Tr["bouton de minicarte affiché."] or Tr["bouton de minicarte caché."])
     end
   elseif cmd == "help" or cmd == "aide" or cmd == "?" then
     slashHelp((msg or ""):match("^%s*%S+%s*(.-)%s*$"))
@@ -2215,3 +2363,25 @@ SLASH_DROPAMINE2 = "/dropamine"
 if type(SlashCmdList) ~= "table" then SlashCmdList = {} end
 SlashCmdList.DROPAMINE = slashHandler
 ns.Slash = slashHandler
+
+-- 3.5.18 : /drop debug — chaque compétence d'arme lue et son icône résolue
+ns.DebugExt = ns.DebugExt or {}
+ns.DebugExt[#ns.DebugExt + 1] = function()
+  local okL, live = pcall(ns.CollectLiveSkills)
+  local parts = {}
+  if okL and type(live) == "table" then
+    for _, sk in ipairs(live) do
+      if sk and sk.name and not sk.header and not sk.equippedOnly then
+        local e = ns.LookupCatalog and ns.LookupCatalog(sk.name)
+        local weapon = (e and (e.kind == "melee" or e.kind == "ranged" or e.kind == "defense")) or ns.LooksLikeWeapon(sk.name, sk.headerName)
+          or (ns.EXTRA_SKILL_ICONS and ns.EXTRA_SKILL_ICONS[ns.Fold(sk.name)])
+        if weapon then
+          local icon, id, src = ns.ResolveSkillIcon(sk.name, sk.headerName, sk.skillID)
+          local short = tostring(icon or "—"):gsub("^Interface\\Icons\\", "")
+          parts[#parts + 1] = string.format("%s [%s] → %s (%s%s)", tostring(sk.name), tostring(sk.skillID or "?"), short, tostring(src), id and (", " .. id) or "")
+        end
+      end
+    end
+  end
+  return { "— Icônes des armes (3.5.18) — " .. ((#parts > 0) and table.concat(parts, " · ") or "aucune compétence d'arme lue") }
+end

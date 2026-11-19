@@ -3660,9 +3660,29 @@ do
   local fires = 0
   for _, h in ipairs(b.hooks.PreClick or {}) do h(b, "LeftButton") fires = fires + 1 end
   ok(CO.want and CO.want.recipe == "Bandage en lin", "clic : recette en attente de la fenêtre du métier")
+  -- 3.5.5 : sélection différée (travail unique, la fenêtre doit être affichée
+  -- depuis CO.SETTLE : la sélection native de l'ouverture passe d'abord)
+  local function pumpCO(n)
+    local k = 0
+    while CO._job and CO._job.scripts and CO._job.scripts.OnUpdate and k < (n or 50) do
+      gtime = gtime + 0.05
+      CO._job.scripts.OnUpdate(CO._job, 0.05)
+      k = k + 1
+    end
+    return k
+  end
+  ok(CO.stats.casts and CO.stats.casts >= 1 and b.attrs.type1 == "spell", "clic : le sort du métier est lancé (bouton sécurisé)")
+  for _, h in ipairs(b.hooks.PreClick or {}) do h(b, "LeftButton") end
+  ok(b.attrs.type1 == nil, "2e clic aussitôt : pas de 2e lancer (ouvrir puis refermer)")
   _G.TradeSkillFrame:Show()
   fire("TRADE_SKILL_SHOW")
+  ok(sel == nil, "TRADE_SKILL_SHOW : rien de sélectionné tout de suite (la fenêtre s'installe)")
+  local steps = pumpCO()
   ok(sel == 3 and not CO.want, "TRADE_SKILL_SHOW : « Bandage en lin » sélectionnée (index 3, en-têtes ignorés)")
+  ok(CO._job.scripts.OnUpdate == nil and steps < 10, "sélection faite : OnUpdate retiré (" .. steps .. " images), aucune boucle")
+  sel = nil
+  fire("TRADE_SKILL_UPDATE") fire("TRADE_SKILL_SHOW")
+  ok(sel == nil and (CO._job.scripts.OnUpdate == nil), "événements suivants : plus aucune sélection ni travail (one-shot)")
   -- fenêtre déjà ouverte : pas de sort (il la fermerait), sélection directe
   sel = nil
   local t2 = Craft.Notify(gains)
@@ -3682,7 +3702,23 @@ do
   if ns._regenFrame then ns._regenFrame.scripts.OnEvent(ns._regenFrame, "PLAYER_REGEN_ENABLED") end
   _G.TradeSkillFrame:Show()
   fire("TRADE_SKILL_SHOW")
+  pumpCO()
   ok(sel == 3, "fin du combat puis ouverture du métier : recette sélectionnée")
+  -- recette absente (catégorie repliée) : dépliage, puis filtres, puis abandon borné
+  sel = nil
+  local expanded, filt = 0, 0
+  _G.ExpandTradeSkillSubClass = function(i) expanded = expanded + 1 end
+  _G.SetTradeSkillSubClassFilter = function() filt = filt + 1 end
+  CO.Request({ skill = "firstaid", recipe = "Bandage épais" })
+  local k2 = pumpCO(200)
+  ok(expanded == 1 and filt == 1 and not CO.want and CO._job.scripts.OnUpdate == nil and k2 < 40, "recette introuvable : 1 dépliage, 1 remise des filtres, puis arrêt (" .. k2 .. " images)")
+  _G.ExpandTradeSkillSubClass, _G.SetTradeSkillSubClassFilter = nil, nil
+  -- fenêtre jamais ouverte : la demande expire, le travail s'arrête
+  _G.TradeSkillFrame:Hide()
+  CO.Request({ skill = "firstaid", recipe = "Bandage en lin" })
+  pumpCO(200)
+  ok(not CO.want and CO._job.scripts.OnUpdate == nil, "fenêtre jamais ouverte : demande expirée, OnUpdate retiré")
+  _G.TradeSkillFrame:Show()
   -- recyclage : toast ordinaire sans recette
   local t4 = ns.UI:SpawnDrop("Interface\\Icons\\INV_Misc_QuestionMark", "+1", "x", 1, 2, "")
   ok(t4 and t4._craft == nil, "toast recyclé : plus de recette attachée")
@@ -5077,23 +5113,122 @@ do
   if ns.Theme and ns.Theme.Set then ns.Theme.Set("flare") end
 end
 
-print("== 3.5.0 : clic pour ouvrir un métier désactivé (clignotement) ==")
+print("== 3.5.0 : clic gauche sur un métier ouvre sa fenêtre (bouton sécurisé, hors combat) ==")
 do
   local CO = ns.CraftOpen
-  ok(CO.Openable({ id = "cooking", name = "Cuisine" }) == nil and CO.Openable({ id = "mining" }) == nil and CO.Openable({ id = "firstaid" }) == nil, "3.5.0 : CO.Openable renvoie nil (ouverture au clic coupée)")
-  ok(not CO.Openable({ id = "skinning" }) and not CO.Openable({ id = "fishing" }), "Dépeçage et Pêche : toujours pas d'ouverture")
+  ok(CO.Openable({ id = "cooking", name = "Cuisine" }) == "cooking" and CO.Openable({ id = "mining" }) == "mining", "Cuisine et Minage (Fondre) sont ouvrables")
+  ok(CO.Openable({ id = "firstaid" }) and CO.Openable({ id = "tailoring" }) and CO.Openable({ id = "enchanting" }) and CO.Openable({ id = "blacksmithing" }), "fenêtres de métier : secourisme, couture, enchantement, forge")
+  ok(not CO.Openable({ id = "skinning" }) and not CO.Openable({ id = "herbalism" }) and not CO.Openable({ id = "fishing" }) and not CO.Openable({ id = "defense", kind = "defense" }), "Dépeçage, Herboristerie, Pêche et les autres cases : clic inchangé")
+  ok(ns.Options.Find("openProf") and ns.Options.Get("openProf") == true and ns.Options.Find("openProf").default == true, "Métiers : « Clic : ouvrir le métier », activé par défaut")
   local tile = CreateFrame("Button", nil, _G.UIParent)
   tile:SetSize(36, 36)
   tile:SetPoint("CENTER", _G.UIParent, "CENTER", 20, -10)
   tile.data = { id = "cooking", name = "Cuisine" }
   tile:Show()
-  ok(CO.ArmTile(tile) == false and not (CO.tileBtn and CO.tileBtn:IsShown()), "aucun bouton sécurisé posé sur la case")
+  ok(CO.ArmTile(tile) and CO.tileBtn and CO.tileBtn:IsShown() and CO.tileBtn:GetParent() == _G.UIParent, "hors combat : bouton sécurisé visible, enfant d'UIParent")
+  local b = CO.tileBtn
+  local p = b.points and b.points[1]
+  ok(p and p[2] == _G.UIParent and b:GetAttribute("type1") == "spell" and b:GetAttribute("spell1") == CO.SpellName("cooking") and b:GetAttribute("type2") == nil, "coordonnées absolues, type1 = sort du métier, pas de type2")
+  local selected, prompted, shared
+  local rSel, rPrompt = ns.UI.SelectTile, ns.UI.PromptGoal
+  ns.UI.SelectTile = function(_, d) selected = d.id end
+  ns.UI.PromptGoal = function(_, d) prompted = d.id end
+  local rShare = ns.QoL and ns.QoL.ShareTile
+  if ns.QoL then ns.QoL.ShareTile = function(d) shared = d.id return true end end
+  for _, fn in ipairs(b.hooks.PostClick or {}) do fn(b, "LeftButton") end
+  ok(selected == "cooking" and not prompted, "clic gauche : la case est sélectionnée (PostClick, non sécurisé)")
+  selected = nil
+  local rShift = _G.IsShiftKeyDown
+  _G.IsShiftKeyDown = function() return true end
+  for _, fn in ipairs(b.hooks.PreClick or {}) do fn(b, "LeftButton") end
+  ok(b:GetAttribute("type1") == nil, "Maj+clic : le sort n'est pas lancé")
+  for _, fn in ipairs(b.hooks.PostClick or {}) do fn(b, "LeftButton") end
+  ok(shared == "cooking" and selected ~= "cooking", "Maj+clic : partage, pas la sélection")
+  _G.IsShiftKeyDown = function() return false end
+  for _, fn in ipairs(b.hooks.PreClick or {}) do fn(b, "RightButton") end
+  for _, fn in ipairs(b.hooks.PostClick or {}) do fn(b, "RightButton") end
+  ok(prompted == "cooking", "clic droit : objectif, comme avant")
+  _G.IsShiftKeyDown = rShift
+  ns.UI.SelectTile, ns.UI.PromptGoal = rSel, rPrompt
+  if ns.QoL then ns.QoL.ShareTile = rShare end
+  CO.DisarmTile()
+  ok(not b:IsShown(), "sortie de la case : bouton caché")
+  local rIC = _G.InCombatLockdown
+  _G.InCombatLockdown = function() return true end
+  ok(CO.ArmTile(tile) == false, "en combat : pas de bouton, le clic ne fait que sélectionner")
+  b:Show()
+  fire("PLAYER_REGEN_DISABLED")
+  ok(not b:IsShown() and b._tile == nil, "PLAYER_REGEN_DISABLED : bouton caché, sans SetAttribute")
+  _G.InCombatLockdown = rIC
+  ns.db.ui.openProf = false
+  ok(CO.Openable({ id = "alchemy" }) == nil and CO.ArmTile(tile) == false, "réglage désactivé : plus d'ouverture")
+  ns.db.ui.openProf = nil
   local tip = _G.GameTooltip
   tip.lines = {}
   ns.Compact.FillTooltip(tip, { id = "leatherworking", name = "Travail du cuir", kind = "profession", current = 10, apiMax = 300 }, tile)
   local hint = false
   for _, l in ipairs(tip.lines or {}) do if l.t and l.t:find("Clic : ouvrir le métier", 1, true) then hint = true end end
-  ok(not hint, "infobulle : plus de « Clic : ouvrir le métier »")
+  ok(hint, "infobulle : « Clic : ouvrir le métier »")
+  tip.lines = {}
+  ns.Compact.FillTooltip(tip, { id = "fishing", name = "Pêche", kind = "secondary", current = 1, apiMax = 300 }, tile)
+  hint = false
+  for _, l in ipairs(tip.lines or {}) do if l.t and l.t:find("Clic : ouvrir le métier", 1, true) then hint = true end end
+  ok(not hint, "Pêche : pas cette ligne")
+end
+
+-- 3.5.5 : ouverture protégée (SafeOpen) — une erreur dans la chaîne d'ouverture
+-- n'est plus muette, et le panneau s'affiche quand même ; PvP : clic vérifié
+do
+  local SO, W = ns.SafeOpen, ns.Window
+  ok(SO and W, "SafeOpen chargé (dernier du .toc)")
+  if W.IsShown() then W.Toggle() end
+  ok(not W.IsShown(), "panneau fermé")
+  local p0 = #prints
+  local rUI = ns.UI.Refresh
+  ns.UI.Refresh = function() error("boom test") end
+  local okT = pcall(W.Toggle)
+  ns.UI.Refresh = rUI
+  local said = false
+  for i = p0 + 1, #prints do if prints[i]:find("erreur à l'ouverture du panneau", 1, true) then said = true end end
+  ok(okT and W.IsShown(), "erreur dans l'ouverture : pas d'erreur remontée, panneau affiché quand même")
+  ok(said and SO.stats.errors >= 1, "erreur dans l'ouverture : message dans le chat (plus de clic muet)")
+  W.Toggle()
+  ok(not W.IsShown(), "re-clic : fermeture normale")
+  W.Toggle()
+  ok(W.IsShown(), "re-clic : ouverture normale")
+  -- clic sécurisé : ActionButtonUseKeyDown = 1 → sort à l'enfoncement seulement
+  local CO = ns.CraftOpen
+  if CO and ns.Craft and ns.Craft.Notify then
+    if _G.TradeSkillFrame then _G.TradeSkillFrame:Hide() end
+    local rCV = _G.GetCVarBool
+    _G.GetCVarBool = function(k) return k == "ActionButtonUseKeyDown" end
+    gtime = gtime + 5
+    local t5 = ns.Craft.Notify({ { skill = "firstaid", n = 1, diff = "optimal", recipe = { name = "Bandage en lin" } } })
+    if t5 and t5.scripts and t5.scripts.OnEnter then t5.scripts.OnEnter(t5) end
+    local b = CO.btn
+    local c0 = CO.stats.casts or 0
+    for _, h in ipairs(b.hooks.PreClick or {}) do h(b, "LeftButton", true) end
+    ok(b.attrs.type1 == "spell" and b.attrs.useOnKeyDown == true and (CO.stats.casts or 0) == c0 + 1, "touche enfoncée (mode enfoncement) : sort posé, useOnKeyDown aligné")
+    for _, h in ipairs(b.hooks.PreClick or {}) do h(b, "LeftButton", false) end
+    ok(b.attrs.type1 == nil and (CO.stats.casts or 0) == c0 + 1, "relâchement : sort vidé (jamais un 2e lancer)")
+    _G.GetCVarBool = rCV
+    CO.want = nil CO.StopJob() CO.Disarm()
+  end
+  -- PvP : la 1re fonction qui n'ouvre rien ne bloque plus les suivantes
+  local PV = ns.PvP
+  if PV and PV.OpenWindow then
+    local hf = _G.CreateFrame("Frame", "HonorFrame", _G.UIParent) hf:Hide()
+    _G.HonorFrame = hf
+    local rTC, rTP = _G.ToggleCharacter, _G.TogglePVPFrame
+    _G.TogglePVPFrame = function() end
+    _G.ToggleCharacter = function(n) if n == "HonorFrame" then if hf:IsShown() then hf:Hide() else hf:Show() end end end
+    ok(PV.OpenWindow() == "HonorFrame" and hf:IsShown(), "JcJ : clic → onglet Honneur ouvert (vérifié)")
+    _G.ToggleCharacter = nil
+    hf:Hide()
+    local r = PV.OpenWindow()
+    ok(r == nil, "JcJ : rien ne s'ouvre → message, pas de faux succès")
+    _G.ToggleCharacter, _G.TogglePVPFrame, _G.HonorFrame = rTC, rTP, nil
+  end
 end
 
 print(failures == 0 and "TOTAL  OK  tous les tests v3.5.0 ont réussi" or ("TOTAL  FAIL  " .. failures .. " échec(s)"))

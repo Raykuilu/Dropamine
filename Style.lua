@@ -169,7 +169,10 @@ function Style.SkillIdForText(text)
   local best, bestLen
   for _, e in ipairs(ns.CATALOG or {}) do
     local names = { e.name }
-    for _, a in ipairs(e.aliases or {}) do names[#names + 1] = a end
+    for _, a in ipairs(e.aliases or {}) do
+      -- 3.5.18 : noms d'armes courts (« arc », « masse »…) en correspondance exacte seulement
+      if not (ns.EXACT_ONLY and ns.EXACT_ONLY[Fold(a)]) then names[#names + 1] = a end
+    end
     for _, nm in ipairs(names) do
       local fn = Fold(nm)
       if fn ~= "" and f:find(fn, 1, true) and (not bestLen or #fn > bestLen) then best, bestLen = e.id, #fn end
@@ -415,6 +418,7 @@ end
 -- Texture en 9 tranches avec SetTexCoord (API 16001, aucun NineSlice requis).
 -- tex : chemin ; tw, th : taille de la texture ; c : taille des coins (px texture) ;
 -- size : taille affichée des coins ; out : débord hors du cadre (lueur).
+Style.NINE_ORDER = { "TL", "TR", "BL", "BR", "T", "B", "L", "R" }
 function Style.Nine(frame, key, tex, tw, th, c, size, layer, sub, out)
   if type(frame) ~= "table" or not frame.CreateTexture then return nil end
   frame._flare = frame._flare or {}
@@ -427,7 +431,10 @@ function Style.Nine(frame, key, tex, tw, th, c, size, layer, sub, out)
     L = { 0, u, v, 1 - v }, M = nil, R = { 1 - u, 1, v, 1 - v },
     BL = { 0, u, 1 - v, 1 }, B = { u, 1 - u, 1 - v, 1 }, BR = { 1 - u, 1, 1 - v, 1 },
   }
-  for name, tc in pairs(parts) do
+  -- 3.5.3 : coins d'abord, puis bords (les bords s'ancrent aux coins ; avec
+  -- pairs(), un bord créé avant son coin s'ancrait au parent → lueur partielle)
+  for _, name in ipairs(Style.NINE_ORDER) do
+    local tc = parts[name]
     local t = set[name]
     if not t then t = frame:CreateTexture(nil, layer or "BORDER") set[name] = t end
     if t.SetDrawLayer then pcall(t.SetDrawLayer, t, layer or "BORDER", sub or 0) end

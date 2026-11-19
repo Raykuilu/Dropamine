@@ -8,6 +8,7 @@
 -- pas de « source inconnue ». Détail complet seulement tant que Maj est
 -- enfoncée (MODIFIER_STATE_CHANGED → l'infobulle est reconstruite).
 local ADDON, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local Tip = {}
 ns.Tip = Tip
 Tip.active = true      -- = option « infobulle compacte » (/drop infobulle compacte|detail)
@@ -22,8 +23,8 @@ local ORDER = { skinning = 1, cooking = 2, firstaid = 3 }
 
 local function Call(fn, ...) if type(fn) ~= "function" then return nil end local ok, a, b = pcall(fn, ...) if ok then return a, b end end
 local function InCombat() return Call(_G.InCombatLockdown) and true or false end
-local function SkillName(id) local e = ns.CATALOG_BY_ID and ns.CATALOG_BY_ID[id] return e and e.name or tostring(id) end
-local function Clean(s) s = tostring(s or "") s = s:gsub("%s*→%s*", " : ") return s end
+local function SkillName(id) local e = ns.CATALOG_BY_ID and ns.CATALOG_BY_ID[id] return e and ns.CatalogDisplayName(e) or tostring(id) end
+local function Clean(s) s = tostring(s or "") s = s:gsub("%s*→%s*", Tr[" : "]) return s end
 function Tip.Shift() return Call(_G.IsShiftKeyDown) and true or false end
 
 -- Groupes par métier : { skill, color, text, detail = { {text, color} } }
@@ -35,13 +36,13 @@ function Tip.Groups(tt, unit)
   if st then
     local g = { skill = "skinning", detail = { { Clean(st.text), st.color or Tip.GREY } } }
     if G.GivesPoints(st) then
-      g.gain, g.color, g.text = true, Tip.GREEN, "Dépeçage +1" .. (st.req and (" · requis " .. st.req) or "")
+      g.gain, g.color, g.text = true, Tip.GREEN, Tr["Dépeçage +1"] .. (st.req and (Tr[" · requis "] .. st.req) or "")
     elseif st.diff == "locked" then
-      g.color, g.text = Tip.RED, "Dépeçage : rang " .. tostring(st.req or "?") .. " requis"
+      g.color, g.text = Tip.RED, Tr["Dépeçage : rang "] .. tostring(st.req or "?") .. Tr[" requis"]
     elseif st.diff == "capped" then
-      g.color, g.text = Tip.GREY, "Dépeçage : plafond atteint"
+      g.color, g.text = Tip.GREY, Tr["Dépeçage : plafond atteint"]
     else
-      g.color, g.text = Tip.GREY, "Dépeçage : gris (aucun point)"
+      g.color, g.text = Tip.GREY, Tr["Dépeçage : gris (aucun point)"]
     end
     groups[#groups + 1] = g
   end
@@ -69,11 +70,11 @@ function Tip.Groups(tt, unit)
             local names = {}
             for i = 1, math.min(Tip.NAMES, #b.gain) do names[i] = b.gain[i].name end
             g.gain, g.color = true, Tip.GREEN
-            g.text = fr .. " +1 : " .. table.concat(names, ", ") .. ((#b.gain > Tip.NAMES) and (" (+" .. (#b.gain - Tip.NAMES) .. ")") or "")
+            g.text = fr .. Tr[" +1 : "] .. table.concat(names, ", ") .. ((#b.gain > Tip.NAMES) and (" (+" .. (#b.gain - Tip.NAMES) .. ")") or "")
           elseif #b.learn > 0 then
-            g.color, g.text = Tip.GREY, string.format("%s : %d recette%s à apprendre", fr, #b.learn, #b.learn > 1 and "s" or "")
+            g.color, g.text = Tip.GREY, string.format(Tr["%s : %d recette%s à apprendre"], fr, #b.learn, #b.learn > 1 and "s" or "")
           else
-            g.color, g.text = Tip.GREY, fr .. " : recettes grises (aucun point)"
+            g.color, g.text = Tip.GREY, fr .. Tr[" : recettes grises (aucun point)"]
           end
           local function add(e, txt)
             local col = (e.diff == "locked") and Tip.RED or ((S.DiffColor and S.DiffColor(e.diff)) or Tip.GREY)
@@ -85,11 +86,11 @@ function Tip.Groups(tt, unit)
           for _, e in ipairs(b.grey) do list[#list + 1] = e end
           for i, e in ipairs(list) do
             if i > Tip.DETAIL_CAP then
-              g.detail[#g.detail + 1] = { "… et " .. (#list - Tip.DETAIL_CAP) .. " autres", Tip.GREY }
+              g.detail[#g.detail + 1] = { Tr["… et "] .. (#list - Tip.DETAIL_CAP) .. Tr[" autres"], Tip.GREY }
               break
             end
-            if e.learned == true then add(e, e.name .. ((e.req and (" · rang " .. e.req)) or ""))
-            else add(e, e.name .. " · à apprendre, rang " .. tostring(e.req or "?") .. (e.learn and (" · " .. e.learn) or "")) end
+            if e.learned == true then add(e, e.name .. ((e.req and (Tr[" · rang "] .. e.req)) or ""))
+            else add(e, e.name .. Tr[" · à apprendre, rang "] .. tostring(e.req or "?") .. (e.learn and (" · " .. Tr[e.learn]) or "")) end
           end
           -- 3.3.14 : une seule ligne par métier (le Dépeçage a déjà la sienne) :
           -- la ligne « gain » l'emporte, la ligne grise est abandonnée.
@@ -143,13 +144,32 @@ function Tip.UnitTooltip(tt, unit)
   if InCombat() or type(tt) ~= "table" then return nil end
   unit = unit or "mouseover"
   if not Call(_G.UnitName, unit) or Call(_G.UnitIsPlayer, unit) then return nil end
-  Tip.stats.builds = Tip.stats.builds + 1
-  if ns.Gather then ns.Gather.stats.tooltips = ns.Gather.stats.tooltips + 1 end
-  local groups = Tip.Groups(tt, unit)
+  -- 3.5.3 : l'infobulle d'unité est rafraîchie plusieurs fois par seconde par
+  -- le client ; même créature (nom, niveau, vivante / morte, Maj) dans la
+  -- seconde → lignes réutilisées au lieu de tout recalculer.
   local shift = Tip.Shift()
-  local lines = Tip.Lines(groups, shift)
-  Tip.lastMore = (#Tip.Lines(groups, true) > #Tip.Lines(groups, false))
-  Tip.last = { n = #lines, shift = shift, groups = #groups }
+  local key
+  do
+    local nm, lv, dead = Call(_G.UnitName, unit), Call(_G.UnitLevel, unit), Call(_G.UnitIsDead, unit)
+    if type(nm) == "string" and not (ns.IsSecret and (ns.IsSecret(nm) or ns.IsSecret(lv))) then
+      key = nm .. "#" .. tostring(ns.N and ns.N(lv) or lv) .. "#" .. (dead and "1" or "0") .. "#" .. (shift and "1" or "0")
+    end
+  end
+  local now = ns.NowSec and ns.NowSec() or 0
+  local memo = Tip._memo
+  local lines
+  if key and memo and memo.key == key and (now - memo.t) < (Tip.MEMO_TTL or 1) then
+    lines = memo.lines
+    Tip.stats.memo = (Tip.stats.memo or 0) + 1
+  else
+    Tip.stats.builds = Tip.stats.builds + 1
+    if ns.Gather then ns.Gather.stats.tooltips = ns.Gather.stats.tooltips + 1 end
+    local groups = Tip.Groups(tt, unit)
+    lines = Tip.Lines(groups, shift)
+    Tip.lastMore = (#Tip.Lines(groups, true) > #Tip.Lines(groups, false))
+    Tip.last = { n = #lines, shift = shift, groups = #groups }
+    Tip._memo = key and { key = key, t = now, lines = lines } or nil
+  end
   if #lines == 0 or HasLine(tt, lines[1][1]) then return #lines end
   for _, l in ipairs(lines) do
     local c = l[2] or Tip.GREY

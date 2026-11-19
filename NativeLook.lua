@@ -7,6 +7,7 @@
 --    calculé ; mémorisé par compétence pour l'afficher dans notre panneau.
 -- Aucune écriture sur un cadre natif ; rien en combat (valeurs mémorisées).
 local _, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local UI = ns.UI
 local NL = {}
 ns.NativeLook = NL
@@ -525,7 +526,7 @@ function NL.TwoTone(line)
   if string.find(line, "|c", 1, true) then return line end
   local label, value = string.match(line, "^(.-)%s*:%s*(.+)$")
   if label and value and label ~= "" then
-    return "|cffffd100" .. label .. " :|r |cffffffff" .. value .. "|r"
+    return "|cffffd100" .. label .. Tr[" :|r |cffffffff"] .. value .. "|r"
   end
   return "|cffffffff" .. line .. "|r"
 end

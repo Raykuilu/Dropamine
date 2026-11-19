@@ -8,6 +8,7 @@
 -- cases (StyleTile / habillage). Aucun OnUpdate : posé après chaque mise en
 -- page de grille et repeint à chaque mise à jour de case.
 local _, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local UI, I = ns.UI, ns.Icons
 local Wd = {}
 ns.Wide = Wd
@@ -15,10 +16,24 @@ Wd.BAR_H = 3
 Wd.PAD = 5
 Wd.SLIM = 0.45      -- hauteur de la barre = 45 % d'une case (min 14 px)
 Wd.MIN_H = 14
-Wd.FILL = ns.STYLE.BORDER   -- #A67D45 (palette FlareUI, voir STYLE.md)
+Wd.FILL = ns.STYLE.BORDER   -- #A67D45 (palette FlareUI, voir STYLE.md) — filet de la jauge
 Wd.TRACK = { 0, 0, 0, 0.55 }
 Wd.TEX = "Interface\\TargetingFrame\\UI-StatusBar"
+-- 3.5.1 : couleurs de Media/SkillsTab (rouge  #D11F1A, bleu #2961E0, vert #29A829),
+-- saturation −40 %, légèrement assombries, +18 % de parchemin or #A67D45.
+-- Ordre de la jauge : niveau, combat, métiers.
+Wd.SEG_COLORS = {
+  { 0.616, 0.278, 0.227, 1 },  -- #9D473A  niveau
+  { 0.329, 0.408, 0.604, 1 },  -- #54689A  armes + Défense
+  { 0.310, 0.498, 0.243, 1 },  -- #4F7F3E  métiers
+}
 local function N(v) return ns.N and ns.N(v) or tonumber(v) end
+
+local function Segments()
+  local snap = ns.UI and ns.UI.snapshot
+  if snap and snap.segments then return snap.segments end
+  return ns.ComputeTotalSegments and ns.ComputeTotalSegments(snap and snap.tiles) or {}
+end
 
 -- la dernière rangée n'aurait que le total ?
 function Wd.ShouldWiden(cols, n)
@@ -37,6 +52,118 @@ local function Parts(t)
   if p.text.SetJustifyH then p.text:SetJustifyH("CENTER") end
   t._wideParts = p
   return p
+end
+
+local function HideTip(self)
+  local tt = _G.GameTooltip
+  if not (tt and tt.Hide) then return end
+  if tt.IsOwned then
+    if tt:IsOwned(self) then tt:Hide() end
+  else
+    tt:Hide()
+  end
+end
+
+function Wd.ShowBarTip(owner)
+  local tt = _G.GameTooltip
+  if not (tt and owner) then return end
+  pcall(tt.SetOwner, tt, owner, "ANCHOR_TOP")
+  if tt.ClearLines then tt:ClearLines() end
+  tt:AddLine(Tr["Niveau total"])
+  local segs = Segments()
+  local colors = Wd.SEG_COLORS
+  for i = 1, #segs do
+    local s, c = segs[i], colors[i] or { 1, 1, 1, 1 }
+    tt:AddDoubleLine(
+      s.label or "?",
+      string.format("%d / %d", N(s.cur) or 0, N(s.max) or 0),
+      c[1], c[2], c[3], 1, 1, 1)
+  end
+  local snap = ns.UI and ns.UI.snapshot
+  local cur = snap and (N(snap.total) or N(snap.ficTotal)) or 0
+  local mx = snap and (N(snap.totalMax) or N(snap.ficMax)) or N(ns.TOTAL_MAX) or 2460
+  if tt.AddLine then tt:AddLine(" ") end
+  tt:AddDoubleLine(Tr["Total"], string.format("%d / %d", cur or 0, mx or 0), 1, 0.93, 0.80, 1, 0.93, 0.80)
+  tt:Show()
+end
+
+function Wd.EnsureSegs(t)
+  local p = Parts(t)
+  if not p.segs then
+    p.segs = { p.fill }
+    pcall(p.fill.SetTexture, p.fill, Wd.FILL_TEX or Wd.TEX)
+    for i = 2, 3 do
+      local tex = t:CreateTexture(nil, "ARTWORK", nil, 1)
+      pcall(tex.SetTexture, tex, Wd.FILL_TEX or Wd.TEX)
+      p.segs[i] = tex
+    end
+    p.fill = p.segs[1]
+  end
+  if not p.hit then
+    local ok, hit = pcall(CreateFrame, "Frame", nil, t)
+    p.hit = (ok and hit) or nil
+    if p.hit then
+      if p.hit.EnableMouse then p.hit:EnableMouse(true) end
+      p.hit:SetScript("OnEnter", function(self) Wd.ShowBarTip(self) end)
+      p.hit:SetScript("OnLeave", HideTip)
+    end
+  end
+  return p
+end
+
+-- Pose les 3 segments (largeurs = points / plafond du total) et la zone de survol.
+function Wd.LayoutSegments(t, left, by, inner, bh, cur, max)
+  local p = Wd.EnsureSegs(t)
+  local segs = Segments()
+  max = N(max) or 0
+  cur = N(cur) or 0
+  local filled = (max > 0) and math.max(0, math.min(inner, math.floor(inner * (cur / max) + 0.5))) or 0
+  local widths, sumW = {}, 0
+  for i = 1, 3 do
+    local v = segs[i] and (N(segs[i].cur) or 0) or 0
+    local w = (max > 0 and filled > 0) and math.floor(inner * (v / max)) or 0
+    if w < 0 then w = 0 end
+    widths[i], sumW = w, sumW + w
+  end
+  local drift = filled - sumW
+  if drift ~= 0 then
+    for i = 3, 1, -1 do
+      if widths[i] > 0 or (drift > 0 and segs[i] and (N(segs[i].cur) or 0) > 0) then
+        widths[i] = math.max(0, widths[i] + drift)
+        break
+      end
+    end
+  end
+  local x = left
+  local last
+  for i = 1, 3 do
+    local tex, w = p.segs[i], widths[i] or 0
+    local c = Wd.SEG_COLORS[i]
+    tex:ClearAllPoints()
+    if w > 0 and bh > 0 then
+      tex:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", x, by)
+      tex:SetSize(math.max(0.01, w), bh)
+      if c then tex:SetVertexColor(c[1], c[2], c[3], c[4] or 1) end
+      tex:Show()
+      last, x = tex, x + w
+    else
+      tex:Hide()
+    end
+  end
+  if p.hit then
+    p.hit:ClearAllPoints()
+    p.hit:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", left, by)
+    p.hit:SetSize(math.max(1, inner), math.max(1, bh + 4))
+    if p.hit.SetFrameLevel and t.GetFrameLevel then
+      pcall(p.hit.SetFrameLevel, p.hit, (t:GetFrameLevel() or 1) + 3)
+    end
+    p.hit:Show()
+  end
+  if Wd.last then
+    Wd.last.left, Wd.last.by, Wd.last.bh, Wd.last.inner = left, by, bh, inner
+    Wd.last.filled, Wd.last.segs = filled, segs
+  end
+  return p, last
 end
 
 local ICON_PARTS = { "slotBg", "icon", "slotBorder", "hoverTex", "checkTex" }
@@ -73,20 +200,23 @@ function Wd.Paint(t)
   p.track:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", left, by)
   p.track:SetSize(inner, bh)
   p.track:SetVertexColor(Wd.TRACK[1], Wd.TRACK[2], Wd.TRACK[3], Wd.TRACK[4])
-  p.fill:ClearAllPoints()
-  p.fill:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", left, by)
-  p.fill:SetSize(math.max(0.01, inner * pct), bh)
-  p.fill:SetVertexColor(Wd.FILL[1], Wd.FILL[2], Wd.FILL[3], Wd.FILL[4])
-  if pct <= 0 then p.fill:Hide() else p.fill:Show() end
   p.track:Show() p.text:Show()
   Wd.last = { w = w, h = h, cur = cur, max = max, pct = pct, inner = inner }
+  Wd.LayoutSegments(t, left, by, inner, bh, cur, max)
 end
 
 local function Unwide(t)
   if not t._wideOn then return end
   t._wideOn, t._wideW, t._wideH = nil, nil, nil
   local p = t._wideParts
-  if p then p.track:Hide() p.fill:Hide() p.text:Hide() end
+  if p then
+    p.track:Hide()
+    if p.fill then p.fill:Hide() end
+    if p.segs then for i = 1, #p.segs do p.segs[i]:Hide() end end
+    if p.hit then p.hit:Hide() end
+    if p.sheen then p.sheen:Hide() end
+    p.text:Hide()
+  end
   if t.countFS then t.countFS:Show() end
   if t.countFS2 then t.countFS2:Show() end
 end
@@ -208,9 +338,9 @@ ns.SlashExt.total = function(rest)
   local a = ((rest or ""):match("^%s*(%S*)") or ""):lower()
   local on
   if a == "on" then on = true elseif a == "off" then on = false elseif a == "" then on = not Wd.Shown() end
-  if on == nil then print("|cffffd100Dropamine|r : usage : /drop total on|off") return end
+  if on == nil then print(Tr["|cffffd100Dropamine|r : usage : /drop total on|off"]) return end
   local s = Wd.SetShown(on)
-  print("|cffffd100Dropamine|r : Niveau total " .. (s and "affiché" or "masqué (grille recalculée sans lui)"))
+  print(Tr["|cffffd100Dropamine|r : Niveau total "] .. (s and Tr["affiché"] or Tr["masqué (grille recalculée sans lui)"]))
 end
 ns.HelpExt = ns.HelpExt or {}
 ns.HelpExt[#ns.HelpExt + 1] = "/drop total on|off : afficher ou masquer la case Niveau total (barre fine en 3 colonnes)"
@@ -218,5 +348,27 @@ ns.HelpExt[#ns.HelpExt + 1] = "/drop total on|off : afficher ou masquer la case 
 ns.DebugExt = ns.DebugExt or {}
 ns.DebugExt[#ns.DebugExt + 1] = function()
   local e = UI.embed and UI.embed._wide
-  return { "— Barre Niveau total (3.3.13) — " .. (not Wd.Shown() and "masquée (/drop total off)" or e and string.format("pleine largeur %d px (%d colonnes, %d cases)", e.w, e.cols, e.n) or "case normale") }
+  local base = "— Barre Niveau total (3.5.1) — " .. (not Wd.Shown() and "masquée (/drop total off)" or e and string.format("pleine largeur %d px (%d colonnes, %d cases)", e.w, e.cols, e.n) or "case normale")
+  local lines = { base }
+  local segs = Wd.last and Wd.last.segs
+  if segs then
+    for i = 1, #segs do
+      local s = segs[i]
+      lines[#lines + 1] = string.format("  %s : %d / %d", s.label or "?", s.cur or 0, s.max or 0)
+    end
+  end
+  return lines
+end
+
+-- 3.5.2 : au login, la grille était calculée avant la lecture de showTotal,
+-- d'où une barre absente malgré la case cochée. On réapplique une fois la
+-- session chargée (même chemin que décocher / recocher).
+do
+  local ev = CreateFrame("Frame")
+  ev:RegisterEvent("PLAYER_ENTERING_WORLD")
+  ev:SetScript("OnEvent", function(self)
+    self:UnregisterEvent("PLAYER_ENTERING_WORLD")
+    local function apply() if Wd.Shown() then pcall(Wd.SetShown, true) end end
+    if C_Timer and C_Timer.After then C_Timer.After(1, apply) C_Timer.After(3, apply) else apply() end
+  end)
 end

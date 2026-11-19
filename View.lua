@@ -12,6 +12,7 @@
 --   * Aucun écran anti-clic, aucune couche de boutons, aucune opacité 0, aucun
 --     disjoncteur qui coupe la mise en page ou la souris.
 local ADDON, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local UI = ns.UI
 local H = UI._H
 local Text, FillTexture, TrySetTex, SetFontSafe = H.Text, H.FillTexture, H.TrySetTex, H.SetFontSafe
@@ -486,7 +487,7 @@ function UI:UpdateTile(t, d)
   t._capped = capped and true or false
   local lag = (not grey) and ns.Opt("rappel") and self:WeaponLagInfo(d) or nil
   if lag and not self:InDruidForm() then
-    t._warnText = "Compétence d'arme sous-montée : " .. tostring(lag.name) .. " " .. tostring(lag.cur) .. "/" .. tostring(lag.max)
+    t._warnText = Tr["Compétence d'arme sous-montée : "] .. tostring(lag.name) .. " " .. tostring(lag.cur) .. "/" .. tostring(lag.max)
     if ns.QoL and ns.QoL.MainWeaponHint then
       local okH, h = pcall(ns.QoL.MainWeaponHint)
       if okH and h then t._warnText = t._warnText .. "\n" .. h end
@@ -1874,7 +1875,7 @@ function UI:SetViewToggleText()
   local b = self.viewToggle
   if not b then return end
   local osrs = self:IsOsrsView()
-  b.tooltipText = osrs and "Vue classique" or "Vue OSRS"
+  b.tooltipText = osrs and Tr["Vue classique"] or Tr["Vue OSRS"]
   b.label = b.tooltipText
   if b.SetText then pcall(b.SetText, b, "") end
   if b.fs then b.fs:SetText("") b.fs:Hide() end
@@ -1983,7 +1984,7 @@ function UI:DetailDescriptionFor(d, live)
     return table.concat(cached.desc, "\n")
   end
   local fb = V.DESC_FR[d.id or ""] or V.DESC_KIND_FR[d.kind or ""]
-  if fb then self.descSource = "texte de l'addon" return fb end
+  if fb then self.descSource = "texte de l'addon" return Tr[fb] end
   return ""
 end
 
