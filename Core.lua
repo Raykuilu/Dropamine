@@ -9,7 +9,7 @@ end
 _G.Dropamine = ns
 ns.ADDON = ADDON
 local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
-ns.VERSION = "3.5.20"
+ns.VERSION = "3.5.21"
 
 
 -- v2.5.0 : valeurs « secrètes » de Forever (UnitStat, UnitXP… en combat).
@@ -93,7 +93,12 @@ end
 
 function ns.GetPlayerLevel()
   local lvl = ns.N(Call(UnitLevel, "player"))
-  if lvl then return lvl end
+  if lvl and lvl > 0 then
+    ns._lastPlayerLevel = lvl
+    return lvl
+  end
+  -- Valeur secrète en combat (ou lecture ratée) : dernier niveau connu.
+  if ns._lastPlayerLevel and ns._lastPlayerLevel > 0 then return ns._lastPlayerLevel end
   return 0
 end
 
@@ -300,6 +305,13 @@ function ns.GetPlayerXPSafe()
 end
 function ns.GetPlayerXP()
   local cur, maxxp = ns.GetPlayerXPSafe()
+  if cur and maxxp and maxxp > 0 then
+    ns._lastPlayerXP, ns._lastPlayerXPMax = cur, maxxp
+    return cur, maxxp
+  end
+  if ns._lastPlayerXP and ns._lastPlayerXPMax then
+    return ns._lastPlayerXP, ns._lastPlayerXPMax
+  end
   return cur or 0, maxxp or 0
 end
 
@@ -800,6 +812,14 @@ function ns.MergeRankCache(list, source)
       if r and r > 0 then
         cache[k] = { name = s.name, rank = r, max = ns.N(s.max) or 0, headerName = s.headerName, when = now,
           modifier = ns.N(s.modifier), skillID = s.skillID }
+      elseif cache[k] and (ns.N(cache[k].rank) or 0) > 0 then
+        -- Lecture illisible (valeur secrète en combat) : on garde le dernier rang,
+        -- pour que la grille et le total ne retombent pas à 0.
+        local e = cache[k]
+        s.rank, s.max = e.rank, ((ns.N(s.max) or 0) > 0 and s.max) or e.max
+        if e.modifier ~= nil and (ns.N(s.modifier) or 0) == 0 then s.modifier = e.modifier end
+        if e.skillID and not s.skillID then s.skillID = e.skillID end
+        s.cached = true
       end
     end
   end
@@ -1822,7 +1842,8 @@ ns.On("PLAYER_LOGOUT", function()
   local c = ns.CharDB()
   c.session.lastSeen = (type(time) == "function" and time()) or nil
 end)
--- Rafraîchissements non essentiels reportés hors combat.
+-- Fin de combat : toasts de compétence éventuellement manqués (rangs secrets)
+-- puis mise en page structurelle si elle a été reportée.
 ns.On("PLAYER_REGEN_ENABLED", function()
   if ns.UI and ns.UI._skillDiffAfterCombat and ns.UI.OnSkillDiff then ns.UI._skillDiffAfterCombat = false ns.UI:OnSkillDiff() end
   if ns.UI and ns.UI.dirty and ns.UI.Refresh then ns.UI:Refresh() end
@@ -2111,7 +2132,7 @@ function ns.DebugReport()
     for k, v in pairs(c.caps) do caps[#caps + 1] = tostring(k) .. "=" .. tostring(v) end
     add("  paliers annoncés : " .. ((#caps > 0) and table.concat(caps, ", ") or "aucun"))
     add("  session : base " .. tostring(c.session.baseline) .. (ns.sessionFresh == false and " (rechargement)" or " (connexion)"))
-    add("  combat : " .. ((type(InCombatLockdown) == "function" and InCombatLockdown()) and "oui (rafraîchissements reportés)" or "non")
+    add("  combat : " .. ((type(InCombatLockdown) == "function" and InCombatLockdown()) and "oui (valeurs à jour, mise en page reportée)" or "non")
       .. " ; issecretvalue " .. ((type(_G.issecretvalue) == "function") and "présent" or "absent"))
   end
   if ns.UI and ns.UI.DebugDropLines then

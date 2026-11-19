@@ -753,6 +753,12 @@ end
 
 function UI:LayoutGrid(wrap, snap)
   if not wrap or not snap then return end
+  -- 3.5.21 : en combat, pas de re-pose (SetPoint / Show / Hide / SetFrameLevel)
+  -- si la grille est déjà en place — le wrap peut être enfant de SkillFrame.
+  if ns.InCombat and ns.InCombat() and wrap._layout and wrap.tiles and #wrap.tiles > 0 then
+    if self.RefreshVisibleTiles then self:RefreshVisibleTiles(wrap, snap) end
+    return
+  end
   wrap._snap = snap
   local tiles = snap.tiles or {}
   local child = wrap.child

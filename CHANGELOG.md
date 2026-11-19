@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.5.21
+- Total-level bar: the fill now sits inside the frame on every theme, with per-theme insets, so the Flare rounded corners no longer hide the red (character level) segment or let it start before the bar. Flare / Light: 5 px left and right, 1 px top and bottom. Classic: 3 px left and right, 1 px top and bottom.
+- Each non-zero segment (level, weapon skills + defense, professions) keeps a minimum visible width of 5 px; the other segments shrink proportionally so the fill still fits in the inner track.
+- The skills panel (tiles and total-level bar) now updates live in combat. Only protected-frame operations (SetPoint / Show / Hide / SetFrameLevel, opening the native SkillFrame) are deferred until combat ends. FontString text, bar fills and textures on already-laid-out tiles refresh immediately. Unreadable secret values keep the last known rank / level / XP so the grid does not drop to 0.
+
+---
+
+- Barre de niveau total : le remplissage reste à l'intérieur du cadre sur les trois thèmes, avec des marges par thème, pour que l'arrondi Flare ne masque plus le segment rouge (niveau du personnage) ni ne le laisse commencer avant la barre. Flare / Léger : 5 px à gauche et à droite, 1 px en haut et en bas. Classique : 3 px à gauche et à droite, 1 px en haut et en bas.
+- Chaque segment non nul (niveau, armes + Défense, métiers) garde une largeur minimale visible de 5 px ; les autres se réduisent en proportion pour que le remplissage tienne dans la piste intérieure.
+- Le panneau des compétences (cases et barre de niveau total) se met maintenant à jour en combat. Seules les opérations sur les cadres protégés (SetPoint / Show / Hide / SetFrameLevel, ouverture de la fenêtre native) attendent la fin du combat. Les textes, le remplissage des jauges et les textures des cases déjà posées sont rafraîchis tout de suite. Une valeur secrète illisible garde le dernier rang / niveau / XP connu, pour que la grille ne retombe pas à 0.
+
 ## 3.5.20
 - In-game logo updated to "La Fiole": the minimap button, the addon-list icon (IconTexture), the character skills tab, the total-level tile, the session recap toast and the classic view toggle now use the new flask instead of the old drop / three pillars.
 - Textures: Media/Dropamine-Icon.tga is now 128×128 (detailed master, addon list); Media/SkillsTab.tga and SkillsTab.png are 64×64 (simplified master, in-game uses); new Media/Dropamine-Icon-32.tga (32×32, minimap fallback); Media/Dropamine-Logo.png is the 512×512 detailed flask. All TGA files are 32-bit uncompressed, power-of-two, with alpha.
