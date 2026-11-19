@@ -2717,13 +2717,13 @@ do
   local O = ns.Options
   local ids = {}
   for _, sec in ipairs(O.SECTIONS) do ids[#ids + 1] = sec.id end
-  ok(table.concat(ids, ",") == "display,prof,pvp,notif,advanced", "3.4.0 : 5 groupes : " .. table.concat(ids, ", "))
+  ok(table.concat(ids, ",") == "display,notif,sounds,prof,advanced", "3.5.22 : 5 groupes : " .. table.concat(ids, ", "))
   local function kind(k) local it = O.Find(k) return it and it.type end
   ok(kind("cols") == "radio" and kind("notifMode") == "radio" and kind("scale") == "slider" and kind("bgAlpha") == "slider"
     and kind("opacity") == "slider" and kind("fadeDelay") == "slider" and kind("locked") == "check", "Affichage : colonnes (menu), taille / fond / opacité / fondu (curseurs), verrou (case)")
   ok(kind("flyAnim") == "check" and kind("gatherAlerts") == "check" and kind("scannerIcons") == "check" and kind("tipCompact") == "check"
     and kind("links") == "check" and kind("unlearned") == "check", "Notifs / Cibles / Métiers : animation, alertes, repères, infobulle compacte, liens, non apprises")
-  ok(not O.Find("showStats") and not O.Find("dropDir") and not O.Find("dropsSnapChat"), "retirés : caractéristiques (volet supprimé), sens d'empilement et coller au chat (remplacés par la position)")
+  ok(not O.Find("showStats") and not O.Find("dropsSnapChat") and O.Find("dropDir"), "retirés : caractéristiques et coller au chat ; sens des notifs conservé")
   -- toutes les valeurs non binaires sont des curseurs ou des menus, et chaque réglage a sa commande
   local badCheck, noCmd = {}, {}
   for _, it in ipairs(O.All()) do
@@ -2779,7 +2779,7 @@ do
   ns.SlashExt.animation("on")
   -- panneau construit
   local panel = O.Build()
-  ok(panel and O.resetButton and O.resetButton.text == O.RESET_TEXT, "bouton « Valeurs par défaut »")
+  ok(panel and O.resetButton and O.resetButton.text == ns.L[O.RESET_TEXT], "bouton « Valeurs par défaut »")
   local okW, missing = true, {}
   for _, it in ipairs(O.All()) do if not O.widgets[it.key] then okW = false missing[#missing + 1] = it.key end end
   ok(okW, "un contrôle par réglage (" .. table.concat(missing, ",") .. ")")
@@ -2799,7 +2799,7 @@ do
   ok(not overlap, "aucun contrôle ne se chevauche")
   -- valeurs par défaut (deux clics)
   hold()
-  ok(O.ResetClick(O.resetButton) == false and O.resetButton.text == O.RESET_CONFIRM and ns.Layout.Scale() == 200, "1er clic : « Confirmer ? », rien n'est changé")
+  ok(O.ResetClick(O.resetButton) == false and O.resetButton.text == ns.L[O.RESET_CONFIRM] and ns.Layout.Scale() == 200, "1er clic : « Confirmer ? », rien n'est changé")
   local n = O.ResetClick(O.resetButton)
   ok(n and n > 20 and ns.Layout.Scale() == 100 and ns.Layout.Cols() == 5 and ns.Panel.BgAlpha() == 45 and ns.Panel.Opacity() == 60
     and ns.Panel.FadeDelay() == 3 and not ns.db.ui.locked and ns.Notif.Mode() == "dessus", "2e clic : " .. tostring(n) .. " réglages remis par défaut (taille 100, 5 colonnes, fond 45, repos 60, fondu 3 s, déverrouillé, notifs dessus)")
@@ -4710,7 +4710,7 @@ do
   ok(#noHelp == 0, "chaque réglage a sa phrase d'aide (" .. table.concat(noHelp, ",") .. ")")
   ok(#long == 0, "libellés courts (≤ 34 caractères) " .. table.concat(long, " | "))
   local titles = {} for _, s in ipairs(O.SECTIONS) do titles[#titles + 1] = s.title end
-  ok(table.concat(titles, ",") == "Affichage & thème,Métiers & surlignage,JcJ,Notifications,Avancé", "groupes : " .. table.concat(titles, ", "))
+  ok(table.concat(titles, ",") == "Affichage,Notifications et toasts,Sons,Métiers & surlignage,Avancé", "groupes : " .. table.concat(titles, ", "))
   ok(O.Find("activity") and O.Find("activity").default == true, "nouveau : « Surligner le métier en cours » (activé par défaut)")
   local defaults = {} for _, it in ipairs(O.All()) do defaults[it.key] = it.default end
   ok(defaults.theme == "flare" and defaults.cols == 5 and defaults.scale == 100 and defaults.scannerToast == false and defaults.levelUpSound == false, "défauts d'un premier lancement : FlareUI, 5 colonnes, 100 %, sons et toasts secondaires coupés")
@@ -4724,6 +4724,53 @@ do
   ok(not table.concat(prints, "\n"):find("sens haut|bas", 1, true), "commandes mortes (sens / coller au chat) retirées de l'aide")
   local toc = io.open(addonDir .. "/Dropamine.toc"):read("*a")
   ok(toc:find("## Version: 3.5.0\n", 1, true) and toc:find("\nActivity.lua", 1, true) and toc:find("\nProfJob.lua", 1, true) and toc:find("\nDopamine.lua", 1, true), ".toc : version 3.5.0, Activity.lua, ProfJob.lua, Dopamine.lua")
+end
+
+print("== 3.5.22 : réglages 2.0 — look natif, aperçu, Tester, reset par section ==")
+do
+  local O = ns.Options
+  local ids, titles = {}, {}
+  for _, s in ipairs(O.SECTIONS) do ids[#ids + 1] = s.id titles[#titles + 1] = s.title end
+  ok(table.concat(ids, ",") == "display,notif,sounds,prof,advanced", "sections 3.5.22 : " .. table.concat(ids, ", "))
+  ok(table.concat(titles, ",") == "Affichage,Notifications et toasts,Sons,Métiers & surlignage,Avancé", "titres : " .. table.concat(titles, ", "))
+  local home = {}
+  for _, sec in ipairs(O.SECTIONS) do for _, it in ipairs(O.SectionItems(sec)) do home[it.key] = sec.id end end
+  ok(home.theme == "display" and home.bgAlpha == "display" and home.fadeDelay == "display" and home.nextBar == "display" and home.locked == "display",
+    "Affichage : thème, fond, fondu, barre du prochain point, verrou")
+  ok(home.dropsEnabled == "notif" and home.dropBgAlpha == "notif" and home.scannerToast == "notif" and home.combo == "notif",
+    "Notifications : toasts, fond des toasts, toast recette, combo")
+  ok(home.sounds == "sounds" and home.soundSkill == "sounds" and home.levelUpSound == "sounds" and home.scannerSound == "sounds",
+    "Sons : interrupteur, sons dopamine, son de niveau, son recette")
+  ok(home.pvp == "advanced" and home.pvpMarks == "advanced", "JcJ rangé dans Avancé")
+  local panel = O.Build()
+  ok(panel and O.boxes and #O.boxes == 5, "5 groupes construits")
+  local boxed = 0
+  for _, b in ipairs(O.boxes) do
+    if b._chrome and tostring(b._chrome):find("backdrop", 1, true) then boxed = boxed + 1 end
+  end
+  ok(boxed == 0, "aucun encadré doré (" .. tostring(boxed) .. ")")
+  local centered, wide = {}, {}
+  for _, it in ipairs(O.All()) do
+    local w = O.widgets[it.key]
+    local fs = w and w.labelFS
+    if fs and fs.justifyH and fs.justifyH ~= "LEFT" then centered[#centered + 1] = it.key end
+    if fs and fs.width and fs.width >= (O.COL_W - 8) then wide[#wide + 1] = it.key end
+  end
+  ok(#centered == 0, "libellés alignés à gauche (" .. table.concat(centered, ",") .. ")")
+  ok(#wide == 0, "libellés sans largeur fixe trop large (" .. table.concat(wide, ",") .. ")")
+  ok(O.widgets.scale and O.widgets.scale.valueFS and O.widgets.scale.labelFS, "curseur Taille : libellé + valeur")
+  ok(O.testButtons and O.testButtons.soundSkill and O.testButtons.xpDrops and O.testButtons.levelUpSound,
+    "boutons Tester à côté des sons et des notifications")
+  ok(O.sectionResets and O.sectionResets.display and O.sectionResets.sounds, "Réinitialiser par section")
+  ok(type(O.RunTest) == "function" and type(O.EnsurePreviewVisible) == "function" and type(O.ResetSection) == "function",
+    "API : RunTest, aperçu en direct, ResetSection")
+  ok(O.Find("lang") and O.Find("lang").noReset, "la langue n'est pas remise à zéro")
+  -- reset de section : ne touche pas les autres
+  O.Set("scale", 150)
+  O.Set("dropDuration", 5)
+  local nsec = O.ResetSection("display")
+  ok(nsec and nsec > 0 and ns.Layout.Scale() == 100 and O.Get("dropDuration") == 5, "reset Affichage : taille 100, durée des toasts inchangée")
+  O.Set("dropDuration", 2.6)
 end
 
 print("== 3.4.1 : survol / appui du bouton d'ouverture = NOTRE surbrillance, posée sur la plaque ; zone de survol = plaque ==")

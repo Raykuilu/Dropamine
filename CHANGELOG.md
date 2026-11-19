@@ -1,5 +1,21 @@
 # Changelog
 
+## 3.5.22
+- Settings 2.0: the options panel now follows the native Classic look (like LayerSwap). Gold-bordered boxed sections are gone. Section titles are plain gold. Every label is left-aligned, tight against its control — no centered text and no wide fixed widths that left holes in the row.
+- One family, one section, most-used first. **Display** gathers every look and transparency setting (theme, language, columns, size, idle transparency, hover background, fade delay, number color, total-level bar, next-point bar, lock). Then **Notifications & toasts**, **Sounds**, **Professions & highlighting**, and **Advanced** (including PvP). Existing settings, /drop commands and SavedVariables keys are unchanged.
+- Live preview: while the options panel is open, changing the theme, size or transparency shows and updates the Dropamine panel immediately. In combat the preview waits until you leave combat, and never touches protected frames.
+- A **Test** button next to sound and notification settings plays the sound or shows a sample toast, even if that option is still off.
+- Each section has its own **Reset**, in addition to the global Defaults button (two-click confirm, language is never reset).
+
+---
+
+- Réglages 2.0 : le panneau d'options reprend le look natif Classic (façon LayerSwap). Plus d'encadrés à bord doré. Les titres de section sont simplement en or. Tous les libellés sont alignés à gauche, collés à leur contrôle — plus de texte centré ni de largeurs fixes qui laissaient des trous.
+- Une famille, une section, les plus utilisés en premier. **Affichage** rassemble tous les réglages d'apparence et de transparence (thème, langue, colonnes, taille, transparence au repos, fond au survol, délai avant repos, couleur des chiffres, barre de niveau total, barre du prochain point, verrou). Puis **Notifications et toasts**, **Sons**, **Métiers & surlignage**, et **Avancé** (y compris le JcJ). Les réglages, les commandes /drop et les clés de sauvegarde restent les mêmes.
+- Aperçu en direct : tant que les options sont ouvertes, changer le thème, la taille ou la transparence affiche et met à jour le panneau Dropamine tout de suite. En combat, l'aperçu attend la sortie de combat et ne touche jamais un cadre protégé.
+- Un bouton **Tester** à côté des sons et des notifications joue le son ou montre un toast d'exemple, même si l'option est encore décochée.
+- Chaque section a son propre **Réinitialiser**, en plus du bouton général Valeurs par défaut (confirmation en deux clics, la langue n'est jamais remise à zéro).
+
+
 ## 3.5.21
 - Total-level bar: the fill now sits inside the frame on every theme, with per-theme insets, so the Flare rounded corners no longer hide the red (character level) segment or let it start before the bar. Flare / Light: 5 px left and right, 1 px top and bottom. Classic: 3 px left and right, 1 px top and bottom.
 - Each non-zero segment (level, weapon skills + defense, professions) keeps a minimum visible width of 5 px; the other segments shrink proportionally so the fill still fits in the inner track.
