@@ -258,7 +258,13 @@ local function SetTileIcon(tex, path)
   if not ok and icon ~= ns.FALLBACK_ICON then
     pcall(tex.SetTexture, tex, ns.FALLBACK_ICON)
   end
-  if tex.SetTexCoord then pcall(tex.SetTexCoord, tex, 0.07, 0.93, 0.07, 0.93) end
+  -- 3.5.20 : la fiole a son propre alpha — ne pas recadrer (ça coupait la pointe).
+  local fold = type(icon) == "string" and string.lower(icon):gsub("/", "\\") or ""
+  local logo = string.find(fold, "skillstab", 1, true) or string.find(fold, "dropamine-icon", 1, true)
+  if tex.SetTexCoord then
+    if logo then pcall(tex.SetTexCoord, tex, 0, 1, 0, 1)
+    else pcall(tex.SetTexCoord, tex, 0.07, 0.93, 0.07, 0.93) end
+  end
 end
 
 local function DisplayNumber(d)
@@ -4434,16 +4440,12 @@ function UI:BuildMinimap()
     pcall(b.SetFrameLevel, b, (parent:GetFrameLevel() or 0) + 8)
   end
   b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
-  -- 3.3.1 : icône « 3 piliers » dessinée avec nos aplats (plus de texture d'icône)
-  local icon
-  if ns.Window and ns.Window.DrawPillars then
-    b.pillars = ns.Window.DrawPillars(b, 20, "BACKGROUND", 0)
-    icon = b.pillars.bg
-  else
-    icon = b:CreateTexture(nil, "BACKGROUND")
-    icon:SetSize(20, 20)
-    icon:SetPoint("CENTER")
-  end
+  -- 3.5.20 : icône « La Fiole » (master simplifié 32 px) ; ToggleIcon la reprend ensuite.
+  local icon = b:CreateTexture(nil, "BACKGROUND")
+  icon:SetSize(20, 20)
+  icon:SetPoint("CENTER")
+  pcall(icon.SetTexture, icon, "Interface\\AddOns\\Dropamine\\Media\\Dropamine-Icon-32")
+  b.icon = icon
   local overlay = b:CreateTexture(nil, "OVERLAY")
   overlay:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
   overlay:SetSize(54, 54)
@@ -6317,7 +6319,8 @@ end
 local function PathLooksLikeCustom(path)
   if type(path) ~= "string" then return false end
   local fold = string.lower(path):gsub("/", "\\")
-  return string.find(fold, "skillstab", 1, true) and true or false
+  -- 3.5.20 : SkillsTab (fiole en jeu) ou Dropamine-Icon (liste d'addons / minicarte)
+  return (string.find(fold, "skillstab", 1, true) or string.find(fold, "dropamine-icon", 1, true)) and true or false
 end
 
 local function ApplyTextureToTab(btn, path)
