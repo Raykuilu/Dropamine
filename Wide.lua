@@ -32,8 +32,8 @@ Wd.SEG_COLORS = {
 -- (pan coupé ~2,75 px + liseré) masquait le premier segment ou le laissait
 -- dépasser avant le cadre. Classic : filet d'infobulle (edgeSize 10).
 Wd.FILL_INSET = {
-  flare   = { l = 3, r = 3, t = 1, b = 1 },
-  leger   = { l = 3, r = 3, t = 1, b = 1 },
+  flare   = { l = 1, r = 1, t = 1, b = 1 },
+  leger   = { l = 1, r = 1, t = 1, b = 1 },
   classic = { l = 3, r = 3, t = 1, b = 1 },
 }
 Wd.SEG_MIN_W = 5  -- largeur minimale (px) d'un segment dont la valeur est > 0
@@ -252,7 +252,33 @@ function Wd.LayoutSegments(t, left, by, inner, bh, cur, max)
       end
     end
   end
+  -- Rouge (niveau) : minimum par paliers, 1 px au niv. 1 -> 5 px au niv. 60.
+  local redOn = present[1]
+  present[1] = false
   widths, filled = ApplyMinWidths(widths, present, Wd.SEG_MIN_W or 5, track, filled)
+  present[1] = redOn
+  if redOn then
+    local lvl = N(segs[1] and segs[1].cur) or 1
+    local redMin = math.max(1, math.min(5, 1 + math.floor((math.max(1, lvl) - 1) * 4 / 59)))
+    local need = redMin - (widths[1] or 0)
+    if need > 0 then
+      local room = track - filled
+      local grow = math.min(need, math.max(0, room))
+      widths[1] = (widths[1] or 0) + grow
+      need = need - grow
+      for i = 3, 2, -1 do
+        if need <= 0 then break end
+        local extra = (widths[i] or 0) - (Wd.SEG_MIN_W or 5)
+        if extra > 0 then
+          local take = math.min(extra, need)
+          widths[i] = widths[i] - take
+          widths[1] = widths[1] + take
+          need = need - take
+        end
+      end
+      filled = (widths[1] or 0) + (widths[2] or 0) + (widths[3] or 0)
+    end
+  end
   local x = left + il
   local last
   for i = 1, 3 do
