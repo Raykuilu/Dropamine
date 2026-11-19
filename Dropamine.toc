@@ -6,7 +6,7 @@
 ## Version: 3.5.20
 ## X-License: MIT
 ## IconTexture: Interface\AddOns\Dropamine\Media\Dropamine-Icon
-# ## X-Curse-Project-ID: <ID CurseForge à mettre ici une fois le projet créé — ne pas inventer>
+## X-Curse-Project-ID: 1812422
 ## SavedVariables: DropamineDB, OSRS_TotalLevelDB
 ## X-Game: Forever
 
