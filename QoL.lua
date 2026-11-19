@@ -8,11 +8,12 @@ local Q = {}
 ns.QoL = Q
 
 local function N(v) return ns.N(v) end
+-- 3.6.0 : sans table temporaire (appelé sur les événements fréquents : survol,
+-- barres de nom, cible) et sans troncature aux valeurs nil intermédiaires.
+local function Ret(ok, ...) if not ok then return nil end return ... end
 local function Call(fn, ...)
   if type(fn) ~= "function" then return nil end
-  local r = { pcall(fn, ...) }
-  if not r[1] then return nil end
-  return unpack(r, 2)
+  return Ret(pcall(fn, ...))
 end
 local function Str(v)
   if type(v) ~= "string" or ns.IsSecret(v) then return nil end
@@ -100,7 +101,10 @@ function Q.OnSnapshot(snap)
   for _, d in ipairs(snap.tiles or {}) do
     if d.id and N(d.current) and not d.placeholder then ranks[d.id] = N(d.current) end
   end
-  c.history[day] = { total = total, ranks = ranks }
+  -- 3.6.0 : la journée garde ses autres champs (Progress.lua : pts, cat, skills)
+  local h = c.history[day]
+  if type(h) ~= "table" then h = {} c.history[day] = h end
+  h.total, h.ranks = total, ranks
   Q.PruneHistory(c)
   -- alts
   c.lastTotal = total
@@ -143,11 +147,13 @@ function Q.OnSnapshot(snap)
   c.milestonesSeeded = true
 end
 
+Q.HISTORY_DAYS = 35   -- 3.6.0 : 35 jours (fenêtre Progression : 30 jours + marge)
 function Q.PruneHistory(c)
   local keys = {}
   for k in pairs(c.history) do keys[#keys + 1] = k end
+  if #keys <= Q.HISTORY_DAYS then return end
   table.sort(keys)
-  while #keys > 30 do c.history[table.remove(keys, 1)] = nil end
+  while #keys > Q.HISTORY_DAYS do c.history[table.remove(keys, 1)] = nil end
 end
 
 -- Série des 7 derniers jours connus (valeur du total ou d'une compétence).

@@ -40,6 +40,13 @@ function PG.Check(why)
   if not (f and p) or PG._busy then return false end
   if f._osrsMovingNow or (ns.EditMode and ns.EditMode._moving) or (ns.Theme and ns.Theme.moving) then return false end
   if PG.Matches(f, p) then return false end
+  -- 3.6.0 : jamais reposer une position mémorisée hors écran (elle est oubliée)
+  local SO = ns.SafeOpen
+  if SO and SO.SavedPosOk and not SO.SavedPosOk(f, p) then
+    if SO.ForgetBadPos then SO.ForgetBadPos(f, "PosGuard " .. tostring(why)) end
+    PG.stats.refused = (PG.stats.refused or 0) + 1
+    return false
+  end
   PG._busy = true
   pcall(f.ClearAllPoints, f)
   pcall(f.SetPoint, f, p.point or "CENTER", UIParent, p.relativePoint or p.point or "CENTER", p.x, p.y)

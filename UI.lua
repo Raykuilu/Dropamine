@@ -4364,14 +4364,34 @@ function UI:RequestRefresh()
     self:Refresh()
     return
   end
-  holder:SetScript("OnUpdate", function(f, elapsed)
-    f._osrsAcc = (f._osrsAcc or 0) + (elapsed or 0.05)
-    if f._osrsAcc < 0.10 then return end
-    f._osrsAcc = 0
-    f:SetScript("OnUpdate", nil)
-    UI.pending = false
-    UI:Refresh()
-  end)
+  -- 3.6.0 : une seule fermeture (plus d'allocation à chaque demande) et, en
+  -- combat ou en raid, une fenêtre de regroupement plus large : une rafale
+  -- d'XP / UNIT_STATS = une seule collecte (valeurs seulement, voir Refresh).
+  holder._osrsAcc = 0
+  holder._osrsWait = UI.RefreshWindow()
+  if not UI._refreshTick then
+    UI._refreshTick = function(f, elapsed)
+      f._osrsAcc = (f._osrsAcc or 0) + (elapsed or 0.05)
+      if f._osrsAcc < (f._osrsWait or 0.10) then return end
+      f._osrsAcc = 0
+      f:SetScript("OnUpdate", nil)
+      UI.pending = false
+      UI:Refresh()
+    end
+  end
+  holder:SetScript("OnUpdate", UI._refreshTick)
+end
+UI.REFRESH_WAIT = { idle = 0.10, combat = 0.50, raid = 1.00 }
+function UI.RefreshWindow()
+  local W = UI.REFRESH_WAIT
+  local combat = ns.InCombat and ns.InCombat()
+  if not combat then return W.idle end
+  local raid = type(_G.IsInRaid) == "function" and select(2, pcall(_G.IsInRaid)) == true
+  if not raid and type(_G.GetNumRaidMembers) == "function" then
+    local ok, n = pcall(_G.GetNumRaidMembers)
+    raid = ok and (tonumber(n) or 0) > 0
+  end
+  return raid and W.raid or W.combat
 end
 
 -- v2.4.4 : si l'onglet Comp. existe, on l'ouvre en vue OSRS ; la fenêtre
@@ -5926,8 +5946,16 @@ function UI:FlushSkillDiff()
         if f and not limited then self._dropLast[fold] = t end
       end
       self._skillDrops = (self._skillDrops or 0) + 1
+      local cat = ns.LookupCatalog and ns.LookupCatalog(s.name)
+      -- 3.6.0 : suivi de progression (données seulement, aussi en combat)
+      if ns.Progress and ns.Progress.OnRise then
+        pcall(ns.Progress.OnRise, {
+          name = s.name, id = skillId or (cat and cat.id), fold = fold,
+          from = pr, to = cr, delta = d, max = maxS, kind = cat and cat.kind,
+          counts = not (cat and (cat.countsInTotal == false or cat.kind == "stat")), icon = icon,
+        })
+      end
       if ns.Dopamine and ns.Dopamine.OnRise then
-        local cat = ns.LookupCatalog and ns.LookupCatalog(s.name)
         pcall(ns.Dopamine.OnRise, {
           name = s.name, id = skillId or (cat and cat.id), fold = fold,
           from = pr, to = cr, delta = d, max = maxS, kind = cat and cat.kind, icon = icon,

@@ -53,3 +53,4 @@ Dopamine.lua
 DebugWindow.lua
 SafeOpen.lua
 ToastFit.lua
+Progress.lua

@@ -20,11 +20,12 @@ ns.PvP = PV
 
 local function N(v) return ns.N and ns.N(v) or tonumber(v) end
 local function InCombat() return ns.InCombat and ns.InCombat() or false end
+-- 3.6.0 : sans table temporaire (appelé sur les événements fréquents : survol,
+-- barres de nom, cible) et sans troncature aux valeurs nil intermédiaires.
+local function Ret(ok, ...) if not ok then return nil end return ... end
 local function Call(fn, ...)
   if type(fn) ~= "function" then return nil end
-  local r = { pcall(fn, ...) }
-  if not r[1] then return nil end
-  return unpack(r, 2)
+  return Ret(pcall(fn, ...))
 end
 local function Fold(s) return ns.Fold and ns.Fold(tostring(s or "")) or tostring(s or ""):lower() end
 local function Say(m) print(Tr["|cffffd100Dropamine|r : "] .. m) end

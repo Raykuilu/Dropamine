@@ -367,26 +367,53 @@ function D.BarFraction(now, lastAt, spu)
   if f > 1 then f = 1 end
   return f
 end
-function D.HideBars()
+-- 3.6.0 : la barre ne montre jamais une progression périmée.
+--  * (a) chaque nouveau point remet la barre à 0 % TOUT DE SUITE (même si la
+--    pompe tournait déjà : avant, elle gardait l'ancien 100 % jusqu'à l'image
+--    suivante, et rien si la pompe était arrêtée) ;
+--  * (b) en combat : pompe arrêtée ET barre cachée ; à la sortie, soit un point
+--    reçu pendant le combat la réarme à 0 %, soit elle reste cachée si le
+--    rythme est dépassé (plus de 100 % figé) ;
+--  * au-delà de 1,5 × le rythme mesuré sans nouveau point, la barre se cache
+--    et la pompe s'arrête (le rythme ne représente plus rien) ;
+--  * pompe limitée à ~10 images/s, case mémorisée (plus de parcours de toutes
+--    les cases à chaque image).
+D.BAR_HZ = 0.1
+D.BAR_STALE = 1.5
+function D.HideBars(except)
   local tiles = ns.UI and ns.UI.embed and ns.UI.embed.tiles
   if not tiles then return end
-  for _, t in ipairs(tiles) do if t._nextBar and t._nextBar.Hide then t._nextBar:Hide() end end
+  for _, t in ipairs(tiles) do
+    if t ~= except and t._nextBar and t._nextBar.Hide then t._nextBar:Hide() end
+  end
 end
 function D.StopBar()
   if D._pump and D._pump.SetScript then pcall(D._pump.SetScript, D._pump, "OnUpdate", nil) end
   D._pumping = false
 end
+local function TileMatches(t, b)
+  local d = t and t.data
+  return d and b and (d.id == b.id or d.name == b.name or d.skillName == b.name) and true or false
+end
+function D.BarTile()
+  local b = D.bar
+  if not b or not ns.UI or not ns.UI.embed then return nil end
+  local c = D._barTile
+  if c and TileMatches(c, b) then return c end
+  D._barTile = nil
+  for _, t in ipairs(ns.UI.embed.tiles or {}) do
+    if TileMatches(t, b) then D._barTile = t return t end
+  end
+  return nil
+end
 function D.PaintBar(frac)
   local b = D.bar
   if not b or not ns.UI or not ns.UI.embed then return nil end
-  local tile
-  for _, t in ipairs(ns.UI.embed.tiles or {}) do
-    local d = t.data
-    if d and (d.id == b.id or d.name == b.name or d.skillName == b.name) then tile = t break end
-  end
-  D.HideBars()
+  local tile = D.BarTile()
+  D.HideBars(tile)
   if not tile or type(tile.CreateTexture) ~= "function" and type(_G.CreateFrame) ~= "function" then return nil end
   if not tile._nextBar and type(_G.CreateFrame) == "function" then
+    if InCombat() then return nil end   -- aucune création de cadre en combat
     local bar = CreateFrame("StatusBar", nil, tile)
     bar:SetHeight(2)
     bar:SetPoint("TOPLEFT", tile, "BOTTOMLEFT", 2, -1)
@@ -405,7 +432,37 @@ function D.PaintBar(frac)
   if not bar then return nil end
   if bar.SetValue then bar:SetValue(frac or 0) end
   if bar.Show then bar:Show() end
+  D.barValue = frac or 0
   return bar
+end
+-- Une image de la pompe (aussi appelée par les tests).
+function D.PumpStep(fr, elapsed)
+  if InCombat() or not ns.Opt("nextBar") or not D.bar then
+    D.StopBar()
+    D.HideBars()
+    return false
+  end
+  D._acc = (D._acc or 0) + (elapsed or D.BAR_HZ)
+  if D._acc < D.BAR_HZ then return true end
+  D._acc = 0
+  local spu = ns.Rate and ns.Rate.SecondsPerUnit and ns.Rate.SecondsPerUnit(D.bar.key)
+  if not spu or spu <= 0 then
+    D.StopBar()
+    D.HideBars()
+    return false
+  end
+  local raw = (Now() - (D.bar.at or 0)) / spu
+  if raw > D.BAR_STALE then
+    -- rythme dépassé : pas de 100 % figé, la barre attend le prochain point
+    D.StopBar()
+    D.HideBars()
+    D.bar.stale = true
+    return false
+  end
+  local e = ns.UI and ns.UI.embed
+  if e and e.IsVisible and not e:IsVisible() then return true end   -- panneau caché : rien à peindre
+  D.PaintBar(D.BarFraction(Now(), D.bar.at, spu))
+  return true
 end
 function D.StartBar()
   if D._pumping then return end
@@ -415,33 +472,37 @@ function D.StartBar()
     local ok, f = pcall(_G.CreateFrame, "Frame")
     if not ok then return end
     D._pump = f
+    D._pumpFn = function(fr, el) D.PumpStep(fr, el) end   -- une seule fermeture
   end
   D._pumping = true
-  D._pump:SetScript("OnUpdate", function(fr)
-    if InCombat() or not ns.Opt("nextBar") or not D.bar then
-      fr:SetScript("OnUpdate", nil)
-      D._pumping = false
-      D.HideBars()
-      return
-    end
-    local spu = ns.Rate and ns.Rate.SecondsPerUnit and ns.Rate.SecondsPerUnit(D.bar.key)
-    if not spu then
-      fr:SetScript("OnUpdate", nil)
-      D._pumping = false
-      D.HideBars()
-      return
-    end
-    D.PaintBar(D.BarFraction(Now(), D.bar.at, spu))
-  end)
+  D._acc = D.BAR_HZ   -- première image peinte aussitôt
+  D._pump:SetScript("OnUpdate", D._pumpFn)
 end
 function D.ArmBar(info)
   if not ns.Opt("nextBar") then D.bar = nil D.StopBar() D.HideBars() return nil end
   local key = "skill:" .. tostring(info.id or info.fold or info.name)
   local spu = ns.Rate and ns.Rate.SecondsPerUnit and ns.Rate.SecondsPerUnit(key)
   D.bar = { id = info.id, name = info.name, at = Now(), key = key, spu = spu }
+  D._barTile = nil
   if not spu then D.StopBar() D.HideBars() return nil end
+  if InCombat() then D.StopBar() D.HideBars() return 0 end
+  -- (a) remise à 0 % immédiate, que la pompe tourne déjà ou non
+  D.PaintBar(0)
   D.StartBar()
   return D.BarFraction(Now(), D.bar.at, spu)
+end
+-- (b) sortie de combat : réarmée proprement ou cachée, jamais un 100 % périmé
+function D.ResumeBar()
+  if not (D.bar and D.bar.spu and ns.Opt("nextBar")) then D.HideBars() return false end
+  local spu = ns.Rate and ns.Rate.SecondsPerUnit and ns.Rate.SecondsPerUnit(D.bar.key)
+  local raw = spu and spu > 0 and (Now() - (D.bar.at or 0)) / spu or nil
+  if not raw or raw >= 1 then
+    D.HideBars()
+    return false
+  end
+  D.PaintBar(D.BarFraction(Now(), D.bar.at, spu))
+  D.StartBar()
+  return true
 end
 
 function D.OnRise(info)
@@ -499,10 +560,13 @@ end
 
 if ns.On then
   ns.On("PLAYER_REGEN_ENABLED", function()
+    local before = D.bar
     D.FlushQueue()
-    if D.bar and D.bar.spu and ns.Opt("nextBar") then D.StartBar() end
+    -- un point reçu en combat vient d'être réarmé à 0 % par FlushQueue ;
+    -- sinon : reprise seulement si le rythme n'est pas dépassé
+    if D.bar == before then D.ResumeBar() end
   end)
-  ns.On("PLAYER_REGEN_DISABLED", function() D.StopBar() end)
+  ns.On("PLAYER_REGEN_DISABLED", function() D.StopBar() D.HideBars() end)
   ns.On("PLAYER_ENTERING_WORLD", function(_, isLogin)
     if isLogin == true or ns.sessionFresh then D.C().records.session = 0 D.C().records.recStep = nil end
     D.EnsureDaily(D.SkillList())
