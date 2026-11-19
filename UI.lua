@@ -4250,24 +4250,63 @@ function UI:BuildStandalone()
   end)
 end
 
+-- 3.5.21 : en combat, mise à jour des textes et du remplissage des cases
+-- déjà posées, sans SetPoint / Show / Hide / SetFrameLevel (le wrap peut
+-- être enfant de SkillFrame, cadre protégé). La mise en page complète
+-- attend PLAYER_REGEN_ENABLED (self.dirty).
+function UI:RefreshVisibleTiles(wrap, snap)
+  if not (wrap and snap and wrap.tiles) then return end
+  wrap._snap = snap
+  local function match(t)
+    local d0 = t and t.data
+    if not d0 then return nil end
+    if d0.kind == "total" then
+      d0.current = snap.total or snap.ficTotal or d0.current
+      d0.apiMax = snap.totalMax or snap.ficMax or d0.apiMax
+      return d0
+    end
+    for _, d in ipairs(snap.tiles or {}) do
+      if d and ((d0.key and d.key == d0.key) or (d0.kind and d.kind == d0.kind and d0.name and d.name == d0.name)) then
+        return d
+      end
+    end
+    return nil
+  end
+  for i = 1, #wrap.tiles do
+    local t = wrap.tiles[i]
+    local d = match(t)
+    if d then
+      pcall(self.UpdateTile, self, t, d)
+      if t._wideOn and ns.Wide and ns.Wide.Paint then pcall(ns.Wide.Paint, t) end
+    end
+  end
+  if wrap.totalFS and wrap.totalFS.SetText then
+    local full, short = self:FooterText(snap)
+    wrap.totalFS:SetText(full)
+    local okW, sw = pcall(wrap.totalFS.GetStringWidth, wrap.totalFS)
+    sw = okW and ns.N(sw) or nil
+    if sw and sw > self:GetGridInnerWidth(wrap) - 12 then wrap.totalFS:SetText(short) end
+  end
+end
+
 function UI:Refresh(force)
   local need = force or (self.frame and self.frame:IsShown()) or (self.embed and self.embed:IsShown()) or (self.skillFrame and self.skillFrame:IsShown() and self:IsOsrsView())
   if not need and not force then
     self.dirty = true
     return
   end
-  -- En combat : rafraîchissement non essentiel reporté à PLAYER_REGEN_ENABLED.
-  if not force and type(InCombatLockdown) == "function" and InCombatLockdown() then
-    self.dirty = true
-    return
-  end
-  self.dirty = false
+  local combat = type(InCombatLockdown) == "function" and InCombatLockdown()
+  -- 3.5.21 : en combat on met à jour les valeurs (textes, jauges) ; seules
+  -- les opérations sur cadres protégés (SetPoint / Show / Hide / SetFrameLevel)
+  -- sont reportées à PLAYER_REGEN_ENABLED.
   local okC, snap = pcall(ns.Collect)
   if not okC then SafeStep("collecte", error, snap) return end
   self.snapshot = snap
   self._snapVersion = (self._snapVersion or 0) + 1
   SafeStep("objectifs / paliers", self.CheckMilestones, self, snap)
-  SafeStep("style métiers", self.ApplyProfessionStyle, self)
+  if not combat then
+    SafeStep("style métiers", self.ApplyProfessionStyle, self)
+  end
   if self.title then
     self.title:SetText(Tr["Niveau total"])
   end
@@ -4279,6 +4318,17 @@ function UI:Refresh(force)
       self.subtitle:SetText("")
     end
   end
+  if combat then
+    if self.soloGrid and self.frame and self.frame:IsShown() then
+      self:RefreshVisibleTiles(self.soloGrid, snap)
+    end
+    if self.embed and self.embed:IsShown() then
+      self:RefreshVisibleTiles(self.embed, snap)
+    end
+    self.dirty = true
+    return
+  end
+  self.dirty = false
   if self.soloGrid and self.frame and self.frame:IsShown() then
     self:LayoutGrid(self.soloGrid, snap)
   end
@@ -5816,8 +5866,10 @@ end
 function UI:FlushSkillDiff()
   self._skillDiffPending = false
   if not ns.SkillRankSnapshot then return end
-  -- Valeurs secrètes en combat : comparaison reportée (pas de base à 0).
-  if ns.InCombat and ns.InCombat() then self.dirty = true self._skillDiffAfterCombat = true return end
+  -- 3.5.21 : on compare aussi en combat (rangs lisibles). Si des rangs
+  -- restent secrets, MergeRankCache / la garde « rang 0 » conservent la
+  -- dernière valeur ; un second passage a lieu à PLAYER_REGEN_ENABLED.
+  if ns.InCombat and ns.InCombat() then self.dirty = true self._skillDiffAfterCombat = true end
   local now = ns.SkillRankSnapshot()
   -- Rang illisible (0 / nil) : on garde la dernière valeur connue.
   if self._prevSkills then

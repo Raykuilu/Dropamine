@@ -27,7 +27,117 @@ Wd.SEG_COLORS = {
   { 0.329, 0.408, 0.604, 1 },  -- #54689A  armes + Défense
   { 0.310, 0.498, 0.243, 1 },  -- #4F7F3E  métiers
 }
+-- 3.5.21 : marges intérieures du remplissage, par thème. Sur Flare (et
+-- léger : même filet Dropamine-Thin, edgeSize 8, débord 3 px), l'arrondi
+-- (pan coupé ~2,75 px + liseré) masquait le premier segment ou le laissait
+-- dépasser avant le cadre. Classic : filet d'infobulle (edgeSize 10).
+Wd.FILL_INSET = {
+  flare   = { l = 5, r = 5, t = 1, b = 1 },
+  leger   = { l = 5, r = 5, t = 1, b = 1 },
+  classic = { l = 3, r = 3, t = 1, b = 1 },
+}
+Wd.SEG_MIN_W = 5  -- largeur minimale (px) d'un segment dont la valeur est > 0
+
+function Wd.FillInset()
+  local mode = (ns.Theme and ns.Theme.Mode and ns.Theme.Mode()) or "flare"
+  local box = Wd.FILL_INSET[mode] or Wd.FILL_INSET.flare
+  return box.l or 0, box.r or 0, box.t or 0, box.b or 0
+end
+
 local function N(v) return ns.N and ns.N(v) or tonumber(v) end
+
+-- Réduit les marges si la piste est trop étroite pour les appliquer telles quelles.
+local function ClampInsets(il, ir, it, ib, inner, bh)
+  il, ir = math.max(0, il or 0), math.max(0, ir or 0)
+  it, ib = math.max(0, it or 0), math.max(0, ib or 0)
+  if il + ir >= inner then
+    local cap = math.max(0, inner - 2)
+    if il + ir > 0 and cap > 0 then
+      local left = math.floor(cap * (il / (il + ir)))
+      il, ir = left, cap - left
+    else
+      il, ir = 0, 0
+    end
+  end
+  if it + ib >= bh then
+    local cap = math.max(0, bh - 1)
+    if it + ib > 0 and cap > 0 then
+      local top = math.floor(cap * (it / (it + ib)))
+      it, ib = top, cap - top
+    else
+      it, ib = 0, 0
+    end
+  end
+  return il, ir, it, ib
+end
+
+-- Chaque segment non nul garde au moins minW px ; le surplus est pris sur
+-- les segments plus larges (proportionnellement à l'excédent). Si la part
+-- remplie est trop courte, on l'étend dans la piste encore vide, sans
+-- dépasser `track`.
+local function ApplyMinWidths(widths, present, minW, track, filled)
+  local nPos = 0
+  for i = 1, 3 do
+    if present[i] then nPos = nPos + 1 end
+  end
+  if nPos == 0 or track <= 0 then return widths, filled end
+  -- Si la piste est plus étroite que le nombre de segments, on ne peut pas
+  -- garantir 1 px à chacun : on laisse les largeurs proportionnelles.
+  minW = math.max(0, math.min(minW, math.floor(track / nPos)))
+  if minW < 1 then return widths, filled end
+  local need = nPos * minW
+  if filled < need then
+    for i = 1, 3 do
+      widths[i] = present[i] and minW or 0
+    end
+    return widths, math.min(track, need)
+  end
+  local deficit, pool = 0, 0
+  for i = 1, 3 do
+    local w = widths[i] or 0
+    if present[i] and w < minW then
+      deficit = deficit + (minW - w)
+    elseif w > minW then
+      pool = pool + (w - minW)
+    end
+  end
+  if deficit <= 0 then return widths, filled end
+  for i = 1, 3 do
+    if present[i] and (widths[i] or 0) < minW then
+      widths[i] = minW
+    end
+  end
+  local removed = 0
+  if pool > 0 then
+    for i = 1, 3 do
+      local extra = (widths[i] or 0) - minW
+      if extra > 0 then
+        local take = math.floor(extra / pool * deficit + 0.5)
+        if take > extra then take = extra end
+        if take > deficit - removed then take = deficit - removed end
+        if take < 0 then take = 0 end
+        widths[i] = widths[i] - take
+        removed = removed + take
+      end
+    end
+  end
+  local leftover = deficit - removed
+  if leftover > 0 then
+    for i = 3, 1, -1 do
+      if leftover <= 0 then break end
+      local extra = (widths[i] or 0) - minW
+      if extra > 0 then
+        local take = leftover
+        if take > extra then take = extra end
+        widths[i] = widths[i] - take
+        leftover = leftover - take
+      end
+    end
+  end
+  local sum = 0
+  for i = 1, 3 do sum = sum + (widths[i] or 0) end
+  return widths, sum
+end
 
 local function Segments()
   local snap = ns.UI and ns.UI.snapshot
@@ -112,37 +222,46 @@ function Wd.EnsureSegs(t)
 end
 
 -- Pose les 3 segments (largeurs = points / plafond du total) et la zone de survol.
+-- 3.5.21 : le remplissage est inset dans la piste (après l'arrondi du cadre)
+-- et chaque segment non nul a une largeur minimale visible.
 function Wd.LayoutSegments(t, left, by, inner, bh, cur, max)
   local p = Wd.EnsureSegs(t)
   local segs = Segments()
   max = N(max) or 0
   cur = N(cur) or 0
-  local filled = (max > 0) and math.max(0, math.min(inner, math.floor(inner * (cur / max) + 0.5))) or 0
-  local widths, sumW = {}, 0
+  local il, ir, it, ib = Wd.FillInset()
+  il, ir, it, ib = ClampInsets(il, ir, it, ib, inner, bh)
+  local track = math.max(0, inner - il - ir)
+  local fh = math.max(0, bh - it - ib)
+  local fy = by + ib
+  local filled = (max > 0) and math.max(0, math.min(track, math.floor(track * (cur / max) + 0.5))) or 0
+  local widths, sumW, present = {}, 0, {}
   for i = 1, 3 do
     local v = segs[i] and (N(segs[i].cur) or 0) or 0
-    local w = (max > 0 and filled > 0) and math.floor(inner * (v / max)) or 0
+    present[i] = v > 0
+    local w = (max > 0 and filled > 0) and math.floor(track * (v / max)) or 0
     if w < 0 then w = 0 end
     widths[i], sumW = w, sumW + w
   end
   local drift = filled - sumW
   if drift ~= 0 then
     for i = 3, 1, -1 do
-      if widths[i] > 0 or (drift > 0 and segs[i] and (N(segs[i].cur) or 0) > 0) then
+      if widths[i] > 0 or (drift > 0 and present[i]) then
         widths[i] = math.max(0, widths[i] + drift)
         break
       end
     end
   end
-  local x = left
+  widths, filled = ApplyMinWidths(widths, present, Wd.SEG_MIN_W or 5, track, filled)
+  local x = left + il
   local last
   for i = 1, 3 do
     local tex, w = p.segs[i], widths[i] or 0
     local c = Wd.SEG_COLORS[i]
     tex:ClearAllPoints()
-    if w > 0 and bh > 0 then
-      tex:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", x, by)
-      tex:SetSize(math.max(0.01, w), bh)
+    if w > 0 and fh > 0 then
+      tex:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", x, fy)
+      tex:SetSize(math.max(0.01, w), fh)
       if c then tex:SetVertexColor(c[1], c[2], c[3], c[4] or 1) end
       tex:Show()
       last, x = tex, x + w
@@ -162,6 +281,8 @@ function Wd.LayoutSegments(t, left, by, inner, bh, cur, max)
   if Wd.last then
     Wd.last.left, Wd.last.by, Wd.last.bh, Wd.last.inner = left, by, bh, inner
     Wd.last.filled, Wd.last.segs = filled, segs
+    Wd.last.il, Wd.last.ir, Wd.last.it, Wd.last.ib = il, ir, it, ib
+    Wd.last.track, Wd.last.fh, Wd.last.widths = track, fh, widths
   end
   return p, last
 end
