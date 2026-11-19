@@ -1654,6 +1654,98 @@ function ns.CharDB()
   return c
 end
 
+-- 3.6.0 : profil d'affichage par personnage --------------------------------
+-- DropamineDB.ui reste LA table de réglages (tout le code la lit en direct).
+-- Quand un personnage choisit son propre profil, ses valeurs d'affichage
+-- (thème, colonnes, taille, opacités, positions…) sont posées dans
+-- DropamineDB.ui au chargement ; celles du compte sont gardées de côté dans
+-- DropamineDB.uiStash et remises en place à PLAYER_LOGOUT, AVANT l'écriture
+-- des SavedVariables. Rien n'est perdu : sans profil perso, rien ne bouge ;
+-- à l'activation, le profil perso part des réglages actuels du compte.
+ns.DISPLAY_KEYS = { "theme", "cols", "scale", "opacity", "bgAlpha", "fadeDelay", "iconAlpha", "colorMode",
+  "showTotal", "locked", "winPos", "notifMode", "dropsPos", "dropDir", "dropStyle", "dropBgAlpha", "dropDuration",
+  "minimapAngle", "seasonal", "smartSort", "expanded" }
+local NIL = "\001nil"
+local function Pack(v) if v == nil then return NIL end return DeepCopy(v) end
+local function Unpack(v) if v == NIL then return nil end return v end
+function ns.CharProfileOn()
+  local c = ns.db and ns.db.chars and ns.db.chars[ns.CharKey()]
+  return type(c) == "table" and c.charUI == true
+end
+-- Valeurs du compte mises de côté → remises dans DropamineDB.ui.
+function ns.RestoreAccountUI()
+  local db = ns.db
+  local st = db and db.uiStash
+  if type(st) ~= "table" or type(st.values) ~= "table" then return false end
+  local ui = db.ui
+  local owner = st.owner and db.chars and db.chars[st.owner]
+  if type(owner) == "table" and owner.charUI then
+    owner.uiProfile = owner.uiProfile or {}
+    for _, k in ipairs(ns.DISPLAY_KEYS) do owner.uiProfile[k] = Pack(ui[k]) end
+  end
+  for _, k in ipairs(ns.DISPLAY_KEYS) do ui[k] = Unpack(st.values[k]) end
+  db.uiStash = nil
+  ns.charProfileActive = nil
+  return true
+end
+-- Profil du personnage posé dans DropamineDB.ui (valeurs du compte gardées).
+function ns.ApplyCharProfile()
+  local db = ns.db
+  if not db or not db.ui then return false end
+  -- reste d'une session précédente (déconnexion brutale) : d'abord le compte
+  if db.uiStash then ns.RestoreAccountUI() end
+  local key = ns.CharKey()
+  if key:sub(1, 2) == "?-" then return false end
+  local c = db.chars and db.chars[key]
+  if type(c) ~= "table" or c.charUI ~= true then return false end
+  local ui = db.ui
+  local values = {}
+  for _, k in ipairs(ns.DISPLAY_KEYS) do values[k] = Pack(ui[k]) end
+  db.uiStash = { owner = key, values = values }
+  if type(c.uiProfile) ~= "table" then
+    c.uiProfile = {}
+    for _, k in ipairs(ns.DISPLAY_KEYS) do c.uiProfile[k] = Pack(ui[k]) end
+  end
+  for _, k in ipairs(ns.DISPLAY_KEYS) do
+    local v = c.uiProfile[k]
+    if v ~= nil then ui[k] = DeepCopy(Unpack(v)) end
+  end
+  ns.charProfileActive = key
+  return true
+end
+-- Bascule (option / commande) : true = réglages propres au personnage.
+function ns.SetCharProfile(on)
+  local c = ns.CharDB()
+  on = on and true or false
+  if on == (c.charUI == true) then return on end
+  if on then
+    c.charUI = true
+    ns.ApplyCharProfile()
+  else
+    ns.RestoreAccountUI()
+    c.charUI = nil
+  end
+  if ns.ReapplyDisplay then pcall(ns.ReapplyDisplay) end
+  return on
+end
+-- Réapplique l'affichage après un changement de profil (hors combat).
+function ns.ReapplyDisplay()
+  if ns.InCombat() then
+    ns.AfterCombat("reapply-display", function() ns.ReapplyDisplay() end)
+    return false
+  end
+  local O = ns.Options
+  if O and O.Get and O.Set then
+    for _, k in ipairs({ "theme", "cols", "scale", "opacity", "bgAlpha", "notifMode" }) do
+      pcall(function() O.Set(k, O.Get(k)) end)
+    end
+  end
+  local W = ns.Window
+  if W and W.frame and W.PlaceDefault then pcall(W.PlaceDefault, W.frame) end
+  if ns.UI and ns.UI.Refresh then pcall(ns.UI.Refresh, ns.UI, true) end
+  return true
+end
+
 -- Objectifs (clé = clé de tuile : id du catalogue, « level », etc.)
 function ns.GetGoal(key)
   if not key then return nil end
@@ -1819,6 +1911,7 @@ ns.On("ADDON_LOADED", function(_, name)
   end
   if name ~= ADDON then return end
   initDB()
+  pcall(ns.ApplyCharProfile)   -- 3.6.0 : avant toute construction de l'interface
   if ns.migratedDB then ns._announceMigration = true end
   if ns.UI and ns.UI.Init then ns.UI:Init() end
 end)
@@ -1828,7 +1921,12 @@ ns.On("PLAYER_LOGIN", function()
     ns.Print(Tr["réglages de l'ancien OSRS_TotalLevel importés. Tu peux supprimer le dossier Interface\\AddOns\\OSRS_TotalLevel."])
   end
 end)
-ns.On("PLAYER_LOGIN", function() requestRefresh() if ns.UI and ns.UI.HookSkillFrame then ns.UI:HookSkillFrame() end end)
+ns.On("PLAYER_LOGIN", function()
+  -- nom du personnage inconnu à ADDON_LOADED (rare) : profil posé maintenant
+  if not ns.charProfileActive and ns.CharProfileOn() and ns.ApplyCharProfile() then pcall(ns.ReapplyDisplay) end
+  requestRefresh()
+  if ns.UI and ns.UI.HookSkillFrame then ns.UI:HookSkillFrame() end
+end)
 ns.On("PLAYER_ENTERING_WORLD", function(_, isLogin, isReload)
   if not ns._sessionChecked then
     ns._sessionChecked = true
@@ -1841,6 +1939,8 @@ end)
 ns.On("PLAYER_LOGOUT", function()
   local c = ns.CharDB()
   c.session.lastSeen = (type(time) == "function" and time()) or nil
+  -- 3.6.0 : réglages du compte remis en place avant l'écriture du fichier
+  pcall(ns.RestoreAccountUI)
 end)
 -- Fin de combat : toasts de compétence éventuellement manqués (rangs secrets)
 -- puis mise en page structurelle si elle a été reportée.
@@ -1865,6 +1965,13 @@ end)
 ns.On("CHARACTER_POINTS_CHANGED", function() requestRefresh() end)
 ns.On("UNIT_STATS", function(_, unit)
   if unit and unit ~= "player" then return end
+  -- 3.6.0 : UNIT_STATS tombe sans arrêt en combat / raid (amélioration, buff) ;
+  -- les caractéristiques ne sont dans la grille que si /drop stats on : sinon
+  -- on marque seulement « à refaire » (aucune collecte complète inutile).
+  if not ns.ShowStats() then
+    if ns.UI then ns.UI.dirty = true end
+    return
+  end
   requestRefresh()
 end)
 -- 3.5.0 : TRADE_SKILL_LIST_UPDATE ne reconstruit plus toute la grille.
@@ -1877,7 +1984,9 @@ ns.On("PLAYER_EQUIPMENT_CHANGED", function() requestRefresh() end)
 -- v2.8.2 : statistiques de combat mémorisées hors combat (affichées en combat).
 local function readStats() if not ns.InCombat() then pcall(ns.ReadCombatStats) end end
 ns.On("PLAYER_EQUIPMENT_CHANGED", readStats)
-ns.On("UNIT_INVENTORY_CHANGED", function(unit) if unit == "player" then readStats() end end)
+-- 3.6.0 : le gestionnaire reçoit (événement, unité) : « unit » valait le nom de
+-- l'événement, la relecture des statistiques ne se faisait jamais ici.
+ns.On("UNIT_INVENTORY_CHANGED", function(_, unit) if unit == "player" then readStats() end end)
 ns.On("PLAYER_ENTERING_WORLD", readStats)
 ns.On("PLAYER_REGEN_ENABLED", readStats)
 ns.On("CHAT_MSG_COMBAT_XP_GAIN", function(_, msg) if ns.UI and ns.UI.NoteXPMessage then pcall(ns.UI.NoteXPMessage, ns.UI, "CHAT_MSG_COMBAT_XP_GAIN", msg) end end)
@@ -2199,6 +2308,8 @@ ns.HELP_SHORT = {
   "  JcJ : /drop pvp on|off · pvp marques on|off",
   "  Notifications : /drop drops on|off · notif dessus|dessous|detache · recap",
   "  Dopamine : /drop combo · defi · records · barre · collection · sons on|off",
+  "  Progression : /drop progression · but <n>|+5|+10|+25 · semaine · succes · spots · share [say|party|guild|raid]",
+  "  Mode calme : /drop calme off|instance|groupe · profil perso|compte",
   "  Plus : /drop help tout (toutes les commandes) · /drop debug (rapport copiable) · debug metier",
   "  Langue : /drop lang auto|en|fr (auto = langue du jeu)",
 }
@@ -2232,6 +2343,8 @@ ns.CMD_ALIAS = {
   sound = "son", fade = "fondu", bg = "fond", pretier = "prepalier", history = "historique", milestones = "jalons",
   fishing = "peche", shopping = "courses", share = "partage", master = "maitre", weapon = "arme",
   goals = "objectif", colour = "couleurs", colours = "couleurs", categories = "categories",
+  quiet = "calme", profile = "profil", week = "semaine", achievements = "succes", progress = "progression",
+  sessiongoal = "but", target = "but",
 }
 ns.ARG_ALIAS = {
   light = "leger", green = "vert", yellow = "jaune", tier = "palier", above = "dessus", below = "dessous",

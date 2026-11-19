@@ -163,6 +163,35 @@ local function TextOf(fs)
 end
 
 -- Associe un texte (« Cuisine 78/150 », « Travail du cuir ») à un id du catalogue.
+-- 3.6.0 : teinte saisonnière discrète (option « seasonal », coupée par défaut).
+-- Neutre côté faction : hiver givré, printemps vert tendre, été or pâle,
+-- automne ambre. Rien n'est peint ici : la Phase 2 (fenêtre Progression) et
+-- les toasts dorés lisent Style.SeasonalTint() ; nil = pas de teinte.
+Style.SEASONS = {
+  winter = { 0.70, 0.84, 1.00, 0.18 },
+  spring = { 0.62, 0.90, 0.58, 0.16 },
+  summer = { 1.00, 0.88, 0.52, 0.16 },
+  autumn = { 0.95, 0.62, 0.30, 0.18 },
+}
+function Style.SeasonFor(month)
+  month = tonumber(month)
+  if not month then
+    local fn = (type(_G.date) == "function" and _G.date) or (type(os) == "table" and os.date) or nil
+    local ok, t = false, nil
+    if fn then ok, t = pcall(fn, "*t") end
+    month = ok and type(t) == "table" and tonumber(t.month) or 1
+  end
+  if month == 12 or month <= 2 then return "winter" end
+  if month <= 5 then return "spring" end
+  if month <= 8 then return "summer" end
+  return "autumn"
+end
+function Style.SeasonalTint(month)
+  if not (ns.OptOff and ns.OptOff("seasonal")) then return nil end
+  local key = Style.SeasonFor(month)
+  return Style.SEASONS[key], key
+end
+
 function Style.SkillIdForText(text)
   if type(text) ~= "string" then return nil end
   local f = Fold(text)

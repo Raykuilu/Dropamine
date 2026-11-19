@@ -19,6 +19,36 @@
 --   d'UIParent (ou recentré si la position est introuvable / hors écran) ;
 -- * un panneau « affiché » mais pas réellement visible compte comme fermé :
 --   le clic l'OUVRE (et le remet en vue) au lieu de le fermer.
+-- 3.6.0 : nouvelle enquête « AtlasLoot » (/drop et minicarte sans effet,
+-- /drop reset répond). Chemins tracés :
+--   /drop        → SlashCmdList.DROPAMINE → ns.UI:Toggle (Window.lua) →
+--                  W.Toggle (SafeOpen ⊃ Panel ⊃ Window) → W.Build → f:Show →
+--                  OnShow → UI:Refresh(true) + UI:ApplyView → W.Layout ;
+--   minicarte    → OnClick → UI:Toggle → même chemin ;
+--   /drop reset  → UI:ResetPositions → winPos = nil + W.PlaceDefault : NE
+--                  montre rien, ne construit rien, ne touche ni l'opacité ni
+--                  la strate. Qu'il « marche » prouve seulement que
+--                  SlashCmdList.DROPAMINE est bien le nôtre (aucun vol de /drop).
+-- Vérifié dans le code : aucune globale écrite hors DropamineDB /
+-- SLASH_DROPAMINE1-2 / SlashCmdList.DROPAMINE (luac -l), aucune globale lue
+-- qui ne soit pas une API du jeu, aucune librairie embarquée (LibStub,
+-- LibDBIcon…), des noms de cadres tous « Dropamine… », le panneau hors de
+-- UISpecialFrames et de UIPanelWindows (Échap / CloseAllWindows ne le
+-- ferment pas), aucun ancrage vivant sur CharacterFrame depuis 3.5.6.
+-- Points fragiles trouvés et corrigés ici :
+--   1. PosGuard reposait à l'image suivante une position MÉMORISÉE hors écran
+--      que SafeOpen venait d'abandonner (recentrage annulé aussitôt) : la
+--      position mémorisée n'était effacée que si le rectangle était lisible,
+--      et une ancre autre que TOPLEFT/BOTTOMLEFT n'était jamais vérifiée.
+--      → SO.SavedPosOk projette la position (toute ancre, échelle comprise)
+--        et une position hors écran est oubliée partout (PosGuard compris).
+--   2. Panneau « affiché » mais presque transparent (fondu au repos, opacité
+--      choisie très basse) : le clic le FERMAIT. → il est réveillé (100 %).
+--   3. Fermeture par un tiers juste après l'ouverture (crochet d'un autre
+--      addon sur CloseSpecialWindows / OnShow d'un de ses cadres…) : rien ne
+--      le disait. → OnHide surveillé : rouvert une fois, et l'auteur (pile
+--      d'appel) est écrit une seule fois dans le chat et dans /drop debug.
+--   4. Toute ouverture réveille le panneau (fondu plein), même déjà construit.
 local ADDON, ns = ...
 local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local UI, W = ns.UI, ns.Window
@@ -61,6 +91,46 @@ local function Get(f, m)
   local ok, a, b = pcall(f[m], f)
   if ok then return a, b end
   return nil
+end
+
+-- 3.6.0 : rectangle (unités d'UIParent) qu'aurait le panneau posé à « p ».
+local function Frac(point)
+  point = tostring(point or "CENTER")
+  local fx = point:find("LEFT") and 0 or (point:find("RIGHT") and 1 or 0.5)
+  local fy = point:find("BOTTOM") and 0 or (point:find("TOP") and 1 or 0.5)
+  return fx, fy
+end
+SO._frac = Frac
+function SO.ProjectRect(f, p)
+  local up = _G.UIParent
+  local uw, uh = Num(Get(up, "GetWidth")), Num(Get(up, "GetHeight"))
+  local w, h = Num(Get(f, "GetWidth")), Num(Get(f, "GetHeight"))
+  local x, y = p and Num(p.x), p and Num(p.y)
+  if not (uw and uh and w and h and x and y) then return nil end
+  local fes, ues = Num(Get(f, "GetEffectiveScale")) or 1, Num(Get(up, "GetEffectiveScale")) or 1
+  local k = (ues > 0) and (fes / ues) or 1
+  local rfx, rfy = Frac(p.relativePoint or p.point)
+  local pfx, pfy = Frac(p.point)
+  local px, py = uw * rfx + x * k, uh * rfy + y * k
+  local l, b = px - pfx * w * k, py - pfy * h * k
+  return l, l + w * k, b + h * k, b, uw, uh
+end
+-- Position mémorisée utilisable ? (au moins 24 px du panneau à l'écran)
+function SO.SavedPosOk(f, p)
+  if type(p) ~= "table" then return false end
+  local l, r, t, b, uw, uh = SO.ProjectRect(f, p)
+  if not l then return true end   -- pas mesurable (tests, cadre en construction) : pas de verdict
+  return not ((r < 24) or (l > uw - 24) or (t < 24) or (b > uh - 24))
+end
+function SO.ForgetBadPos(f, why)
+  local p = ns.db and ns.db.ui and ns.db.ui.winPos
+  if p and not SO.SavedPosOk(f, p) then
+    ns.db.ui.winPos = nil
+    SO.stats.badPos = (SO.stats.badPos or 0) + 1
+    SO.lastBadPos = why
+    return true
+  end
+  return false
 end
 
 -- Panneau affiché mais invisible ? opacité, échelle, parent, strate, écran.
@@ -116,19 +186,20 @@ function SO.EnsureVisible(f)
     local p = ns.db and ns.db.ui and ns.db.ui.winPos
     local px, py = p and Num(p.x), p and Num(p.y)
     local savedOk = false
-    if px and py and uw and uh then
-      local tl = (p.point == "TOPLEFT" and p.relativePoint == "BOTTOMLEFT")
-      if not tl or (px < uw - 24 and px > -200 and py > 24 and py < uh + 200) then
-        pcall(f.ClearAllPoints, f)
-        savedOk = pcall(f.SetPoint, f, p.point or "CENTER", up, p.relativePoint or "CENTER", px, py) and true or false
-      end
+    -- 3.6.0 : toute ancre est projetée (avant : seule TOPLEFT/BOTTOMLEFT
+    -- était vérifiée, les autres étaient reposées même hors écran)
+    if px and py and uw and uh and SO.SavedPosOk(f, p) then
+      pcall(f.ClearAllPoints, f)
+      savedOk = pcall(f.SetPoint, f, p.point or "CENTER", up, p.relativePoint or "CENTER", px, py) and true or false
     end
     if savedOk then
       fixed[#fixed + 1] = "position mémorisée reposée"
     else
+      -- 3.6.0 : position mémorisée TOUJOURS oubliée ici, sinon PosGuard la
+      -- reposait à l'image suivante (le recentrage était aussitôt annulé)
+      if ns.db and ns.db.ui then ns.db.ui.winPos = nil end
       pcall(f.ClearAllPoints, f)
       pcall(f.SetPoint, f, "CENTER", up, "CENTER", 0, 0)
-      if l and r and t and b and ns.db and ns.db.ui then ns.db.ui.winPos = nil end
       fixed[#fixed + 1] = "position"
     end
   end
@@ -188,7 +259,53 @@ function SO.OnScreen(f)
   return (l and t and w and h and w > 1 and h > 1) and true or false
 end
 
-local baseToggle, baseShow = W.Toggle, W.Show
+-- 3.6.0 : opacité réellement vue (fondu au repos compris)
+function SO.SeenAlpha(f)
+  local a = Num(Get(f, "GetEffectiveAlpha")) or Num(Get(f, "GetAlpha")) or 1
+  return a
+end
+SO.GHOST_ALPHA = 0.10
+function SO.Wake(why)
+  local P = ns.Panel
+  if P and type(P.Wake) == "function" then pcall(P.Wake, why or "ouverture") end
+end
+-- Fermeture par un tiers juste après une ouverture : rouverte une fois.
+SO.STEAL_WINDOW = 1.0
+local function NowT() return (type(_G.GetTime) == "function" and _G.GetTime()) or 0 end
+function SO.MarkOpen() SO._openAt, SO._reopened = NowT(), nil end
+function SO.OnHide(f)
+  if SO._selfHide then return end
+  if not SO._openAt or NowT() - SO._openAt > SO.STEAL_WINDOW then return end
+  if not (ns.db and ns.db.ui and ns.db.ui.panelOpen) then return end
+  SO.stats.stolen = (SO.stats.stolen or 0) + 1
+  local who = "?"
+  if type(_G.debugstack) == "function" then
+    local ok, st = pcall(_G.debugstack, 2, 6, 0)
+    if ok and type(st) == "string" then
+      -- première ligne qui ne vient pas de Dropamine = l'auteur probable
+      for line in st:gmatch("[^\n]+") do
+        if not line:find("Dropamine", 1, true) and not line:find("%[C%]") then who = line break end
+      end
+      SO.lastStealStack = st
+    end
+  end
+  SO.lastSteal = who
+  if not SO.said["steal:" .. who] then
+    SO.said["steal:" .. who] = true
+    Say(Tr["le panneau a été refermé par un autre addon juste après l'ouverture ; il est rouvert. Origine : "] .. who)
+  end
+  if SO._reopened then return end
+  SO._reopened = true
+  local function again() if not W.IsShown() then pcall(f.Show, f) SO.Ensure() end end
+  if type(_G.C_Timer) == "table" and type(_G.C_Timer.After) == "function" then _G.C_Timer.After(0, again) else again() end
+end
+function SO.HookFrame(f)
+  if type(f) ~= "table" or f._soHooked or not f.HookScript then return end
+  f._soHooked = true
+  pcall(f.HookScript, f, "OnHide", function(fr) SO.OnHide(fr) end)
+end
+
+local baseToggle, baseShow, baseHide = W.Toggle, W.Show, W.Hide
 function W.Toggle(...)
   SO.stats.opens = SO.stats.opens + 1
   local f = W.frame
@@ -197,19 +314,45 @@ function W.Toggle(...)
     SO.stats.ghost = (SO.stats.ghost or 0) + 1
     if ns.db and ns.db.ui then ns.db.ui.panelOpen = true end
     SO.Ensure()
+    SO.Wake("ouverture")
+    return W.IsShown()
+  end
+  -- 3.6.0 : affiché, à l'écran, mais presque transparent → réveillé, pas fermé
+  if f and W.IsShown() and SO.SeenAlpha(f) < SO.GHOST_ALPHA then
+    SO.stats.faded = (SO.stats.faded or 0) + 1
+    SO.Wake("ouverture")
     return W.IsShown()
   end
   local wasShown = W.IsShown()
-  Guard(wasShown and "fermeture" or "ouverture", function() return baseToggle() end)
-  if wasShown then return W.IsShown() end
+  if wasShown then
+    SO._selfHide = true
+    Guard("fermeture", function() return baseToggle() end)
+    SO._selfHide = nil
+    return W.IsShown()
+  end
+  SO.MarkOpen()
+  Guard("ouverture", function() return baseToggle() end)
+  SO.HookFrame(W.frame)
   SO.Ensure()
+  SO.Wake("ouverture")
   return W.IsShown()
 end
 function W.Show(...)
   SO.stats.opens = SO.stats.opens + 1
+  SO.MarkOpen()
   Guard("ouverture", function() return baseShow() end)
+  SO.HookFrame(W.frame)
   SO.Ensure()
+  SO.Wake("ouverture")
   return true
+end
+function W.Hide(...)
+  SO._selfHide = true
+  local ok, r = pcall(baseHide, ...)
+  SO._selfHide = nil
+  SO._openAt = nil
+  if not ok then SO.Report("fermeture", r) end
+  return r
 end
 
 ns.DebugExt = ns.DebugExt or {}
@@ -225,5 +368,8 @@ ns.DebugExt[#ns.DebugExt + 1] = function()
     SO.stats.opens, SO.stats.errors, SO.stats.healed, SO.lastHeal and (" (dernière : " .. SO.lastHeal .. ")") or "",
     SO.stats.ghost or 0, f and (SO.OnScreen(f) and "oui" or "non") or "—", where) }
   if SO.lastError then L[#L + 1] = "  dernière erreur : " .. SO.lastError end
+  L[#L + 1] = string.format("  3.6.0 : réveillé au lieu de fermé %d, position hors écran oubliée %d%s, refermé par un tiers %d%s",
+    SO.stats.faded or 0, SO.stats.badPos or 0, SO.lastBadPos and (" (" .. SO.lastBadPos .. ")") or "",
+    SO.stats.stolen or 0, SO.lastSteal and (" — origine : " .. SO.lastSteal) or "")
   return L
 end

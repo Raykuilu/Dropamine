@@ -29,11 +29,12 @@ local A = {}
 ns.Activity = A
 
 local function N(v) return ns.N and ns.N(v) or tonumber(v) end
+-- 3.6.0 : sans table temporaire (appelé sur les événements fréquents : survol,
+-- barres de nom, cible) et sans troncature aux valeurs nil intermédiaires.
+local function Ret(ok, ...) if not ok then return nil end return ... end
 local function Call(fn, ...)
   if type(fn) ~= "function" then return nil end
-  local r = { pcall(fn, ...) }
-  if not r[1] then return nil end
-  return unpack(r, 2)
+  return Ret(pcall(fn, ...))
 end
 local function Str(v) if type(v) ~= "string" or (ns.IsSecret and ns.IsSecret(v)) or v == "" then return nil end return v end
 local function Fold(s) return (ns.Fold and ns.Fold(s or "")) or tostring(s or ""):lower() end

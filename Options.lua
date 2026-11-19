@@ -126,6 +126,9 @@ Options.SECTIONS = {
       get = function() return not (DBui().openProf == false) end,
       set = function(v) if v then DBui().openProf = nil else DBui().openProf = false end end },
   } },
+  -- 3.6.0 : progression (objectif de session, série, récap hebdo, succès) ;
+  -- les réglages viennent de Progress.lua (Options.EXTRA).
+  { id = "progress", title = "Progression", desc = "Objectif de session, succès, récap de la semaine et partage.", items = {} },
   { id = "advanced", title = "Avancé", extra = true, desc = "Réglages fins, JcJ et rappels. Les défauts conviennent à tous.", items = {
     { type = "check", key = "pvp", label = "Case JcJ", default = true, cmd = "/drop pvp on|off",
       help = "Rang, honneur et série de victoires dans la grille.",
@@ -157,9 +160,10 @@ Options.EXTRA_HELP = { historique = "Gains des 7 derniers jours dans l'infobulle
 
 -- 3.5.22 : ordre d'affichage dans chaque famille (les extras s'y insèrent).
 Options.ITEM_ORDER = {
-  display = { "theme", "lang", "cols", "scale", "opacity", "bgAlpha", "fadeDelay", "colorMode", "showTotal", "nextBar", "locked" },
-  notif = { "dropsEnabled", "notifMode", "dropDir", "dropStyle", "xpDrops", "skillDrops", "flyAnim", "paliers", "objectifs", "levelUpAnim", "dropDuration", "dropBgAlpha", "scannerToast", "combo", "maxFx", "records", "prepalier", "jalons", "recapLogout" },
-  sounds = { "sounds", "soundSkill", "soundPalier", "soundMax", "soundDaily", "soundRecord", "levelUpSound", "scannerSound" },
+  display = { "theme", "lang", "charProfile", "cols", "scale", "opacity", "bgAlpha", "fadeDelay", "colorMode", "showTotal", "nextBar", "smartSort", "seasonal", "locked" },
+  notif = { "dropsEnabled", "notifMode", "dropDir", "dropStyle", "xpDrops", "skillDrops", "flyAnim", "paliers", "objectifs", "levelUpAnim", "dropDuration", "dropBgAlpha", "scannerToast", "combo", "maxFx", "records", "prepalier", "jalons", "recapLogout", "quietMode", "quietToasts" },
+  sounds = { "sounds", "quietSounds", "soundSkill", "soundPalier", "soundMax", "soundDaily", "soundRecord", "levelUpSound", "scannerSound" },
+  progress = { "sessionGoal", "goalToast", "achievements", "weeklyRecap" },
   prof = { "gatherAlerts", "activity", "craftNotify", "links", "unlearned", "scannerIcons", "tipCompact", "styleMetiers", "openProf", "collection", "daily", "peche", "courses" },
   advanced = { "pvp", "pvpMarks", "scanner", "session", "rappel", "eta", "historique", "alts", "partage", "defense", "maitreArmes", "armePrincipale" },
 }
@@ -447,6 +451,7 @@ end
 Options.PREVIEW_KEYS = {
   theme = true, scale = true, opacity = true, bgAlpha = true, fadeDelay = true,
   cols = true, colorMode = true, showTotal = true, nextBar = true, locked = true,
+  smartSort = true, seasonal = true, charProfile = true,
 }
 
 function Options.EnsurePreviewVisible()
@@ -493,6 +498,8 @@ Options.TEST = {
   soundSkill = "sound", soundPalier = "sound", soundMax = "sound",
   soundDaily = "sound", soundRecord = "sound", levelUpSound = "sound",
   scannerSound = "sound",
+  -- 3.6.0 (Progress.lua) : les tests passent outre le mode calme (force)
+  goalToast = "sessiongoal", achievements = "achievement", weeklyRecap = "weekly", quietToasts = "skill",
 }
 
 local function TestToast(kind)
@@ -535,6 +542,16 @@ local function TestToast(kind)
   elseif kind == "combo" then
     title, sub = Tr["Combo x"] .. "3", ""
     opts.kind, opts.variant = "combo", "gold"
+  elseif kind == "sessiongoal" then
+    title, sub = Tr["Objectif de session atteint !"], "20 / 20"
+    opts.kind, opts.variant = "goal", "gold"
+  elseif kind == "achievement" then
+    title, sub = Tr["Succès : "] .. Tr["Série de 5 jours"], Tr["Toast d'exemple"]
+    opts.kind, opts.variant = "achievement", "gold"
+    icon = "Interface\\AddOns\\Dropamine\\Media\\Dropamine-Icon"
+  elseif kind == "weekly" then
+    title, sub = Tr["Récap de la semaine"], Tr["Toast d'exemple"]
+    opts.kind, opts.variant = "weekly", "gold"
   elseif kind == "levelup" then
     local level = (ns.GetPlayerLevel and ns.GetPlayerLevel()) or 32
     title = Tr["Niveau "] .. tostring(level) .. Tr[" atteint !"]
