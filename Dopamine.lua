@@ -3,6 +3,7 @@
 -- pendant un combo, un OnUpdate seulement pendant la barre du prochain point
 -- (retiré hors de ce cas, et en combat). Pas de fichier audio : kits du jeu.
 local _, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local D = {}
 ns.Dopamine = D
 D.WINDOW = 60
@@ -76,7 +77,7 @@ local function toggle(key, label, rest)
   if key == "soundSkill" or key == "soundPalier" or key == "soundMax" or key == "soundDaily" or key == "soundRecord" then cur = ns.OptOff(key) end
   local v = ns.ParseOnOff(rest, cur)
   if ns.Options then ns.Options.Set(key, v) else ns.SetOpt(key, v) end
-  if ns.Print then ns.Print(label .. (v and " : activé." or " : désactivé.")) end
+  if ns.Print then ns.Print(Tr[label] .. (v and Tr[" : activé."] or Tr[" : désactivé."])) end
   return v
 end
 ns.SlashExt = ns.SlashExt or {}
@@ -89,10 +90,10 @@ ns.SlashExt.son = function(rest)
   which = (which or ""):lower()
   local key = SOUND_KEY[which]
   if not key then
-    if ns.Print then ns.Print("usage : /drop son point|palier|max|defi|record on|off") end
+    if ns.Print then ns.Print(Tr["usage : /drop son point|palier|max|defi|record on|off"]) end
     return
   end
-  toggle(key, "son (" .. which .. ")", arg)
+  toggle(key, Tr["son ("] .. which .. ")", arg)
 end
 ns.HelpExt = ns.HelpExt or {}
 ns.HelpExt[#ns.HelpExt + 1] = "/drop combo|defi|records|barre|collection|sons on|off · /drop son point|palier|max|defi|record on|off"
@@ -224,7 +225,7 @@ function D.Toast(title, sub, icon, opts)
 end
 function D.Celebrate(info)
   if not ns.Opt("maxFx") then return nil end
-  local f = D.Toast((info.name or "Compétence") .. " au maximum !", tostring(info.to) .. " / " .. tostring(info.max), info.icon,
+  local f = D.Toast((info.name or Tr["Compétence"]) .. Tr[" au maximum !"], tostring(info.to) .. " / " .. tostring(info.max), info.icon,
     { kind = "max", variant = "gold", big = true, skillId = info.id })
   local ui = ns.UI
   if f and ui and ui.AttachFlareFx then pcall(ui.AttachFlareFx, ui, f, true) end
@@ -248,17 +249,28 @@ function D.AddPoints(delta, now)
   if r.hourKey ~= hour then r.hourKey, r.hourPts = hour, 0 end
   r.hourPts = (r.hourPts or 0) + delta
   local toast
-  if r.bestSession == nil then r.bestSession = r.session
-  elseif r.session > r.bestSession then
+  -- 3.5.4 : plus d'enchaînement « Nouveau record » à chaque point. Le record
+  -- de session ne sonne qu'en franchissant des paliers croissants (25, 50,
+  -- 100, 200…) au-delà du meilleur, et jamais sous 25 points (premiers niveaux).
+  local MIN = 25
+  if r.bestSession == nil then r.bestSession = r.session end
+  if r.session > r.bestSession then
     r.bestSession = r.session
-    toast = D.Toast("Nouveau record !", r.session .. " points cette session")
-    D.Play("soundRecord")
+    local step = r.recStep or MIN
+    if r.session >= MIN and r.session >= step then
+      while step <= r.session do step = step * 2 end
+      r.recStep = step
+      toast = D.Toast(Tr["Nouveau record !"], r.session .. Tr[" points cette session"])
+      D.Play("soundRecord")
+    end
   end
-  if r.bestHour == nil then r.bestHour = r.hourPts
-  elseif r.hourPts > r.bestHour then
+  -- record horaire : une seule annonce par heure, et seulement au-delà de 25 points
+  if r.bestHour == nil then r.bestHour = r.hourPts end
+  if r.hourPts > r.bestHour then
     r.bestHour = r.hourPts
-    if not toast then
-      D.Toast("Nouveau record !", r.hourPts .. " points cette heure")
+    if not toast and r.hourPts >= MIN and r.hourRecKey ~= hour then
+      r.hourRecKey = hour
+      D.Toast(Tr["Nouveau record !"], r.hourPts .. Tr[" points cette heure"])
       D.Play("soundRecord")
     end
   end
@@ -302,10 +314,10 @@ function D.DailyLine(id, name, cur)
   if not g then return nil end
   if id ~= g.id and name ~= g.name then return nil end
   local need = (g.goal or 0) - (g.start or 0)
-  if g.done then return "Défi du jour réussi : +" .. need .. " en " .. tostring(g.name) end
+  if g.done then return Tr["Défi du jour réussi : +"] .. need .. Tr[" en "] .. tostring(g.name) end
   local prog = math.max(0, (tonumber(cur) or g.start or 0) - (g.start or 0))
   if prog > need then prog = need end
-  return string.format("Défi du jour : +%d en %s (%d/%d)", need, tostring(g.name), prog, need)
+  return string.format(Tr["Défi du jour : +%d en %s (%d/%d)"], need, tostring(g.name), prog, need)
 end
 function D.DailyProgress(info)
   local g = D.C().daily
@@ -313,7 +325,7 @@ function D.DailyProgress(info)
   if info.id ~= g.id and info.name ~= g.name then return false end
   if (info.to or 0) < (g.goal or 0) then return false end
   g.done = true
-  D.Toast("Défi du jour réussi !", "+" .. ((g.goal or 0) - (g.start or 0)) .. " en " .. tostring(g.name), info.icon,
+  D.Toast(Tr["Défi du jour réussi !"], "+" .. ((g.goal or 0) - (g.start or 0)) .. Tr[" en "] .. tostring(g.name), info.icon,
     { kind = "daily", variant = "gold" })
   D.Play("soundDaily")
   return true
@@ -491,7 +503,7 @@ if ns.On then
   end)
   ns.On("PLAYER_REGEN_DISABLED", function() D.StopBar() end)
   ns.On("PLAYER_ENTERING_WORLD", function(_, isLogin)
-    if isLogin == true or ns.sessionFresh then D.C().records.session = 0 end
+    if isLogin == true or ns.sessionFresh then D.C().records.session = 0 D.C().records.recStep = nil end
     D.EnsureDaily(D.SkillList())
   end)
   ns.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, _, spellID)
@@ -528,13 +540,13 @@ if ns.Compact and ns.Compact.TooltipModel then
     end
     add(D.DailyLine(d.id, d.name or d.skillName, tonumber(d.current)))
     if ns.Opt("collection") and (d.id == "skinning" or d.id == "fishing") then
-      add(tostring(D.DiscoverCount(d.id)) .. " découverts")
+      add(tostring(D.DiscoverCount(d.id)) .. Tr[" découverts"])
     end
     if ns.Opt("combo") and D.bar and (D.bar.id == d.id or D.bar.name == d.name) then
       local n = D.LiveCombo()
       if n >= 2 then
         local best = D.C().bestCombo
-        add("Combo x" .. n .. (best and (" · record x" .. best) or ""))
+        add(Tr["Combo x"] .. n .. (best and (Tr[" · record x"] .. best) or ""))
       end
     end
     return m

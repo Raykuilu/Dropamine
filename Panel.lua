@@ -4,6 +4,7 @@
 --
 -- Rien ici ne touche un cadre natif : on dessine NOS cadres et NOS textures.
 local ADDON, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local UI = ns.UI
 local H = UI._H
 local V = ns.View
@@ -168,6 +169,9 @@ function P.IsExpanded() return false end
 -- grandit vers la droite / le bas en se dépliant, sans sauter)
 function P.SavePos(f)
   local l, _, t = RectOf(f)
+  -- 3.5.16 : au pixel entier (plus de dérive d'un demi-pixel à chaque mise en page)
+  local Px = ns.Layout and ns.Layout.Px
+  if Px then l, t = Px(l, f), Px(t, f) end
   if l and t then DB().winPos = { point = "TOPLEFT", relativePoint = "BOTTOMLEFT", x = l, y = t } end
 end
 
@@ -292,7 +296,7 @@ function W.Build()
     if not GameTooltip then return end
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
     GameTooltip:SetText(W.TotalLine(), 1, 0.82, 0)
-    GameTooltip:AddLine(DB().locked and "Position verrouillée (/drop verrou off)" or "Glisser : déplacer", 1, 1, 1)
+    GameTooltip:AddLine(DB().locked and Tr["Position verrouillée (/drop verrou off)"] or Tr["Glisser : déplacer"], 1, 1, 1)
     GameTooltip:Show()
   end)
   h:SetScript("OnLeave", function() P.SetHover(false) if GameTooltip then GameTooltip:Hide() end end)
@@ -715,6 +719,8 @@ function P.SetHover(on)
   if on then
     P._sleepToken = (P._sleepToken or 0) + 1   -- annule un retour au repos en attente
     P._sleepAt = nil
+    -- 3.5.3 : déjà pleinement actif (case → case voisine) : rien à repeindre
+    if (P._mix or 0) >= 1 and (P._target or 0) >= 1 then return end
     P._target = 1
     P.StartFade()
   else
@@ -793,7 +799,7 @@ function P.BuildSlider(f)
   end)
   local lab = H.Text(f, "GameFontHighlightSmall", "RIGHT")
   lab:SetPoint("RIGHT", sl, "LEFT", -6, 0)
-  lab:SetText("Opacité")
+  lab:SetText(Tr["Opacité"])
   P.slider, W.opSlider, W.opLabel = sl, sl, lab
 end
 
@@ -801,34 +807,34 @@ end
 -- 6) Commandes
 ------------------------------------------------------------------------------
 ns.SlashExt = ns.SlashExt or {}
-local function say(m) print("|cffffd100Dropamine|r : " .. m) end
+local function say(m) print(Tr["|cffffd100Dropamine|r : "] .. m) end
 ns.SlashExt.opacite = function(rest)
   rest = (rest or ""):lower()
   local which, val = rest:match("^(%a+)%s+(%S+)$")
   if which == "icones" or which == "icônes" then
     local c = P.SetIconAlpha(val)
-    say(c and ("opacité des icônes : " .. c .. " %") or "usage : /drop opacite icones <20-100>")
+    say(c and (Tr["opacité des icônes : "] .. c .. " %") or Tr["usage : /drop opacite icones <20-100>"])
     return
   end
   local c = P.SetOpacity(rest:match("^%s*(%-?[%d%.]+)"))
-  if c then say("opacité au repos : " .. c .. " % (100 % au survol et à chaque gain)") else say("opacité au repos : " .. P.Opacity() .. " % (usage : /drop opacite <0-100>)") end
+  if c then say(Tr["opacité au repos : "] .. c .. Tr[" % (100 % au survol et à chaque gain)"]) else say(Tr["opacité au repos : "] .. P.Opacity() .. Tr[" % (usage : /drop opacite <0-100>)"]) end
 end
 ns.SlashExt.fondu = function(rest)
   local c = P.SetFadeDelay((rest or ""):match("^%s*(%-?[%d%.]+)"))
-  if c then say("retour au repos après " .. c .. " s sans survol ni gain") else say("fondu : " .. P.FadeDelay() .. " s (usage : /drop fondu <0-60>)") end
+  if c then say(Tr["retour au repos après "] .. c .. Tr[" s sans survol ni gain"]) else say(Tr["fondu : "] .. P.FadeDelay() .. Tr[" s (usage : /drop fondu <0-60>)"]) end
 end
 ns.SlashExt.fond = function(rest)
   local c = P.SetBgAlpha((rest or ""):match("^%s*(%-?[%d%.]+)"))
-  if c then say("fond à l'état actif : " .. c .. " % (bord doré inchangé)") else say("fond : " .. P.BgAlpha() .. " % (usage : /drop fond <0-100>)") end
+  if c then say(Tr["fond à l'état actif : "] .. c .. Tr[" % (bord doré inchangé)"]) else say(Tr["fond : "] .. P.BgAlpha() .. Tr[" % (usage : /drop fond <0-100>)"]) end
 end
 ns.SlashExt["opacité"] = ns.SlashExt.opacite
 ns.SlashExt.verrou = function(rest)
   rest = (rest or ""):lower()
   if rest == "on" then DB().locked = true elseif rest == "off" then DB().locked = nil else DB().locked = (not DB().locked) or nil end
-  say(DB().locked and "panneau verrouillé" or "panneau déplaçable")
+  say(DB().locked and Tr["panneau verrouillé"] or Tr["panneau déplaçable"])
 end
 -- 3.3.5 : commandes devenues sans objet, gardées pour ne pas surprendre
-local function noDetail() say("plus de volet de détail : passe la souris sur une case pour tout voir (infobulle)") end
+local function noDetail() say(Tr["plus de volet de détail : passe la souris sur une case pour tout voir (infobulle)"]) end
 ns.SlashExt.deplier = function() if not W.IsShown() then W.Show() end noDetail() end
 ns.SlashExt.replier = noDetail
 
@@ -854,7 +860,7 @@ P.TOTAL_ICON = "Interface\\AddOns\\Dropamine\\Media\\SkillsTab"   -- nos 3 pilie
 function P.TotalTile()
   local d = UI.TOTAL_DATA
   local snap = UI.snapshot
-  d.kind, d.id, d.name, d.key = "total", "total", "Niveau total", "total"
+  d.kind, d.id, d.name, d.key = "total", "total", Tr["Niveau total"], "total"
   d.current = snap and snap.total or 0
   d.apiMax = (snap and snap.totalMax) or ns.TOTAL_MAX or 2460
   d.icon = P.TOTAL_ICON

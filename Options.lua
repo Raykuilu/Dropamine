@@ -1,6 +1,7 @@
 -- Dropamine : panneau d'options (catégorie AddOns des Options natives).
 -- Chaque réglage reflète une commande /drop et la même clé de SavedVariables.
 local ADDON, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local Options = {}
 ns.Options = Options
 
@@ -25,6 +26,12 @@ Options.SECTIONS = {
       help = "Change l'habillage du panneau, des cases et des toasts.",
       get = function() return ns.Theme and ns.Theme.Mode() or "flare" end,
       set = function(v) if ns.Theme then ns.Theme.Set(v) end end },
+    -- 3.5.19 : langue des textes (enregistrée dans DropamineDB.ui.lang, « auto » par défaut)
+    { type = "radio", key = "lang", label = "Langue", default = "auto", noReset = true, cmd = "/drop lang auto|en|fr",
+      choices = { { "auto", "Auto (langue du jeu)" }, { "en", "English" }, { "fr", "Français" } },
+      help = "Langue des textes de l'addon. Auto : français sur un client français, anglais sinon.",
+      get = function() return ns.LangSetting and ns.LangSetting() or "auto" end,
+      set = function(v) if ns.SetLang then ns.SetLang(v) end end },
     { type = "radio", key = "cols", label = "Colonnes", default = 5, cmd = "/drop colonnes 1|2|3|5|10",
       choices = { { 1, "1 colonne" }, { 2, "2 colonnes" }, { 3, "3 colonnes" }, { 5, "5 colonnes" }, { 10, "10 colonnes (1 rangée)" } },
       help = "Nombre de cases par rangée (aussi : poignée du coin, Alt+glisser).",
@@ -100,6 +107,9 @@ Options.SECTIONS = {
       help = "Où apparaissent les toasts.",
       get = function() return ns.Notif and ns.Notif.Mode() or "dessus" end,
       set = function(v) if ns.Notif then ns.Notif.Set(v) end end },
+    { type = "radio", key = "dropDir", label = "Sens des notifs", default = "haut", cmd = "/drop drops sens haut|bas|place",
+      choices = { { "haut", "Vers le haut" }, { "bas", "Vers le bas" }, { "place", "Sur place" } },
+      help = "En position libre : le plus récent reste à l'emplacement choisi. Vers le haut : les anciens montent. Vers le bas : ils descendent. Sur place : pile de cartes (3 visibles). Sans effet au-dessus ou en dessous du panneau." },
     { type = "radio", key = "dropStyle", label = "Format", default = "complet",
       choices = { { "complet", "Complet" }, { "leger", "Une ligne" } }, cmd = "/drop drops style complet|leger",
       help = "Toast complet ou une seule ligne discrète." },
@@ -236,39 +246,46 @@ function ns.DropsSubcommand(full)
   local sub, arg = (full or ""):lower():match("^(%S*)%s*(%S*)")
   if sub == "xp" then
     local v = Options.Set("xpDrops", ns.ParseOnOff(arg, Options.Get("xpDrops")))
-    ns.Print("drops d'XP " .. (v and "activés." or "désactivés."))
+    ns.Print(Tr["drops d'XP "] .. (v and Tr["activés."] or Tr["désactivés."]))
     return true
   elseif sub == "comp" or sub == "competences" or sub == "compétences" then
     local v = Options.Set("skillDrops", ns.ParseOnOff(arg, Options.Get("skillDrops")))
-    ns.Print("drops de compétence " .. (v and "activés." or "désactivés."))
+    ns.Print(Tr["drops de compétence "] .. (v and Tr["activés."] or Tr["désactivés."]))
     return true
   elseif sub == "style" then
     if arg == "leger" or arg == "léger" then Options.Set("dropStyle", "leger")
     elseif arg == "complet" then Options.Set("dropStyle", "complet")
-    else ns.Print("style actuel : " .. tostring(Options.Get("dropStyle")) .. ". Usage : /drop drops style complet|leger") return true end
-    ns.Print("style des drops : " .. Options.Get("dropStyle") .. ".")
+    else ns.Print(Tr["style actuel : "] .. tostring(Options.Get("dropStyle")) .. Tr[". Usage : /drop drops style complet|leger"]) return true end
+    ns.Print(Tr["style des drops : "] .. Options.Get("dropStyle") .. ".")
     return true
   elseif sub == "chat" or sub == "coller" then
     local v = Options.Set("dropsSnapChat", ns.ParseOnOff(arg, Options.Get("dropsSnapChat")))
-    ns.Print(v and "drops collés au-dessus du chat (même largeur)." or "drops détachés du chat.")
+    ns.Print(v and Tr["drops collés au-dessus du chat (même largeur)."] or Tr["drops détachés du chat."])
     return true
   elseif sub == "sens" or sub == "direction" then
-    if arg == "haut" then Options.Set("dropDir", "haut")
-    elseif arg == "bas" then Options.Set("dropDir", "bas")
-    else ns.Print("sens actuel : vers le " .. tostring(Options.Get("dropDir")) .. ". Usage : /drop drops sens haut|bas") return true end
-    ns.Print("drops empilés vers le " .. Options.Get("dropDir") .. ".")
+    if arg == "haut" or arg == "bas" or arg == "place" then Options.Set("dropDir", arg)
+    elseif arg == "surplace" or arg == "pile" then Options.Set("dropDir", "place")
+    else
+      local d = Options.Get("dropDir") or "haut"
+      local names = { haut = Tr["vers le haut"], bas = Tr["vers le bas"], place = Tr["sur place"] }
+      ns.Print(Tr["sens actuel : "] .. (names[d] or tostring(d)) .. Tr[". Usage : /drop drops sens haut|bas|place"])
+      return true
+    end
+    local d = Options.Get("dropDir")
+    local names = { haut = Tr["vers le haut"], bas = Tr["vers le bas"], place = Tr["sur place"] }
+    ns.Print(Tr["sens des notifs : "] .. (names[d] or tostring(d)) .. ".")
     return true
   elseif sub == "duree" or sub == "durée" then
-    if not ns.N(arg) then ns.Print("durée actuelle : " .. tostring(Options.Get("dropDuration")) .. " s. Usage : /drop drops duree <1-10>") return true end
+    if not ns.N(arg) then ns.Print(Tr["durée actuelle : "] .. tostring(Options.Get("dropDuration")) .. Tr[" s. Usage : /drop drops duree <1-10>"]) return true end
     local v = Options.Set("dropDuration", ns.N(arg))
-    ns.Print("durée des drops : " .. tostring(v) .. " s.")
+    ns.Print(Tr["durée des drops : "] .. tostring(v) .. Tr[" s."])
     return true
   elseif sub == "opacite" or sub == "opacité" then
-    if not ns.N(arg) then ns.Print("opacité actuelle : " .. tostring(math.floor((Options.Get("dropBgAlpha") or 0) * 100 + 0.5)) .. " %. Usage : /drop drops opacite <0-100>") return true end
+    if not ns.N(arg) then ns.Print(Tr["opacité actuelle : "] .. tostring(math.floor((Options.Get("dropBgAlpha") or 0) * 100 + 0.5)) .. Tr[" %. Usage : /drop drops opacite <0-100>"]) return true end
     local a = ns.N(arg)
     if a > 1 then a = a / 100 end
     local v = Options.Set("dropBgAlpha", a)
-    ns.Print("opacité du fond des drops : " .. tostring(math.floor(v * 100 + 0.5)) .. " %.")
+    ns.Print(Tr["opacité du fond des drops : "] .. tostring(math.floor(v * 100 + 0.5)) .. " %.")
     return true
   end
   return false
@@ -276,7 +293,7 @@ end
 
 ns.SlashExt.style = function(rest)
   local v = Options.Set("styleMetiers", ns.ParseOnOff(rest, Options.Get("styleMetiers")))
-  ns.Print("style Métiers " .. (v and "activé." or "désactivé (style précédent)."))
+  ns.Print(Tr["style Métiers "] .. (v and Tr["activé."] or Tr["désactivé (style précédent)."]))
 end
 
 -- Panneau ------------------------------------------------------------------------
@@ -331,7 +348,7 @@ function Options.FormatValue(it, v)
   v = ns.N(v) or 0
   if it.unit == "%" then return tostring(math.floor(v * 100 + 0.5)) .. " %" end
   if it.unit == "pct" then return tostring(math.floor(v + 0.5)) .. " %" end
-  if it.unit == "s" then return tostring(v) .. " s" end
+  if it.unit == "s" then return tostring(v) .. Tr[" s"] end
   return tostring(v)
 end
 Options.WHEEL_STEP = 40
@@ -381,7 +398,7 @@ local function MakeDropdown(box, it, x, y)
   dd.choices = it.choices
   dd.key = it.key
   local function label(v)
-    for _, ch in ipairs(it.choices) do if ch[1] == v then return ch[2] end end
+    for _, ch in ipairs(it.choices) do if ch[1] == v then return Tr[ch[2]] end end
     return tostring(v)
   end
   dd.Refresh = function(self)
@@ -394,7 +411,7 @@ local function MakeDropdown(box, it, x, y)
     if type(_G.UIDropDownMenu_CreateInfo) ~= "function" then return end
     for _, ch in ipairs(it.choices) do
       local info = _G.UIDropDownMenu_CreateInfo()
-      info.text, info.value = ch[2], ch[1]
+      info.text, info.value = Tr[ch[2]], ch[1]
       info.checked = (Options.Get(it.key) == ch[1])
       info.func = function()
         Options.Set(it.key, ch[1])
@@ -418,16 +435,16 @@ function Options.Build()
   panel:Hide()
   local title = Label(panel, "Dropamine", "GameFontNormalLarge")
   title:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -16)
-  local subt = Label(panel, "Chaque réglage correspond à une commande /drop (survole-le pour la voir).", "GameFontHighlightSmall")
+  local subt = Label(panel, Tr["Chaque réglage correspond à une commande /drop (survole-le pour la voir)."], "GameFontHighlightSmall")
   subt:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
   -- 3.3.8 : « Valeurs par défaut » (deux clics : le 1er demande confirmation)
   local rb = TryCreate("Button", "DropamineOptionsReset", panel, { "UIPanelButtonTemplate" })
   rb:SetSize(150, 22)
   rb:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -36, -16)
-  rb:SetText(Options.RESET_TEXT)
+  rb:SetText(Tr[Options.RESET_TEXT])
   rb:SetScript("OnClick", function(self) Options.ResetClick(self) end)
   rb:SetScript("OnEnter", function(self)
-    if GameTooltip then GameTooltip:SetOwner(self, "ANCHOR_LEFT") GameTooltip:AddLine("Remet tous les réglages de ce panneau à leur valeur d'origine", 1, 1, 1, true) GameTooltip:AddLine("/drop options defaut", 0.7, 0.7, 0.7) GameTooltip:Show() end
+    if GameTooltip then GameTooltip:SetOwner(self, "ANCHOR_LEFT") GameTooltip:AddLine(Tr["Remet tous les réglages de ce panneau à leur valeur d'origine"], 1, 1, 1, true) GameTooltip:AddLine(Tr["/drop options defaut"], 0.7, 0.7, 0.7) GameTooltip:Show() end
   end)
   rb:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
   panel.reset, Options.resetButton = rb, rb
@@ -450,7 +467,7 @@ function Options.Build()
     local items = Options.SectionItems(sec)
     if #items > 0 then
       -- Titre jaune au-dessus du groupe.
-      local h = Label(content, sec.title, "GameFontNormal")
+      local h = Label(content, Tr[sec.title], "GameFontNormal")
       h:SetPoint("TOPLEFT", content, "TOPLEFT", L.MARGIN + 4, -y)
       y = y + L.TITLE_H
       local box = TryCreate("Frame", nil, content, { "BackdropTemplate" })
@@ -460,7 +477,7 @@ function Options.Build()
       box.header = h
       local by = L.PAD
       if sec.desc then   -- 3.3.8 : une phrase qui dit à quoi sert le groupe
-        local d = Label(box, sec.desc, "GameFontHighlightSmall")
+        local d = Label(box, Tr[sec.desc], "GameFontHighlightSmall")
         d.font = "GameFontHighlightSmall"
         d:SetPoint("TOPLEFT", box, "TOPLEFT", L.PAD + 4, -by)
         if d.SetWidth then d:SetWidth(boxW - 2 * L.PAD - 8) end
@@ -495,22 +512,22 @@ function Options.Build()
           if not txt then txt = Label(cb, "") end
           txt:ClearAllPoints()
           txt:SetPoint("LEFT", cb, "RIGHT", 2, 1)
-          txt:SetText(it.label)
+          txt:SetText(Tr[it.label])
           if txt.SetFontObject and _G.GameFontNormal then pcall(txt.SetFontObject, txt, _G.GameFontNormal) end
           txt.font = "GameFontNormal"
           if txt.SetWidth then txt:SetWidth(Options.COL_W - L.CHECK_TEXT_X - 4) end
           if txt.SetWordWrap then pcall(txt.SetWordWrap, txt, false) end
           cb.labelFS = txt
-          cb.tooltipText = it.cmd
+          cb.tooltipText = Tr[it.cmd]
           cb.col, cb.x, cb.y, cb.section = col, cx, by, sec.id
           local hgt = L.ROW
           Rect(box, cx, by, Options.COL_W, it.help and (L.ROW - 4) or L.ROW, it.key)
           if it.help then
-            local hf = Label(box, it.help, "GameFontHighlightSmall")
+            local hf = Label(box, Tr[it.help], "GameFontHighlightSmall")
             hf.font = "GameFontHighlightSmall"
             hf:SetPoint("TOPLEFT", box, "TOPLEFT", cx + L.CHECK_TEXT_X, -(by + L.ROW - 4))
             if hf.SetWidth then hf:SetWidth(Options.COL_W - L.CHECK_TEXT_X - 4) end
-            local lines = math.max(1, math.ceil(#it.help / 46))
+            local lines = math.max(1, math.ceil(#Tr[it.help] / 46))
             hgt = L.ROW - 4 + lines * L.DESC_H + 4
             Rect(box, cx + L.CHECK_TEXT_X, by + L.ROW - 4, Options.COL_W - L.CHECK_TEXT_X, lines * L.DESC_H, it.key .. ":desc")
             cb.helpFS = hf
@@ -520,14 +537,14 @@ function Options.Build()
             Options.Set(it.key, on)
           end)
           cb:SetScript("OnEnter", function(self)
-            if GameTooltip then GameTooltip:SetOwner(self, "ANCHOR_RIGHT") GameTooltip:AddLine(it.label, 1, 0.82, 0) GameTooltip:AddLine(it.cmd, 1, 1, 1) GameTooltip:Show() end
+            if GameTooltip then GameTooltip:SetOwner(self, "ANCHOR_RIGHT") GameTooltip:AddLine(Tr[it.label], 1, 0.82, 0) GameTooltip:AddLine(Tr[it.cmd], 1, 1, 1) GameTooltip:Show() end
           end)
           cb:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
           Options.widgets[it.key] = cb
           advance(hgt, it.row)
         elseif it.type == "radio" then
           local cx = cell(false)
-          local l = Label(box, it.label, "GameFontNormal")
+          local l = Label(box, Tr[it.label], "GameFontNormal")
           l.font = "GameFontNormal"
           l:SetPoint("TOPLEFT", box, "TOPLEFT", cx + 4, -by)
           local dd = MakeDropdown(box, it, cx, by + 16)
@@ -538,7 +555,7 @@ function Options.Build()
         elseif it.type == "slider" then
           endRow()
           local sname = "DropamineOpt_" .. it.key
-          local l = Label(box, it.label, "GameFontNormal")
+          local l = Label(box, Tr[it.label], "GameFontNormal")
           l.font = "GameFontNormal"
           l:SetPoint("TOPLEFT", box, "TOPLEFT", L.PAD + 4, -by)
           local sl = TryCreate("Slider", sname, box, { "OptionsSliderTemplate", "UISliderTemplateWithLabels", "UISliderTemplate" })
@@ -579,7 +596,7 @@ function Options.Build()
           Options.widgets[it.key] = sl
           by = by + L.SLIDER_H
           if it.help then
-            local hf = Label(box, it.help, "GameFontHighlightSmall")
+            local hf = Label(box, Tr[it.help], "GameFontHighlightSmall")
             hf:SetPoint("TOPLEFT", box, "TOPLEFT", L.PAD + 4, -by)
             Rect(box, L.PAD, by, boxW - 2 * L.PAD, L.DESC_H, it.key .. ":desc")
             sl.helpFS = hf
@@ -608,7 +625,7 @@ function Options.ResetDefaults()
   local n = 0
   Options._syncing = true
   for _, it in ipairs(Options.All()) do
-    if it.key and it.default ~= nil then
+    if it.key and it.default ~= nil and not it.noReset then   -- 3.5.19 : la langue n'est pas remise à zéro
       local ok = pcall(Options.Set, it.key, it.default)
       if ok then n = n + 1 end
     end
@@ -620,16 +637,16 @@ end
 function Options.ResetClick(btn)
   if not Options._armed then
     Options._armed = true
-    if btn and btn.SetText then btn:SetText(Options.RESET_CONFIRM) end
+    if btn and btn.SetText then btn:SetText(Tr[Options.RESET_CONFIRM]) end
     if _G.C_Timer and _G.C_Timer.After then
-      _G.C_Timer.After(4, function() Options._armed = nil if btn and btn.SetText then btn:SetText(Options.RESET_TEXT) end end)
+      _G.C_Timer.After(4, function() Options._armed = nil if btn and btn.SetText then btn:SetText(Tr[Options.RESET_TEXT]) end end)
     end
     return false
   end
   Options._armed = nil
-  if btn and btn.SetText then btn:SetText(Options.RESET_TEXT) end
+  if btn and btn.SetText then btn:SetText(Tr[Options.RESET_TEXT]) end
   local n = Options.ResetDefaults()
-  ns.Print("options : " .. n .. " réglages remis par défaut.")
+  ns.Print(Tr["options : "] .. n .. Tr[" réglages remis par défaut."])
   return n
 end
 
@@ -715,12 +732,12 @@ ns.SlashExt.anim = function(rest)
   if sub == "son" or sub == "sound" then
     local v = Options.Set("levelUpSound", ns.ParseOnOff(arg, ns.OptOff("levelUpSound")))
     local kit, name = ns.UI and ns.UI.LevelUpSoundKit and ns.UI:LevelUpSoundKit()
-    ns.Print("animation : son " .. (v and "activé" or "désactivé") .. (kit and (" (" .. tostring(name) .. ")") or " (aucun son natif trouvé : rien ne sera joué)") .. ".")
+    ns.Print(Tr["animation : son "] .. (v and Tr["activé"] or Tr["désactivé"]) .. (kit and (" (" .. tostring(name) .. ")") or Tr[" (aucun son natif trouvé : rien ne sera joué)"]) .. ".")
   elseif sub == "test" then
     if ns.UI and ns.UI.PlayLevelUp then ns.UI:PlayLevelUp(ns.GetPlayerLevel()) end
   else
     local v = Options.Set("levelUpAnim", ns.ParseOnOff(sub, ns.Opt("levelUpAnim")))
-    ns.Print("animation de montée de niveau " .. (v and "activée." or "désactivée."))
+    ns.Print(Tr["animation de montée de niveau "] .. (v and Tr["activée."] or Tr["désactivée."]))
   end
 end
 ns.HelpExt[#ns.HelpExt + 1] = "/drop anim on|off · son on|off · test : animation de montée de niveau"
@@ -735,20 +752,20 @@ ns.SlashExt.recettes = function(rest)
       if C.SKILLS[e.id] then
         local t = C.DetailText(e.id)
         local rec = ns.CharDB().recipes and ns.CharDB().recipes[e.id]
-        if t and rec then any = true ns.Print(e.name .. " — " .. t:gsub("\n", " · ")) end
+        if t and rec then any = true ns.Print(ns.CatalogDisplayName(e) .. " — " .. t:gsub("\n", " · ")) end
       end
     end
-    if not any then ns.Print("recettes : aucune fenêtre de métier lue pour l'instant (lecture automatique à l'ouverture du métier).") end
+    if not any then ns.Print(Tr["recettes : aucune fenêtre de métier lue pour l'instant (lecture automatique à l'ouverture du métier)."]) end
     return
   end
   local v = Options.Set("craftNotify", ns.ParseOnOff(sub, ns.Opt("craftNotify")))
-  ns.Print("drop « recettes réalisables » " .. (v and "activé." or "désactivé."))
+  ns.Print(Tr["drop « recettes réalisables » "] .. (v and Tr["activé."] or Tr["désactivé."]))
 end
 ns.HelpExt[#ns.HelpExt + 1] = "/drop recettes [on|off] : recettes réalisables avec tes sacs (tous les métiers de fabrication)"
 ns.SlashExt.options = function(rest)
   rest = (rest or ""):lower()
   if rest == "defaut" or rest == "défaut" or rest == "reset" then
-    ns.Print("options : " .. Options.ResetDefaults() .. " réglages remis par défaut.")
+    ns.Print(Tr["options : "] .. Options.ResetDefaults() .. Tr[" réglages remis par défaut."])
     return
   end
   Options.Open()
@@ -757,7 +774,7 @@ end
 local function onoff(key, label)
   return function(rest)
     local v = Options.Set(key, ns.ParseOnOff((rest or ""):match("^%s*(%S*)"), Options.Get(key)))
-    ns.Print(label .. " : " .. (v and "activé." or "désactivé."))
+    ns.Print(Tr[label] .. Tr[" : "] .. (v and Tr["activé."] or Tr["désactivé."]))
   end
 end
 ns.SlashExt.animation = onoff("flyAnim", "animation toast → case")
@@ -770,7 +787,7 @@ ns.SlashExt.infobulle = function(rest)
   elseif rest == "detail" or rest == "détail" or rest == "off" then v = false
   else v = not Options.Get("tipCompact") end
   Options.Set("tipCompact", v)
-  ns.Print("infobulle de créature : " .. (v and "compacte (Maj = détail)." or "détaillée."))
+  ns.Print(Tr["infobulle de créature : "] .. (v and Tr["compacte (Maj = détail)."] or Tr["détaillée."]))
 end
 ns.HelpExt[#ns.HelpExt + 1] = "/drop animation on|off · /drop infobulle compacte|detail · /drop liens on|off · /drop nonapprises on|off · /drop options defaut"
 ns.SlashExt.config = ns.SlashExt.options

@@ -22,6 +22,7 @@
 -- calculés une fois par ouverture de fenêtre (cache) ; rien n'est recalculé en
 -- combat (la peinture réutilise le résultat) ; nos cases seulement.
 local ADDON, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local UI, T, W = ns.UI, ns.Target, ns.Window
 if not (UI and T) then return end
 local A = {}
@@ -267,7 +268,7 @@ function A.LinksFor(skill)
     out[#out + 1] = { skill = sk, why = why }
   end
   for _, sk in ipairs(A.FEEDS[skill] or {}) do
-    add(sk, "lien : fournit des matières à " .. tostring(A.FR[skill] or skill))
+    add(sk, Tr["lien : fournit des matières à "] .. tostring(A.FR[skill] and ns.SkillDisplayName(skill) or skill))
   end
   -- composants partagés (recettes lues en jeu + base de l'addon)
   local rec = ns.CharDB and ns.CharDB().recipes
@@ -278,7 +279,7 @@ function A.LinksFor(skill)
     for _, r in ipairs(mine) do for _, rg in ipairs(r.reagents or {}) do if rg.id then ids[rg.id] = true end end end
     for id in pairs(ids) do
       for _, e in ipairs(L.UsesOf(id) or {}) do
-        if e.skill ~= skill and e.learned == true then add(e.skill, "lien : composant commun (" .. tostring(e.name) .. ")") end
+        if e.skill ~= skill and e.learned == true then add(e.skill, Tr["lien : composant commun ("] .. tostring(e.name) .. ")") end
       end
     end
   end
@@ -341,12 +342,12 @@ function A.Entries()
     if R[lvl] > R[e.level] then e.level = lvl end
     e.why[#e.why + 1] = why
   end
-  if A.cast then mark(A.cast.skill, "direct", "en cours : " .. tostring(A.cast.name or A.FR[A.cast.skill])) end
+  if A.cast then mark(A.cast.skill, "direct", Tr["en cours : "] .. tostring(A.cast.name or (A.FR[A.cast.skill] and ns.SkillDisplayName(A.cast.skill)))) end
   if A.window then
-    if A.WindowGivesSkill() then mark(A.window, "indirect", "fenêtre du métier ouverte") end
+    if A.WindowGivesSkill() then mark(A.window, "indirect", Tr["fenêtre du métier ouverte"]) end
     for _, l in ipairs(A.LinksFor(A.window)) do mark(l.skill, "link", l.why) end
   end
-  if A.pole then mark("fishing", "indirect", "canne à pêche équipée") end
+  if A.pole then mark("fishing", "indirect", Tr["canne à pêche équipée"]) end
   if next(out) == nil then return nil end
   return out
 end
@@ -406,7 +407,7 @@ if ns.Compact and ns.Compact.TooltipModel then
     local e = d and d.id and A.current and A.current["id:" .. d.id]
     if e and m and m.lines then
       local G = T.GREEN
-      local head = (e.level == "direct" and "Métier en cours") or (e.level == "indirect" and "Métier prêt") or "Lien métiers"
+      local head = (e.level == "direct" and Tr["Métier en cours"]) or (e.level == "indirect" and Tr["Métier prêt"]) or Tr["Lien métiers"]
       m.lines[#m.lines + 1] = { " ", 1, 1, 1, false, spacer = true }
       m.lines[#m.lines + 1] = { head, G[1], G[2], G[3], false, header = true }
       for _, l in ipairs(e.why) do m.lines[#m.lines + 1] = { l, 0.75, 1, 0.75, true } end
@@ -602,7 +603,7 @@ local function slashAct(rest)
   if rest == "on" then ui.activity = nil elseif rest == "off" then ui.activity = false
   else ui.activity = (ui.activity == false) and nil or false end
   pcall(T.Paint)
-  if ns.Print then ns.Print("métier en cours " .. (A.Enabled() and "surligné." or "non surligné.")) end
+  if ns.Print then ns.Print(Tr["métier en cours "] .. (A.Enabled() and Tr["surligné."] or Tr["non surligné."])) end
 end
 ns.SlashExt.activite = slashAct
 ns.SlashExt["activité"] = slashAct

@@ -167,10 +167,19 @@ if Wd and Wd.Paint then
     if not (p and t._wideOn) then return unpack(r) end
     local cls = On()
     pcall(p.track.SetTexture, p.track, cls and Cl.BAR_TEX or Wd.TEX)
-    pcall(p.fill.SetTexture, p.fill, cls and Cl.BAR_TEX or Wd.FILL_TEX)
-    local tc, fc = cls and Cl.BAR_TRACK or Wd.TRACK, cls and Cl.BAR_FILL or Wd.FILL
+    local tc = cls and Cl.BAR_TRACK or Wd.TRACK
     p.track:SetVertexColor(tc[1], tc[2], tc[3], tc[4] or 1)
-    p.fill:SetVertexColor(fc[1], fc[2], fc[3], fc[4] or 1)
+    -- 3.5.1 : chaque segment garde sa couleur (niveau / combat / métiers) ;
+    -- le thème classic n'applique plus un bleu unique sur tout le remplissage.
+    local fillTex = cls and Cl.BAR_TEX or (Wd.FILL_TEX or Wd.TEX)
+    for i = 1, #(p.segs or {}) do
+      pcall(p.segs[i].SetTexture, p.segs[i], fillTex)
+      local c = Wd.SEG_COLORS and Wd.SEG_COLORS[i]
+      if c then p.segs[i]:SetVertexColor(c[1], c[2], c[3], c[4] or 1) end
+    end
+    if p.fill and not p.segs then
+      pcall(p.fill.SetTexture, p.fill, fillTex)
+    end
     if p.sheen then if cls then p.sheen:Hide() end end
     local e = p.edge
     if e and e.SetBackdrop then

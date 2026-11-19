@@ -8,7 +8,25 @@ if type(ns) ~= "table" then
   ADDON = ADDON or "Dropamine"
 end
 
+-- 3.5.3 : résultat mémorisé par chaîne (≈ 60 gsub par appel ; appelé des
+-- milliers de fois par infobulle). Cache vidé au-delà de 4000 entrées.
+local foldCache, foldN = {}, 0
 function ns.Fold(s)
+  if ns.IsSecret and ns.IsSecret(s) then return "" end  -- 3.5.2 : texte protégé par le client
+  local key = (type(s) == "string") and s or nil
+  if key then
+    local hit = foldCache[key]
+    if hit then return hit end
+  end
+  s = ns.FoldRaw(s)
+  if key then
+    if foldN >= 4000 then foldCache, foldN = {}, 0 end
+    foldCache[key] = s
+    foldN = foldN + 1
+  end
+  return s
+end
+function ns.FoldRaw(s)
   s = tostring(s or "")
   s = s:gsub("É", "e"):gsub("È", "e"):gsub("Ê", "e"):gsub("Ë", "e")
   s = s:gsub("é", "e"):gsub("è", "e"):gsub("ê", "e"):gsub("ë", "e")
@@ -204,6 +222,53 @@ local ARMOR_NAMES = {
 ns.LANGUAGE_HEADERS = LANGUAGE_HEADERS
 ns.ARMOR_HEADERS = ARMOR_HEADERS
 ns.ARMOR_NAMES = ARMOR_NAMES
+
+-- 3.5.18 : noms exacts des compétences d'armes renvoyés par le client Forever
+-- (singulier « Masse », « Masses à une main », variantes anglaises, apostrophes
+-- ’ / ' et accents gérés par ns.Fold). Correspondance EXACTE seulement (pas
+-- dans Style.SkillIdForText : « arc » ou « masse » apparaîtraient dans d'autres
+-- textes). Lignes de compétence : identifiants standard.
+ns.WEAPON_EXACT = {
+  axes = { line = 44, "hache", "haches a une main", "hache a une main", "one handed axes", "one-handed axes", "axe" },
+  axes2h = { line = 172, "hache a deux mains", "haches 2m", "two handed axe", "two-handed axe" },
+  maces = { line = 54, "masse", "masses a une main", "masse a une main", "one handed maces", "one-handed maces", "mace" },
+  maces2h = { line = 160, "masse a deux mains", "two handed mace", "two-handed mace" },
+  swords = { line = 43, "epee", "epees a une main", "epee a une main", "one handed swords", "one-handed swords", "sword" },
+  swords2h = { line = 55, "epee a deux mains", "two handed sword", "two-handed sword" },
+  polearms = { line = 229, "arme d hast", "hast", "polearm" },
+  staves = { line = 136, "baton", "batons de combat" },
+  fist = { line = 473, "arme de pugilat", "pugilat", "fist weapon" },
+  daggers = { line = 173, "dague", "dagger" },
+  unarmed = { line = 162, "main nue", "mains nues", "combat a mains nues" },
+  feral = { "combat farouche", "farouche" },
+  bows = { line = 45, "arc", "bow" },
+  guns = { line = 46, "arme a feu", "fusil", "fusils", "gun" },
+  crossbows = { line = 226, "arbalete", "crossbow" },
+  thrown = { line = 176, "arme de jet", "jet", "throwing", "throwing weapons" },
+  wands = { line = 228, "baguette", "wand" },
+  defense = { line = 95, "defense" },
+}
+-- compétences d'arme hors catalogue (aucune case) : icône seulement
+ns.EXTRA_SKILL_ICONS = {
+  ["ambidextrie"] = "Interface\\Icons\\Ability_DualWield", ["dual wield"] = "Interface\\Icons\\Ability_DualWield",
+}
+ns.EXTRA_SKILL_LINES = { [118] = "Interface\\Icons\\Ability_DualWield" }
+-- icône générique d'arme (jamais de case vide ni de point d'interrogation)
+ns.WEAPON_FALLBACK_ICON = "Interface\\Icons\\Ability_Warrior_WeaponMastery"
+ns.EXACT_ONLY = {}
+ns.CATALOG_BY_LINE = {}
+for i = 1, #CATALOG do
+  local e = CATALOG[i]
+  local x = ns.WEAPON_EXACT[e.id]
+  if x then
+    e.aliases = e.aliases or {}
+    for _, a in ipairs(x) do
+      e.aliases[#e.aliases + 1] = a
+      ns.EXACT_ONLY[ns.FoldRaw(a)] = true
+    end
+    if x.line then e.skillLine = x.line ns.CATALOG_BY_LINE[x.line] = e end
+  end
+end
 
 local aliasMap = {}
 local idMap = {}

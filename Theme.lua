@@ -4,6 +4,7 @@
 -- panneau depuis n'importe où, toasts et panneau sur le même fond / la même
 -- opacité. Rien par image : tout est posé à la construction / au changement.
 local _, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local Th = {}
 ns.Theme = Th
 
@@ -726,7 +727,19 @@ function Th.TopExtra(gt)
   return math.max(0, need - M)
 end
 if L then
-  L.TopExtra = function(gt) local e = Th.TopExtra(gt) L._topExtra = e return e end
+  -- 3.5.16 : la place de la pastille « N prêts » reste réservée une fois vue
+  -- (mémorisée) : son apparition avec un toast de recette ne décale plus la
+  -- grille vers le bas
+  L.TopExtra = function(gt)
+    local e = Th.TopExtra(gt)
+    local ui = ns.db and ns.db.ui
+    if ui then
+      if e > (tonumber(ui.topExtra) or 0) then ui.topExtra = e end
+      e = math.max(e, tonumber(ui.topExtra) or 0)
+    end
+    L._topExtra = e
+    return e
+  end
 end
 if UI and UI.UpdateCraftBadge then
   local baseBadge = UI.UpdateCraftBadge
@@ -742,7 +755,8 @@ if UI and UI.UpdateCraftBadge then
     -- état « pastille en 1re rangée » changé → recentrage (pas de calcul sinon)
     if L and L.Center and not Th._centering then
       local gt = select(3, L.GridRect())
-      local want = Th.TopExtra(gt)
+      local ui = ns.db and ns.db.ui
+      local want = math.max(Th.TopExtra(gt), (ui and tonumber(ui.topExtra)) or 0)
       if want ~= (L._topExtra or 0) then
         Th._centering = true
         pcall(L.Center)
@@ -761,14 +775,14 @@ if Frame() then pcall(Th.ApplyPanel) end
 -- /drop theme cadre|sans
 ------------------------------------------------------------------------------
 ns.SlashExt = ns.SlashExt or {}
-local function Say(s) print("|cffffd100Dropamine|r " .. s) end
+local function Say(s) print(Tr["|cffffd100Dropamine|r "] .. s) end
 ns.SlashExt.theme = function(rest)
   local a = (rest or ""):match("^%s*(%S*)") or ""
-  if a == "" then Say("thème : " .. Th.Mode() .. " (/drop theme flare|leger|classic)") return end
+  if a == "" then Say(Tr["thème : "] .. Th.Mode() .. Tr[" (/drop theme flare|leger|classic)"]) return end
   local m = Th.Set(a)
-  local DESC = { leger = " (léger : cases flottantes, sans fond ni bord)", classic = " (classique : cadres et barres de l'interface Blizzard)", flare = " (FlareUI : fond sombre + bord arrondi)" }
-  if m then Say("thème : " .. m .. (DESC[m] or ""))
-  else Say("usage : /drop theme flare|leger|classic (alias : cadre, sans, classique)") end
+  local DESC = { leger = Tr[" (léger : cases flottantes, sans fond ni bord)"], classic = Tr[" (classique : cadres et barres de l'interface Blizzard)"], flare = Tr[" (FlareUI : fond sombre + bord arrondi)"] }
+  if m then Say(Tr["thème : "] .. m .. (DESC[m] or ""))
+  else Say(Tr["usage : /drop theme flare|leger|classic (alias : cadre, sans, classique)"]) end
 end
 ns.SlashExt["thème"] = ns.SlashExt.theme
 

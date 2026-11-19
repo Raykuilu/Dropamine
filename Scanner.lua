@@ -4,6 +4,7 @@
 -- utile (petite icône au-dessus de la barre de nom) et les nœuds de récolte
 -- (ligne d'info-bulle). Aucune table de butin inventée, jamais en combat, secret-safe.
 local ADDON, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local Scanner = {}
 ns.Scanner = Scanner
 
@@ -426,6 +427,13 @@ function Scanner.ParseChatLoot(msg)
   msg = Str(msg)
   if not msg then return nil end
   local mine = false
+  if not Scanner._selfLootG then   -- 3.5.19 : préfixes du client (toute langue)
+    Scanner._selfLootG = true
+    for _, g in ipairs({ "LOOT_ITEM_SELF_MULTIPLE", "LOOT_ITEM_SELF", "LOOT_ITEM_PUSHED_SELF_MULTIPLE", "LOOT_ITEM_PUSHED_SELF" }) do
+      local p = ns.GlobalPrefix and ns.GlobalPrefix(g)
+      if p then Scanner.SELF_LOOT[#Scanner.SELF_LOOT + 1] = p end
+    end
+  end
   for _, pat in ipairs(Scanner.SELF_LOOT) do if msg:find(pat) then mine = true break end end
   if not mine then return nil end
   local itemID = Scanner.ItemIDFromLink(msg)
@@ -497,7 +505,79 @@ function Scanner.TradeLineName()
       if nm then return nm, g end
     end
   end
+  -- 3.5.8 : fenêtre Métiers des clients récents (titre dans TitleContainer)
+  local pf = rawget(_G, "ProfessionsFrame")
+  if type(pf) == "table" and pf.IsShown and Call(pf.IsShown, pf) then
+    local fs
+    if type(pf.GetTitleText) == "function" then fs = Call(pf.GetTitleText, pf) end
+    if type(fs) ~= "table" then
+      local tc = rawget(pf, "TitleContainer")
+      fs = type(tc) == "table" and rawget(tc, "TitleText") or nil
+    end
+    if type(fs) == "table" and fs.GetText then
+      nm = Str(Call(fs.GetText, fs))
+      if nm then return nm, "ProfessionsFrame (titre)" end
+    end
+  end
   return nil
+end
+
+-- 3.5.8 : client sans GetTradeSkillInfo (WoW Forever, moteur récent) : la
+-- fenêtre Métiers se lit par C_TradeSkillUI. Avant, le travail de lecture
+-- (ProfJob, 3.5.0) ne connaissait que l'API classique : sur ce client il ne
+-- lisait RIEN (pas de « N prêts », « ouvrir la fenêtre du métier » sans fin).
+function Scanner.ModernTrade()
+  if type(_G.GetTradeSkillInfo) == "function" and type(_G.GetNumTradeSkills) == "function" then
+    local n = N(Call(_G.GetNumTradeSkills))
+    if n and n > 0 then return false end
+  end
+  local T = _G.C_TradeSkillUI
+  return type(T) == "table" and type(T.GetAllRecipeIDs) == "function"
+end
+-- fenêtre d'un autre joueur / de guilde / d'un PNJ : jamais mémorisée
+function Scanner.ModernForeign()
+  local T = _G.C_TradeSkillUI
+  if type(T) ~= "table" then return false end
+  for _, fn in ipairs({ "IsTradeSkillLinked", "IsTradeSkillGuild", "IsNPCCrafting", "IsRuneforging" }) do
+    if type(T[fn]) == "function" and Call(T[fn]) then return true, fn end
+  end
+  return false
+end
+function Scanner.ModernIdentity()
+  local T = _G.C_TradeSkillUI
+  if type(T) ~= "table" then return nil, 0, 0, nil end
+  local names, rank = {}, nil
+  local function add(v) if v then names[#names + 1] = v end end
+  for _, fn in ipairs({ "GetBaseProfessionInfo", "GetChildProfessionInfo" }) do
+    if type(T[fn]) == "function" then
+      local info = Call(T[fn])
+      if type(info) == "table" then
+        add(Str(info.parentProfessionName))
+        add(Str(info.professionName))
+        rank = rank or N(info.skillLevel)
+      end
+    end
+  end
+  local lineName = Scanner.TradeLineName()
+  add(lineName)
+  local id, name
+  for _, nm in ipairs(names) do
+    if not id then
+      id = ns.Style and ns.Style.SkillIdForText and ns.Style.SkillIdForText(nm) or nil
+      if id then name = nm end
+    end
+  end
+  -- nombre de recettes APPRISES (GetAllRecipeIDs liste aussi les non apprises)
+  local ids = Call(T.GetAllRecipeIDs)
+  local n = 0
+  if type(ids) == "table" and type(T.GetRecipeInfo) == "function" then
+    for _, rid in ipairs(ids) do
+      local info = Call(T.GetRecipeInfo, rid)
+      if type(info) == "table" and info.learned ~= false and not info.isRecipeHeader then n = n + 1 end
+    end
+  end
+  if id and Scanner.RankOf then rank = Scanner.RankOf(id) or rank end
+  return id, n, rank or 0, name or lineName
 end
 
 -- 3.0.1 : métier déduit des noms de recettes (base Forever : Cuisine / Secourisme).
@@ -614,17 +694,26 @@ function Scanner.ReadRecipes()
       if rd.Easy then map[rd.Easy] = "easy" end
       if rd.Trivial then map[rd.Trivial] = "trivial" end
     end
-    for _, rid in ipairs(Call(T.GetAllRecipeIDs) or {}) do
+    if Scanner.ModernForeign() then return nil, "fenêtre d'un autre joueur" end
+    if not lineName then
+      local _, _, _, nm = Scanner.ModernIdentity()
+      if nm then lineName, lineSrc = nm, "C_TradeSkillUI (profession)" end
+    end
+    local ids = Call(T.GetAllRecipeIDs)
+    for _, rid in ipairs(type(ids) == "table" and ids or {}) do
       local info = Call(T.GetRecipeInfo, rid)
       local nm = type(info) == "table" and CleanRecipeName(info.name) or nil
-      if nm and info.learned ~= false and not info.isRecipeHeader then
+      if nm and info.learned ~= false and not info.isRecipeHeader and not info.disabled then
         local diff = map[N(info.relativeDifficulty) or -1] or (type(info.difficulty) == "string" and DIFF_NAMES[info.difficulty]) or nil
-        local r = { name = nm, diff = diff, reagents = {}, icon = info.icon, avail = N(info.numAvailable) }
+        -- 3.5.8 : « ne fait plus progresser » dit par le jeu = gris
+        if info.canSkillUp == false then diff = "trivial" end
+        local r = { name = nm, diff = diff, reagents = {}, icon = info.icon, avail = N(info.numAvailable), recipeID = N(rid) }
         local sch = type(T.GetRecipeSchematic) == "function" and Call(T.GetRecipeSchematic, rid, false)
         if type(sch) == "table" then
-          for _, slotS in ipairs(sch.reagentSlotSchematics or {}) do
-            local first = slotS.reagents and slotS.reagents[1]
-            if first and N(first.itemID) then
+          for _, slotS in ipairs(type(sch.reagentSlotSchematics) == "table" and sch.reagentSlotSchematics or {}) do
+            local first = type(slotS) == "table" and type(slotS.reagents) == "table" and slotS.reagents[1]
+            -- composants obligatoires seulement (emplacements optionnels ignorés)
+            if first and N(first.itemID) and slotS.required ~= false then
               r.reagents[#r.reagents + 1] = { id = N(first.itemID), count = N(slotS.quantityRequired) or 1 }
             end
           end
@@ -665,7 +754,7 @@ function Scanner.DBRecipes(skill)
         local col = Split(p[3], ",")
         local y, g, gr = tonumber(col[2]) or 0, tonumber(col[3]) or 0, tonumber(col[4]) or 0
         local diff = (rank < y) and "optimal" or ((rank < g) and "medium" or ((rank < gr) and "easy" or "trivial"))
-        local r = { name = p[6] or p[5], diff = diff, reagents = {} }
+        local r = { name = ns.GameName(p[5], p[6]), diff = diff, reagents = {} }
         for _, rg in ipairs(Split(p[4], ",")) do
           local id, n = rg:match("^(%d+)x(%d+)$")
           if id then r.reagents[#r.reagents + 1] = { id = tonumber(id), count = tonumber(n) } end
@@ -847,7 +936,7 @@ function Scanner.OnPlateAdded(unit)
   if diff ~= "neutral" and ns.OptOff("scannerToast") and not Scanner.toasted[tkey] and ns.UI and ns.UI.SpawnDrop then
     Scanner.toasted[tkey] = true
     local lines = ns.Craft and ns.Craft.MatchLines(seen and seen.name, matches) or {}
-    ns.UI:SpawnDrop(e and e.icon, lines[1] or ((e and e.name or skill) .. " : " .. tostring(seen and seen.name)), lines[2], nil, nil, nil,
+    ns.UI:SpawnDrop(e and e.icon, lines[1] or ((e and ns.CatalogDisplayName(e) or skill) .. Tr[" : "] .. tostring(seen and seen.name)), lines[2], nil, nil, nil,
       { kind = "scanner", hint = lines[3], hintRaw = true })
     if ((ns.SoundOk and ns.SoundOk("scannerSound")) or (not ns.SoundOk and ns.OptOff("scannerSound"))) and type(PlaySound) == "function" then
       local kit = _G.SOUNDKIT and _G.SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON
@@ -885,7 +974,9 @@ Scanner.GATHER = { mining = true, herbalism = true, skinning = true }
 function Scanner.ParseRequirement(text)
   text = Str(text)
   if not text then return nil end
-  local okM, sk, req = pcall(string.match, text, "^Requiert (.-) %(?(%d+)%)?$")
+  local okM, sk, req = true, nil, nil
+  if ns.MatchGlobal then sk, req = ns.MatchGlobal("ITEM_MIN_SKILL", text) end   -- 3.5.19 : « Requires %s (%d) » du client
+  if not sk then okM, sk, req = pcall(string.match, text, "^Requiert (.-) %(?(%d+)%)?$") end
   if not okM or not sk then okM, sk, req = pcall(string.match, text, "^Requires (.-) %(?(%d+)%)?$") end
   if not okM or not sk then return nil end
   local id = ns.Style and ns.Style.SkillIdForText(sk)
@@ -894,7 +985,7 @@ function Scanner.ParseRequirement(text)
 end
 
 function Scanner.RankOf(id)
-  local snap = ns.SkillRankSnapshot and ns.SkillRankSnapshot() or {}
+  local snap = (ns.SkillRankSnapshotCached and ns.SkillRankSnapshotCached()) or (ns.SkillRankSnapshot and ns.SkillRankSnapshot()) or {}
   local e = ns.CATALOG_BY_ID and ns.CATALOG_BY_ID[id]
   if not e then return nil end
   local s = snap[ns.Fold(e.name)]
@@ -906,7 +997,7 @@ end
 
 -- 3.3.8 : plafond actuel d'une compétence (rang max lu dans les compétences)
 function Scanner.MaxOf(id)
-  local snap = ns.SkillRankSnapshot and ns.SkillRankSnapshot() or {}
+  local snap = (ns.SkillRankSnapshotCached and ns.SkillRankSnapshotCached()) or (ns.SkillRankSnapshot and ns.SkillRankSnapshot()) or {}
   local e = ns.CATALOG_BY_ID and ns.CATALOG_BY_ID[id]
   if not e then return nil end
   local s = snap[ns.Fold(e.name)]
@@ -916,6 +1007,10 @@ end
 
 function Scanner.TooltipLine(tooltip)
   if not Scanner.Enabled() or InCombat() or type(tooltip) ~= "table" then return nil end
+  -- 3.5.3 : nos propres infobulles (cases, barre, toasts) n'ont jamais de « Requiert »
+  local okO, owner = false, nil
+  if tooltip.GetOwner then okO, owner = pcall(tooltip.GetOwner, tooltip) end
+  if okO and type(owner) == "table" and (owner._osrsOwn or owner._osrsTile or owner._dropOwn) then return nil end
   local tname = (tooltip.GetName and tooltip:GetName()) or "GameTooltip"
   local nLines = N(Call(tooltip.NumLines, tooltip)) or 0
   local title = Str(Call(function() local fs = _G[tname .. "TextLeft1"] return fs and fs:GetText() end))
@@ -923,7 +1018,7 @@ function Scanner.TooltipLine(tooltip)
   for i = 2, nLines do
     local fs = _G[tname .. "TextLeft" .. i]
     local txt = fs and Str(Call(fs.GetText, fs))
-    if txt and (txt:find(" : +1 possible", 1, true) or txt:find(" requis (actuel ", 1, true)) then return nil end
+    if txt and (txt:find(Tr[" : +1 possible"], 1, true) or txt:find(Tr[" requis (actuel "], 1, true)) then return nil end
   end
   for i = 1, nLines do
     local fs = _G[tname .. "TextLeft" .. i]
@@ -932,15 +1027,15 @@ function Scanner.TooltipLine(tooltip)
     if id and req then
       local rank, e = Scanner.RankOf(id)
       if not rank or rank <= 0 then return nil end
-      local nm = e and e.name or label
+      local nm = e and ns.CatalogDisplayName(e) or label
       local line, r, g, b
       if rank >= req then
-        line = nm .. " : +1 possible"
+        line = nm .. Tr[" : +1 possible"]
         r, g, b = 0.85, 0.85, 0.85
         local node = title and Scanner.DB().nodes[title]
-        if node and node.gainRank then line = line .. " · gain vu au rang " .. tostring(node.gainRank) end
+        if node and node.gainRank then line = line .. Tr[" · gain vu au rang "] .. tostring(node.gainRank) end
       else
-        line = nm .. " : " .. tostring(req) .. " requis (actuel " .. tostring(rank) .. ")"
+        line = nm .. Tr[" : "] .. tostring(req) .. Tr[" requis (actuel "] .. tostring(rank) .. ")"
         r, g, b = 1, 0.3, 0.3
       end
       if title then
@@ -1049,59 +1144,59 @@ function Scanner.Why(unit)
   unit = unit or "target"
   local out = {}
   local function add(t) out[#out + 1] = t end
-  if not Call(UnitExists, unit) and not Str(Call(UnitGUID, unit)) then add("aucune cible.") return out, "pas de cible" end
+  if not Call(UnitExists, unit) and not Str(Call(UnitGUID, unit)) then add(Tr["aucune cible."]) return out, "pas de cible" end
   local id, pi = Scanner.UnitNpcID(unit)
-  add("GUID brut : " .. tostring(pi.raw) .. " · lecture : " .. tostring(pi.path) .. " · résultat : " .. tostring(pi.how))
+  add(Tr["GUID brut : "] .. tostring(pi.raw) .. Tr[" · lecture : "] .. tostring(pi.path) .. Tr[" · résultat : "] .. tostring(pi.how))
   if not id then
-    if pi.how and pi.how:find("rejeté", 1, true) then add("la cible n'est pas une créature (" .. tostring(pi.kind or "joueur") .. ") : pas d'icône.") return out, "pas une créature" end
-    add("créature non identifiée : GUID illisible et nom absent de la base Forever.")
+    if pi.how and pi.how:find("rejeté", 1, true) then add(Tr["la cible n'est pas une créature ("] .. tostring(pi.kind or "joueur") .. Tr[") : pas d'icône."]) return out, "pas une créature" end
+    add(Tr["créature non identifiée : GUID illisible et nom absent de la base Forever."])
     return out, "non identifiée"
   end
   local _, seen = Scanner.NoteUnit(unit)
   seen = seen or {}
   local alive = not Call(UnitIsDead, unit)
-  add(string.format("cible : %s · PNJ %d · type %s · famille %s · %s", tostring(seen.name or "?"), id,
-    tostring(seen.ctype or "?"), tostring(seen.family or "?"), alive and "vivante" or "morte"))
+  add(string.format(Tr["cible : %s · PNJ %d · type %s · famille %s · %s"], tostring(seen.name or "?"), id,
+    tostring(seen.ctype or "?"), tostring(seen.family or "?"), alive and Tr["vivante"] or Tr["morte"]))
   local verdict
-  if not Scanner.Enabled() then verdict = "scanner désactivé (/drop scanner on)." end
-  if not verdict and not ns.Opt("scannerIcons") then verdict = "icônes désactivées (/drop scanner icones on)." end
-  if not verdict and InCombat() then verdict = "en combat : icônes masquées jusqu'à la fin du combat." end
+  if not Scanner.Enabled() then verdict = Tr["scanner désactivé (/drop scanner on)."] end
+  if not verdict and not ns.Opt("scannerIcons") then verdict = Tr["icônes désactivées (/drop scanner icones on)."] end
+  if not verdict and InCombat() then verdict = Tr["en combat : icônes masquées jusqu'à la fin du combat."] end
   local plate = type(_G.C_NamePlate) == "table" and Call(_G.C_NamePlate.GetNamePlateForUnit, unit)
-  add("barre de nom : " .. (type(plate) == "table" and "affichée" or "absente (active les barres de nom ennemies, V)"))
+  add(Tr["barre de nom : "] .. (type(plate) == "table" and Tr["affichée"] or Tr["absente (active les barres de nom ennemies, V)"]))
   local c, how = Scanner.CreatureFor(id, { name = seen.name, family = seen.family, ctype = seen.ctype })
   if not c then
-    add("base Forever : rien pour ce PNJ ; butin appris : aucun (ni créature du même nom et de la même famille).")
-    verdict = verdict or "rien connu : loote-la une fois (viande / tissu) ou dépèce-la, l'icône apparaîtra ensuite."
+    add(Tr["base Forever : rien pour ce PNJ ; butin appris : aucun (ni créature du même nom et de la même famille)."])
+    verdict = verdict or Tr["rien connu : loote-la une fois (viande / tissu) ou dépèce-la, l'icône apparaîtra ensuite."]
   else
     local parts = {}
-    for k, v in pairs(c.skills or {}) do if v > 0 then parts[#parts + 1] = (SKILL_FR[k] or k) .. " ×" .. v end end
+    for k, v in pairs(c.skills or {}) do if v > 0 then parts[#parts + 1] = (SKILL_FR[k] and ns.SkillDisplayName(k) or k) .. " ×" .. v end end
     local ni = 0 for _ in pairs(c.items or {}) do ni = ni + 1 end
-    add(string.format("source (%s) : %d objet(s) ; %s", tostring(how), ni, #parts > 0 and table.concat(parts, ", ") or "aucun objet de métier (viande, tissu, cuir)"))
+    add(string.format(Tr["source (%s) : %d objet(s) ; %s"], tostring(how), ni, #parts > 0 and table.concat(parts, ", ") or Tr["aucun objet de métier (viande, tissu, cuir)"]))
     if c.chance then
       local ch = {}
       for iid, pct in pairs(c.chance) do
         local it = Scanner.StaticItem(iid)
-        ch[#ch + 1] = string.format("%s %.1f %%", tostring(it and (it.fr or it.en) or iid), pct)
+        ch[#ch + 1] = string.format("%s %.1f %%", tostring(it and ns.GameName(it.en, it.fr) or iid), pct)
       end
       table.sort(ch)
-      if #ch > 0 then add("chances (Wowhead Forever) : " .. table.concat(ch, ", ")) end
+      if #ch > 0 then add(Tr["chances (Wowhead Forever) : "] .. table.concat(ch, ", ")) end
     end
     for skill in pairs(Scanner.LOOT_SKILLS) do
       for _, l in ipairs(ns.Craft and ns.Craft.WhyLines(c, skill, seen.name) or {}) do add(l) end
     end
     if (c.skills.skinning or 0) > 0 then
-      if not Scanner.HasSkill("skinning") then add("Dépeçage : déjà dépecée, mais tu n'as pas la compétence.")
-      elseif not alive then add("Dépeçage : icône seulement sur une bête vivante (barre de nom).")
-      else add("Dépeçage : déjà dépecée → icône Dépeçage (anneau bronze).") end
+      if not Scanner.HasSkill("skinning") then add(Tr["Dépeçage : déjà dépecée, mais tu n'as pas la compétence."])
+      elseif not alive then add(Tr["Dépeçage : icône seulement sur une bête vivante (barre de nom)."])
+      else add(Tr["Dépeçage : déjà dépecée → icône Dépeçage (anneau bronze)."]) end
     end
   end
   local skill, diff = Scanner.BestFor(id, { name = seen.name, family = seen.family, ctype = seen.ctype, alive = alive })
   if not verdict then
-    if skill then verdict = "icône attendue : " .. (SKILL_FR[skill] or skill) .. " (" .. DIFF_FR[diff] .. ")."
-    elseif c then verdict = "pas d'icône : aucune recette utile (orange / jaune / vert) pour ce butin." end
+    if skill then verdict = Tr["icône attendue : "] .. (SKILL_FR[skill] and ns.SkillDisplayName(skill) or skill) .. " (" .. Tr[DIFF_FR[diff]] .. ")."
+    elseif c then verdict = Tr["pas d'icône : aucune recette utile (orange / jaune / vert) pour ce butin."] end
   end
-  add("verdict : " .. tostring(verdict))
-  if Scanner.lastAssoc then add("dernier butin associé : " .. Scanner.lastAssoc) end
+  add(Tr["verdict : "] .. tostring(verdict))
+  if Scanner.lastAssoc then add(Tr["dernier butin associé : "] .. Scanner.lastAssoc) end
   return out, verdict
 end
 
@@ -1110,17 +1205,17 @@ ns.SlashExt.scanner = function(rest)
   local sub, arg = (rest or ""):lower():match("^(%S*)%s*(%S*)")
   if sub == "toast" then
     ns.SetOpt("scannerToast", ns.ParseOnOff(arg, ns.OptOff("scannerToast")))
-    ns.Print("scanner : toast " .. (ns.OptOff("scannerToast") and "activé." or "désactivé."))
+    ns.Print(Tr["scanner : toast "] .. (ns.OptOff("scannerToast") and Tr["activé."] or Tr["désactivé."]))
   elseif sub == "son" or sub == "sound" then
     ns.SetOpt("scannerSound", ns.ParseOnOff(arg, ns.OptOff("scannerSound")))
-    ns.Print("scanner : son " .. (ns.OptOff("scannerSound") and "activé." or "désactivé."))
+    ns.Print(Tr["scanner : son "] .. (ns.OptOff("scannerSound") and Tr["activé."] or Tr["désactivé."]))
   elseif sub == "icones" or sub == "icônes" or sub == "icons" then
     ns.SetOpt("scannerIcons", ns.ParseOnOff(arg, ns.Opt("scannerIcons")))
-    ns.Print("scanner : icônes " .. (ns.Opt("scannerIcons") and "activées." or "désactivées."))
+    ns.Print(Tr["scanner : icônes "] .. (ns.Opt("scannerIcons") and Tr["activées."] or Tr["désactivées."]))
     if not ns.Opt("scannerIcons") then Scanner.HideAll() end
   elseif sub == "pourquoi" or sub == "why" then
     local lines = Scanner.Why("target")
-    ns.Print("scanner — pourquoi :")
+    ns.Print(Tr["scanner — pourquoi :"])
     for _, l in ipairs(lines) do ns.Print("  " .. l) end
   elseif sub == "reset" then
     local db = Scanner.DB()
@@ -1128,11 +1223,11 @@ ns.SlashExt.scanner = function(rest)
     Scanner.toasted = {}
     Scanner._viewCache, Scanner._learnVer = {}, (Scanner._learnVer or 0) + 1
     Scanner.HideAll()
-    ns.Print("scanner : données apprises effacées.")
+    ns.Print(Tr["scanner : données apprises effacées."])
   else
     ns.SetOpt("scanner", ns.ParseOnOff(sub, ns.Opt("scanner")))
     if not ns.Opt("scanner") then Scanner.HideAll() else Scanner.RescanPlates() end
-    ns.Print("scanner " .. (ns.Opt("scanner") and "activé." or "désactivé."))
+    ns.Print(Tr["scanner "] .. (ns.Opt("scanner") and Tr["activé."] or Tr["désactivé."]))
   end
 end
 ns.HelpExt[#ns.HelpExt + 1] = "/drop scanner on|off : icône discrète au-dessus des créatures utiles (butin appris + recettes connues)"

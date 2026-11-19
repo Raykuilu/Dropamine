@@ -10,6 +10,7 @@
 -- voiles du natif, relevés, correctif d'en-tête de la vue classique) sont
 -- remplacées ici par des versions neutres : elles ne s'exécutent plus.
 local ADDON, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local UI = ns.UI
 local H = UI._H
 local V = ns.View
@@ -59,15 +60,40 @@ function W.PlaceDefault(f)
     end
     f:ClearAllPoints()
   end
+  -- 3.5.6 : JAMAIS d'ancre sur CharacterFrame. La fiche du client Forever n'a
+  -- aucune position tant qu'elle n'a pas été ouverte (UIPanel) et FlareUI /
+  -- AtlasLoot peuvent la déplacer ou la cacher : ancré dessus, le panneau était
+  -- « affiché » (IsShown) mais sans rectangle, donc invisible. Désormais : à
+  -- côté de la fiche seulement si elle est visible ET placée, en coordonnées
+  -- fixes d'UIParent (aucun lien vivant) ; sinon au centre de l'écran.
   local cf = _G.CharacterFrame
-  if type(cf) == "table" then
-    -- arrimée à droite de la fiche (après la colonne d'onglets latéraux)
-    f:SetPoint("TOPLEFT", cf, "TOPRIGHT", 56, 0)
-    W.posSource = "arrimée à la fiche"
-  else
-    f:SetPoint("CENTER", UIParent, "CENTER", 0, 40)
-    W.posSource = "centre"
+  local okV, vis = false, false
+  if type(cf) == "table" and cf.IsVisible then okV, vis = pcall(cf.IsVisible, cf) end
+  local l, r, t, b = nil, nil, nil, nil
+  if okV and vis then l, r, t, b = RectOf(cf) end
+  local up = UIParent
+  local okW, uw = pcall(up.GetWidth, up)
+  local okE1, ces = false, nil
+  local okE2, fes = false, nil
+  if r then
+    okE1, ces = pcall(cf.GetEffectiveScale, cf)
+    okE2, fes = pcall(f.GetEffectiveScale, f)
   end
+  local k = (okE1 and okE2 and N(ces) and N(fes) and fes > 0) and (ces / fes) or nil
+  local x, y = r and k and (r * k + 56), t and k and (t * k)
+  local fw = W.SIZE.w
+  local upw = okW and N(uw) or nil
+  if x and y and upw and okE2 and N(fes) then
+    local okUE, ues = pcall(up.GetEffectiveScale, up)
+    local kw = (okUE and N(ues) and fes > 0) and (ues / fes) or 1
+    if x + fw <= upw * kw - 8 and y > 100 then
+      f:SetPoint("TOPLEFT", up, "BOTTOMLEFT", x, y)
+      W.posSource = "à côté de la fiche (coordonnées écran)"
+      return
+    end
+  end
+  f:SetPoint("CENTER", up, "CENTER", 0, 40)
+  W.posSource = "centre"
 end
 
 -- Couleurs mesurées sur la fiche native (refs/native-284.png)
@@ -155,7 +181,7 @@ function W.Build()
   -- titre et portrait
   local tt = Text(f, "GameFontNormal", "CENTER")
   tt:SetPoint("CENTER", W.titleBar, "CENTER", 0, 0)
-  tt:SetText("Niveau total")
+  tt:SetText(Tr["Niveau total"])
   W.title = tt
   W.portrait = nil
   W.subtitle = Text(f, "GameFontHighlightSmall", "LEFT")
@@ -232,7 +258,7 @@ function W.Layout()
   local snap = UI.snapshot
   if snap and W.subtitle then
     local name = snap.playerName or ""
-    W.subtitle:SetText(name ~= "" and (name .. "  ·  niveau " .. tostring(snap.level or 0)) or "")
+    W.subtitle:SetText(name ~= "" and (name .. Tr["  ·  niveau "] .. tostring(snap.level or 0)) or "")
   end
   SafeStep("détail", function()
     UI:EnsureOwnDetail(W.detail)
@@ -320,13 +346,13 @@ function W.TotalLine()
   if not snap then local ok, s = pcall(ns.Collect) if ok then snap = s end end
   local total = snap and snap.total or 0
   local tmax = (snap and snap.totalMax) or ns.TOTAL_MAX or 2460
-  return "Niveau total : " .. tostring(total) .. " / " .. tostring(tmax)
+  return Tr["Niveau total : "] .. tostring(total) .. " / " .. tostring(tmax)
 end
 function W.ShowTotalTooltip(owner)
   if not GameTooltip then return end
   GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
   GameTooltip:SetText(W.TotalLine(), 1, 0.82, 0)
-  GameTooltip:AddLine("Clic : ouvrir / fermer", 1, 1, 1)
+  GameTooltip:AddLine(Tr["Clic : ouvrir / fermer"], 1, 1, 1)
   GameTooltip:Show()
 end
 

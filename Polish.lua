@@ -255,21 +255,38 @@ if Wd then
     p.track:ClearAllPoints()
     p.track:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", left, by)
     p.track:SetSize(inner, bh)
-    p.fill:ClearAllPoints()
-    p.fill:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", left, by)
-    p.fill:SetSize(math.max(0.01, inner * pct), bh)
+    local cur = (Wd.last and Wd.last.cur) or 0
+    local max = (Wd.last and Wd.last.max) or 0
+    Wd.LayoutSegments(t, left, by, inner, bh, cur, max)
+    -- textures unies (jeton de couleur) sur chaque segment
+    local texFile = Wd.FILL_TEX or Wd.TEX
+    for i = 1, #(p.segs or {}) do
+      pcall(p.segs[i].SetTexture, p.segs[i], texFile)
+    end
     if not p._poTex then
       p._poTex = true
-      pcall(p.fill.SetTexture, p.fill, Wd.FILL_TEX)
       p.sheen = t:CreateTexture(nil, "ARTWORK", nil, 2)
       W8(p.sheen)
     end
-    p.sheen:ClearAllPoints()
-    p.sheen:SetPoint("TOPLEFT", p.fill, "TOPLEFT", 0, 0)
-    p.sheen:SetPoint("TOPRIGHT", p.fill, "TOPRIGHT", 0, 0)
-    p.sheen:SetHeight(1)
-    p.sheen:SetVertexColor(1, 0.95, 0.85, Wd.SHEEN_A)
-    if pct > 0 then p.sheen:Show() else p.sheen:Hide() end
+    -- reflet 1 px sur toute la portion remplie (du 1er au dernier segment visible)
+    local first, last
+    for i = 1, #(p.segs or {}) do
+      local s = p.segs[i]
+      if s and s.IsShown and s:IsShown() then
+        if not first then first = s end
+        last = s
+      end
+    end
+    if first and last and pct > 0 then
+      p.sheen:ClearAllPoints()
+      p.sheen:SetPoint("TOPLEFT", first, "TOPLEFT", 0, 0)
+      p.sheen:SetPoint("TOPRIGHT", last, "TOPRIGHT", 0, 0)
+      p.sheen:SetHeight(1)
+      p.sheen:SetVertexColor(1, 0.95, 0.85, Wd.SHEEN_A)
+      p.sheen:Show()
+    else
+      p.sheen:Hide()
+    end
     local e = Edge(t)
     if e then
       e:ClearAllPoints()
@@ -292,6 +309,7 @@ if Wd then
       if not t._wideOn then
         if p and p.edge then p.edge:Hide() end
         if p and p.sheen then p.sheen:Hide() end
+        if p and p.hit then p.hit:Hide() end
         if t._numShade and t.data then t._numShade:Show() end
       end
     end

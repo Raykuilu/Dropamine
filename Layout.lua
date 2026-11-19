@@ -10,6 +10,7 @@
 -- Coût : rien au repos ; l'OnUpdate de la poignée n'existe que pendant le
 -- glissement (retiré au relâchement).
 local ADDON, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local UI, W, P, I = ns.UI, ns.Window, ns.Panel, ns.Icons
 local H = UI._H
 local RectOf, SizeOf = H.RectOf, H.SizeOf
@@ -17,11 +18,12 @@ local N = ns.N
 local L = {}
 ns.Layout = L
 
+L.stats = { checks = 0, restored = 0, pinned = 0 }
 L.VALID = { 1, 2, 3, 5, 10 }   -- 3.3.13 : 3 colonnes (carré 3 × 3 + barre Niveau total)
 L.BASE_COLS, L.BASE_W = 5, 262          -- largeur de liste historique (5 colonnes)
 L.SCALE_MIN, L.SCALE_MAX = 50, 200   -- 3.3.12 : plage élargie, pas de 1 %
 local function DB() ns.db.ui = ns.db.ui or {} return ns.db.ui end
-local function say(m) print("|cffffd100Dropamine|r : " .. m) end
+local function say(m) print(Tr["|cffffd100Dropamine|r : "] .. m) end
 local function IsValid(n) for _, v in ipairs(L.VALID) do if v == n then return true end end return false end
 
 function L.Cols() local c = N(DB().cols) return (c and IsValid(c)) and c or L.BASE_COLS end
@@ -39,12 +41,29 @@ function P.ApplyMode(...)
   return baseApplyMode(...)
 end
 
+-- 3.5.16 : positions et tailles au pixel entier (à l'échelle effective)
+function L.Px(v, f)
+  v = N(v)
+  if not v then return v end
+  local PU = rawget(_G, "PixelUtil")
+  local s = f and f.GetEffectiveScale and N(select(2, pcall(f.GetEffectiveScale, f)))
+  if type(PU) == "table" and type(PU.GetNearestPixelSize) == "function" and s and s > 0 then
+    local ok, r = pcall(PU.GetNearestPixelSize, v, s)
+    if ok and N(r) then return N(r) end
+  end
+  return math.floor(v + 0.5)
+end
 local function TopLeft(f)
   local l, _, t = RectOf(f)
-  return l, t
+  return L.Px(l, f), L.Px(t, f)
 end
 local function Anchor(f, l, t)
   if not (l and t) then return end
+  -- 3.5.16 : déjà ancré là (au pixel près) : on ne ré-ancre pas
+  local ok, pt, rel, rp, x, y = pcall(f.GetPoint, f, 1)
+  if ok and pt == "TOPLEFT" and rel == UIParent and rp == "BOTTOMLEFT" and math.abs((N(x) or -1e9) - l) < 0.01 and math.abs((N(y) or -1e9) - t) < 0.01 and (N(f:GetNumPoints()) or 1) == 1 then
+    return
+  end
   f:ClearAllPoints()
   f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", l, t)
   if P.SavePos then P.SavePos(f) end
@@ -166,8 +185,8 @@ function L.BuildGrip()
     if P.SetHover then P.SetHover(true) end
     if GameTooltip then
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetText("Disposition : " .. L.Cols() .. " × " .. L.Rows(), 1, 0.82, 0)
-      GameTooltip:AddLine("Glisser : 1, 2, 3, 5 ou 10 colonnes · /drop colonnes · /drop taille", 0.8, 0.8, 0.8)
+      GameTooltip:SetText(Tr["Disposition : "] .. L.Cols() .. " × " .. L.Rows(), 1, 0.82, 0)
+      GameTooltip:AddLine(Tr["Glisser : 1, 2, 3, 5 ou 10 colonnes · /drop colonnes · /drop taille"], 0.8, 0.8, 0.8)
       GameTooltip:Show()
     end
   end)
@@ -212,12 +231,29 @@ function L.Center()
   -- au-dessus d'une case de la 1re rangée (elle n'empiète plus sur le bord)
   local MT = M + ((L.TopExtra and L.TopExtra(gt)) or 0)
   local ox, oy = L._listX or P.CPAD, L._listY or -P.CTOP
-  ox = ox + (M - (gl - fl))
-  oy = oy - (MT - (ft - gt))
-  list:ClearAllPoints()
-  list:SetPoint("TOPLEFT", f, "TOPLEFT", ox, oy)
+  ox = L.Px(ox + (M - (gl - fl)), f)
+  oy = L.Px(oy - (MT - (ft - gt)), f)
+  -- 3.5.16 : rien ne bouge si rien n'a changé (pas de ré-ancrage à chaque
+  -- toast / pastille) ; tout au pixel entier ; le coin haut-gauche du panneau
+  -- reste fixe quel que soit son point d'ancrage
+  local w, h = L.Px((gr - gl) + 2 * M, f), L.Px((gt - gb) + M + MT, f)
+  local okP, lp, lrel, lrp, lx, ly = pcall(list.GetPoint, list, 1)
+  if not (okP and lp == "TOPLEFT" and lrel == f and lrp == "TOPLEFT" and math.abs((N(lx) or -1e9) - ox) < 0.01 and math.abs((N(ly) or -1e9) - oy) < 0.01) then
+    list:ClearAllPoints()
+    list:SetPoint("TOPLEFT", f, "TOPLEFT", ox, oy)
+  end
   L._listX, L._listY = ox, oy
-  f:SetSize((gr - gl) + 2 * M, (gt - gb) + M + MT)
+  local cw, ch = N(f:GetWidth()), N(f:GetHeight())
+  if not (cw and ch and math.abs(cw - w) < 0.01 and math.abs(ch - h) < 0.01) then
+    local okA, ap, arel = pcall(f.GetPoint, f, 1)
+    f:SetSize(w, h)
+    -- ancré ailleurs qu'en TOPLEFT (ancienne position mémorisée en CENTER…) :
+    -- un changement de taille déplacerait le panneau → coin haut-gauche reposé
+    if okA and ap and (ap ~= "TOPLEFT" or arel ~= UIParent) and not f._osrsMovingNow then
+      L.stats.pinned = (L.stats.pinned or 0) + 1
+      Anchor(f, L.Px(fl, f), L.Px(ft, f))
+    end
+  end
   if P.handle then
     P.handle:ClearAllPoints()
     P.handle:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
@@ -255,11 +291,53 @@ function W.Build(...)
   W.LIST_W = L.ListW()
   local r = { baseBuild(...) }
   if W.frame then
-    if W.frame.SetScale then pcall(W.frame.SetScale, W.frame, L.Scale() / 100) end
+    -- 3.5.13 : même règle que L.Apply (échelle du cadre 1, taille portée par
+    -- la grille). Avant : SetScale(taille) ici, puis SetScale(1) au premier
+    -- L.Apply → la taille « revenait à 100 % » après masquer / afficher.
+    if W.frame.SetScale then pcall(W.frame.SetScale, W.frame, 1) end
+    if I.SetMetrics then I.SetMetrics(L.Scale() / 100) end
     L.BuildGrip()
   end
   return unpack(r)
 end
+
+-- 3.5.13 : à chaque affichage, la taille et la disposition MÉMORISÉES sont
+-- reposées si quelque chose les a changées (échelle du cadre, mesures des
+-- cases, colonnes), coin haut-gauche conservé.
+L.stats = L.stats or { checks = 0, restored = 0, pinned = 0 }
+function L.Drift()
+  local f = W.frame
+  if not f then return nil end
+  local why = {}
+  local fs = f.GetScale and N(f:GetScale())
+  if fs and math.abs(fs - 1) > 0.001 then why[#why + 1] = "échelle du cadre " .. string.format("%.2f", fs) end
+  local want = L.Scale() / 100
+  if math.abs((I.metricsK or 1) - want) > 0.001 then why[#why + 1] = string.format("cases %.2f au lieu de %.2f", I.metricsK or 1, want) end
+  if L.applied and L.applied.cols ~= L.Cols() then why[#why + 1] = "colonnes " .. tostring(L.applied.cols) .. " au lieu de " .. tostring(L.Cols()) end
+  if W.LIST_W ~= L.ListW() then why[#why + 1] = "largeur de liste" end
+  return (#why > 0) and table.concat(why, ", ") or nil
+end
+function L.EnsureSaved(reason)
+  if ns.InCombat and ns.InCombat() then return false end
+  L.stats.checks = L.stats.checks + 1
+  local d = L.Drift()
+  if not d then return false end
+  L.stats.restored = L.stats.restored + 1
+  L.lastRestore = tostring(reason) .. " : " .. d
+  pcall(L.Apply, true)
+  return true
+end
+for _, m in ipairs({ "Show", "Toggle" }) do
+  local base = W[m]
+  if base then
+    W[m] = function(...)
+      local r = { base(...) }
+      if W.IsShown() then pcall(L.EnsureSaved, m) end
+      return unpack(r)
+    end
+  end
+end
+if ns.On then ns.On("PLAYER_ENTERING_WORLD", function() pcall(L.EnsureSaved, "entrée dans le monde") end) end
 if W.frame then L.BuildGrip() end
 local baseVerrou = ns.SlashExt.verrou
 ns.SlashExt.verrou = function(...)
@@ -269,12 +347,12 @@ end
 
 ns.SlashExt.colonnes = function(rest)
   local n = L.SetCols((rest or ""):match("^%s*(%d+)"))
-  if n then say("disposition : " .. n .. " colonne" .. (n > 1 and "s" or "") .. " × " .. L.Rows(n) .. " rangée" .. (L.Rows(n) > 1 and "s" or ""))
-  else say("colonnes : " .. L.Cols() .. " (usage : /drop colonnes 1|2|3|5|10)") end
+  if n then say(Tr["disposition : "] .. n .. Tr[" colonne"] .. (n > 1 and "s" or "") .. " × " .. L.Rows(n) .. Tr[" rangée"] .. (L.Rows(n) > 1 and "s" or ""))
+  else say(Tr["colonnes : "] .. L.Cols() .. Tr[" (usage : /drop colonnes 1|2|3|5|10)"]) end
 end
 ns.SlashExt.taille = function(rest)
   local v = L.SetScale((rest or ""):match("^%s*(%d+)"))
-  if v then say("taille du panneau : " .. v .. " %") else say("taille : " .. L.Scale() .. " % (usage : /drop taille 50-200)") end
+  if v then say(Tr["taille du panneau : "] .. v .. " %") else say(Tr["taille : "] .. L.Scale() .. Tr[" % (usage : /drop taille 50-200)"]) end
 end
 ns.HelpExt = ns.HelpExt or {}
 ns.HelpExt[#ns.HelpExt + 1] = "/drop colonnes 1|2|3|5|10 : disposition (poignée du coin bas-droit) · /drop taille 50-200 : échelle (%) ; poignée = taille (Alt+glisser = colonnes)"
@@ -282,6 +360,8 @@ local baseDebug = W.DebugLines
 W.DebugLines = function()
   local out = baseDebug()
   out[#out + 1] = "  disposition : " .. L.Cols() .. " × " .. L.Rows() .. ", taille " .. L.Scale() .. " %, poignée " .. tostring(L.grip and L.grip:IsShown() and "active" or "cachée (verrou)")
+  out[#out + 1] = string.format("  taille mémorisée (3.5.13) : %s %%, colonnes %s, position %s ; vérifs %d, reposée %d fois, coin haut-gauche re-fixé %d fois (3.5.16)%s", tostring(DB().scale or 100), tostring(DB().cols or L.BASE_COLS),
+    DB().winPos and "mémorisée" or "par défaut", (L.stats and L.stats.checks) or 0, (L.stats and L.stats.restored) or 0, (L.stats and L.stats.pinned) or 0, L.lastRestore and (" (dernière : " .. L.lastRestore .. ")") or "")
     .. " ; cadre : " .. tostring(W.tipLook or ("toasts (" .. tostring(W.tipLookWhy) .. ")"))
   return out
 end

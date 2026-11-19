@@ -26,6 +26,7 @@
 -- Arme / Combat farouche : seul le plafond 5 × niveau de la cible reste,
 -- affiché « estimé » dans l'explication de la case.
 local ADDON, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local UI, W, S = ns.UI, ns.Window, ns.Scanner
 local T = {}
 ns.Target = T
@@ -356,7 +357,7 @@ function T.Compute(tg)
   if mob and tg.attackable and not tg.dead and not tg.tapped and pl < cap then
     local grey = T.GreyLevel(pl)
     if skull or tl > grey then
-      mark("level", "direct", "XP : cible niveau " .. (skull and "??" or tl) .. " (grise si ≤ " .. grey .. ")")
+      mark("level", "direct", Tr["XP : cible niveau "] .. (skull and "??" or tl) .. Tr[" (grise si ≤ "] .. grey .. ")")
     end
   end
   -- Combat : arme / farouche / distance (chasseur), Défense — 3.3.10 : règle
@@ -391,37 +392,37 @@ function T.Compute(tg)
         local ok, why, strong
         if k == "defense" then
           ok, strong = true, hit
-          why = "Défense · monte quand la cible te frappe" .. (hit and " (elle te frappe)" or "")
+          why = Tr["Défense · monte quand la cible te frappe"] .. (hit and Tr[" (elle te frappe)"] or "")
         elseif k == "feral" then
           ok = (class == "DRUID") and form ~= nil
           strong = ok and swingM
-          why = tostring(d.skillName or d.name or "Combat farouche") .. " (forme " .. tostring(form) .. ") · monte sur cette cible"
-          if not ok and class == "DRUID" then T.notes[#T.notes + 1] = tostring(d.name or "Combat farouche") .. " : pas en forme félin / ours" end
+          why = tostring(d.skillName or d.name or Tr["Combat farouche"]) .. Tr[" (forme "] .. Tr[tostring(form)] .. Tr[") · monte sur cette cible"]
+          if not ok and class == "DRUID" then T.notes[#T.notes + 1] = tostring(d.name or Tr["Combat farouche"]) .. Tr[" : pas en forme félin / ours"] end
         elseif wid then
           local slot = eqp.ids[wid]
           ok = slot ~= nil and not form                 -- forme farouche : jamais l'arme
           if ok and k == "ranged" and wid ~= "wands" and class ~= "HUNTER" and class ~= "WARRIOR" and class ~= "ROGUE" then ok = false end
           strong = ok and ((k == "melee" and swingM) or (k == "ranged" and swingR))
-          why = (T.EQUIP_FR[wid] or (tostring(d.skillName or d.name) .. " équipée")) .. " · monte sur cette cible"
-          if not ok and form then T.notes[#T.notes + 1] = tostring(d.skillName or d.name) .. " : arme ignorée en forme " .. tostring(form) end
+          why = ((T.EQUIP_FR[wid] and Tr[T.EQUIP_FR[wid]]) or (tostring(d.skillName or d.name) .. Tr[" équipée"])) .. Tr[" · monte sur cette cible"]
+          if not ok and form then T.notes[#T.notes + 1] = tostring(d.skillName or d.name) .. Tr[" : arme ignorée en forme "] .. Tr[tostring(form)] end
         end
         if ok and mx > 0 and cur >= mx then
           ok = false
-          T.notes[#T.notes + 1] = tostring(d.skillName or d.name) .. " : déjà au maximum (" .. cur .. "/" .. mx .. ")"
+          T.notes[#T.notes + 1] = tostring(d.skillName or d.name) .. Tr[" : déjà au maximum ("] .. cur .. "/" .. mx .. ")"
         end
         if ok and k == "defense" and T.DEFENSE_GREY_RULE and (not skull) and tl <= T.GreyLevel(pl) then
           ok = false
-          T.notes[#T.notes + 1] = tostring(d.name or "Défense") .. " : pas de gain sur cible grise (observé)"
+          T.notes[#T.notes + 1] = tostring(d.name or Tr["Défense"]) .. Tr[" : pas de gain sur cible grise (observé)"]
         end
         -- plafond estimé 5 × niveau de la cible (arme / farouche) : au-delà, discret seulement
         if ok and k ~= "defense" and cur >= 5 * effLevel then
           strong = false
-          T.notes[#T.notes + 1] = string.format("%s : %d ≥ %d (plafond estimé 5 × niveau %s) → gain peu probable", tostring(d.skillName or d.name or k), cur, 5 * effLevel, skull and "??" or tostring(effLevel))
+          T.notes[#T.notes + 1] = string.format(Tr["%s : %d ≥ %d (plafond estimé 5 × niveau %s) → gain peu probable"], tostring(d.skillName or d.name or k), cur, 5 * effLevel, skull and "??" or tostring(effLevel))
         end
         if ok and key then
-          if strong then why = why .. ((k == "defense") and "" or " (tu frappes)")
-          elseif k ~= "defense" then why = why .. " (frappe pour la faire monter)" end
-          if tg.player then why = why .. " · joueur" end
+          if strong then why = why .. ((k == "defense") and "" or Tr[" (tu frappes)"])
+          elseif k ~= "defense" then why = why .. Tr[" (frappe pour la faire monter)"] end
+          if tg.player then why = why .. Tr[" · joueur"] end
           mark(key, strong and "direct" or "indirect", why)
           out[key].combat = true
         end
@@ -433,19 +434,19 @@ function T.Compute(tg)
     local okH, honor = pcall(ns.PvP.HonorFromTarget, tg)
     if okH and honor then
       local strong = T.Meleeing() or T.BeingHit() or (Call(_G.UnitAffectingCombat, "player") and Call(_G.UnitAffectingCombat, "target"))
-      mark("id:pvp", strong and "direct" or "indirect", "JcJ : ennemi honorable" .. (strong and " (en combat)" or " (ciblé)"))
+      mark("id:pvp", strong and "direct" or "indirect", Tr["JcJ : ennemi honorable"] .. (strong and Tr[" (en combat)"] or Tr[" (ciblé)"]))
     end
   end
   -- Butin : Cuisine / Secourisme (recettes connues non grises)
   local c = tg.npc and S.CreatureFor and S.CreatureFor(tg.npc, { name = tg.name, family = tg.family, ctype = tg.ctype })
   local lootable = not tg.player and not tg.tapped and (tg.attackable or tg.dead)
-  local DIFF_FR = { optimal = "orange", medium = "jaune", easy = "vert" }
+  local DIFF_FR = { optimal = "orange", medium = Tr["jaune"], easy = Tr["vert"] }
   if c and lootable then
     for _, skill in ipairs({ "cooking", "firstaid" }) do
       if (Rank(skill) or 0) > 0 and S.CreatureDiff then
         local diff, recipe = S.CreatureDiff(c, skill)
         if diff and DIFF_FR[diff] then
-          mark("id:" .. skill, "direct", "butin : " .. tostring(recipe and recipe.name or "recette") .. " (" .. DIFF_FR[diff] .. ")")
+          mark("id:" .. skill, "direct", Tr["butin : "] .. tostring(recipe and recipe.name or Tr["recette"]) .. " (" .. DIFF_FR[diff] .. ")")
         end
       end
     end
@@ -467,15 +468,15 @@ function T.Compute(tg)
       for _, e in ipairs(ns.Links and ns.Links.UsesOf(id) or {}) do
         if e.learned == true and e.skill ~= "cooking" and e.skill ~= "firstaid" and e.diff ~= "trivial" and not seen[e.skill] then
           seen[e.skill] = true
-          mark("id:" .. e.skill, "indirect", "lien : objet de la cible pour " .. tostring(e.name))
+          mark("id:" .. e.skill, "indirect", Tr["lien : objet de la cible pour "] .. tostring(e.name))
         end
       end
       local mat = (T.CLOTH[id] and "cloth") or (T.LEATHER[id] and "leather") or nil
       local sk = mat and T.MATERIAL_SKILL[mat]
       if sk and not seen[sk] and (Rank(sk) or 0) > 0 then
         seen[sk] = true
-        local nm = ns.Craft and ns.Craft.ItemName and ns.Craft.ItemName(id) or ("objet " .. id)
-        mark("id:" .. sk, "indirect", "lien : " .. T.MATERIAL_FR[mat] .. " (" .. tostring(nm) .. "), matière de ce métier")
+        local nm = ns.Craft and ns.Craft.ItemName and ns.Craft.ItemName(id) or (Tr["objet "] .. id)
+        mark("id:" .. sk, "indirect", Tr["lien : "] .. Tr[T.MATERIAL_FR[mat]] .. " (" .. tostring(nm) .. Tr["), matière de ce métier"])
       end
     end
   end
@@ -624,7 +625,7 @@ if ns.Compact and ns.Compact.TooltipModel then
     local e = key and T.current and T.current[key]
     if e and T.target then
       m.lines[#m.lines + 1] = { " ", 1, 1, 1, false, spacer = true }
-      local head = "Cible : " .. tostring(T.target.name or "?") .. (e.level == "direct" and "  (+1 possible)" or (e.combat and "  (éligible, pas de frappe)" or "  (lien indirect)"))
+      local head = Tr["Cible : "] .. tostring(T.target.name or "?") .. (e.level == "direct" and Tr["  (+1 possible)"] or (e.combat and Tr["  (éligible, pas de frappe)"] or Tr["  (lien indirect)"]))
       m.lines[#m.lines + 1] = { head, T.GREEN[1], T.GREEN[2], T.GREEN[3], false, header = true }
       for _, l in ipairs(e.why) do m.lines[#m.lines + 1] = { l, 0.75, 1, 0.75, true } end
       m.target = e
@@ -634,7 +635,7 @@ if ns.Compact and ns.Compact.TooltipModel then
       for _, l in ipairs(notes or {}) do
         if l:find(tostring(d.name), 1, true) == 1 then
           m.lines[#m.lines + 1] = { " ", 1, 1, 1, false, spacer = true }
-          m.lines[#m.lines + 1] = { "Cible : " .. tostring(T.target.name or "?"), 0.7, 0.7, 0.7, false, header = true }
+          m.lines[#m.lines + 1] = { Tr["Cible : "] .. tostring(T.target.name or "?"), 0.7, 0.7, 0.7, false, header = true }
           m.lines[#m.lines + 1] = { l, 0.7, 0.7, 0.7, true }
         end
       end

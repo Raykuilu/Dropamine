@@ -10,12 +10,13 @@
 -- tables. Nos cadres sont enfants d'UIParent / du panneau.
 -- Repli : /drop edit bascule le calque si l'API du mode édition est absente.
 local _, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local UI, W = ns.UI, ns.Window
 local EM = {}
 ns.EditMode = EM
 local function N(v) return ns.N and ns.N(v) or tonumber(v) end
 local function O() return ns.Options end
-local function Say(m) print("|cffffd100Dropamine|r : " .. m) end
+local function Say(m) print(Tr["|cffffd100Dropamine|r : "] .. m) end
 local function After(dt, fn) if type(_G.C_Timer) == "table" and type(_G.C_Timer.After) == "function" then _G.C_Timer.After(dt, fn) else fn() end end
 
 EM.W, EM.ROW_H, EM.HEAD_H, EM.PAD = 300, 26, 22, 12
@@ -25,7 +26,7 @@ EM.SECTIONS = {
   { title = "Affichage & thème", keys = { "theme", "cols", "scale", "opacity", "showTotal" } },
   { title = "Métiers & surlignage", keys = { "gatherAlerts", "activity", "tipCompact", "scannerIcons" } },
   { title = "JcJ", keys = { "pvp", "pvpMarks" } },
-  { title = "Notifications", keys = { "dropsEnabled", "notifMode" } },
+  { title = "Notifications", keys = { "dropsEnabled", "notifMode", "dropDir" } },
 }
 EM.collapsed = {}
 EM.stats = { enter = 0, exit = 0, sets = 0 }
@@ -184,7 +185,7 @@ local function SliderRow(d, it)
   r.label:SetPoint("LEFT", r, "LEFT", 0, 0)
   r.label:SetWidth(96)
   if r.label.SetJustifyH then r.label:SetJustifyH("LEFT") end
-  r.label:SetText(it.label)
+  r.label:SetText(Tr[it.label])
   r.left = Arrow(r, -1)
   r.left:SetPoint("LEFT", r, "LEFT", 98, 0)
   local ok, s = pcall(CreateFrame, "Slider", nil, r, "OptionsSliderTemplate")
@@ -243,7 +244,7 @@ local function SliderRow(d, it)
 end
 
 local function Label(it, v)
-  for _, c in ipairs(it.choices or {}) do if c[1] == v then return c[2] end end
+  for _, c in ipairs(it.choices or {}) do if c[1] == v then return Tr[c[2]] end end
   return tostring(v)
 end
 function EM.Menu(row)
@@ -271,7 +272,7 @@ function EM.Menu(row)
     end
     b:ClearAllPoints()
     b:SetPoint("TOPLEFT", m, "TOPLEFT", 4, -4 - (i - 1) * 18)
-    b.fs:SetText(c[2])
+    b.fs:SetText(Tr[c[2]])
     b:SetScript("OnClick", function() m:Hide() EM.Set(it.key, c[1]) end)
     b:Show()
   end
@@ -289,7 +290,7 @@ local function DropRow(d, it)
   r:SetSize(EM.W - 2 * EM.PAD, EM.ROW_H)
   r.label = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   r.label:SetPoint("LEFT", r, "LEFT", 0, 0)
-  r.label:SetText(it.label)
+  r.label:SetText(Tr[it.label])
   local b = CreateFrame("Button", nil, r)
   b._osrsOwn = true
   b:SetSize(170, 20)
@@ -319,7 +320,7 @@ local function CheckRow(d, it)
   c:SetPoint("LEFT", r, "LEFT", -2, 0)
   r.label = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   r.label:SetPoint("LEFT", c, "RIGHT", 2, 0)
-  r.label:SetText(it.label)
+  r.label:SetText(Tr[it.label])
   r.check, r.it = c, it
   c:SetScript("OnClick", function(self) EM.Set(it.key, self:GetChecked() and true or false) end)
   function r:Refresh() self.value = O().Get(it.key) and true or false self.check:SetChecked(self.value) end
@@ -368,11 +369,11 @@ function EM.BuildDialog()
     end
     d.sections[si] = { head = h, rows = rows, title = sec.title }
   end
-  d.full = Btn(d, "Paramètres complets", EM.W - 2 * EM.PAD, 22)
+  d.full = Btn(d, Tr["Paramètres complets"], EM.W - 2 * EM.PAD, 22)
   d.full:SetScript("OnClick", function() EM.Deselect() if O().Open then pcall(O().Open) end end)
-  d.reset = Btn(d, "Réinitialiser", EM.W - 2 * EM.PAD, 22)
+  d.reset = Btn(d, Tr["Réinitialiser"], EM.W - 2 * EM.PAD, 22)
   d.reset:SetScript("OnClick", function(self) EM.ResetClick(self) end)
-  d.home = Btn(d, "Revenir à la position par défaut", EM.W - 2 * EM.PAD, 22)
+  d.home = Btn(d, Tr["Revenir à la position par défaut"], EM.W - 2 * EM.PAD, 22)
   d.home:SetScript("OnClick", function() if UI.ResetPositions then pcall(UI.ResetPositions, UI) end EM.Place() end)
   d:Hide()
   EM.dialog = d
@@ -383,12 +384,12 @@ local function BtnText(b, t) if b.SetText then b:SetText(t) end if b.fs then b.f
 function EM.ResetClick(b)
   if not EM._resetArmed then
     EM._resetArmed = true
-    BtnText(b, "Confirmer la réinitialisation ?")
-    After(4, function() if EM._resetArmed then EM._resetArmed = nil BtnText(b, "Réinitialiser") end end)
+    BtnText(b, Tr["Confirmer la réinitialisation ?"])
+    After(4, function() if EM._resetArmed then EM._resetArmed = nil BtnText(b, Tr["Réinitialiser"]) end end)
     return "armed"
   end
   EM._resetArmed = nil
-  BtnText(b, "Réinitialiser")
+  BtnText(b, Tr["Réinitialiser"])
   local n = O().ResetDefaults and O().ResetDefaults() or 0
   EM.Sync()
   return n
@@ -402,7 +403,7 @@ function EM.Relayout()
     local c = EM.collapsed[s.title]
     s.head:ClearAllPoints()
     s.head:SetPoint("TOPLEFT", d, "TOPLEFT", EM.PAD, y)
-    s.head.fs:SetText((c and "+ " or "– ") .. s.title)
+    s.head.fs:SetText((c and "+ " or "– ") .. Tr[s.title])
     y = y - EM.HEAD_H - 2
     for _, r in ipairs(s.rows) do
       if c then r:Hide() else
@@ -458,9 +459,9 @@ end
 ------------------------------------------------------------------------------
 ns.SlashExt = ns.SlashExt or {}
 ns.SlashExt.edit = function()
-  if InCombat() then Say("en combat : réessaie après le combat.") return end
-  if EM.active then EM.Exit() Say("mode édition du panneau : fermé")
-  else EM.Enter("/drop edit") EM.Select() Say("mode édition du panneau : clic sur le panneau = réglages, glisser = déplacer (/drop edit pour fermer)") end
+  if InCombat() then Say(Tr["en combat : réessaie après le combat."]) return end
+  if EM.active then EM.Exit() Say(Tr["mode édition du panneau : fermé"])
+  else EM.Enter("/drop edit") EM.Select() Say(Tr["mode édition du panneau : clic sur le panneau = réglages, glisser = déplacer (/drop edit pour fermer)"]) end
 end
 ns.SlashExt["edition"] = ns.SlashExt.edit
 ns.SlashExt["édition"] = ns.SlashExt.edit

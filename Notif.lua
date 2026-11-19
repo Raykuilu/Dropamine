@@ -10,6 +10,7 @@
 -- L'éclat vers la case (3.3.5) part du toast où qu'il soit.
 -- Panneau jamais construit : position libre.
 local ADDON, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local UI, W, P = ns.UI, ns.Window, ns.Panel
 local H = UI._H
 local RectOf, SizeOf = H.RectOf, H.SizeOf
@@ -22,7 +23,7 @@ Nf.ALIASES = { ["détache"] = "detache", ["detacher"] = "detache", ["détacher"]
 Nf.GAP, Nf.MIN_W, Nf.STACK = 2, 180, 3
 Nf.DEFAULT_W = 260
 local function DB() ns.db.ui = ns.db.ui or {} return ns.db.ui end
-local function say(m) print("|cffffd100Dropamine|r : " .. m) end
+local function say(m) print(Tr["|cffffd100Dropamine|r : "] .. m) end
 
 function Nf.Mode() local m = DB().notifMode return Nf.MODES[m] and m or "dessus" end
 local function Scale(f)
@@ -120,7 +121,7 @@ function UI:ToggleDropsMove(...)
   if Nf.Mode() ~= "detache" and not (self.dropsFrame and self.dropsFrame._osrsMoving) then
     DB().notifMode = "detache"
     Nf.Attach("déplacement")
-    say("notifications détachées du panneau (/drop notif dessus pour les rattacher).")
+    say(Tr["notifications détachées du panneau (/drop notif dessus pour les rattacher)."])
   end
   return baseMove(self, ...)
 end
@@ -161,9 +162,9 @@ ns.SlashExt.notif = function(rest)
   local m = Nf.Set((rest or ""):match("^%s*(%S*)"))
   local st = Nf.state or {}
   if m then
-    say("notifications : " .. m .. ((st.eff and st.eff ~= m) and (" (" .. tostring(st.why) .. " → " .. st.eff .. ")") or ""))
+    say(Tr["notifications : "] .. Tr[m] .. ((st.eff and st.eff ~= m) and (" (" .. tostring(st.why) .. " → " .. Tr[st.eff] .. ")") or ""))
   else
-    say("notifications : " .. Nf.Mode() .. " (usage : /drop notif dessus|dessous|detache)")
+    say(Tr["notifications : "] .. Tr[Nf.Mode()] .. Tr[" (usage : /drop notif dessus|dessous|detache)"])
   end
 end
 ns.HelpExt = ns.HelpExt or {}

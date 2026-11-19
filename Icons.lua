@@ -8,6 +8,7 @@
 -- titre au-dessus du filet, le rang / max sur la barre bleue, la progression,
 -- la description et les recettes.
 local ADDON, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local UI = ns.UI
 local H = UI._H
 local V = ns.View
@@ -306,13 +307,13 @@ function I.TooltipLines(d)
   if not d then return out end
   local cur, cap = ns.N(d.current) or 0, ns.N(d.apiMax) or 0
   if d.placeholder then
-    out[#out + 1] = { d.notLearnedTag or "Pas encore appris", 0.62, 0.55, 0.45 }
+    out[#out + 1] = { d.notLearnedTag or Tr["Pas encore appris"], 0.62, 0.55, 0.45 }
   elseif d.kind == "level" then
-    out[#out + 1] = { "Niveau " .. cur .. (cap > 0 and (" / " .. cap) or ""), 1, 1, 1 }
+    out[#out + 1] = { Tr["Niveau "] .. cur .. (cap > 0 and (" / " .. cap) or ""), 1, 1, 1 }
     local xp = cap > 0 and UI.LevelBarXP and UI:LevelBarXP(cur, cap) or nil
     if xp and xp.max and xp.max > 0 then out[#out + 1] = { "XP " .. xp.cur .. " / " .. xp.max, 0.8, 0.8, 0.8 } end
   elseif cap > 0 then
-    out[#out + 1] = { "Rang " .. cur .. " / " .. cap, 1, 1, 1 }
+    out[#out + 1] = { Tr["Rang "] .. cur .. " / " .. cap, 1, 1, 1 }
   else
     out[#out + 1] = { tostring(cur), 1, 1, 1 }
   end
@@ -330,8 +331,8 @@ function I.OnEnter(self)
     GameTooltip:SetText(d.name or "?", g[1], g[2], g[3])
     for _, l in ipairs(I.TooltipLines(d)) do GameTooltip:AddLine(l[1], l[2], l[3], l[4]) end
     if self._warnText then GameTooltip:AddLine(self._warnText, 1, 0.82, 0.2, true) end
-    if self._capped then GameTooltip:AddLine("Palier atteint : va voir ton maître.", 0.25, 1, 0.25, true) end
-    GameTooltip:AddLine("Clic : détail à droite", 0.6, 0.6, 0.6)
+    if self._capped then GameTooltip:AddLine(Tr["Palier atteint : va voir ton maître."], 0.25, 1, 0.25, true) end
+    -- 3.5.5 : plus de « Clic : détail à droite » (il n'y a plus de volet de détail)
     GameTooltip:Show()
     self._tipShown = true
   end
@@ -484,7 +485,7 @@ function UI:ShowDetailBreakdown(snap)
   if snap then self._detailData, self._detailLive = nil, nil end
   local r = { baseBreakdown332(self, snap) }
   local f = self.ownDetail
-  if f and snap and f:IsShown() then I.EnsurePaneText(f, "Niveau total", ns.TOTAL_SHORT_FR) end
+  if f and snap and f:IsShown() then I.EnsurePaneText(f, Tr["Niveau total"], Tr[ns.TOTAL_SHORT_FR]) end
   return unpack(r)
 end
 local baseFill332 = UI.FillOwnDetail
@@ -549,6 +550,6 @@ ns.SlashExt.categories = function(rest)
   rest = (rest or ""):lower()
   if rest == "on" then ns.db.ui.categories = true elseif rest == "off" then ns.db.ui.categories = nil
   else ns.db.ui.categories = not I.Categories() or nil end
-  print("|cffffd100Dropamine|r : catégories " .. (I.Categories() and "affichées" or "masquées (grille compacte)"))
+  print(Tr["|cffffd100Dropamine|r : catégories "] .. (I.Categories() and Tr["affichées"] or Tr["masquées (grille compacte)"]))
   if W.IsShown() then W.Layout() end
 end

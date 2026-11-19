@@ -13,6 +13,7 @@
 -- Les fournisseurs (nom + zone) et les recettes non apprises des autres
 -- métiers ne sont PAS dans la base de l'addon : affichés « source inconnue ».
 local ADDON, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local S = ns.Scanner
 local Craft = ns.Craft
 local L = {}
@@ -26,7 +27,7 @@ local LEARN_FR = { t = "maître" }
 
 local function SkillName(id)
   local e = ns.CATALOG_BY_ID and ns.CATALOG_BY_ID[id]
-  return (e and e.name) or SKILL_FR[id] or tostring(id)
+  return (e and ns.CatalogDisplayName(e)) or SKILL_FR[id] or tostring(id)
 end
 local function Fold(s) return ns.Fold(s or "") end
 
@@ -44,7 +45,7 @@ function L.DB()
     if skill and p[2] and tonumber(p[2]) then
       local col = {}
       for v in string.gmatch(p[3] or "", "[^,]+") do col[#col + 1] = tonumber(v) end
-      local r = { spell = spell, skill = skill, req = tonumber(p[2]), colors = col, en = p[5], fr = p[6], name = p[6] or p[5],
+      local r = { spell = spell, skill = skill, req = tonumber(p[2]), colors = col, en = p[5], fr = p[6], name = ns.GameName(p[5], p[6]),
         learn = LEARN_FR[p[7] or "-"], reagents = {} }
       for id, n in string.gmatch(p[4] or "", "(%d+)x(%d+)") do r.reagents[#r.reagents + 1] = { id = tonumber(id), count = tonumber(n) } end
       if r.fr then byName[Fold(r.fr)] = r end
@@ -62,13 +63,23 @@ local function Known(skill)
   local rec = ns.CharDB().recipes and ns.CharDB().recipes[skill]
   return rec and rec.list or nil
 end
+-- 3.5.3 : ensemble des noms appris (pliés) par métier, reconstruit seulement
+-- quand la liste lue change ; avant : boucle recettes × apprises à chaque survol.
+local learnedSets = {}
+local function LearnedSet(skill, list)
+  local e = learnedSets[skill]
+  local ver = Craft and Craft._ver or 0
+  if e and e.list == list and e.n == #list and e.ver == ver then return e.set end
+  local set = {}
+  for _, k in ipairs(list) do set[Fold(k.name)] = true end
+  learnedSets[skill] = { list = list, n = #list, ver = ver, set = set }
+  return set
+end
 local function IsLearned(skill, r)
   local list = Known(skill)
   if not list then return nil end   -- inconnu : fenêtre jamais lue
-  for _, k in ipairs(list) do
-    local f = Fold(k.name)
-    if f == Fold(r.fr) or f == Fold(r.en) then return true end
-  end
+  local set = LearnedSet(skill, list)
+  if set[Fold(r.fr)] or set[Fold(r.en)] then return true end
   return false
 end
 
@@ -79,8 +90,8 @@ L._rankVer = 0
 local function CacheKey() return tostring(Craft._ver or 0) .. ":" .. tostring(L._rankVer) .. ":" .. tostring(S._learnVer or 0) end
 local function Cache()
   local k = CacheKey()
-  if L._ck ~= k then L._ck, L._uses, L._origin = k, {}, {} end
-  return L._uses, L._origin
+  if L._ck ~= k then L._ck, L._uses, L._origin, L._next = k, {}, {}, {} end
+  return L._uses, L._origin, L._next
 end
 function L.Invalidate() L._rankVer = L._rankVer + 1 end
 if ns.On then ns.On("CHAT_MSG_SKILL", function() L.Invalidate() end) end
@@ -153,8 +164,8 @@ function L.EntryText(e)
   if e.learned == true then
     return Paint(e.diff, string.format("%s — %s%s", e.name, SkillName(e.skill), e.req and (" " .. e.req) or ""))
   end
-  local status = (e.learned == false) and "recette non apprise" or "apprise ? (ouvre la fenêtre du métier)"
-  return Paint(e.diff, string.format("%s (%s, rang %s) — %s%s", e.name, status, tostring(e.req or "?"), SkillName(e.skill), e.learn and (" · " .. e.learn) or ""), true)
+  local status = (e.learned == false) and Tr["recette non apprise"] or Tr["apprise ? (ouvre la fenêtre du métier)"]
+  return Paint(e.diff, string.format(Tr["%s (%s, rang %s) — %s%s"], e.name, status, tostring(e.req or "?"), SkillName(e.skill), e.learn and (" · " .. Tr[e.learn]) or ""), true)
 end
 
 -- Lignes plafonnées (6 + « … et N autres ») pour un ou plusieurs objets.
@@ -176,7 +187,7 @@ function L.Lines(items, opts)
   local cap = opts.cap or L.CAP
   local lines = {}
   for i = 1, math.min(cap, #all) do lines[i] = L.EntryText(all[i]) end
-  if #all > cap then lines[#lines + 1] = "|cff999999… et " .. (#all - cap) .. " autres|r" end
+  if #all > cap then lines[#lines + 1] = Tr["|cff999999… et "] .. (#all - cap) .. Tr[" autres|r"] end
   return lines, all
 end
 
@@ -223,18 +234,18 @@ function L.ItemOriginRaw(itemID)
   for _, c in pairs(S.DB().creatures or {}) do
     if c.items and c.items[itemID] and c.name and #names < 2 then names[#names + 1] = c.name end
   end
-  if nSkin > 0 then parts[#parts + 1] = "dépeçage (" .. nSkin .. " créatures)" end
-  if nDrop > 0 then parts[#parts + 1] = "butin de " .. nDrop .. " créature" .. (nDrop > 1 and "s" or "") end
-  if #names > 0 then parts[#parts + 1] = "vu sur " .. table.concat(names, ", ") end
-  if #parts == 0 then return "origine inconnue (marchand ou autre)" end
+  if nSkin > 0 then parts[#parts + 1] = Tr["dépeçage ("] .. nSkin .. Tr[" créatures)"] end
+  if nDrop > 0 then parts[#parts + 1] = Tr["butin de "] .. nDrop .. Tr[" créature"] .. (nDrop > 1 and "s" or "") end
+  if #names > 0 then parts[#parts + 1] = Tr["vu sur "] .. table.concat(names, ", ") end
+  if #parts == 0 then return Tr["origine inconnue (marchand ou autre)"] end
   return table.concat(parts, " ; ")
 end
 local function ItemName(id)
   local it = S.StaticItem and S.StaticItem(id)
-  if it and (it.fr or it.en) then return it.fr or it.en end
+  if it and (it.fr or it.en) then return ns.GameName(it.en, it.fr) end
   local ok, nm = pcall(_G.GetItemInfo or function() end, id)
   if ok and type(nm) == "string" then return nm end
-  return "objet " .. tostring(id)
+  return Tr["objet "] .. tostring(id)
 end
 
 -- Lien inverse : prochaines recettes à apprendre pour un métier.
@@ -242,16 +253,28 @@ function L.NextToLearn(skill)
   local D = L.DB()
   local rank = S.RankOf(skill)
   local out = {}
-  if not rank or rank <= 0 then return out, "métier non appris" end
-  if not D.bySkill[skill] then return out, "aucune recette de ce métier dans la base Forever de l'addon" end
-  if not Known(skill) then return out, "ouvre la fenêtre du métier une fois pour savoir ce qui est appris" end
+  if not rank or rank <= 0 then return out, Tr["métier non appris"] end
+  if not D.bySkill[skill] then return out, Tr["aucune recette de ce métier dans la base Forever de l'addon"] end
+  if not Known(skill) then return out, Tr["ouvre la fenêtre du métier une fois pour savoir ce qui est appris"] end
   for _, r in ipairs(D.bySkill[skill]) do
     if r.req <= rank + L.REACH and IsLearned(skill, r) == false then out[#out + 1] = r end
   end
   table.sort(out, function(a, b) if a.req ~= b.req then return a.req < b.req end return tostring(a.name) < tostring(b.name) end)
   return out
 end
+-- 3.5.3 : lignes mémorisées par métier (vidées avec les autres caches : rang,
+-- recettes lues ou apprises qui changent) ; ancienne version : L.NextLinesRaw.
 function L.NextLines(skill)
+  if ns.Opt and not ns.Opt("unlearned") then return {} end
+  local _, _, nc = Cache()
+  local hit = nc[skill]
+  if hit then return hit end
+  local lines = L.NextLinesRaw(skill)
+  local rank = S.RankOf(skill)
+  if rank and rank > 0 then nc[skill] = lines end   -- rangs pas encore lus : pas de cache
+  return lines
+end
+function L.NextLinesRaw(skill)
   if ns.Opt and not ns.Opt("unlearned") then return {} end
   local list, why = L.NextToLearn(skill)
   local lines = {}
@@ -264,12 +287,12 @@ function L.NextLines(skill)
   for i = 1, math.min(cap, #list) do
     local r = list[i]
     local diff = rank >= r.req and Craft.Diff(r, rank) or "locked"
-    lines[#lines + 1] = Paint(diff, string.format("%s (rang %d)%s", r.name, r.req, r.learn and (" · " .. r.learn) or ""))
+    lines[#lines + 1] = Paint(diff, string.format(Tr["%s (rang %d)%s"], r.name, r.req, r.learn and (" · " .. Tr[r.learn]) or ""))
     local comp = {}
-    for _, rg in ipairs(r.reagents) do comp[#comp + 1] = rg.count .. " × " .. ItemName(rg.id) .. " : " .. L.ItemOrigin(rg.id) end
+    for _, rg in ipairs(r.reagents) do comp[#comp + 1] = rg.count .. " × " .. ItemName(rg.id) .. Tr[" : "] .. L.ItemOrigin(rg.id) end
     for _, cl in ipairs(comp) do lines[#lines + 1] = "|cffbbbbbb    " .. cl .. "|r" end
   end
-  if #list > cap then lines[#lines + 1] = "|cff999999… et " .. (#list - cap) .. " autres|r" end
+  if #list > cap then lines[#lines + 1] = Tr["|cff999999… et "] .. (#list - cap) .. Tr[" autres|r"] end
   return lines
 end
 
@@ -282,7 +305,7 @@ if ns.Compact and ns.Compact.TooltipModel then
       local ok, lines = pcall(L.NextLines, d.id)
       if ok and lines and #lines > 0 then
         m.lines[#m.lines + 1] = { " ", 1, 1, 1, false, spacer = true }
-        m.lines[#m.lines + 1] = { "À apprendre bientôt", 1, 0.82, 0, false, header = true }
+        m.lines[#m.lines + 1] = { Tr["À apprendre bientôt"], 1, 0.82, 0, false, header = true }
         for _, l in ipairs(lines) do m.lines[#m.lines + 1] = { l, 1, 1, 1, true } end
       end
     end
@@ -302,7 +325,7 @@ function L.ItemTooltip(tt)
   local lines = L.Lines({ id })
   if #lines == 0 then return 0 end
   tt._osrsLinksFor = id
-  pcall(tt.AddLine, tt, "Utilisé par :", 1, 0.82, 0)
+  pcall(tt.AddLine, tt, Tr["Utilisé par :"], 1, 0.82, 0)
   for _, l in ipairs(lines) do pcall(tt.AddLine, tt, l, 1, 1, 1, true) end
   if tt.Show then pcall(tt.Show, tt) end
   return #lines
