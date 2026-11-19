@@ -32,8 +32,8 @@ Wd.SEG_COLORS = {
 -- (pan coupé ~2,75 px + liseré) masquait le premier segment ou le laissait
 -- dépasser avant le cadre. Classic : filet d'infobulle (edgeSize 10).
 Wd.FILL_INSET = {
-  flare   = { l = 5, r = 5, t = 1, b = 1 },
-  leger   = { l = 5, r = 5, t = 1, b = 1 },
+  flare   = { l = 3, r = 3, t = 1, b = 1 },
+  leger   = { l = 3, r = 3, t = 1, b = 1 },
   classic = { l = 3, r = 3, t = 1, b = 1 },
 }
 Wd.SEG_MIN_W = 5  -- largeur minimale (px) d'un segment dont la valeur est > 0
