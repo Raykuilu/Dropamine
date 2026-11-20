@@ -10,8 +10,8 @@
 - **Weekly recap** tab: Monday–Sunday total, comparison with last week, split by category, best day, streak, day-by-day chart and top skills of the week.
 - Total tooltip (Compact, Wide, UI banner): a 7-day mini chart under the tooltip, with day initials and daily points. It hides with the tooltip, never takes the mouse and never stays on screen.
 - Options › Progress: new **Open window** button. /drop stats is unchanged; /drop progress text still prints the summary in chat; /drop progress achievements | spots | week opens that tab.
-- Also in 3.6.0 (built in the first pass): the next-point bar resets to 0% on each point and hides in combat; AtlasLoot cannot close the panel by accident; Edit Mode follows the Settings 2.0 sections; quiet mode (dungeons / groups); per-character display profile; session goal, streak, 18 achievements, gathering spots per zone, weekly recap and /drop share.
-- Safe in combat: the window is never built in combat (it opens when combat ends), refreshes are grouped (0.5 s, 2 s in combat), and only textures and font strings are used (no CreateLine). All new texts are translated (enUS).
+- Also in 3.6.0: the next-point bar resets to 0% on each point and hides in combat; AtlasLoot compatibility safeguards keep the panel from closing or opening off-screen; Edit Mode follows the Settings 2.0 sections; quiet mode in dungeons and groups; per-character display profiles; session goal, daily streak, 18 achievements, gathering spots by zone, weekly recap and /drop share.
+- Safe in combat: the Progress window is never built in combat (it opens once combat ends), refreshes are throttled (0.5 s / 2 s in combat for Progress; 0.1 s / 0.5 s combat / 1 s raid for the main panel), and only textures and font strings are used (no CreateLine). All new texts are localized (FR/EN).
 
 ---
 
@@ -24,8 +24,8 @@
 - Onglet **Récap hebdo** : total du lundi au dimanche, comparaison avec la semaine passée, répartition par catégorie, meilleur jour, série, histogramme jour par jour et top des compétences de la semaine.
 - Infobulle du total (Compacte, Wide, bandeau UI) : un mini-graphe 7 jours sous l'infobulle, avec les initiales des jours et les points du jour. Il se cache avec l'infobulle, ne prend jamais la souris et ne reste jamais à l'écran.
 - Réglages › Progression : nouveau bouton **Ouvrir la fenêtre**. /drop stats ne change pas ; /drop progression texte affiche toujours le résumé dans le chat ; /drop progression succes | spots | semaine ouvre l'onglet voulu.
-- Aussi en 3.6.0 (première passe) : la barre du prochain point repart à 0 % à chaque point et se cache en combat ; AtlasLoot ne peut plus fermer le panneau par erreur ; le mode Édition suit les sections des Réglages 2.0 ; mode calme (donjons / groupes) ; profil d'affichage par personnage ; objectif de session, série, 18 succès, spots de récolte par zone, récap hebdomadaire et /drop share.
-- Sûr en combat : la fenêtre n'est jamais construite en combat (elle s'ouvre à la fin du combat), les rafraîchissements sont regroupés (0,5 s, 2 s en combat), et seules des textures et des textes sont utilisés (pas de CreateLine). Tous les nouveaux textes sont traduits (enUS).
+- Aussi en 3.6.0 : la barre du prochain point repart à 0 % à chaque point et se cache en combat ; garde-fous de compatibilité AtlasLoot (position hors écran ignorée, réouverture propre) ; le mode Édition suit les sections des Réglages 2.0 ; mode discret en donjon et en groupe ; profils d'affichage par personnage ; objectif de session, série quotidienne, 18 succès, spots de récolte par zone, récap hebdomadaire et /drop share.
+- Sûr en combat : la fenêtre Progression n'est jamais construite en combat (elle s'ouvre dès la sortie de combat), les rafraîchissements sont regroupés (0,5 s / 2 s en combat pour Progression ; 0,1 s / 0,5 s combat / 1 s raid pour le panneau principal), et seules des textures et des textes sont utilisés (pas de CreateLine). Tous les nouveaux textes sont traduits (FR/EN).
 
 
 ## 3.5.22
@@ -45,14 +45,14 @@
 
 
 ## 3.5.21
-- Total-level bar: the fill now sits inside the frame on every theme, with per-theme insets, so the Flare rounded corners no longer hide the red (character level) segment or let it start before the bar. Flare / Light: 5 px left and right, 1 px top and bottom. Classic: 3 px left and right, 1 px top and bottom.
-- Each non-zero segment (level, weapon skills + defense, professions) keeps a minimum visible width of 5 px; the other segments shrink proportionally so the fill still fits in the inner track.
+- Total-level bar: the fill now sits cleanly flush inside the frame on every theme, with per-theme insets, so the Flare rounded corners no longer hide the red (character level) segment or leave a dark gap before it. Flare / Light: 1 px inset all around. Classic: 3 px left and right, 1 px top and bottom.
+- The red character-level segment scales its minimum visible width by level (1 px at levels 1–15, 2 px at 16–30, 3 px at 31–45, 4 px at 46–59, 5 px at 60), while weapons/defense (blue) and professions (green) keep a 5 px minimum when non-zero.
 - The skills panel (tiles and total-level bar) now updates live in combat. Only protected-frame operations (SetPoint / Show / Hide / SetFrameLevel, opening the native SkillFrame) are deferred until combat ends. FontString text, bar fills and textures on already-laid-out tiles refresh immediately. Unreadable secret values keep the last known rank / level / XP so the grid does not drop to 0.
 
 ---
 
-- Barre de niveau total : le remplissage reste à l'intérieur du cadre sur les trois thèmes, avec des marges par thème, pour que l'arrondi Flare ne masque plus le segment rouge (niveau du personnage) ni ne le laisse commencer avant la barre. Flare / Léger : 5 px à gauche et à droite, 1 px en haut et en bas. Classique : 3 px à gauche et à droite, 1 px en haut et en bas.
-- Chaque segment non nul (niveau, armes + Défense, métiers) garde une largeur minimale visible de 5 px ; les autres se réduisent en proportion pour que le remplissage tienne dans la piste intérieure.
+- Barre de niveau total : le remplissage démarre collé au bord intérieur du cadre sur les trois thèmes (marge de 1 px tout autour sur Flare / Léger ; 3 px gauche/droite et 1 px haut/bas sur Classique) pour garder le segment rouge du niveau bien visible sans trou noir avant lui.
+- Le segment rouge adapte sa largeur minimale au niveau (1 px du 1 au 15, 2 px du 16 au 30, 3 px du 31 au 45, 4 px du 46 au 59, 5 px au niveau 60), tandis que les armes/défense (bleu) et les métiers (vert) gardent 5 px minimum.
 - Le panneau des compétences (cases et barre de niveau total) se met maintenant à jour en combat. Seules les opérations sur les cadres protégés (SetPoint / Show / Hide / SetFrameLevel, ouverture de la fenêtre native) attendent la fin du combat. Les textes, le remplissage des jauges et les textures des cases déjà posées sont rafraîchis tout de suite. Une valeur secrète illisible garde le dernier rang / niveau / XP connu, pour que la grille ne retombe pas à 0.
 
 ## 3.5.20
