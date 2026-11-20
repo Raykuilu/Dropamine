@@ -99,7 +99,8 @@ function C.TooltipModel(d)
     local xp = UI.LevelBarXP and UI:LevelBarXP(cur, cap) or nil
     if xp and N(xp.max) and xp.max > 0 then
       local pct = math.floor((xp.cur or 0) / xp.max * 100 + 0.5)
-      add("XP " .. tostring(xp.cur) .. " / " .. tostring(xp.max) .. " (" .. pct .. " %)" .. ((N(xp.rested) and xp.rested > 0) and (Tr["  ·  reposé "] .. tostring(xp.rested)) or ""), 0.8, 0.8, 0.8)
+      -- 3.6.2 : le repos a sa propre ligne (Rested.lua) ; plus de « · reposé N » ici
+      add("XP " .. tostring(xp.cur) .. " / " .. tostring(xp.max) .. " (" .. pct .. " %)" .. ((N(xp.rested) and xp.rested > 0 and not ns.Rested) and (Tr["  ·  reposé "] .. tostring(xp.rested)) or ""), 0.8, 0.8, 0.8)
     end
   elseif d.kind == "stat" then
     add((d.name or "") .. "  " .. tostring(cur), 1, 1, 1)
@@ -132,14 +133,15 @@ function C.TooltipModel(d)
     for _, l in ipairs(split(extra)) do prog[#prog + 1] = TwoTone(l) end
     sec(Tr["Progression"], prog)
     if isCombat then
-      local cached = NL and NL.Cached and NL.Cached(d.skillName or d.name)
+      -- 3.6.2 : détail natif (toucher / critique / coups déviés) en version
+      -- COURTE, valeurs lues dans le volet natif ; lu au survol si la fiche
+      -- native est ouverte (hors combat), sinon la dernière lecture mémorisée.
+      if NL and NL.ReadIfShown then NL.ReadIfShown() end
+      local cached = NL and NL.CachedFor and NL.CachedFor(d)
       if cached then
-        if cached.desc and #cached.desc > 0 then desc = table.concat(cached.desc, "\n") end
-        for _, s2 in ipairs(cached.sections or {}) do
-          local ls = {}
-          for _, l in ipairs(s2.lines or {}) do ls[#ls + 1] = TwoTone(l) end
-          sec(s2.title, ls)
-        end
+        -- description native : seulement si nous n'en avons pas (pas de doublon)
+        if not desc or desc == "" then desc = NL.NativeDesc(d) or "" end
+        sec(Tr["Combat"], NL.CompactCombatLines(cached.combat or NL.ParseCombat(cached)))
       end
       if ns.CombatStatsText then
         local okS, stx = pcall(ns.CombatStatsText, d.kind)

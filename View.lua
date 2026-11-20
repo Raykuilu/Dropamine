@@ -1993,10 +1993,11 @@ function UI:DetailDescriptionFor(d, live)
   local t = baseDescFor(self, d, live)
   if (t and t ~= "") or not d then return t or "" end
   local NL = ns.NativeLook
-  local cached = NL and NL.Cached and NL.Cached(d.skillName or d.name)
-  if cached and cached.desc and #cached.desc > 0 then
+  -- 3.6.2 : retrouvé aussi par identifiant ; seulement dans la langue du client
+  local nd = NL and NL.NativeDesc and NL.NativeDesc(d)
+  if nd then
     self.descSource = "détail natif lu"
-    return table.concat(cached.desc, "\n")
+    return nd
   end
   local fb = V.DESC_FR[d.id or ""] or V.DESC_KIND_FR[d.kind or ""]
   if fb then self.descSource = "texte de l'addon" return Tr[fb] end

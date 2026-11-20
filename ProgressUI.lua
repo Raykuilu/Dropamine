@@ -468,7 +468,11 @@ function PU.NewChart(parent, x, y, w, h, nMax)
   local c = CreateFrame("Frame", nil, parent)
   Place(c, parent, x, y, w, h)
   c.w, c.h = w, h
-  c.axisW, c.top, c.bottom = 22, 12, 13
+  -- 3.6.2 : marge haute = c.padTop (c.top servait AUSSI à mémoriser le haut de
+  -- l'échelle : dès le 2e rendu, la hauteur du tracé devenait négative et les
+  -- graduations 25/50/75/100 partaient sous la fenêtre)
+  c.axisW, c.padTop, c.bottom = 22, 12, 13
+  if c.SetClipsChildren then pcall(c.SetClipsChildren, c, true) end
   c.grid, c.ylab = {}, {}
   for i = 1, 4 do
     c.grid[i] = Tex(c, "BACKGROUND", 2)
@@ -494,6 +498,9 @@ function PU.NewChart(parent, x, y, w, h, nMax)
   end
   c.empty = FS(c, "GameFontDisableSmall", "sub", "CENTER")
   c.empty:SetPoint("CENTER", c, "CENTER", 10, 0)
+  if c.empty.SetWidth then c.empty:SetWidth(math.max(40, w - c.axisW - 12)) end
+  if c.empty.SetWordWrap then pcall(c.empty.SetWordWrap, c.empty, true) end
+  if c.empty.SetMaxLines then pcall(c.empty.SetMaxLines, c.empty, 2) end
   c.empty:Hide()
   PU.charts[#PU.charts + 1] = c
   return c
@@ -504,12 +511,14 @@ function PU.RenderChart(c, items, metric, emptyText)
   local seg = PU.SegColors()
   local n = math.min(#items, #c.bars)
   local plotW = c.w - c.axisW - 4
-  local plotH = c.h - c.top - c.bottom
+  local plotH = math.max(0, c.h - c.padTop - c.bottom)
   local vmax = 0
   for i = 1, n do local v = ItemValue(items[i], metric) if v > vmax then vmax = v end end
   local top = PU.NiceScale(vmax)
   for k = 1, 4 do
     local y = c.bottom + math.floor(plotH * k / 4 + 0.5)
+    if plotH <= 0 or y > c.h then c.grid[k]:Hide() c.ylab[k]:Hide() else
+    c.grid[k]:Show() c.ylab[k]:Show()
     local g = c.grid[k]
     g:ClearAllPoints()
     g:SetPoint("BOTTOMLEFT", c, "BOTTOMLEFT", c.axisW + 2, y)
@@ -520,6 +529,7 @@ function PU.RenderChart(c, items, metric, emptyText)
     l:SetPoint("RIGHT", c, "BOTTOMLEFT", c.axisW - 2, y)
     l:SetText(metric == "xph" and Short(top * k / 4) or tostring(math.floor(top * k / 4 + 0.5)))
     TextColor(l, pal.sub)
+    end
   end
   c.base:ClearAllPoints()
   c.base:SetPoint("BOTTOMLEFT", c, "BOTTOMLEFT", c.axisW + 2, c.bottom)
@@ -590,7 +600,7 @@ function PU.RenderChart(c, items, metric, emptyText)
     TextColor(c.empty, pal.sub)
     c.empty:Show()
   else c.empty:Hide() end
-  c.items, c.metric, c.vmax, c.top, c.n = items, metric, vmax, top, n
+  c.items, c.metric, c.vmax, c.scaleTop, c.n = items, metric, vmax, top, n
   return c
 end
 
@@ -619,7 +629,11 @@ function PU.NewCurve(parent, x, y, w, h)
   c.peakFS = FS(c, "GameFontHighlightSmall", nil, "CENTER")
   c.endDot = Tex(c, "OVERLAY", 4)
   c.empty = FS(c, "GameFontDisableSmall", "sub", "CENTER")
-  c.empty:SetPoint("CENTER", c, "CENTER", 8, 0)
+  c.empty:SetPoint("CENTER", c, "CENTER", 0, 0)
+  -- 3.6.2 : « La courbe apparaît… » débordait à droite : largeur bornée, sur 2 lignes
+  if c.empty.SetWidth then c.empty:SetWidth(math.max(40, w - 16)) end
+  if c.empty.SetWordWrap then pcall(c.empty.SetWordWrap, c.empty, true) end
+  if c.empty.SetMaxLines then pcall(c.empty.SetMaxLines, c.empty, 2) end
   PU.curves[#PU.curves + 1] = c
   return c
 end
