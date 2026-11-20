@@ -274,49 +274,188 @@ function S.LiveDurability()
   return r ~= nil and r < 0.20
 end
 
+-- Noms génériques FR/EN du canal / de l'aura de régénération (pas « Bien nourri »).
 local EAT_NAMES = {
   drink = true, food = true, ["food & drink"] = true, ["food and drink"] = true,
   boisson = true, nourriture = true, ["boisson et nourriture"] = true,
   ["nourriture et boisson"] = true, refreshment = true, restauration = true,
-  eating = true, drinking = true, eat = true,
+  eating = true, drinking = true, eat = true, ["en train de manger"] = true,
+  ["en train de boire"] = true,
 }
-local NOT_EAT = { ["well fed"] = true, ["bien nourri"] = true, ["bien nourrie"] = true }
+local NOT_EAT = {
+  ["well fed"] = true, ["bien nourri"] = true, ["bien nourrie"] = true,
+  foodbuff = true, ["food buff"] = true,
+}
+-- Sorts classiques / TBC / Wrath de nourriture et boisson (régénération).
+-- Pas les auras « Well Fed » (19705–19711, 24799, 24870, 25661…).
+S.EAT_SPELLS = {
+  [430] = true, [431] = true, [432] = true, [1133] = true, [1135] = true, [1137] = true,
+  [22734] = true, [24355] = true, [25696] = true, [26261] = true, [26402] = true, [26475] = true,
+  [27089] = true, [29007] = true, [34291] = true, [43182] = true, [43183] = true, [52911] = true,
+  [57085] = true, [61827] = true, [64356] = true, [66041] = true, [80167] = true,
+  [433] = true, [434] = true, [435] = true, [1127] = true, [1129] = true, [1131] = true,
+  [2639] = true, [5004] = true, [5005] = true, [5006] = true, [5007] = true, [7737] = true,
+  [10256] = true, [10257] = true, [18229] = true, [18230] = true, [18231] = true, [18232] = true,
+  [18233] = true, [18234] = true, [22731] = true, [24063] = true, [24707] = true, [24869] = true,
+  [25660] = true, [25695] = true, [25697] = true, [25700] = true, [25702] = true, [25886] = true,
+  [25888] = true, [25990] = true, [26030] = true, [26263] = true, [27094] = true, [28616] = true,
+  [29008] = true, [29038] = true, [29039] = true, [29073] = true, [33253] = true, [33257] = true,
+  [33258] = true, [33259] = true, [33260] = true, [33261] = true, [33262] = true, [33263] = true,
+  [33264] = true, [33265] = true, [33266] = true, [33725] = true, [35270] = true, [35271] = true,
+  [40745] = true, [40768] = true, [41030] = true, [42207] = true, [43763] = true, [43771] = true,
+  [44166] = true, [45618] = true, [46683] = true, [46812] = true, [46898] = true, [53270] = true,
+  [57069] = true, [57070] = true, [57111] = true, [57139] = true, [57285] = true, [57294] = true,
+  [57325] = true, [57327] = true, [57329] = true, [57332] = true, [57334] = true, [57356] = true,
+  [57358] = true, [57360] = true, [57365] = true, [57367] = true, [57371] = true, [59227] = true,
+  [61830] = true, [65341] = true, [80168] = true,
+  [43706] = true, [44107] = true, [52993] = true, [53373] = true, [57288] = true, [57291] = true,
+  [58503] = true, [58511] = true, [59230] = true, [61828] = true, [65418] = true, [65419] = true,
+  [65420] = true, [65421] = true, [65422] = true,
+}
+S.NOT_EAT_SPELLS = {
+  [19705] = true, [19706] = true, [19708] = true, [19709] = true, [19710] = true, [19711] = true,
+  [24799] = true, [24870] = true, [25661] = true, [33254] = true, [33255] = true, [33256] = true,
+  [45619] = true, [46899] = true, [53284] = true, [57100] = true, [66645] = true,
+}
 
-local function AuraName(i)
-  if type(_G.C_UnitAuras) == "table" and type(_G.C_UnitAuras.GetAuraDataByIndex) == "function" then
-    local ok, data = pcall(_G.C_UnitAuras.GetAuraDataByIndex, "player", i, "HELPFUL")
-    if ok and type(data) == "table" then return data.name or data.Name end
+local function SafeStr(v)
+  if type(v) ~= "string" or v == "" then return nil end
+  if ns.IsSecret and ns.IsSecret(v) then return nil end
+  return v
+end
+
+local function SafeFold(v)
+  v = SafeStr(v)
+  if not v then return "" end
+  local ok, f = pcall(function()
+    return (ns.Fold and ns.Fold(v)) or v:lower()
+  end)
+  if ok and type(f) == "string" then return f end
+  return ""
+end
+
+local function IsWellFed(fold, spellId)
+  spellId = N(spellId)
+  if spellId and S.NOT_EAT_SPELLS[spellId] then return true end
+  if fold == "" then return false end
+  return NOT_EAT[fold] and true or false
+end
+
+local function IsFoodName(fold)
+  if fold == "" then return false end
+  if NOT_EAT[fold] then return false end
+  if EAT_NAMES[fold] then return true end
+  if fold:find("boisson", 1, true) or fold:find("nourriture", 1, true) then return true end
+  if fold:find("refreshment", 1, true) or fold:find("restauration", 1, true) then return true end
+  if fold:find("drink", 1, true) or fold:find("drinking", 1, true) then return true end
+  if fold:find("food", 1, true) and not fold:find("foodbuff", 1, true) and not fold:find("well fed", 1, true) then
+    return true
   end
-  if type(_G.UnitAura) == "function" then
-    local ok, name = pcall(_G.UnitAura, "player", i, "HELPFUL")
-    if ok then return name end
+  return false
+end
+
+local function IsFoodDrink(name, spellId)
+  spellId = N(spellId)
+  if spellId and S.NOT_EAT_SPELLS[spellId] then return false end
+  if spellId and S.EAT_SPELLS[spellId] then return true end
+  local fold = SafeFold(name)
+  if IsWellFed(fold, spellId) then return false end
+  return IsFoodName(fold)
+end
+
+-- Un index d'aura : nom + spellId, via C_UnitAuras, UnitAura/UnitBuff, AuraUtil.
+-- Ne lève jamais (pcall + gardes secrètes). Un trou (nom secret) n'arrête pas le scan.
+local function AuraAt(i)
+  local name, spellId
+  local C = _G.C_UnitAuras
+  if type(C) == "table" and type(C.GetAuraDataByIndex) == "function" then
+    local ok, data = pcall(C.GetAuraDataByIndex, "player", i, "HELPFUL")
+    if ok and type(data) == "table" then
+      name = SafeStr(data.name or data.Name)
+      spellId = N(data.spellId or data.spellID or data.SpellID)
+      return name, spellId, true
+    end
   end
-  if type(_G.UnitBuff) == "function" then
-    local ok, name = pcall(_G.UnitBuff, "player", i)
-    if ok then return name end
+  local fn = _G.UnitAura or _G.UnitBuff
+  if type(fn) == "function" then
+    local ok, r = pcall(function() return { fn("player", i, "HELPFUL") } end)
+    if ok and type(r) == "table" and (r[1] ~= nil or r[10] ~= nil or r[11] ~= nil) then
+      name = SafeStr(r[1])
+      for _, idx in ipairs({ 10, 11, 12, 8, 9 }) do
+        local id = N(r[idx])
+        if id and id > 0 and id < 2000000 then spellId = id break end
+      end
+      return name, spellId, true
+    end
   end
-  return nil
+  return nil, nil, false
 end
 
 function S.FoodDrinkAura()
+  -- 1) C_UnitAuras par identifiant de sort (même si le nom est secret)
+  local C = _G.C_UnitAuras
+  if type(C) == "table" and type(C.GetPlayerAuraBySpellID) == "function" then
+    for id in pairs(S.EAT_SPELLS) do
+      local ok, data = pcall(C.GetPlayerAuraBySpellID, id)
+      if ok and type(data) == "table" then return SafeStr(data.name) or ("spell:" .. tostring(id)), id end
+    end
+  end
+  -- 2) AuraUtil par nom FR/EN (et noms localisés des sorts connus)
+  local A = _G.AuraUtil
+  if type(A) == "table" and type(A.FindAuraByName) == "function" then
+    local names = {
+      "Nourriture", "Boisson", "Nourriture et Boisson", "Boisson et Nourriture",
+      "Food", "Drink", "Food & Drink", "Food and Drink", "Refreshment", "Restauration",
+    }
+    if type(_G.GetSpellInfo) == "function" then
+      local n = 0
+      for id in pairs(S.EAT_SPELLS) do
+        if n >= 24 then break end
+        local ok, nm = pcall(_G.GetSpellInfo, id)
+        if ok and SafeStr(nm) then names[#names + 1] = nm n = n + 1 end
+      end
+    end
+    for i = 1, #names do
+      local ok, hit = pcall(A.FindAuraByName, names[i], "player", "HELPFUL")
+      if ok and hit then
+        local nm = SafeStr(hit) or (type(hit) == "table" and SafeStr(hit.name)) or names[i]
+        if not IsWellFed(SafeFold(nm)) then return nm end
+      end
+    end
+  end
+  -- 3) Scan des auras (ne pas s'arrêter sur un nom secret / un trou isolé)
+  local holes = 0
   for i = 1, 40 do
-    local name = AuraName(i)
-    if not name then break end
-    local f = (ns.Fold and ns.Fold(name)) or (type(name) == "string" and name:lower()) or ""
-    if NOT_EAT[f] then
-      -- Well Fed / Bien nourri : buff après le repas, pas le canal de régénération
-    elseif EAT_NAMES[f] or f:find("drink", 1, true) or f:find("boisson", 1, true)
-        or (f:find("food", 1, true) and not f:find("foodbuff", 1, true))
-        or f:find("nourriture", 1, true) then
-      return name
+    local name, spellId, present = AuraAt(i)
+    if not present then
+      holes = holes + 1
+      if holes >= 3 then break end
+    else
+      holes = 0
+      if IsFoodDrink(name, spellId) then return name or ("spell:" .. tostring(spellId)), spellId end
+    end
+  end
+  -- 4) Canal en cours (le repas est souvent un canal « Nourriture » / « Food »)
+  local ch = _G.UnitChannelInfo
+  if type(ch) == "function" then
+    local ok, r = pcall(function() return { ch("player") } end)
+    if ok and type(r) == "table" then
+      local nm = SafeStr(r[1])
+      local sid
+      for _, idx in ipairs({ 8, 7, 5, 10, 11 }) do
+        local id = N(r[idx])
+        if id and id > 0 and id < 2000000 then sid = id break end
+      end
+      if IsFoodDrink(nm, sid) then return nm or ("channel:" .. tostring(sid)), sid end
     end
   end
   return nil
 end
 
 function S.LiveEating()
-  if S._sim.eating or S._sim.eat then return true end
-  return S.FoodDrinkAura() and true or false
+  if S._sim.eating or S._sim.eat or S._sim.repas then return true end
+  local ok, found = pcall(S.FoodDrinkAura)
+  return ok and found and true or false
 end
 
 function S.Want(id)
@@ -548,6 +687,81 @@ function S.ApplySheet(t, id)
   return h
 end
 
+-- Cadre de rognage (ScrollFrame) calé dans l'icône, en retrait du cadre bronze /
+-- du fond de la case. SetClipsChildren est utilisé s'il existe, mais Forever
+-- ne le garantit pas : le ScrollFrame est le clip fiable.
+function S.IconAnchor(t)
+  if not t then return nil end
+  return t.icon or t.iconSlot or t.slotBorder or t
+end
+
+function S.IconInset(t, anchor)
+  anchor = anchor or S.IconAnchor(t)
+  local slot = t and (t.iconSlot or t)
+  local inset = slot and N(slot._ringInset) or 0
+  if not inset or inset <= 0 then
+    local size = 32
+    if anchor and anchor.GetWidth then size = N(anchor:GetWidth()) or size end
+    inset = math.max(2, math.floor(size * 3 / 32 + 0.5))
+  end
+  return inset
+end
+
+function S.EnsureIconClip(t)
+  if not t then return nil end
+  if t._iconClip and t._iconClip._content then return t._iconClip, t._iconClip._content end
+  local ok, clip = pcall(CreateFrame, "ScrollFrame", nil, t)
+  if not (ok and clip) then
+    ok, clip = pcall(CreateFrame, "Frame", nil, t)
+    if not (ok and clip) then return nil end
+  end
+  if clip.EnableMouse then pcall(clip.EnableMouse, clip, false) end
+  if clip.SetClipsChildren then pcall(clip.SetClipsChildren, clip, true) end
+  local okC, content = pcall(CreateFrame, "Frame", nil, clip)
+  if okC and content then
+    if clip.SetScrollChild then pcall(clip.SetScrollChild, clip, content) end
+    if content.EnableMouse then pcall(content.EnableMouse, content, false) end
+    if content.SetClipsChildren then pcall(content.SetClipsChildren, content, true) end
+    clip._content = content
+  end
+  t._iconClip = clip
+  return clip, clip._content
+end
+
+function S.PlaceIconClip(t)
+  if not t then return nil end
+  local clip, content = S.EnsureIconClip(t)
+  if not clip then return nil end
+  local anchor = S.IconAnchor(t)
+  local inset = S.IconInset(t, anchor)
+  if clip.ClearAllPoints then pcall(clip.ClearAllPoints, clip) end
+  if clip.SetPoint and anchor then
+    pcall(clip.SetPoint, clip, "TOPLEFT", anchor, "TOPLEFT", inset, -inset)
+    pcall(clip.SetPoint, clip, "BOTTOMRIGHT", anchor, "BOTTOMRIGHT", -inset, inset)
+  elseif clip.SetAllPoints and anchor then
+    pcall(clip.SetAllPoints, clip, anchor)
+  end
+  local w, h = 16, 16
+  if clip.GetWidth then
+    local cw, ch = N(clip:GetWidth()), N(clip:GetHeight())
+    if (not cw or cw < 1) and anchor and anchor.GetWidth then
+      cw = math.max(1, (N(anchor:GetWidth()) or 16) - inset * 2)
+      ch = math.max(1, (N(anchor:GetHeight()) or cw) - inset * 2)
+    end
+    if cw and cw >= 1 then w = cw end
+    if ch and ch >= 1 then h = ch end
+  end
+  if content then
+    if content.SetSize then pcall(content.SetSize, content, w, h) end
+    if content.SetWidth then pcall(content.SetWidth, content, w) end
+    if content.SetHeight then pcall(content.SetHeight, content, h) end
+  end
+  if clip.Show then clip:Show() end
+  if t.SetClipsChildren then pcall(t.SetClipsChildren, t, true) end
+  if t.icon and t.icon.SetClipsChildren then pcall(t.icon.SetClipsChildren, t.icon, true) end
+  return clip, content, w, h
+end
+
 function S.EnsureSlotZ(t)
   if t._slotZ then return t._slotZ end
   local parent = t.icon or t.slotBorder or t
@@ -586,12 +800,24 @@ function S.ApplySlotZ(t, on)
   end
   local clip = S.EnsureSlotZ(t)
   if not clip then return end
-  local anchor = t.icon or t.slotBorder or t
+  local anchor = S.IconAnchor(t)
+  local inset = S.IconInset and S.IconInset(t, anchor) or 2
   if clip.ClearAllPoints then pcall(clip.ClearAllPoints, clip) end
-  if clip.SetAllPoints and anchor then pcall(clip.SetAllPoints, clip, anchor) end
+  if clip.SetPoint and anchor then
+    pcall(clip.SetPoint, clip, "TOPLEFT", anchor, "TOPLEFT", inset, -inset)
+    pcall(clip.SetPoint, clip, "BOTTOMRIGHT", anchor, "BOTTOMRIGHT", -inset, inset)
+  elseif clip.SetAllPoints and anchor then
+    pcall(clip.SetAllPoints, clip, anchor)
+  end
   local w, h = 16, 16
-  if anchor.GetWidth then w = N(anchor:GetWidth()) or w h = N(anchor:GetHeight()) or h end
-  if clip.SetSize then pcall(clip.SetSize, clip, w, h) end
+  if clip.GetWidth then
+    w = N(clip:GetWidth()) or w
+    h = N(clip:GetHeight()) or h
+  end
+  if (not w or w < 1) and anchor and anchor.GetWidth then
+    w = math.max(1, (N(anchor:GetWidth()) or 16) - inset * 2)
+    h = math.max(1, (N(anchor:GetHeight()) or w) - inset * 2)
+  end
   if clip._content and clip._content.SetSize then pcall(clip._content.SetSize, clip._content, w, h) end
   if clip.Show then clip:Show() end
   -- barre large : la goutte du puits cède la place aux z ; en grille, l'icône
@@ -677,9 +903,15 @@ end
 
 function S.EnsureCombatLiq(t)
   if not t then return nil end
-  if t._cLiq then return t._cLiq end
-  local parent = t.icon or t
-  local ok, f = pcall(CreateFrame, "Frame", nil, t)
+  local _, content = S.PlaceIconClip(t)
+  local parent = content or t
+  if t._cLiq then
+    if t._cLiq.SetParent and parent and t._cLiq.GetParent and t._cLiq:GetParent() ~= parent then
+      pcall(t._cLiq.SetParent, t._cLiq, parent)
+    end
+    return t._cLiq
+  end
+  local ok, f = pcall(CreateFrame, "Frame", nil, parent)
   if not (ok and f) then return nil end
   if f.EnableMouse then pcall(f.EnableMouse, f, false) end
   local function tex(layer)
@@ -712,19 +944,30 @@ function S.ApplyCombatLiq(t)
   end
   liq = S.EnsureCombatLiq(t)
   if not liq then return end
-  local _, w, h, anchor = S.ClipToIcon(liq, t)
+  local clip, content, w, h = S.PlaceIconClip(t)
   w, h = w or 16, h or 16
-  anchor = anchor or t.icon or t
-  -- Remplissage depuis le bas : le liquide monte avec p, surface ondulée.
+  if liq.ClearAllPoints then pcall(liq.ClearAllPoints, liq) end
+  if content and liq.SetAllPoints then pcall(liq.SetAllPoints, liq, content)
+  elseif clip and liq.SetAllPoints then pcall(liq.SetAllPoints, liq, clip)
+  end
+  -- Remplissage depuis le bas, strictement dans le clip (jamais au-dessus de h).
   local inset = math.max(1, w * 0.18)
   local bodyH = math.max(1, (h * 0.72) * p)
   local wave = 0.04 * h * math.sin((S._phase or 0) * 2 * math.pi)
   bodyH = math.max(1, math.min(h * 0.82, bodyH + wave))
+  local baseY = math.max(0, h * 0.10)
+  if baseY + bodyH > h then bodyH = math.max(1, h - baseY) end
   local redH = bodyH * 0.38
   local blueH = bodyH - redH
   local function place(tex, height, y, r, g, b, a)
     if not tex or height < 0.5 then
       if tex and tex.Hide then tex:Hide() end
+      return
+    end
+    if y < 0 then height = height + y y = 0 end
+    if y + height > h then height = h - y end
+    if height < 0.5 then
+      if tex.Hide then tex:Hide() end
       return
     end
     if tex.ClearAllPoints then pcall(tex.ClearAllPoints, tex) end
@@ -736,11 +979,13 @@ function S.ApplyCombatLiq(t)
   end
   local cr = (grey > 0) and (0.42 + (0.71 - 0.42) * (1 - grey)) or 0.71
   -- Wd.SEG_COLORS approx: red 0.616,0.278,0.227  blue 0.329,0.408,0.604
-  place(liq.blue, blueH, math.max(0, h * 0.10), 0.329, 0.408, 0.604, 0.72)
-  place(liq.red, redH, math.max(0, h * 0.10) + blueH, 0.616, 0.278, 0.227, 0.78)
+  place(liq.blue, blueH, baseY, 0.329, 0.408, 0.604, 0.72)
+  place(liq.red, redH, baseY + blueH, 0.616, 0.278, 0.227, 0.78)
   if liq.wave then
-    local wy = math.max(0, h * 0.10) + bodyH - 1
-    place(liq.wave, math.max(1, h * 0.08), wy, 0.82, 0.47, 0.37, 0.55)
+    local wy = baseY + bodyH - 1
+    local wh = math.max(1, h * 0.08)
+    if wy + wh > h then wy = math.max(0, h - wh) end
+    place(liq.wave, wh, wy, 0.82, 0.47, 0.37, 0.55)
   end
   -- Bulles (style A) : feuille par-dessus le liquide, seulement si assez rempli.
   if liq.bubbles then
@@ -1099,11 +1344,13 @@ end
 -- Vague de repas (réutilise le style « repos » : Dropamine-Wave)
 ------------------------------------------------------------------------------
 function S.EnsureRegenWave(t)
-  if not t or type(t.CreateTexture) ~= "function" then return nil end
+  if not t then return nil end
+  local _, content = S.PlaceIconClip(t)
+  local parent = content or t
+  if not (parent and type(parent.CreateTexture) == "function") then return nil end
   if t._eat then return t._eat end
-  local parent = t.icon or t
-  local body = parent.CreateTexture and parent:CreateTexture(nil, "ARTWORK", nil, 3)
-  local wave = parent.CreateTexture and parent:CreateTexture(nil, "ARTWORK", nil, 4)
+  local body = parent:CreateTexture(nil, "ARTWORK", nil, 3)
+  local wave = parent:CreateTexture(nil, "ARTWORK", nil, 4)
   if not (body and wave) then return nil end
   if body.SetColorTexture then pcall(body.SetColorTexture, body, 0.60, 0.80, 1.00, 0.36)
   elseif body.SetTexture then
@@ -1137,9 +1384,10 @@ function S.ApplyRegenWave(dt)
   end
   local e = S.EnsureRegenWave(t)
   if not e then return end
-  local a = t.icon or t
-  local H = (a.GetHeight and N(a:GetHeight())) or 16
-  local L = H * 0.55
+  local clip, content, w, H = S.PlaceIconClip(t)
+  H = H or 16
+  local a = content or clip or t.icon or t
+  local L = math.min(H * 0.55, H)
   if e.body.ClearAllPoints then pcall(e.body.ClearAllPoints, e.body) end
   if e.body.SetPoint then
     pcall(e.body.SetPoint, e.body, "BOTTOMLEFT", a, "BOTTOMLEFT", 0, 0)
@@ -1150,12 +1398,14 @@ function S.ApplyRegenWave(dt)
   local R = ns.Rested
   e.u = (e.u or 0) + dt / ((R and R.LIQ and R.LIQ.charge and R.LIQ.charge.period) or 2.4)
   if e.u > 1 then e.u = e.u - math.floor(e.u) end
+  local wh, wy = math.min(8, H), math.max(0, L - 5)
+  if wy + wh > H then wy = math.max(0, H - wh) end
   if e.wave.ClearAllPoints then pcall(e.wave.ClearAllPoints, e.wave) end
   if e.wave.SetPoint then
-    pcall(e.wave.SetPoint, e.wave, "BOTTOMLEFT", a, "BOTTOMLEFT", 0, math.max(0, L - 5))
-    pcall(e.wave.SetPoint, e.wave, "BOTTOMRIGHT", a, "BOTTOMRIGHT", 0, math.max(0, L - 5))
+    pcall(e.wave.SetPoint, e.wave, "BOTTOMLEFT", a, "BOTTOMLEFT", 0, wy)
+    pcall(e.wave.SetPoint, e.wave, "BOTTOMRIGHT", a, "BOTTOMRIGHT", 0, wy)
   end
-  if e.wave.SetHeight then pcall(e.wave.SetHeight, e.wave, 8) end
+  if e.wave.SetHeight then pcall(e.wave.SetHeight, e.wave, wh) end
   if e.wave.SetTexCoord then
     local u = e.u * ((R and R.WAVE_U) or 0.5)
     pcall(e.wave.SetTexCoord, e.wave, u, 0, u + ((R and R.WAVE_U) or 0.5), 1)
@@ -1166,9 +1416,6 @@ function S.ApplyRegenWave(dt)
     if e.body and e.body.AddMaskTexture then pcall(e.body.AddMaskTexture, e.body, mask) end
     if e.wave and e.wave.AddMaskTexture then pcall(e.wave.AddMaskTexture, e.wave, mask) end
   end
-  local anchor = t.icon or t
-  if t.SetClipsChildren then pcall(t.SetClipsChildren, t, true) end
-  if anchor and anchor.SetClipsChildren then pcall(anchor.SetClipsChildren, anchor, true) end
   S._eatOn = true
 end
 
@@ -1275,6 +1522,11 @@ if ns.On then
       end
       if ev == "UI_ERROR_MESSAGE" then
         pcall(S.OnInvFullError, ...)
+      end
+      if ev == "UNIT_AURA" then
+        local unit = select(2, ...)
+        if type(unit) ~= "string" then unit = select(1, ...) end
+        if type(unit) == "string" and unit ~= "player" then return end
       end
       pcall(S.Refresh, ev)
     end)

@@ -486,6 +486,7 @@ function Th.ToastLook(f)
     end
     if bg then bg:Hide() end
     f._thTheme = Th.Mode()
+    if ns.UI and ns.UI.ApplyToastTint then pcall(ns.UI.ApplyToastTint, f, f._tintOpts) end
     return
   end
   if look and bg then
@@ -510,6 +511,7 @@ function Th.ToastLook(f)
   Th.ShowFrame(f._thEdge, false)
   if f._thShadow then f._thShadow:Hide() end
   f._thTheme = Th.Mode()
+  if ns.UI and ns.UI.ApplyToastTint then pcall(ns.UI.ApplyToastTint, f, f._tintOpts) end
 end
 function Th.RestyleToasts()
   local UI = ns.UI
