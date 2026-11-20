@@ -55,13 +55,8 @@ end
 ------------------------------------------------------------------------------
 -- Stockage (par personnage, session + jours dans l'historique existant)
 ------------------------------------------------------------------------------
-function E.Sess()
-  local P = ns.Progress
-  if not (P and P.Session) then
-    E._orphan = E._orphan or { secs = EmptySecs(), deaths = { n = 0, secs = 0 }, bagMiss = 0, attempts = {}, fishing = {}, lastTick = nil, openDeath = nil }
-    return E._orphan
-  end
-  local s = P.Session()
+local function BindEff(s)
+  if type(s) ~= "table" then return nil end
   s.eff = s.eff or {}
   local e = s.eff
   e.secs = e.secs or EmptySecs()
@@ -75,9 +70,24 @@ function E.Sess()
   e.moneyIn = e.moneyIn or 0
   e.moneyOut = e.moneyOut or 0
   e.moneyByZone = e.moneyByZone or {}
+  e.lootCoin = e.lootCoin or 0
+  e.lootVendor = e.lootVendor or 0
+  e.lootValue = e.lootValue or ((N(e.lootCoin) or 0) + (N(e.lootVendor) or 0))
+  e.lootByZone = e.lootByZone or {}
   e.zoneSecs = e.zoneSecs or {}
   e.xpFracByZone = e.xpFracByZone or {}
   return e, s
+end
+
+function E.Sess()
+  if E._sessOverride then return E._sessOverride, E._sessOverrideSrc end
+  local P = ns.Progress
+  if not (P and P.Session) then
+    E._orphan = E._orphan or { secs = EmptySecs(), deaths = { n = 0, secs = 0 }, bagMiss = 0, attempts = {}, fishing = {}, lastTick = nil, openDeath = nil }
+    return E._orphan
+  end
+  local s = P.Session()
+  return BindEff(s)
 end
 
 function E.Day(day)
@@ -97,6 +107,10 @@ function E.Day(day)
   e.moneyIn = e.moneyIn or 0
   e.moneyOut = e.moneyOut or 0
   e.moneyByZone = e.moneyByZone or {}
+  e.lootCoin = e.lootCoin or 0
+  e.lootVendor = e.lootVendor or 0
+  e.lootValue = e.lootValue or ((N(e.lootCoin) or 0) + (N(e.lootVendor) or 0))
+  e.lootByZone = e.lootByZone or {}
   e.zoneSecs = e.zoneSecs or {}
   e.xpFracByZone = e.xpFracByZone or {}
   return e, h
@@ -361,14 +375,20 @@ local function SumSecs(list)
       deathsS = deathsS + (N(e.deaths and e.deaths.secs) or 0)
       bag = bag + (N(e.bagMiss) or 0)
       frac = frac + (N(e.xpFrac) or 0)
-      moneyNet = moneyNet + (N(e.moneyNet) or 0)
-      moneyIn = moneyIn + (N(e.moneyIn) or 0)
-      moneyOut = moneyOut + (N(e.moneyOut) or 0)
-      for z, v in pairs(e.moneyByZone or {}) do
+      local lv = N(e.lootValue)
+      if lv == nil and ((N(e.lootCoin) or 0) + (N(e.lootVendor) or 0)) > 0 then
+        lv = (N(e.lootCoin) or 0) + (N(e.lootVendor) or 0)
+      end
+      -- uniquement la valeur marchand mesurée (pas un reliquat GetMoney)
+      if lv then moneyNet = moneyNet + lv end
+      moneyIn = moneyIn + (N(e.lootCoin) or 0)
+      moneyOut = moneyOut + (N(e.lootVendor) or 0)
+      for z, v in pairs(e.lootByZone or e.moneyByZone or {}) do
         local t = moneyByZone[z] or { net = 0, inn = 0, out = 0 }
         if type(v) == "table" then
-          t.net = t.net + (N(v.net) or 0)
-          t.inn = t.inn + (N(v.inn) or 0)
+          local val = N(v.value) or N(v.net) or ((N(v.coin) or 0) + (N(v.vendor) or 0))
+          t.net = t.net + (val or 0)
+          t.inn = t.inn + (N(v.inn) or N(v.coin) or val or 0)
           t.out = t.out + (N(v.out) or 0)
         else
           t.net = t.net + (N(v) or 0)
@@ -638,6 +658,32 @@ function E.Report(period)
     rep.moneyOut = N(sess.moneyOut) or 0
     rep.moneyByZone, rep.zoneSecs, rep.xpFracByZone = sess.moneyByZone, sess.zoneSecs, sess.xpFracByZone
   end
+  -- valeur marchand (pièces + prix vendeur), jamais un delta GetMoney
+  local lootV = N(agg.lootValue)
+  if lootV == nil then
+    lootV = (N(agg.lootCoin) or 0) + (N(agg.lootVendor) or 0)
+    if lootV == 0 and period ~= "session" then lootV = nil end
+  end
+  if period == "session" or not period then
+    local sess = E.Sess()
+    lootV = N(sess.lootValue) or ((N(sess.lootCoin) or 0) + (N(sess.lootVendor) or 0))
+    rep.lootCoin, rep.lootVendor = N(sess.lootCoin) or 0, N(sess.lootVendor) or 0
+    if sess.lootByZone and next(sess.lootByZone) then
+      rep.lootByZone = sess.lootByZone
+      local mz = {}
+      for z, v in pairs(sess.lootByZone) do
+        local val = type(v) == "table" and (N(v.value) or ((N(v.coin) or 0) + (N(v.vendor) or 0))) or N(v)
+        mz[z] = { net = val or 0, inn = val or 0, out = 0 }
+      end
+      rep.moneyByZone = mz
+    end
+  else
+    rep.lootCoin, rep.lootVendor = N(agg.lootCoin) or 0, N(agg.lootVendor) or 0
+  end
+  if lootV ~= nil then
+    rep.lootValue, rep.moneyNet = lootV, lootV
+  end
+  rep.goldKind = "vendor"
   hours = (N(rep.total) or 0) / E.HOUR
   if hours >= (E.MIN_SECS / E.HOUR) and rep.moneyNet ~= nil then
     rep.goldPerHour = rep.moneyNet / hours
@@ -687,8 +733,10 @@ function E.DemoData()
       { skill = "cooking", name = "Cuisine", att = 15, up = 1, ratio = 1/15, optimal = 0, medium = 2, easy = 8, trivial = 5, flag = "green" },
     },
     weapons = { { id = "swords", name = "Épées", kind = "melee", current = 150, cap = 160, frac = 150/160 } },
-    moneyNet = 123456, moneyIn = 150000, moneyOut = 26544, goldPerHour = 123456 / (4800/3600),
+    moneyNet = 123456, moneyIn = 18500, moneyOut = 0, goldPerHour = 123456 / (4800/3600),
+    lootCoin = 18500, lootVendor = 104956, lootValue = 123456, goldKind = "vendor",
     moneyByZone = { ["Les Paluns"] = { net = 80000, inn = 80000, out = 0 } },
+    lootByZone = { ["Les Paluns"] = { coin = 4000, vendor = 76000, value = 80000 } },
     zoneSecs = { ["Les Paluns"] = 720 },
     xpFracByZone = { ["Les Paluns"] = 0.12 },
   }
@@ -826,8 +874,10 @@ function E.EnrichSpots(rep)
     local s = spots[i]
     local z = s.zone
     seen[z] = true
+    local lb = ((rep and rep.lootByZone) or {})[z]
     local m = moneyByZone[z]
-    local net = type(m) == "table" and N(m.net) or N(m)
+    local net = type(lb) == "table" and (N(lb.value) or ((N(lb.coin) or 0) + (N(lb.vendor) or 0))) or N(lb)
+    if net == nil then net = type(m) == "table" and N(m.net) or N(m) end
     s.goldNet = net
     local secs = N(zoneSecs[z]) or N(s.secs) or 0
     if secs < (N(s.secs) or 0) then secs = N(s.secs) or secs end
@@ -897,6 +947,423 @@ function E.ScoringTip()
 end
 
 ------------------------------------------------------------------------------
+-- Butin : pièces ramassées + valeur marchand (prix vendeur au moment du loot)
+-- On n'utilise PAS GetMoney() : courrier, HV, échanges et banque ne faussent rien.
+------------------------------------------------------------------------------
+function E.ParseLootMoney(msg)
+  if type(msg) ~= "string" or msg == "" then return nil end
+  local function take(pat)
+    local n = N(msg:match(pat))
+    return n or 0
+  end
+  -- préfixes globaux du client (toute langue)
+  local okPrefix = false
+  if not E._moneyPrefixReady then
+    E._moneyPrefixReady = true
+    E._moneyPrefixes = {}
+    for _, g in ipairs({ "YOU_LOOT_MONEY", "LOOT_MONEY_SPLIT", "YOU_LOOT_MONEY_GUILD", "LOOT_MONEY_SPLIT_GUILD" }) do
+      local pfx = ns.GlobalPrefix and ns.GlobalPrefix(g)
+      if pfx then E._moneyPrefixes[#E._moneyPrefixes + 1] = pfx end
+    end
+  end
+  if #(E._moneyPrefixes or {}) > 0 then
+    for i = 1, #E._moneyPrefixes do
+      if msg:find(E._moneyPrefixes[i], 1, true) then okPrefix = true break end
+    end
+  end
+  if not okPrefix then
+    -- repli FR/EN si les globaux ne sont pas chargés ; « loot » seul est trop large (courrier, HV)
+    local fold = Fold(msg)
+    if fold:find("vous ramass", 1, true) or fold:find("ramass", 1, true)
+      or fold:find("you loot", 1, true) or fold:find("you receive loot", 1, true)
+      or fold:find("part du butin", 1, true) or fold:find("share of the loot", 1, true)
+      or fold:find("your share of the loot", 1, true) then
+      okPrefix = true
+    end
+  end
+  if not okPrefix then return nil end
+  local g = take("(%d+)%s*|T[^|]*[Gg]old") + take("(%d+)%s*[Gg]old") + take("(%d+)%s*[Oo]r[^%w]") + take("(%d+)%s*[Oo]r$")
+  local s = take("(%d+)%s*|T[^|]*[Ss]ilver") + take("(%d+)%s*[Ss]ilver") + take("(%d+)%s*[Aa]rgent")
+  local c = take("(%d+)%s*|T[^|]*[Cc]opper") + take("(%d+)%s*[Cc]opper") + take("(%d+)%s*[Cc]uivre")
+  -- « 12 c. » / nombres seuls dans un libellé déjà monétaire
+  if g + s + c == 0 then
+    c = take("(%d+)%s*c%.") + take("(%d+)%s*C[^%w]") + take("(%d+)%s*C$")
+  end
+  local copper = g * 10000 + s * 100 + c
+  if copper <= 0 then return nil end
+  return copper
+end
+
+function E.ItemSellPrice(itemID)
+  itemID = N(itemID)
+  if not itemID then return nil end
+  local gi = _G.GetItemInfo or (type(_G.C_Item) == "table" and _G.C_Item.GetItemInfo)
+  if type(gi) ~= "function" then return nil end
+  local ok, r = pcall(function() return { gi(itemID) } end)
+  if not ok or type(r) ~= "table" then return nil end
+  -- name, link, quality, ilvl, min, type, sub, stack, equip, tex, sellPrice
+  local price = N(r[11]) or N(r[12])
+  if price == nil and type(_G.GetItemVendorPrice) == "function" then
+    price = N(Call(_G.GetItemVendorPrice, itemID))
+  end
+  return price
+end
+
+function E.AddLoot(coin, vendor, zone)
+  coin, vendor = N(coin) or 0, N(vendor) or 0
+  if coin == 0 and vendor == 0 then return end
+  local e = E.Sess()
+  e.lootCoin = (N(e.lootCoin) or 0) + coin
+  e.lootVendor = (N(e.lootVendor) or 0) + vendor
+  e.lootValue = (N(e.lootCoin) or 0) + (N(e.lootVendor) or 0)
+  -- alias de compatibilité pour le rapport (plus de delta GetMoney)
+  e.moneyNet = e.lootValue
+  local P = ns.Progress
+  zone = zone or (P and P.Zone and P.Zone()) or nil
+  if zone then
+    e.lootByZone = e.lootByZone or {}
+    local z = e.lootByZone[zone]
+    if type(z) ~= "table" then z = { coin = 0, vendor = 0, value = 0 } e.lootByZone[zone] = z end
+    z.coin = (N(z.coin) or 0) + coin
+    z.vendor = (N(z.vendor) or 0) + vendor
+    z.value = (N(z.coin) or 0) + (N(z.vendor) or 0)
+    e.moneyByZone = e.moneyByZone or {}
+    e.moneyByZone[zone] = { net = z.value, inn = z.value, out = 0 }
+  end
+  local day = E.Day()
+  if day then
+    day.lootCoin = (N(day.lootCoin) or 0) + coin
+    day.lootVendor = (N(day.lootVendor) or 0) + vendor
+    day.lootValue = (N(day.lootCoin) or 0) + (N(day.lootVendor) or 0)
+    day.moneyNet = day.lootValue
+    if zone then
+      day.lootByZone = day.lootByZone or {}
+      local z = day.lootByZone[zone]
+      if type(z) ~= "table" then z = { coin = 0, vendor = 0, value = 0 } day.lootByZone[zone] = z end
+      z.coin = (N(z.coin) or 0) + coin
+      z.vendor = (N(z.vendor) or 0) + vendor
+      z.value = (N(z.coin) or 0) + (N(z.vendor) or 0)
+      day.moneyByZone = day.moneyByZone or {}
+      day.moneyByZone[zone] = { net = z.value, inn = z.value, out = 0 }
+    end
+  end
+end
+
+function E.NoteLootCoin(msg)
+  local copper = E.ParseLootMoney(msg)
+  if not copper then return nil end
+  E.AddLoot(copper, 0)
+  return copper
+end
+
+function E.NoteLootItem(msg)
+  local Sc = ns.Scanner
+  local itemID, qty
+  if Sc and Sc.ParseChatLoot then
+    itemID, qty = Sc.ParseChatLoot(msg)
+  end
+  itemID, qty = N(itemID), N(qty) or 1
+  if not itemID then return nil end
+  local price = E.ItemSellPrice(itemID)
+  if price == nil then
+    E._pendingVendor = E._pendingVendor or {}
+    local P = ns.Progress
+    E._pendingVendor[#E._pendingVendor + 1] = {
+      id = itemID, qty = qty, zone = P and P.Zone and P.Zone() or nil,
+    }
+    -- force le cache
+    local gi = _G.GetItemInfo or (type(_G.C_Item) == "table" and _G.C_Item.GetItemInfo)
+    if type(gi) == "function" then pcall(gi, itemID) end
+    return nil
+  end
+  E.AddLoot(0, price * qty)
+  return price * qty
+end
+
+function E.FlushPendingVendor(itemID)
+  itemID = N(itemID)
+  local list = E._pendingVendor
+  if not list or #list == 0 then return end
+  local keep = {}
+  for i = 1, #list do
+    local p = list[i]
+    if itemID and p.id ~= itemID then
+      keep[#keep + 1] = p
+    else
+      local price = E.ItemSellPrice(p.id)
+      if price == nil then
+        keep[#keep + 1] = p
+      else
+        E.AddLoot(0, price * (N(p.qty) or 1), p.zone)
+      end
+    end
+  end
+  E._pendingVendor = keep
+end
+
+-- Conservé comme no-op : plus aucun delta GetMoney dans la rentabilité.
+function E.NoteMoney(init)
+  return nil
+end
+
+function E.VendorTip()
+  return Tr["Valeur marchand : pièces ramassées (CHAT_MSG_MONEY) plus le prix vendeur de chaque objet au moment du butin (GetItemInfo × quantité). Le courrier, l'hôtel des ventes, les échanges et la banque ne sont pas comptés. Un objet ensuite vendu à l'hôtel des ventes reste valorisé au prix vendeur."]
+end
+
+------------------------------------------------------------------------------
+-- Instantané de session + historique (30 détaillées, puis agrégats hebdo)
+------------------------------------------------------------------------------
+E.HIST_MAX = 30
+
+function E.Hist()
+  local P = ns.Progress
+  if not (P and P.C) then return nil end
+  local p = P.C()
+  p.sessLog = p.sessLog or {}
+  p.sessWeeks = p.sessWeeks or {}
+  return p
+end
+
+function E.WeekKey(ts)
+  ts = N(ts)
+  local P = ns.Progress
+  local day
+  if type(_G.date) == "function" and ts and ts > 0 then
+    local ok, s = pcall(_G.date, "%Y-%m-%d", ts)
+    if ok then day = s end
+  end
+  if P and P.WeekStart then return P.WeekStart(day or (P.Today and P.Today())) end
+  return day or "?"
+end
+
+local function SkillList(sess)
+  local out = {}
+  sess = sess or {}
+  for k, sk in pairs(sess.skills or {}) do
+    out[#out + 1] = { id = k, name = sk.name or k, n = N(sk.n) or 0 }
+  end
+  table.sort(out, function(a, b) if a.n ~= b.n then return a.n > b.n end return tostring(a.name) < tostring(b.name) end)
+  return out
+end
+
+function E.CaptureRecap(s)
+  local P = ns.Progress
+  if s then
+    local e = BindEff(s)
+    E._sessOverride, E._sessOverrideSrc = e, s
+  elseif not E._archiving then
+    E.Pulse("capture")
+  end
+  if not s and not E._archiving then
+    s = P and P.Session and P.Session() or nil
+  end
+  local rep = E.Report("session")
+  local r = (P and P.Rates and P.Rates()) or {}
+  local ended = Wall()
+  local start = N(s and s.start) or ended
+  local dur = math.max(0, ended - start)
+  if N(rep.total) and rep.total > dur then dur = rep.total end
+  local ach = {}
+  if P and P.Achievements then
+    for _, a in ipairs(P.Achievements()) do
+      if a.unlocked and N(a.at) and N(a.at) >= start then
+        ach[#ach + 1] = { id = a.id, name = a.name, at = a.at }
+      end
+    end
+  end
+  local recipes = {}
+  if s and s.recipes then
+    for i, rec in ipairs(s.recipes) do recipes[#recipes + 1] = rec end
+  end
+  local e = (s and s.eff) or E.Sess()
+  local lootValue = N(e.lootValue) or N(rep.lootValue) or N(rep.moneyNet)
+  local hours = (dur > 0) and (dur / E.HOUR) or nil
+  local ups, upsN = SkillList(s), 0
+  for i = 1, #ups do upsN = upsN + (ups[i].n or 0) end
+  local snap = {
+    start = start, ended = ended, duration = dur,
+    pts = N(s and s.pts) or 0,
+    xp = N(s and s.xp) or 0,
+    xpFrac = N(e.xpFrac) or N(s and s.xpFrac) or N(rep.xpFrac) or 0,
+    levels = N(s and s.levels) or 0,
+    score = rep.score, secs = rep.secs, total = N(rep.total) or dur,
+    active = rep.active, dead = rep.dead, other = rep.other,
+    deaths = rep.deaths, bagMiss = N(rep.bagMiss) or 0,
+    lootCoin = N(e.lootCoin) or 0, lootVendor = N(e.lootVendor) or 0,
+    lootValue = lootValue or 0,
+    goldPerHour = (hours and hours >= (E.MIN_SECS / E.HOUR) and lootValue) and (lootValue / hours) or nil,
+    pctLevelPerHour = (not rep.maxLevel) and (rep.pctLevelPerHour or r.pctLevelPerHour) or nil,
+    maxLevel = rep.maxLevel and true or false,
+    skills = ups, skillUps = upsN,
+    skillUpsPerHour = (hours and hours >= (E.MIN_SECS / E.HOUR) and upsN > 0) and (upsN / hours) or nil,
+    recipes = recipes,
+    spots = rep.spots, profit = rep.profit,
+    achievements = ach,
+    tip = rep.tip,
+    goldKind = "vendor",
+  }
+  E._sessOverride, E._sessOverrideSrc = nil, nil
+  return snap
+end
+
+function E.MergeRecap(a, b)
+  if not a then return b end
+  if not b then return a end
+  local function add(x, y) return (N(x) or 0) + (N(y) or 0) end
+  local out = {
+    start = math.min(N(a.start) or 0, N(b.start) or 0),
+    ended = math.max(N(a.ended) or 0, N(b.ended) or 0),
+    duration = add(a.duration, b.duration),
+    pts = add(a.pts, b.pts), xp = add(a.xp, b.xp), xpFrac = add(a.xpFrac, b.xpFrac),
+    levels = add(a.levels, b.levels),
+    total = add(a.total, b.total), active = add(a.active, b.active),
+    dead = add(a.dead, b.dead), other = add(a.other, b.other),
+    bagMiss = add(a.bagMiss, b.bagMiss),
+    lootCoin = add(a.lootCoin, b.lootCoin), lootVendor = add(a.lootVendor, b.lootVendor),
+    lootValue = add(a.lootValue, b.lootValue),
+    skillUps = add(a.skillUps, b.skillUps),
+    n = add(a.n or 1, b.n or 1),
+    goldKind = "vendor", weekly = true,
+    week = a.week or b.week,
+  }
+  out.score = (out.total > 0) and (out.active / out.total) or nil
+  local hours = out.duration / E.HOUR
+  if hours >= (E.MIN_SECS / E.HOUR) then
+    out.goldPerHour = out.lootValue / hours
+    if out.xpFrac > 0 then out.pctLevelPerHour = out.xpFrac / hours * 100 end
+    if out.skillUps > 0 then out.skillUpsPerHour = out.skillUps / hours end
+  end
+  return out
+end
+
+function E.ArchiveRecap(snap)
+  snap = snap or E.CaptureRecap()
+  if not snap then return nil end
+  local p = E.Hist()
+  if not p then return snap end
+  table.insert(p.sessLog, 1, snap)
+  while #p.sessLog > E.HIST_MAX do
+    local old = table.remove(p.sessLog)
+    local key = E.WeekKey(old.start or old.ended)
+    old.week = key
+    p.sessWeeks[key] = E.MergeRecap(p.sessWeeks[key], old)
+  end
+  p.effPrev = {
+    lootValue = snap.lootValue, lootCoin = snap.lootCoin, lootVendor = snap.lootVendor,
+    moneyNet = snap.lootValue, total = snap.total, xpFrac = snap.xpFrac,
+    start = snap.start, score = snap.score, duration = snap.duration,
+    goldPerHour = snap.goldPerHour, pctLevelPerHour = snap.pctLevelPerHour,
+    skillUpsPerHour = snap.skillUpsPerHour, bagMiss = snap.bagMiss,
+    deaths = snap.deaths, goldKind = "vendor",
+  }
+  return snap
+end
+
+function E.RememberPrev(s)
+  return E.ArchiveRecap(E.CaptureRecap(s))
+end
+
+function E.HistoryList()
+  local p = E.Hist()
+  if not p then return { sessions = {}, weeks = {} } end
+  local weeks = {}
+  for k, v in pairs(p.sessWeeks or {}) do
+    weeks[#weeks + 1] = v
+    v.week = v.week or k
+  end
+  table.sort(weeks, function(a, b) return (a.week or "") > (b.week or "") end)
+  return { sessions = p.sessLog or {}, weeks = weeks }
+end
+
+function E.AverageOf(list, key)
+  local sum, n = 0, 0
+  for i = 1, #(list or {}) do
+    local v = N(list[i][key])
+    if v then sum, n = sum + v, n + 1 end
+  end
+  if n == 0 then return nil end
+  return sum / n, n
+end
+
+function E.RecapsInDays(days)
+  days = N(days) or 7
+  local p = E.Hist()
+  if not p then return {} end
+  local now = Wall()
+  local cut = now - days * 86400
+  local out = {}
+  for i, s in ipairs(p.sessLog or {}) do
+    if (N(s.start) or N(s.ended) or 0) >= cut then out[#out + 1] = s end
+  end
+  -- semaines agrégées qui tombent dans la fenêtre
+  for _, w in pairs(p.sessWeeks or {}) do
+    if (N(w.ended) or N(w.start) or 0) >= cut then out[#out + 1] = w end
+  end
+  return out
+end
+
+-- Comparaisons uniquement normalisées (part active, % niv./h, paliers/h, valeur/h).
+function E.CompareRecap(snap)
+  snap = snap or E.CaptureRecap()
+  local p = E.Hist()
+  local prev = p and p.effPrev or (p and p.sessLog and p.sessLog[1]) or nil
+  -- si on compare la session en cours, prev est la dernière archivée
+  local d7, d30 = E.RecapsInDays(7), E.RecapsInDays(30)
+  local function pack(key)
+    return {
+      mine = N(snap and snap[key]),
+      prev = prev and N(prev[key]) or nil,
+      d7 = E.AverageOf(d7, key),
+      d30 = E.AverageOf(d30, key),
+    }
+  end
+  return {
+    score = pack("score"),
+    pctLevelPerHour = pack("pctLevelPerHour"),
+    skillUpsPerHour = pack("skillUpsPerHour"),
+    goldPerHour = pack("goldPerHour"),
+  }
+end
+
+
+function E.NoteRecipeLearn(msg)
+  if type(msg) ~= "string" then return nil end
+  local fold = Fold(msg)
+  local learned = fold:find("vous avez appris", 1, true) or fold:find("you have learned", 1, true)
+    or fold:find("apprend une nouvelle recette", 1, true) or fold:find("learned a new recipe", 1, true)
+  if not learned then return nil end
+  local name = msg:match(":%s*(.+)%s*$") or msg:match("recette%s+(.+)%s*$") or msg:match("recipe%s+(.+)%s*$")
+  if type(name) == "string" then name = name:gsub("|c%x+|H.-|h%[(.-)%]|h|r", "%1"):gsub("%.$", "") end
+  local s = ns.Progress and ns.Progress.Session and ns.Progress.Session()
+  if not s then return nil end
+  s.recipes = s.recipes or {}
+  s.recipes[#s.recipes + 1] = { name = name or "?", at = Wall() }
+  return name
+end
+function E.DemoRecap()
+  local demo = E.DemoData and E.DemoData() or {}
+  local report = demo.report or {}
+  local snap = {
+    start = Wall() - 5400, ended = Wall(), duration = 5400,
+    pts = 42, xp = 21953, xpFrac = 0.42, levels = 0,
+    score = report.score or 0.625, secs = report.secs, total = report.total or 4800,
+    active = report.active, dead = report.dead, other = report.other,
+    deaths = report.deaths or { n = 2, secs = 90 }, bagMiss = report.bagMiss or 3,
+    lootCoin = 18500, lootVendor = 104956, lootValue = 123456,
+    goldPerHour = 123456 / 1.5, pctLevelPerHour = 35.0, maxLevel = false,
+    skills = { { id = "skinning", name = "Dépeçage", n = 18 }, { id = "cooking", name = "Cuisine", n = 4 } },
+    skillUps = 22, skillUpsPerHour = 22 / 1.5,
+    recipes = { { name = "Palourdes bouillies", id = 1 } },
+    spots = report.spots, profit = report.profit,
+    achievements = { { id = "demo", name = "Premier pas", at = Wall() - 1000 } },
+    tip = report.tip or "15 % du temps en vol",
+    goldKind = "vendor", demo = true,
+  }
+  if report.profit then snap.profit = report.profit end
+  return snap
+end
+
+------------------------------------------------------------------------------
 -- Branchements
 ------------------------------------------------------------------------------
 if ns.On then
@@ -912,9 +1379,11 @@ if ns.On then
   ns.On("PLAYER_REGEN_DISABLED", function() E.Pulse("combat") end)
   ns.On("PLAYER_REGEN_ENABLED", function() E.Pulse("regen") end)
   ns.On("PLAYER_FLAGS_CHANGED", function() E.Pulse("flags") end)
-  ns.On("PLAYER_ENTERING_WORLD", function() E.NoteMoney(true) E.Pulse("pew") end)
-  ns.On("PLAYER_MONEY", function() E.NoteMoney() end)
-  ns.On("PLAYER_LOGIN", function() E.NoteMoney(true) end)
+  ns.On("PLAYER_ENTERING_WORLD", function() E.Pulse("pew") end)
+  ns.On("CHAT_MSG_MONEY", function(_, msg) E.NoteLootCoin(msg) end)
+  ns.On("CHAT_MSG_LOOT", function(_, msg) E.NoteLootItem(msg) end)
+  ns.On("GET_ITEM_INFO_RECEIVED", function(_, itemID) E.FlushPendingVendor(itemID) end)
+  ns.On("CHAT_MSG_SYSTEM", function(_, msg) E.NoteRecipeLearn(msg) end)
   ns.On("UI_ERROR_MESSAGE", function(_, msg)
     local s = Fold(tostring(msg or _))
     if s:find("inventaire", 1, true) and s:find("plein", 1, true) then E.NoteBagMiss()
@@ -980,7 +1449,15 @@ do
   if P and P.CloseSession then
     local base = P.CloseSession
     function P.CloseSession(s)
-      E.RememberPrev(s)
+      if E._archiving then return base(s) end
+      E._archiving = true
+      if s then
+        local e = BindEff(s)
+        E._sessOverride, E._sessOverrideSrc = e, s
+      end
+      pcall(E.RememberPrev, s)
+      E._sessOverride, E._sessOverrideSrc = nil, nil
+      E._archiving = false
       return base(s)
     end
   end

@@ -5363,6 +5363,9 @@ function UI:WireDropMouse(f)
     if df and (df._osrsMoving or df._osrsEditMoving) then return end
     -- sticky (astuce premier vol) : tout clic ferme le toast, sans ouvrir une tuile.
     if button == "RightButton" or self._sticky then UI:DismissDrop(self)
+    elseif self._kind == "recap" or self._dedupeKey == "osrs-logout-recap" then
+      if ns.ProgressUI and ns.ProgressUI.OpenRecap then pcall(ns.ProgressUI.OpenRecap, "current") end
+      UI:DismissDrop(self)
     else UI:OpenFromDrop(self._target, self) end
   end)
   -- 3.0.0 : le glisser sur un drop déplace le SUPPORT (mode édition ou
@@ -5653,6 +5656,8 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   f._fullTitle, f._fullSub = title or "", subtitle or ""
   f._toastData = opts.toastData
   f._sticky = opts.sticky and true or nil
+  f._kind = opts.kind
+
   self.dropsActive[#self.dropsActive + 1] = f
   self:PackDrops()
   ToastAlpha(f, 0)

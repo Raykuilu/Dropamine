@@ -971,6 +971,9 @@ function PU.BuildHeader(f)
   TipOn(f.close, Tr["Fermer"], Tr["Échap ferme aussi la fenêtre."])
   f.share = PU.Button(f, 88, 20, Tr["Partager"], "share", function() PU.ShareClick() end)
   f.share:SetPoint("RIGHT", f.close, "LEFT", -6, 0)
+  f.recap = PU.Button(f, 96, 20, Tr["Récap session"], "share", function() PU.OpenRecap("current") end)
+  f.recap:SetPoint("RIGHT", f.share, "LEFT", -6, 0)
+  TipOn(f.recap, Tr["Récap session"], Tr["Durée, temps actif, progression normalisée, paliers, recettes, morts, butin perdu, meilleur spot, succès, valeur marchand et comparaisons."])
   TipOn(f.share, Tr["Partager"], Tr["Pose le récap de ta session dans la zone de saisie du chat : rien n'est envoyé tant que tu n'appuies pas sur Entrée."])
   f.divider = Tex(f, "ARTWORK", 1)
   f.divider:SetPoint("TOPLEFT", f, "TOPLEFT", PU.PAD, -50)
@@ -1381,6 +1384,228 @@ function PU.BuildEfficiency(f)
 end
 
 
+
+function PU.OpenRecap(which)
+  local s = State()
+  s.recapOpen = true
+  s.recapId = which or "current"
+  if not PU.frame then PU.Build() end
+  PU.Open()
+  PU.Refresh()
+  return true
+end
+
+function PU.CloseRecap()
+  local s = State()
+  s.recapOpen = false
+  s.recapId = nil
+  PU.Refresh()
+end
+
+function PU.BuildRecap(f)
+  local p = Page(f, "recap")
+  p.back = PU.Button(p, 70, 20, Tr["Retour"], "small", function() PU.CloseRecap() end)
+  p.back:SetPoint("TOPLEFT", p, "TOPLEFT", 0, 0)
+  p.title = FS(p, "GameFontNormalLarge", "title")
+  p.title:SetPoint("LEFT", p.back, "RIGHT", 8, 0)
+  p.title:SetText(Tr["Récap session"])
+  if p.title.SetHeight then p.title:SetHeight(18) end
+  p.test = PU.Button(p, 88, 20, Tr["Test"], "small", function() PU.OpenRecap("demo") end)
+  p.test:SetPoint("TOPRIGHT", p, "TOPRIGHT", 0, 0)
+  TipOn(p.test, Tr["Récap session"], Tr["Charge un récap de démonstration (données d'exemple, signalées comme telles)."])
+
+  local hw = 200
+  local hist = PU.Card(p, 0, 26, hw, 254, Tr["Historique"])
+  p.histCard = hist
+  p.hist = {}
+  for i = 1, 10 do
+    local btn = PU.Button(hist, hw - 12, 20, "", "small", function()
+      local it = p.hist[i] and p.hist[i]._item
+      if it then
+        State().recapId = it.id
+        PU.Refresh()
+      end
+    end)
+    btn:SetPoint("TOPLEFT", hist, "TOPLEFT", 6, -(20 + (i - 1) * 22))
+    p.hist[i] = btn
+  end
+  p.histMore = FS(hist, "GameFontDisableSmall", "sub")
+  p.histMore:SetPoint("BOTTOMLEFT", hist, "BOTTOMLEFT", 8, 6)
+  if p.histMore.SetWidth then p.histMore:SetWidth(hw - 16) end
+  if p.histMore.SetHeight then p.histMore:SetHeight(12) end
+
+  local dw = PU.CONTENT_W - hw - 8
+  local det = PU.Card(p, hw + 8, 26, dw, 254, "")
+  p.det = det
+  p.head = FS(det, "GameFontNormal", "title")
+  p.head:SetPoint("TOPLEFT", det, "TOPLEFT", 10, -8)
+  if p.head.SetWidth then p.head:SetWidth(dw - 20) end
+  if p.head.SetHeight then p.head:SetHeight(16) end
+  p.lines = {}
+  for i = 1, 14 do
+    local fs = FS(det, "GameFontHighlightSmall", "text")
+    fs:SetPoint("TOPLEFT", det, "TOPLEFT", 10, -(26 + (i - 1) * 14))
+    if fs.SetWidth then fs:SetWidth(dw - 20) end
+    if fs.SetHeight then fs:SetHeight(13) end
+    p.lines[i] = fs
+  end
+
+  p.compare = FS(p, "GameFontHighlightSmall", "text")
+  p.compare:SetPoint("TOPLEFT", p, "TOPLEFT", 4, -284)
+  if p.compare.SetWidth then p.compare:SetWidth(PU.CONTENT_W - 8) end
+  if p.compare.SetHeight then p.compare:SetHeight(14) end
+  p.tip = FS(p, "GameFontDisableSmall", "sub")
+  p.tip:SetPoint("TOPLEFT", p, "TOPLEFT", 4, -300)
+  if p.tip.SetWidth then p.tip:SetWidth(PU.CONTENT_W - 8) end
+  if p.tip.SetHeight then p.tip:SetHeight(16) end
+  return p
+end
+
+local function CmpBit(label, pack, fmt)
+  if not pack or pack.mine == nil then return nil end
+  local bits = { label .. " " .. fmt(pack.mine) }
+  if pack.prev then bits[#bits + 1] = Tr["préc."] .. " " .. fmt(pack.prev) end
+  if pack.d7 then bits[#bits + 1] = Tr["moy. 7 j"] .. " " .. fmt(pack.d7) end
+  if pack.d30 then bits[#bits + 1] = Tr["moy. 30 j"] .. " " .. fmt(pack.d30) end
+  return table.concat(bits, " · ")
+end
+
+function PU.RefreshRecap(p)
+  if not p then return end
+  local E = ns.Efficiency
+  if not E then return end
+  if p.test then
+    if ns.DEV_TEST then p.test:Show() else p.test:Hide() end
+  end
+  local which = State().recapId or "current"
+  local snap
+  if which == "demo" and E.DemoRecap then
+    snap = E.DemoRecap()
+  elseif which == "current" or not which then
+    snap = E.CaptureRecap and E.CaptureRecap() or nil
+  else
+    local hist = E.HistoryList and E.HistoryList() or { sessions = {}, weeks = {} }
+    for _, s in ipairs(hist.sessions) do
+      if s.id == which or tostring(s.start) == tostring(which) then snap = s break end
+    end
+    if not snap then
+      for _, w in ipairs(hist.weeks) do
+        if (w.week or w.id) == which then snap = w break end
+      end
+    end
+  end
+  if not snap then snap = E.CaptureRecap and E.CaptureRecap() or {} end
+
+  local hist = E.HistoryList and E.HistoryList() or { sessions = {}, weeks = {} }
+  local rows = {}
+  rows[#rows + 1] = { id = "current", label = Tr["Session en cours"] }
+  if which == "demo" or (snap and snap.demo) then
+    rows[#rows + 1] = { id = "demo", label = Tr["Démonstration"] }
+  end
+  for i, s in ipairs(hist.sessions) do
+    local when = PU.FormatWhen and PU.FormatWhen(s.start) or tostring(s.start or "")
+    local dur = (P.Dur and P.Dur(s.duration)) or Dur(s.duration or 0)
+    rows[#rows + 1] = { id = tostring(s.start), label = (when ~= "" and when or Tr["Session"]) .. " · " .. dur, snap = s }
+  end
+  for _, w in ipairs(hist.weeks) do
+    rows[#rows + 1] = { id = w.week, label = Tr["Semaine"] .. " " .. tostring(w.week or "") .. " (" .. tostring(w.n or "?") .. ")", snap = w }
+  end
+  for i = 1, #p.hist do
+    local btn = p.hist[i]
+    local it = rows[i]
+    if it then
+      btn._item = it
+      if btn.fs and btn.fs.SetText then btn.fs:SetText(it.label)
+      elseif btn.SetText then btn:SetText(it.label) end
+      btn:Show()
+    else
+      btn._item = nil
+      btn:Hide()
+    end
+  end
+  if #rows > #p.hist then
+    p.histMore:SetText(string.format(Tr["+%d plus anciennes"], #rows - #p.hist))
+    p.histMore:Show()
+  else
+    p.histMore:SetText("")
+    p.histMore:Hide()
+  end
+
+  local money = E.FormatMoney
+  local function pct(v) return string.format("%d %%", math.floor((N(v) or 0) * 100 + 0.5)) end
+  local function rate(v, suf) return Fmt1(v) .. (suf or "") end
+  local when = (snap.weekly and (Tr["Semaine"] .. " " .. tostring(snap.week or "")))
+    or ((PU.FormatWhen and PU.FormatWhen(snap.start)) or "")
+  local dur = Dur(snap.duration or snap.total or 0)
+  p.head:SetText((snap.demo and (Tr["Démonstration"] .. " · ") or "") .. (when ~= "" and when .. " · " or "") .. dur)
+
+  local lines = {}
+  local function add(s) if s and s ~= "" then lines[#lines + 1] = s end end
+  if snap.score then add(Tr["Temps actif"] .. " : " .. pct(snap.score)) end
+  if not snap.maxLevel and N(snap.pctLevelPerHour) then
+    add(Tr["Progression"] .. " : " .. Fmt2(snap.pctLevelPerHour) .. Tr[" % niv./h"] .. (N(snap.xpFrac) and (" · " .. Fmt2((snap.xpFrac or 0) * 100) .. " %") or ""))
+  elseif snap.maxLevel then
+    add(Tr["Les rythmes d'XP sont masqués au niveau maximum."])
+  end
+  if N(snap.skillUps) and snap.skillUps > 0 then
+    local names = {}
+    for i, sk in ipairs(snap.skills or {}) do
+      if i <= 4 then names[#names + 1] = (sk.name or sk.id) .. " +" .. tostring(sk.n) end
+    end
+    add(Tr["Paliers"] .. " : " .. tostring(snap.skillUps) .. (snap.skillUpsPerHour and (" · " .. Fmt1(snap.skillUpsPerHour) .. Tr[" pal./h"]) or "") .. ((#names > 0) and (" · " .. table.concat(names, ", ")) or ""))
+  end
+  if snap.recipes and #snap.recipes > 0 then
+    local rn = {}
+    for i, r in ipairs(snap.recipes) do if i <= 3 then rn[#rn + 1] = r.name or "?" end end
+    add(Tr["Recettes apprises"] .. " : " .. table.concat(rn, ", "))
+  end
+  local deaths = snap.deaths or {}
+  if N(deaths.n) or N(deaths.secs) then
+    add(Tr["Morts"] .. " : " .. tostring(N(deaths.n) or 0) .. ((N(deaths.secs) and deaths.secs > 0) and (" · " .. Tr["dont "] .. Dur(deaths.secs)) or ""))
+  end
+  if N(snap.bagMiss) and snap.bagMiss > 0 then
+    add(Tr["Butin perdu"] .. " : " .. tostring(snap.bagMiss))
+  end
+  local pr = snap.profit or {}
+  if pr.bestMix and pr.bestMix.zone then add(Tr["Meilleur spot mixte"] .. " : " .. pr.bestMix.zone)
+  elseif pr.bestProg and pr.bestProg.zone then add(Tr["Meilleur spot progression"] .. " : " .. pr.bestProg.zone) end
+  if snap.achievements and #snap.achievements > 0 then
+    local an = {}
+    for i, a in ipairs(snap.achievements) do if i <= 3 then an[#an + 1] = a.name or "?" end end
+    add(Tr["Succès"] .. " : " .. table.concat(an, ", "))
+  end
+  if snap.lootValue ~= nil and money then
+    local parts = { Tr["Valeur marchand"] .. " : " .. money(snap.lootValue, false) }
+    if N(snap.lootCoin) then parts[#parts + 1] = Tr["pièces"] .. " " .. money(snap.lootCoin, false) end
+    if N(snap.lootVendor) then parts[#parts + 1] = Tr["objets"] .. " " .. money(snap.lootVendor, false) end
+    if snap.goldPerHour then parts[#parts + 1] = money(snap.goldPerHour, false) .. Tr[" /h"] end
+    add(table.concat(parts, " · "))
+  end
+  for i = 1, #p.lines do
+    if lines[i] then p.lines[i]:SetText(lines[i]) p.lines[i]:Show()
+      p.lines[i]._fullText = lines[i]
+    else p.lines[i]:SetText("") p.lines[i]:Hide() end
+  end
+  if p.lines[1] then
+    local tipGold = E.VendorTip and E.VendorTip() or ""
+    p.lines[1]._tipExtra = { tipGold }
+  end
+
+  local cmp = E.CompareRecap and E.CompareRecap(snap) or {}
+  local cbits = {}
+  local b
+  b = CmpBit(Tr["actif"], cmp.score, pct) if b then cbits[#cbits + 1] = b end
+  b = CmpBit(Tr["% niv./h"], cmp.pctLevelPerHour, function(v) return Fmt2(v) end) if b then cbits[#cbits + 1] = b end
+  b = CmpBit(Tr["pal./h"], cmp.skillUpsPerHour, function(v) return Fmt1(v) end) if b then cbits[#cbits + 1] = b end
+  b = CmpBit(Tr["valeur/h"], cmp.goldPerHour, function(v) return money and money(v, false) or tostring(v) end) if b then cbits[#cbits + 1] = b end
+  p.compare:SetText(table.concat(cbits, "  |  "))
+  p.compare._fullText = p.compare:GetText()
+  p.compare._tipExtra = { Tr["Comparaisons normalisées uniquement (part active, % de niveau / h, paliers / h, valeur marchand / h). Jamais les points / h ni l'XP brute."] }
+
+  p.tip:SetText(snap.tip or "")
+  p.tip._fullText = snap.tip or ""
+end
+
 function PU.Build()
   if PU.frame then return PU.frame end
   if InCombat() then return nil end
@@ -1416,6 +1641,7 @@ function PU.Build()
   PU.BuildSpots(f)
   PU.BuildWeekly(f)
   PU.BuildEfficiency(f)
+  PU.BuildRecap(f)
   f.foot = FS(f, "GameFontDisableSmall", "sub", "CENTER")
   f.foot:SetPoint("BOTTOM", f, "BOTTOM", 0, 9)
   f.foot:SetText(Tr["Clic gauche sur la fiole ou /drop progression · Échap pour fermer"])
@@ -1659,7 +1885,7 @@ function PU.RefreshOverview(p)
     elseif N(mix.gathersPerHour) then parts[#parts + 1] = Fmt1(mix.gathersPerHour) .. Tr[" pal./h"] end
     if money and profit.moneyNet ~= nil then parts[#parts + 1] = Tr["session"] .. " " .. money(profit.moneyNet, true) end
     b2.line:SetText(table.concat(parts, " · "))
-    local tip = { E.ScoringTip and E.ScoringTip() or "" }
+    local tip = { E.ScoringTip and E.ScoringTip() or "", E.VendorTip and E.VendorTip() or "" }
     if profit.bestProg and profit.bestProg.zone then
       tip[#tip + 1] = Tr["Meilleur spot progression"] .. " : " .. profit.bestProg.zone
     end
@@ -1978,15 +2204,16 @@ function PU.RefreshEfficiency(p)
   local gph = (pr.goldPerHour ~= nil and money) and (money(pr.goldPerHour, true) .. Tr[" /h"]) or nil
   local netLine
   if netTxt then
-    netLine = Tr["Or net"] .. " : " .. netTxt
+    netLine = Tr["Valeur marchand"] .. " : " .. netTxt
     if gph then netLine = netLine .. " · " .. gph end
     if pr.prev and pr.prev.moneyNet ~= nil and money then
       netLine = netLine .. " · " .. Tr["session préc."] .. " " .. money(pr.prev.moneyNet, true)
     end
     p.profit.net:SetText(netLine)
-    p.profit.net._tipExtra = { E.ScoringTip and E.ScoringTip() or "" }
+    local tips = { E.ScoringTip and E.ScoringTip() or "", E.VendorTip and E.VendorTip() or "" }
+    p.profit.net._tipExtra = tips
   else
-    p.profit.net:SetText(Tr["Or net : pas encore mesuré sur cette période."])
+    p.profit.net:SetText(Tr["Valeur marchand : pas encore mesurée sur cette période."])
   end
 
   local function fill(fs, label, spot)
@@ -2045,12 +2272,22 @@ function PU.Refresh()
   PU.stats.refreshes = PU.stats.refreshes + 1
   local ok, err = pcall(PU.RefreshHeader)
   if not ok then PU.lastError = err PU.stats.errors = PU.stats.errors + 1 end
-  local tab = State().tab
-  for id, page in pairs(f.pages) do if id == tab then page:Show() else page:Hide() end end
-  local fn = PU[PU.REFRESHERS[tab]]
-  if fn then
-    local ok2, err2 = pcall(fn, f.pages[tab])
+  local st = State()
+  if st.recapOpen and f.pages.recap then
+    for id, page in pairs(f.pages) do
+      if id == "recap" then page:Show() else page:Hide() end
+    end
+    local ok2, err2 = pcall(PU.RefreshRecap, f.pages.recap)
     if not ok2 then PU.lastError = err2 PU.stats.errors = PU.stats.errors + 1 end
+  else
+    if f.pages.recap then f.pages.recap:Hide() end
+    local tab = st.tab
+    for id, page in pairs(f.pages) do if id == tab then page:Show() else page:Hide() end end
+    local fn = PU[PU.REFRESHERS[tab]]
+    if fn then
+      local ok2, err2 = pcall(fn, f.pages[tab])
+      if not ok2 then PU.lastError = err2 PU.stats.errors = PU.stats.errors + 1 end
+    end
   end
   PU.SyncPills()
   if PU.ScanTruncateTips then pcall(PU.ScanTruncateTips, f) end

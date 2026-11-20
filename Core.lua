@@ -2514,17 +2514,18 @@ do
     { id = "afk",      label = "AFK",                tip = "Simule l'absence : horloge de bronze dans le puits." },
     { id = "fishing",  label = "Pêche",              tip = "Simule la pêche : hameçon qui tangue dans le puits." },
     { id = "swimming", label = "Nage",               tip = "Simule la nage : bulles dans le puits." },
-    { id = "rested",   label = "Repos",              tip = "Simule le repos en auberge : « z » dans le puits de la fiole." },
-    { id = "combat",   label = "Combat",             tip = "Simule le combat selon le style choisi (bulles, épée ou désactivé)." },
+    { id = "rested",   label = "Repos",              tip = "Simule le repos en auberge : « z » dans le puits de la fiole, dans tous les modes (barre et grilles 1/2/3/5 col.). En barre, les z quittent le portrait Niveau ; en grille, ils restent aussi sur Niveau." },
+    { id = "combat",   label = "Combat",             tip = "Simule le combat selon le style choisi (bulles, épée ou désactivé). Vérifie barre, 1, 2, 3 et 5 colonnes : le liquide rouge + bleu (proportionnel) avec bulles ambre reste dans l'icône de la case total." },
     { id = "trainer",  label = "Maître à proximité", tip = "Simule un maître à proximité : éclat sur les cases de métier." },
     { id = "rankup",   label = "Rang supérieur disponible", tip = "Affiche le toast collant « rang supérieur disponible chez le maître »." },
     { id = "bags",     label = "Sacs pleins",               tip = "Simule les sacs pleins : signal dans la fiole et un toast." },
     { id = "transport",label = "Bateau / zeppelin",         tip = "Simule un trajet en bateau ou zeppelin : sablier et pause, comme en vol." },
     { id = "loading",  label = "Chargement",                tip = "Simule un écran de chargement : pause silencieuse, sans sablier ni file de toasts." },
-    { id = "eating",   label = "Repas",                     tip = "Simule un repas ou une boisson : vague de régénération dans la fiole." },
+    { id = "eating",   label = "Repas",                     tip = "Simule un repas ou une boisson : vague de régénération dans la fiole (barre et grilles 1/2/3/5 col.)." },
     { id = "dungeon",  label = "Donjon",                    tip = "Simule l'entrée en donjon : le mode calme instance s'active tout seul." },
     { id = "durability", label = "Équipement usé",          tip = "Simule un équipement sous 20 % : signal dans la fiole et un toast." },
     { id = "efficiency", label = "Efficacité",              tip = "Charge un jeu de mesures d'efficacité (temps actif, morts, sacs, spots) pour l'onglet Progression." },
+    { id = "recap",      label = "Récap session",           tip = "Ouvre le récap de session avec des données d'exemple. Vérifie aussi chaque disposition : barre, 1, 2, 3 et 5 colonnes (liquide de combat, z de repos, vague de repas dans la case total)." },
   }
   T.ALIASES = {
     vol = "flight", fly = "flight", flight = "flight",
@@ -2544,6 +2545,7 @@ do
     dungeon = "dungeon", donjon = "dungeon", instance = "dungeon",
     durability = "durability", durabilite = "durability", usure = "durability",
     efficiency = "efficiency", efficacite = "efficiency", eff = "efficiency",
+    recap = "recap", recapitulatif = "recap",
     off = "off", stop = "off", tout = "off",
   }
   T.LONG_NAME = "Palourdes bouillies aux herbes du jardin de Westfall et un nom volontairement trop long pour le défilement"
@@ -2620,6 +2622,7 @@ do
     if id == "loading" then return T.StartLoading() end
     if id == "dungeon" then return T.StartDungeon() end
     if id == "efficiency" then return T.StartEfficiency() end
+    if id == "recap" then return T.StartRecap() end
     local known
     for _, st in ipairs(T.STATES) do if st.id == id then known = st break end end
     if not known then
@@ -2720,6 +2723,20 @@ do
     if ns.Efficiency and ns.Efficiency.SetSim then pcall(ns.Efficiency.SetSim, false) end
     return true
   end
+  function T.StartRecap()
+    if not T.Enabled() then return nil end
+    T._on = T._on or {}
+    T._on.recap = true
+    if ns.ProgressUI and ns.ProgressUI.OpenRecap then pcall(ns.ProgressUI.OpenRecap, "demo") end
+    ns.Print(Tr["test : récap de session de démonstration ouvert. Vérifie barre, 1, 2, 3 et 5 colonnes pour le liquide, les z et la vague de repas."])
+    return true
+  end
+  function T.StopRecap()
+    T._on = T._on or {}
+    T._on.recap = nil
+    if ns.ProgressUI and ns.ProgressUI.CloseRecap then pcall(ns.ProgressUI.CloseRecap) end
+    return true
+  end
 
   function T.Stop(id)
     id = Norm(id)
@@ -2728,6 +2745,7 @@ do
     if id == "loading" then return T.StopLoading() end
     if id == "dungeon" then return T.StopDungeon() end
     if id == "efficiency" then return T.StopEfficiency() end
+    if id == "recap" then return T.StopRecap() end
     if T._on then T._on[id] = nil end
     if id == "rankup" then
       if ns.RankToast and ns.RankToast.SetSim then pcall(ns.RankToast.SetSim, false) end
@@ -2752,9 +2770,10 @@ do
     if T._on and T._on.loading then T.StopLoading() end
     if T._on and T._on.dungeon then T.StopDungeon() end
     if T._on and T._on.efficiency then T.StopEfficiency() end
+    if T._on and T._on.recap then T.StopRecap() end
     if T._on then
       for id in pairs(T._on) do
-        if id ~= "flight" and id ~= "transport" and id ~= "loading" and id ~= "dungeon" and id ~= "efficiency" and T.Stop then T.Stop(id) end
+        if id ~= "flight" and id ~= "transport" and id ~= "loading" and id ~= "dungeon" and id ~= "efficiency" and id ~= "recap" and T.Stop then T.Stop(id) end
       end
     end
     T._on = {}
