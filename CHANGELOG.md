@@ -3,22 +3,33 @@
 ## 3.7.0
 This release is the 3.6.3 work shipped as 3.7.0 (the 3.6.3 tag was never created).
 
-- Panel minimum size is a 36 px tile (the default action-button width), with five tiles per row as the reference. Scale is 90–200% (`/drop taille` and the Options slider). The frame’s min resize bounds match that content size, so the frame, the tiles and the total bar stop shrinking together. A saved scale or window size below the floor is raised on load.
-- At the minimum size, left, right, top and bottom margins are equal (the tile grid plus the same padding on all four sides). At larger sizes the grid stays horizontally centered (left margin equals right margin).
-- The total row shows only the drop-vial icon, at about 70% of the tile height, centered on the first tile column: no slot frame, backdrop, disc or rim. The flight hourglass and combat icons stay at ~70%; the rest Z glyph is ~55%. The row’s height is the vial icon; the gap above it matches the gap between skill rows, and the bottom padding matches the top. Total text and bar stay vertically centered in the row.
-- A colored “+1” (text only, no flying image or icon) starts from the toast’s own icon and travels to that skill’s tile (weapons, Defense, professions, XP). If the toast or its icon is missing, it starts just above the tile. When it lands, the type-colored veil plays on the tile (no second on-tile +1 pop).
-- Tile “+1”, veil and toast tint share one color table: red for XP, blue for weapon skills and Defense, green for professions. Combat pre-selection is a thin border in the gain color only — no fill and no “+1” until the actual gain.
-- Options Tester buttons are queued one at a time, with click debounce. They never write fake gains into history, the session, SavedVariables or totals. Previews use pooled frames and are restored when the queue ends.
-- Session recap toast: short title (“Session”) and one compact line; text wraps on up to two lines and the toast grows to fit. Empty title+body toasts are not shown. The grey-mob Defense reminder is tooltip-only.
-- Toast background opacity (“Fond des toasts”) sets the alpha of the background, tint and border. 0% is fully transparent (icon and text only), not a black toast. Tint hues stay the same red/blue/green, darkened to match the panel.
-- “Nouveaux sorts / Va voir ton maître de classe” (and any other title+body toast) is a normal full-height toast, not a collapsed bar that hid the text.
-- XP: no toast on every mob kill. Milestone toasts at 25%, 50% and 75% of the current level, plus the existing level-up toast. Quest turn-in XP still gets a toast. The “next rank at the trainer” toast fires only when you enter a capital city.
-- “Délai avant repos”: 0 means never (the rest state is not scheduled; the slider shows “Jamais”). 1–60 s work as before.
-- The official total vial stays a static logo. A state icon replaces it while you are in flight, in combat, eating or drinking, resting, fishing, dead, swimming, or using a sleeping bag. The campfire vial state and several obsolete options (combat vial style, falling flask drops, leftover 1-column help) are removed. The sleeping-bag icon stays only while a charge is in progress.
-- Memory: toasts are pooled; history days keep 30-day aggregates only; a conservative watchdog (out of combat, owned pools only) clears leftover OnUpdate and stuck hidden animations without touching a visible toast or an in-time animation. Incremental garbage collection runs only out of combat.
-- Combat: no continuous scanning. Cheap player-only events stay live; bag, buff and profession scans and heavy UI/data refreshes are deferred until you leave combat. Animations stay smooth.
-- The Progression window’s Characters tab is a card layout again. Each character’s snapshot is saved in account-wide SavedVariables and shown for every character on the account.
-- Per-character notification width (Auto = panel width, or a fixed width). Icon, fonts, bar thickness and height scale with the panel size. Saved 1-column layouts are migrated to 2 columns (2, 3, 5 or 10 only).
+### New
+- Dark toast tints in red (XP), blue (weapons and Defense) and green (professions). The toast opacity setting applies to the background, tint and border; at 0% only the icon and text remain.
+- A short session recap toast (“Session” plus one compact line).
+- A full “New spells / Visit your class trainer” toast.
+- A colored +1 flies from the toast’s icon to that skill’s tile. When it lands, a matching colored veil plays on the tile.
+- Tiles that will rank up in combat get a thin border in the gain color — no fill and no +1 until the point actually lands.
+- The total row shows the drop-vial icon at rest, an hourglass in flight, a combat icon in combat, and a smaller rest “Z” while resting. Eating, fishing, swimming, dead and sleeping-bag states have their own icons too.
+- XP milestone toasts at 25%, 50% and 75% of the current level, plus the existing level-up toast. Quest turn-in XP still gets a toast. Ordinary mob kills no longer fire an XP toast. The “next rank at the trainer” toast appears only when you enter a capital city.
+- “Delay before rest” can be set to Never.
+- The Progression window’s Characters tab is a card layout again, with a snapshot for every character on the account.
+- Per-character notification width (Auto follows the panel, or a fixed width). Icons, fonts and bars scale with the panel size.
+
+### Fixes
+- Grey-mob Defense reminders no longer show an empty toast (the reminder stays in the tooltip only).
+- The session recap toast no longer overflows: text wraps on up to two lines and the toast grows to fit.
+- The new-spell toast is a normal full-height toast, not a thin empty bar.
+- The panel can no longer shrink smaller than its content. A saved size or scale below the minimum is raised on load.
+- Toast opacity at 0% is fully transparent, not a black box.
+- Empty title-and-body toasts are no longer shown.
+
+### Other
+- At the minimum size, left, right, top and bottom margins are equal. At larger sizes the skill grid stays horizontally centered.
+- The total-row vial is a bare drop-vial (no frame or backdrop), aligned with the first tile column. Spacing above and below the total row matches the rest of the panel.
+- Memory use is much lower (about 37 MB down to about 12 MB): history keeps 30-day aggregates only, and cleanup runs only out of combat.
+- In combat, heavy bag, buff and profession scans are deferred until you leave combat. Animations stay smooth.
+- Saved 1-column layouts are migrated to 2 columns (2, 3, 5 or 10 only).
+- The campfire vial state and a few obsolete options are removed. The sleeping-bag icon shows only while a charge is in progress.
 - The public build no longer includes `/drop test` or the Options Test (DEV) section.
 
 ## 3.6.2
