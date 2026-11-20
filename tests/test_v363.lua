@@ -2353,8 +2353,12 @@ do
   end
   ok(UI.TOAST_TINT and UI.TOAST_TINT.level and UI.TOAST_TINT.weapon and UI.TOAST_TINT.prof, "teinte : trois familles")
   local tl = UI.TOAST_TINT.level
-  ok(math.abs(tl[1] - 32/255) < 1e-6 and math.abs(tl[2] - 17/255) < 1e-6 and math.abs(tl[3] - 14/255) < 1e-6,
-    "teinte XP : ligne soutenue (32, 17, 14)")
+  local pal = ns.GAIN_COLORS or (ns.Slot and ns.Slot.ADD_COLORS)
+  local expect = pal and pal.red or { 0.616, 0.278, 0.227 }
+  ok(tl and math.abs(tl[1] - expect[1]) < 1e-6 and math.abs(tl[2] - expect[2]) < 1e-6 and math.abs(tl[3] - expect[3]) < 1e-6,
+    "teinte XP : même rouge que la palette partagée")
+  ok(((UI.TOAST_TINT.weapon[1] or 0) + (UI.TOAST_TINT.weapon[2] or 0) + (UI.TOAST_TINT.weapon[3] or 0)) >= 0.35,
+    "teinte arme : pas de quasi-noir")
 
   -- titres recettes : pas de « × » orphelin ; « N × » seulement si N ≥ 2
   local C = ns.Craft
@@ -3123,8 +3127,10 @@ do
   -- étincelle : créée une fois, voyage, flash, alpha 0, pas de nouvelle texture au 2e gain
   pcall(S.PlayBarSpark, "blue")
   ok(tot._barSpark, "étincelle de barre : texture poolée")
-  if S.Tick then for i = 1, 10 do pcall(S.Tick, 0.05) end end
+  -- course 0,40 s : à 0,30 s le point est encore sur la barre
+  if S.Tick then for i = 1, 6 do pcall(S.Tick, 0.05) end end
   ok(tot._barSpark and tot._barSpark.shown ~= false, "étincelle visible après le départ")
+  -- course + flash (~0,55 s) largement terminés après 0,80 s de plus
   if S.Tick then for i = 1, 16 do pcall(S.Tick, 0.05) end end
   ok(not tot._barSpark or tot._barSpark.shown == false or (tot._barSpark.GetAlpha and tot._barSpark:GetAlpha() == 0),
     "étincelle : alpha 0 à la fin")
@@ -3150,12 +3156,24 @@ do
     pcall(S.ApplyTotal)
   end
   tot._wideOn = true
+  -- échauffement du pool d'arc (cadre unique sur UIParent) avant le comptage
+  if S.EnsureFlySpark then pcall(S.EnsureFlySpark) end
+  if S.EnsureBarSpark then pcall(S.EnsureBarSpark, tot) end
   if S.PlayBarSpark then
-    pcall(S.PlayBarSpark, "red")
+    local warm = { data = { kind = "melee", skillName = "Dagues" }, GetFrameLevel = function() return 1 end }
+    if warm.SetSize then warm:SetSize(40, 40) elseif warm.width then warm.width, warm.height = 40, 40 end
+    warm.shown = true
+    warm._abs = { l = 80, r = 120, t = 200, b = 160 }
+    function warm:IsShown() return self.shown ~= false end
+    function warm:GetWidth() return self.width or 40 end
+    function warm:GetHeight() return self.height or 40 end
+    function warm:GetLeft() return 80 end
+    function warm:GetBottom() return 160 end
+    pcall(S.PlayBarSpark, "red", warm)
     if S.Tick then pcall(S.Tick, 0.05) end
-    pcall(S.PlayBarSpark, "blue")
+    pcall(S.PlayBarSpark, "blue", warm)
     if S.Tick then pcall(S.Tick, 0.50) pcall(S.Tick, 0.70) end
-    pcall(S.PlayBarSpark, "green")
+    pcall(S.PlayBarSpark, "green", warm)
     if S.Tick then pcall(S.Tick, 0.50) pcall(S.Tick, 0.70) end
     if S.HideBarSpark then pcall(S.HideBarSpark, tot) end
   end
@@ -3259,7 +3277,104 @@ do
   if C and C.Pulse then
     C.Pulse(tile, blue)
     ok(tile._osrsPulse and tile._osrsPulse.shown ~= false, "Pulse : la case s'éclaire")
+    ok(tile._osrsPulse._color and colorEq(tile._osrsPulse._color, blue), "voile de case Dagues : bleu partagé")
   end
+
+  -- Palette unique : voile, +1, étincelle, teinte de toast (jamais noir)
+  ok(ns.GAIN_COLORS and ns.GAIN_COLORS.red and ns.GAIN_COLORS.blue and ns.GAIN_COLORS.green,
+    "ns.GAIN_COLORS exposée")
+  ok(S.ADD_COLORS == ns.GAIN_COLORS or colorEq(S.ADD_COLORS.blue, ns.GAIN_COLORS.blue),
+    "Slot.ADD_COLORS est la table partagée")
+  ok(sum(ns.GAIN_COLORS.red) >= 0.35 and sum(ns.GAIN_COLORS.blue) >= 0.35 and sum(ns.GAIN_COLORS.green) >= 0.35,
+    "palette partagée : aucune entrée noire")
+  local cats = {
+    { name = "XP", opts = { kind = "xp" }, key = "red", tileKind = "level", skillName = "Niveau" },
+    { name = "Dagues", opts = { kind = "skill", skillName = "Dagues" }, key = "blue", tileKind = "melee", skillName = "Dagues" },
+    { name = "Défense", opts = { kind = "skill", skillName = "Défense" }, key = "blue", tileKind = "defense", skillName = "Défense" },
+    { name = "Arcs", opts = { kind = "skill", skillName = "Arcs" }, key = "blue", tileKind = "ranged", skillName = "Arcs" },
+    { name = "Cuisine", opts = { kind = "skill", skillName = "Cuisine" }, key = "green", tileKind = "profession", skillName = "Cuisine" },
+  }
+  for _, cat in ipairs(cats) do
+    local expect = S.ADD_COLORS[cat.key]
+    local col = S.ColorForGain(cat.opts.kind, cat.opts.skillId, cat.opts.skillName)
+    ok(colorEq(col, expect), "ColorForGain " .. cat.name .. " = " .. cat.key)
+    local ct = { data = { kind = cat.tileKind, skillName = cat.skillName, name = cat.skillName }, GetFrameLevel = function() return 1 end }
+    if C and C.Pulse then C.Pulse(ct, col) end
+    if C and C.Gain then C.Gain(ct, "+1", col) end
+    ok(ct._osrsPulse and ct._osrsPulse._color and colorEq(ct._osrsPulse._color, expect),
+      "voile " .. cat.name .. " = palette " .. cat.key)
+    ok(ct._osrsGain and ct._osrsGain._color and colorEq(ct._osrsGain._color, expect),
+      "+1 " .. cat.name .. " = palette " .. cat.key)
+    if S.HideBarSpark then pcall(S.HideBarSpark) end
+    S._sparkQ = {}
+    S._sparkT = nil
+    pcall(S.PlayBarSpark, col)
+    ok(colorEq(S._sparkColor, expect), "étincelle " .. cat.name .. " = palette " .. cat.key)
+    if UI and UI.ToastTintColor then
+      local tint = UI.ToastTintColor(cat.opts)
+      -- xp / skill names : famille level / weapon / prof
+      if tint then
+        ok(colorEq(tint, expect), "teinte toast " .. cat.name .. " = palette " .. cat.key)
+      end
+    end
+  end
+  -- teintes indexées : plus de quasi-noir
+  if UI and UI.TOAST_TINT then
+    ok(sum(UI.TOAST_TINT.weapon) >= 0.35, "TOAST_TINT.weapon n'est plus noir")
+    ok(colorEq(UI.TOAST_TINT.weapon, blue), "TOAST_TINT.weapon = GAIN_COLORS.blue")
+    ok(colorEq(UI.TOAST_TINT.level, red), "TOAST_TINT.level = GAIN_COLORS.red")
+    ok(colorEq(UI.TOAST_TINT.prof, green), "TOAST_TINT.prof = GAIN_COLORS.green")
+  end
+
+  -- Trajet d'étincelle : file, coalescence, case cachée, pool
+  local prevTotal = ns.Wide and ns.Wide.TotalTile
+  local tot = CreateFrame("Button", "DropamineSparkJourneyTotal", _G.UIParent)
+  tot.data = { kind = "total" }
+  tot._wideOn, tot._wideH, tot._wideW = true, 16, 200
+  if tot.SetSize then tot:SetSize(200, 16) end
+  if tot.Show then tot:Show() end
+  tot._abs = { l = 40, r = 240, t = 40, b = 24 }
+  if ns.Wide then
+    ns.Wide.TotalTile = function() return tot end
+    ns.Wide.forceShown = true
+    ns.Wide.last = ns.Wide.last or { left = 40, inner = 140, by = 4, bh = 8, pct = 0.4 }
+  end
+  if S.PlayBarSpark and tot then
+    if S.HideBarSpark then pcall(S.HideBarSpark, tot) end
+    S._sparkQ, S._sparkT = {}, nil
+    -- case visible : origine d'un arc
+    local origin = CreateFrame("Button", "DropamineSparkOrigin", _G.UIParent)
+    origin._abs = { l = 80, r = 120, t = 200, b = 160 }
+    if origin.SetSize then origin:SetSize(40, 40) end
+    if origin.Show then origin:Show() end
+    pcall(S.PlayBarSpark, blue, origin)
+    ok(S._sparkPhase == "fly" or (S._sparkFrom == origin), "étincelle : phase vol depuis la case")
+    if S.Tick then for _ = 1, 3 do pcall(S.Tick, 0.05) end end  -- 0,15 s dans l'arc
+    ok(S._flySpark and S._flySpark.shown ~= false, "étincelle : point poolé visible pendant l'arc")
+    if S.Tick then for _ = 1, 20 do pcall(S.Tick, 0.05) end end  -- finit le trajet (~0,83 s déjà largement dépassé)
+    ok(not S._sparkT, "étincelle : trajet terminé (file vide)")
+    local fly1 = S._flySpark
+    pcall(S.PlayBarSpark, green, origin)
+    ok(S._flySpark == fly1, "étincelle volante : cadre réutilisé, pas de nouveau frame")
+    if S.HideBarSpark then pcall(S.HideBarSpark, tot) end
+    -- file + coalescence
+    S._sparkQ, S._sparkT = {}, nil
+    pcall(S.PlayBarSpark, blue, origin)
+    pcall(S.PlayBarSpark, blue, origin)  -- même couleur : fusion
+    pcall(S.PlayBarSpark, green, origin)
+    ok(S._sparkQ and #S._sparkQ == 1, "file : 2e bleu fusionné, vert en attente (" .. tostring(S._sparkQ and #S._sparkQ) .. ")")
+    if S.HideBarSpark then pcall(S.HideBarSpark, tot) end
+    S._sparkQ, S._sparkT = {}, nil
+    -- case cachée / effondrée : pas d'arc, course sur la barre
+    local hidden = CreateFrame("Button", "DropamineSparkHidden", _G.UIParent)
+    if hidden.SetSize then hidden:SetSize(40, 40) end
+    if hidden.Hide then hidden:Hide() end
+    pcall(S.PlayBarSpark, red, hidden)
+    ok(S._sparkPhase == "run", "case cachée : pas d'arc, course directe sur la barre")
+    if S.HideBarSpark then pcall(S.HideBarSpark, tot) end
+    tot._wideOn = false
+  end
+  if ns.Wide then ns.Wide.TotalTile = prevTotal end
 
   -- 1 colonne migrée vers 2
   if L and L.VALID then
@@ -3315,6 +3430,14 @@ do
       ok(fill, "fond teinté créé")
       if fill then
         ok(fill.shown ~= false, "fond teinté visible dès ApplyToastTint (1re frame)")
+        local g = (ns.GAIN_COLORS and ns.GAIN_COLORS.green) or S.ADD_COLORS.green
+        local vc = fill._vcolor or fill._color
+        if (f._tintR) then
+          ok(math.abs((f._tintR or 0) - g[1]) < 0.01 and math.abs((f._tintG or 0) - g[2]) < 0.01,
+            "fond teinté Cuisine = GAIN_COLORS.green")
+        elseif vc then
+          ok(math.abs((vc[1] or 0) - g[1]) < 0.01, "fond teinté Cuisine = GAIN_COLORS.green")
+        end
       end
       if UI.ReleaseToast then UI:ReleaseToast(f) end
     end
