@@ -376,14 +376,22 @@ function Q.SessionStart()
   local c = ns.CharDB()
   c.session.startRanks = nil
   c.session.startXP = nil
+  c.session.baseline = nil
   Q._sessionXP = 0
 end
 function Q.EnsureStartRanks(snap)
   local c = ns.CharDB()
-  if c.session.startRanks or not snap or (snap.liveCount or 0) <= 0 then return end
-  local r = {}
-  for _, d in ipairs(snap.tiles or {}) do if d.id and N(d.current) then r[d.id] = { n = d.name, v = N(d.current) } end end
-  c.session.startRanks = r
+  if not snap or (snap.liveCount or 0) <= 0 then return end
+  if not c.session.startRanks then
+    local r = {}
+    for _, d in ipairs(snap.tiles or {}) do if d.id and N(d.current) then r[d.id] = { n = d.name, v = N(d.current) } end end
+    c.session.startRanks = r
+  end
+  local tot = N(snap.total)
+  local base = N(c.session.baseline)
+  if tot and tot > 0 and (base == nil or base <= 0) then
+    c.session.baseline = tot
+  end
 end
 function Q.RecapLine()
   local c = ns.CharDB()

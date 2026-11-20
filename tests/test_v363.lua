@@ -3750,6 +3750,111 @@ do
   end
 end
 
+
+print("== 3.6.3 : toast récap visible + base de session")
+do
+  local c = ns.CharDB()
+  c.session = c.session or {}
+  c.session.startRanks, c.session.baseline = nil, nil
+  ok(ns.SessionGain(981) == 0 and c.session.baseline == 981, "première lecture : base = total, gain 0")
+  ok(ns.SessionGain(1000) == 19, "gain depuis la base réelle")
+  c.session.baseline = 0
+  ok(ns.SessionGain(981) == 0 and c.session.baseline == 981, "base 0 (non posée) : réamorcée, pas +981")
+  c.session.baseline = 0
+  c.session.startRanks = { a = { n = "X", v = 400 }, b = { n = "Y", v = 500 } }
+  local recovered = ns.SessionGain(981)
+  ok(c.session.baseline == 900 and recovered == 81, "base 0 : récupérée depuis les rangs de départ (+81, pas +981)")
+
+  local function textOnToast(f, fs)
+    if not (f and fs) then return false, "missing" end
+    if fs.IsShown and not fs:IsShown() then return false, "hidden" end
+    local txt = fs.GetText and fs:GetText() or ""
+    if txt == "" then return false, "empty" end
+    local mq = fs._mq
+    if mq and mq.clip and mq.clip.IsShown and mq.clip:IsShown() then
+      local w = (mq.clip.GetWidth and mq.clip:GetWidth()) or 0
+      local h = (mq.clip.GetHeight and mq.clip:GetHeight()) or 0
+      if w < 8 or h < 4 then return false, "clip " .. tostring(w) .. "x" .. tostring(h) end
+      return true, txt
+    end
+    local parent = fs.GetParent and fs:GetParent()
+    if parent ~= f then return false, "parent" end
+    return true, txt
+  end
+
+  local ui = ns.UI
+  if ns.SetOpt then ns.SetOpt("recapLogout", true) end
+  -- Recycle a long toast first (the regression : leftover clip covering new text).
+  local longName = "A Very Long Recipe Name That Definitely Overflows The Toast Title Line When Measured At Six Pixels Per Character Because It Is Extremely Verbose Indeed"
+  local long = ui:SpawnDrop("Interface\\Icons\\INV_Misc_QuestionMark", longName, "détail aussi très long pour forcer un défilement de la seconde ligne aussi", nil, nil, nil, { kind = "scanner", force = true })
+  if ns.ToastFit and ns.ToastFit.Fit then ns.ToastFit.Fit(long) end
+  if long and ui.DismissDrop then ui:DismissDrop(long) end
+
+  local title = "Récap de session — déconnexion"
+  local body = "niveau total +81, +484 XP, Combat farouche +1, Défense +1, Pêche +8 (76 min)"
+  local recap = ui:SpawnDrop("Interface\\AddOns\\Dropamine\\Media\\SkillsTab", title, body, nil, nil, "", { hold = 20, dedupeKey = "osrs-logout-recap", kind = "recap", force = true })
+  if ns.ToastFit and ns.ToastFit.Fit then ns.ToastFit.Fit(recap) end
+  ok(recap and recap:IsShown(), "toast récap créé")
+  local tok, ttxt = textOnToast(recap, recap and recap.titleFS)
+  ok(tok and ttxt and tostring(ttxt):find("Récap de session", 1, true), "toast récap : titre visible (pas seulement l'icône) — " .. tostring(ttxt))
+  local sok, stxt = textOnToast(recap, recap and recap.subFS)
+  ok(sok and stxt and tostring(stxt):find("niveau total +81", 1, true), "toast récap : corps visible — " .. tostring(stxt))
+  ok(recap and recap._fullTitle and recap._fullSub, "toast récap : texte intégral aussi en infobulle")
+
+  -- Autres types : titre (et sous-titre s'il y en a un) toujours visibles.
+  local kinds = {
+    { kind = "skill", title = "Épées à deux mains", sub = "+1" },
+    { kind = "xp", title = "Niveau 12", sub = "25 %" },
+    { kind = "craft", title = "Soupe", sub = "1 × possible" },
+  }
+  for _, k in ipairs(kinds) do
+    local f = ui:SpawnDrop("Interface\\Icons\\INV_Misc_QuestionMark", k.title, k.sub, nil, nil, nil, { kind = k.kind, force = true })
+    if ns.ToastFit and ns.ToastFit.Fit then ns.ToastFit.Fit(f) end
+    local a, at = textOnToast(f, f and f.titleFS)
+    local b, bt = textOnToast(f, f and f.subFS)
+    ok(a and at == k.title, "toast " .. k.kind .. " : titre visible")
+    ok(b and bt == k.sub, "toast " .. k.kind .. " : corps visible")
+    if f and ui.DismissDrop then ui:DismissDrop(f) end
+  end
+
+  -- LogoutRecap pose bien le toast avec le gain depuis la base (pas +981).
+  c.session.baseline = 900
+  c.session.startRanks = {
+    feral = { n = "Combat farouche", v = 50 },
+    def = { n = "Défense", v = 80 },
+    fish = { n = "Pêche", v = 100 },
+  }
+  c.session.started = ((type(time) == "function" and time()) or 0) - 76 * 60
+  ui.snapshot = {
+    total = 981, liveCount = 3,
+    tiles = {
+      { id = "feral", name = "Combat farouche", current = 51 },
+      { id = "def", name = "Défense", current = 81 },
+      { id = "fish", name = "Pêche", current = 108 },
+    },
+  }
+  if ns.UI._sessionXP ~= nil then ns.UI._sessionXP = 484 end
+  if type(_G.InCombatLockdown) == "function" then
+    -- keep existing stub
+  else
+    _G.InCombatLockdown = function() return false end
+  end
+  local Q = ns.QoL
+  local toast
+  if Q and Q.LogoutRecap then toast = Q.LogoutRecap("déconnexion") end
+  ok(toast and toast ~= false, "LogoutRecap : toast posé")
+  if toast and toast ~= false then
+    if ns.ToastFit and ns.ToastFit.Fit then ns.ToastFit.Fit(toast) end
+    local line = (toast._fullSub or "") .. " " .. ((toast.subFS and toast.subFS.GetText and toast.subFS:GetText()) or "")
+    ok(line:find("+81", 1, true) and not line:find("+981", 1, true), "LogoutRecap : gain de session +81 (pas +981) — " .. line)
+    local a = textOnToast(toast, toast.titleFS)
+    local b = textOnToast(toast, toast.subFS)
+    ok(a and b, "LogoutRecap : titre et corps visibles sur le toast")
+    if ui.DismissDrop then ui:DismissDrop(toast) end
+  end
+  if recap and recap:IsShown() and ui.DismissDrop then ui:DismissDrop(recap) end
+end
+
 ok(errs() == 0, "aucune erreur UI (3.6.3)")
 print(failures == 0 and "\n3.6.3 : TOUS LES TESTS PASSENT" or ("\n3.6.3 : " .. failures .. " ÉCHEC(S)"))
 os.exit(failures == 0 and 0 or 1)

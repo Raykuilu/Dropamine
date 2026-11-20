@@ -2148,15 +2148,39 @@ function ns.SessionOnEnterWorld(isLogin, isReload)
   ns.sessionFresh = fresh
   return fresh
 end
+-- Base de session : somme des rangs capturés au départ, si la base
+-- n'a jamais été posée (nil ou 0, souvent après une lecture vide).
+local function SessionBaselineFromRanks(ranks)
+  if type(ranks) ~= "table" then return nil end
+  local sum, n = 0, 0
+  for _, r in pairs(ranks) do
+    local v
+    if type(r) == "table" then v = ns.N(r.v) else v = ns.N(r) end
+    if v then sum, n = sum + v, n + 1 end
+  end
+  if n <= 0 or sum <= 0 then return nil end
+  return sum
+end
+
 function ns.SessionGain(total)
   total = ns.N(total)
   if not total then return nil end
   local s = ns.CharDB().session
-  if s.baseline == nil then
-    s.baseline = total
-    return 0
+  local base = ns.N(s.baseline)
+  -- 0 n'est pas une vraie base (lecture partielle ou champ non initialisé).
+  if base == nil or base <= 0 then
+    local fromRanks = SessionBaselineFromRanks(s.startRanks)
+    if fromRanks then
+      s.baseline = fromRanks
+      base = fromRanks
+    elseif total > 0 then
+      s.baseline = total
+      return 0
+    else
+      return 0
+    end
   end
-  local g = total - (ns.N(s.baseline) or total)
+  local g = total - base
   if g < 0 then g = 0 end   -- v2.8.1 : jamais de baisse due à une lecture partielle
   return g
 end

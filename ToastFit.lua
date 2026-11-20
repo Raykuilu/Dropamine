@@ -83,6 +83,7 @@ local function CopyPoints(src, dst)
   dst:ClearAllPoints()
   local n = HasFn(src, "GetNumPoints") and src:GetNumPoints() or 0
   if n <= 0 then return false end
+  local pts = {}
   for i = 1, n do
     local p, rel, rp, x, y = src:GetPoint(i)
     if type(rel) == "table" and rel._mq and rel._mq.clip then
@@ -94,9 +95,46 @@ local function CopyPoints(src, dst)
         rel = rel._mq.clip
       end
     end
-    dst:SetPoint(p, rel, rp, x, y)
+    -- Jamais ancrer le clip à la FontString (ou à lui-même) : après
+    -- SetParent la position s'effondre et le texte disparaît.
+    if rel == src or rel == dst then
+      dst:ClearAllPoints()
+      return false
+    end
+    pts[#pts + 1] = { p, rel, rp, x, y }
+  end
+  for i = 1, #pts do
+    local a = pts[i]
+    dst:SetPoint(a[1], a[2], a[3], a[4], a[5])
   end
   return true
+end
+
+local function AnchorClip(f, fs, clip)
+  if CopyPoints(fs, clip) then return end
+  if HasFn(clip, "ClearAllPoints") then clip:ClearAllPoints() end
+  local slot = f.iconSlot
+  local gap = (f._light and 6) or 7
+  local right = (f._light and -6) or -8
+  if slot then
+    clip:SetPoint("TOPLEFT", slot, "TOPRIGHT", gap, 1)
+  else
+    clip:SetPoint("TOPLEFT", f, "TOPLEFT", 40, -7)
+  end
+  clip:SetPoint("RIGHT", f, "RIGHT", right, 0)
+end
+
+local function ReparentToToast(f, fs)
+  if f and fs and HasFn(fs, "SetParent") then pcall(fs.SetParent, fs, f) end
+end
+
+local function HideClip(mq)
+  if not mq then return end
+  mq.t, mq.off = 0, 0
+  if mq.clip then
+    if HasFn(mq.clip, "SetHorizontalScroll") then pcall(mq.clip.SetHorizontalScroll, mq.clip, 0) end
+    if mq.clip.Hide then mq.clip:Hide() end
+  end
 end
 
 local function EnsureClip(f, fs)
@@ -106,14 +144,15 @@ local function EnsureClip(f, fs)
   local okH, child = pcall(CreateFrame, "Frame", nil, clip)
   if not (okH and child) then return nil end
   if HasFn(clip, "SetScrollChild") then pcall(clip.SetScrollChild, clip, child) end
-  if not CopyPoints(fs, clip) then
-    clip:SetPoint("TOPLEFT", fs, "TOPLEFT", 0, 0)
-    clip:SetPoint("RIGHT", f, "RIGHT", f._light and -6 or -8, 0)
-  end
+  AnchorClip(f, fs, clip)
   fs:SetParent(child)
   fs:ClearAllPoints()
   fs:SetPoint("LEFT", child, "LEFT", 0, 0)
   if HasFn(fs, "SetJustifyH") then pcall(fs.SetJustifyH, fs, "LEFT") end
+  if HasFn(clip, "SetFrameLevel") and HasFn(f, "GetFrameLevel") then
+    local ok, lvl = pcall(f.GetFrameLevel, f)
+    if ok and type(lvl) == "number" then pcall(clip.SetFrameLevel, clip, lvl + 1) end
+  end
   local mq = { clip = clip, child = child, fs = fs, t = 0, off = 0, need = 0, room = 0 }
   fs._mq = mq
   f._mqList = f._mqList or {}
@@ -125,39 +164,35 @@ local function FitLine(f, fs)
   if not fs or (fs.IsShown and not fs:IsShown()) then return end
   SingleLine(fs)
   local text = (fs.GetText and fs:GetText()) or ""
-  if text == "" then
-    if fs._mq then
-      fs._mq.need, fs._mq.room, fs._mq.t, fs._mq.off = 0, 0, 0, 0
-      if HasFn(fs._mq.clip, "SetHorizontalScroll") then pcall(fs._mq.clip.SetHorizontalScroll, fs._mq.clip, 0) end
-    end
-    return
-  end
-  local need = TextWidth(fs)
+  local need = (text ~= "" and TextWidth(fs)) or 0
   local room = TF.Avail(f, fs)
-  if need <= room + 0.5 then
+  if room < 8 then room = 8 end
+  -- Texte vide ou qui tient : le FS reste sur le toast, le clip (vivier) est masqué
+  -- pour ne pas recouvrir le titre / le corps (récap vide sauf l'icône).
+  if text == "" or need <= room + 0.5 then
     if fs._mq then
       fs._mq.need, fs._mq.room, fs._mq.t, fs._mq.off = need, room, 0, 0
-      if HasFn(fs._mq.clip, "SetHorizontalScroll") then pcall(fs._mq.clip.SetHorizontalScroll, fs._mq.clip, 0) end
+      HideClip(fs._mq)
+      ReparentToToast(f, fs)
     end
     return
   end
   -- Replacer le FS dans le toast avant de recopier les ancres (vivier :
   -- le texte était déjà dans le clip, souvent déjà décalé).
-  if fs._mq and fs._mq.clip and HasFn(fs, "SetParent") then
-    pcall(fs.SetParent, fs, f)
-  end
+  ReparentToToast(f, fs)
   local mq = EnsureClip(f, fs)
+  if not mq then return end
   -- Recopie les ancres à chaque Fit : la colonne commence à droite de l'icône.
-  if mq and mq.clip then
-    if not CopyPoints(fs, mq.clip) then
-      mq.clip:SetPoint("TOPLEFT", fs, "TOPLEFT", 0, 0)
-      mq.clip:SetPoint("RIGHT", f, "RIGHT", f._light and -6 or -8, 0)
-    end
+  if mq.clip then
+    AnchorClip(f, fs, mq.clip)
     if HasFn(fs, "SetParent") then pcall(fs.SetParent, fs, mq.child) end
     if HasFn(fs, "ClearAllPoints") then fs:ClearAllPoints() end
     if HasFn(fs, "SetPoint") then fs:SetPoint("LEFT", mq.child, "LEFT", 0, 0) end
+    if mq.clip.Show then mq.clip:Show() end
+    if mq.child and mq.child.Show then mq.child:Show() end
   end
   local lh = LineHeight(fs)
+  if not lh or lh < 8 then lh = 8 end
   mq.need, mq.room, mq.t, mq.off = need, room, 0, 0
   if HasFn(mq.clip, "SetHeight") then pcall(mq.clip.SetHeight, mq.clip, lh) end
   if HasFn(mq.clip, "SetWidth") then pcall(mq.clip.SetWidth, mq.clip, room) end
@@ -177,14 +212,9 @@ function TF.Reset(f)
   for i = 1, #list do
     local mq = list[i]
     if mq then
-      mq.t, mq.off, mq.need, mq.room = 0, 0, 0, 0
-      if mq.clip and HasFn(mq.clip, "SetHorizontalScroll") then
-        pcall(mq.clip.SetHorizontalScroll, mq.clip, 0)
-      end
-      local fs = mq.fs
-      if fs and HasFn(fs, "SetParent") then
-        pcall(fs.SetParent, fs, f)
-      end
+      mq.need, mq.room = 0, 0
+      HideClip(mq)
+      ReparentToToast(f, mq.fs)
     end
   end
 end
