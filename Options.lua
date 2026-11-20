@@ -236,6 +236,7 @@ function Options.Set(key, value)
   end
   if it and it.set then
     pcall(it.set, value)
+    if ns.SaveActiveProfile then pcall(ns.SaveActiveProfile) end
     if Options.panel and Options.panel:IsShown() and not Options._syncing then Options.Sync() end
     if Options.OnLiveChange then Options.OnLiveChange(key) end
     return Options.Get(key)
@@ -246,6 +247,7 @@ function Options.Set(key, value)
   else
     ns.SetOpt(key, value)
   end
+  if ns.SaveActiveProfile then pcall(ns.SaveActiveProfile) end
   if Options.OnLiveChange then Options.OnLiveChange(key) end
   return value
 end

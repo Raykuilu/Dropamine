@@ -1563,6 +1563,7 @@ end
 
 function ns.SetOpt(key, value)
   ns.EnsureDB().ui[key] = value
+  if ns.SaveActiveProfile then pcall(ns.SaveActiveProfile) end
   if ns.OnOptionChanged then pcall(ns.OnOptionChanged, key, value) end
   return value
 end
@@ -1674,10 +1675,77 @@ ns.DISPLAY_KEYS = { "theme", "cols", "scale", "opacity", "bgAlpha", "fadeDelay",
 local NIL = "\001nil"
 local function Pack(v) if v == nil then return NIL end return DeepCopy(v) end
 local function Unpack(v) if v == NIL then return nil end return v end
+ns.PROFILE_SKIP = { migr281 = true, launcherPos = true, uiStash = true }
+
+-- Clés persistées dans le profil perso : DISPLAY_KEYS + tout réglage déjà dans db.ui.
+function ns.ProfileKeys(ui)
+  local keys, seen = {}, {}
+  for _, k in ipairs(ns.DISPLAY_KEYS) do
+    if not seen[k] then seen[k] = true keys[#keys + 1] = k end
+  end
+  if type(ui) == "table" then
+    for k in pairs(ui) do
+      if type(k) == "string" and not ns.PROFILE_SKIP[k] and not seen[k] then
+        seen[k] = true
+        keys[#keys + 1] = k
+      end
+    end
+  end
+  return keys
+end
+
+function ns.EnsureCharUIProfile(c, ui)
+  if type(c) ~= "table" then return nil end
+  if type(c.uiProfile) == "table" then return c.uiProfile end
+  ui = ui or (ns.db and ns.db.ui) or {}
+  local p = {}
+  for _, k in ipairs(ns.ProfileKeys(ui)) do
+    p[k] = Pack(ui[k])
+  end
+  c.uiProfile = p
+  return p
+end
+
+function ns.SeedCharProfiles()
+  local db = ns.EnsureDB and ns.EnsureDB() or ns.db
+  if not (db and db.chars) then return 0 end
+  local n = 0
+  for _, c in pairs(db.chars) do
+    if type(c) == "table" and c.uiProfile == nil then
+      ns.EnsureCharUIProfile(c, db.ui)
+      n = n + 1
+    end
+  end
+  return n
+end
+
+-- nil (jamais choisi) ou true : profil perso (défaut). false = suivre le compte.
+function ns.CharUsesProfile(c)
+  if type(c) ~= "table" then return false end
+  return c.charUI ~= false
+end
+
 function ns.CharProfileOn()
   local c = ns.db and ns.db.chars and ns.db.chars[ns.CharKey()]
-  return type(c) == "table" and c.charUI == true
+  return ns.CharUsesProfile(c)
 end
+
+-- Écrit le db.ui courant dans le profil du personnage actif (à chaque réglage, pas seulement à la déconnexion).
+function ns.SaveActiveProfile()
+  if ns._restoringUI then return false end
+  local db = ns.db
+  if not (db and db.ui) then return false end
+  local key = ns.charProfileActive or ns.CharKey()
+  if not key or key:sub(1, 2) == "?-" then return false end
+  local c = db.chars and db.chars[key]
+  if not ns.CharUsesProfile(c) then return false end
+  c.uiProfile = c.uiProfile or {}
+  for _, k in ipairs(ns.ProfileKeys(db.ui)) do
+    c.uiProfile[k] = Pack(db.ui[k])
+  end
+  return true
+end
+
 -- Valeurs du compte mises de côté → remises dans DropamineDB.ui.
 function ns.RestoreAccountUI()
   local db = ns.db
@@ -1685,13 +1753,22 @@ function ns.RestoreAccountUI()
   if type(st) ~= "table" or type(st.values) ~= "table" then return false end
   local ui = db.ui
   local owner = st.owner and db.chars and db.chars[st.owner]
-  if type(owner) == "table" and owner.charUI then
-    owner.uiProfile = owner.uiProfile or {}
-    for _, k in ipairs(ns.DISPLAY_KEYS) do owner.uiProfile[k] = Pack(ui[k]) end
+  -- Sauver le profil AVANT le garde _restoringUI (sinon SaveActiveProfile no-op).
+  if ns.CharUsesProfile(owner) then
+    ns.charProfileActive = st.owner
+    pcall(ns.SaveActiveProfile)
   end
-  for _, k in ipairs(ns.DISPLAY_KEYS) do ui[k] = Unpack(st.values[k]) end
+  ns._restoringUI = true
+  for _, k in ipairs(ns.ProfileKeys(ui)) do
+    if st.values[k] ~= nil then ui[k] = Unpack(st.values[k]) end
+  end
+  -- DISPLAY_KEYS absents du stash : déjà dans st.values via Pack au moment du stash
+  for _, k in ipairs(ns.DISPLAY_KEYS) do
+    if st.values[k] ~= nil then ui[k] = Unpack(st.values[k]) end
+  end
   db.uiStash = nil
   ns.charProfileActive = nil
+  ns._restoringUI = nil
   return true
 end
 -- Profil du personnage posé dans DropamineDB.ui (valeurs du compte gardées).
@@ -1702,17 +1779,17 @@ function ns.ApplyCharProfile()
   if db.uiStash then ns.RestoreAccountUI() end
   local key = ns.CharKey()
   if key:sub(1, 2) == "?-" then return false end
-  local c = db.chars and db.chars[key]
-  if type(c) ~= "table" or c.charUI ~= true then return false end
+  db.chars = db.chars or {}
+  local c = db.chars[key]
+  if type(c) ~= "table" then c = {} db.chars[key] = c end
+  -- Réglages existants du compte : défaut de tout personnage encore sans profil.
+  ns.EnsureCharUIProfile(c, db.ui)
+  if not ns.CharUsesProfile(c) then return false end
   local ui = db.ui
   local values = {}
-  for _, k in ipairs(ns.DISPLAY_KEYS) do values[k] = Pack(ui[k]) end
+  for _, k in ipairs(ns.ProfileKeys(ui)) do values[k] = Pack(ui[k]) end
   db.uiStash = { owner = key, values = values }
-  if type(c.uiProfile) ~= "table" then
-    c.uiProfile = {}
-    for _, k in ipairs(ns.DISPLAY_KEYS) do c.uiProfile[k] = Pack(ui[k]) end
-  end
-  for _, k in ipairs(ns.DISPLAY_KEYS) do
+  for _, k in ipairs(ns.ProfileKeys(c.uiProfile)) do
     local v = c.uiProfile[k]
     if v ~= nil then ui[k] = DeepCopy(Unpack(v)) end
   end
@@ -1723,13 +1800,16 @@ end
 function ns.SetCharProfile(on)
   local c = ns.CharDB()
   on = on and true or false
-  if on == (c.charUI == true) then return on end
+  local cur = (c.charUI ~= false) and (c.charUI == true or ns.charProfileActive ~= nil or c.uiProfile ~= nil)
+  -- comparaison stricte avec l'état demandé : on / off explicite
   if on then
+    if c.charUI == true and ns.charProfileActive then return true end
     c.charUI = true
     ns.ApplyCharProfile()
   else
+    if c.charUI == false and not ns.charProfileActive then return false end
     ns.RestoreAccountUI()
-    c.charUI = nil
+    c.charUI = false
   end
   if ns.ReapplyDisplay then pcall(ns.ReapplyDisplay) end
   return on
@@ -2849,7 +2929,8 @@ ns.On("ADDON_LOADED", function(_, name)
   end
   if name ~= ADDON then return end
   initDB()
-  pcall(ns.ApplyCharProfile)   -- 3.6.0 : avant toute construction de l'interface
+  pcall(ns.SeedCharProfiles)   -- réglages actuels du compte → défaut de chaque perso
+  pcall(ns.ApplyCharProfile)   -- avant toute construction de l'interface
   if ns.migratedDB then ns._announceMigration = true end
   if ns.UI and ns.UI.Init then ns.UI:Init() end
 end)
@@ -3248,7 +3329,7 @@ ns.HELP_SHORT = {
   "  Dopamine : /drop combo · defi · records · barre · collection · sons on|off",
   "  Progression : /drop progression · but <n>|+5|+10|+25 · semaine · succes · spots · share [say|party|guild|raid]",
   "  Mode calme : /drop calme off|instance|groupe · profil perso|compte",
-  "  Plus : /drop help tout (toutes les commandes) · /drop debug (rapport copiable) · debug metier",
+  "  Plus : /drop help tout (toutes les commandes) · /drop debug (rapport copiable) · /drop mem · debug metier",
   "  Langue : /drop lang auto|en|fr (auto = langue du jeu)",
 }
 local function slashHelpAll()
@@ -3285,6 +3366,7 @@ ns.CMD_ALIAS = {
   sessiongoal = "but", target = "but",
   flight = "vol", fly = "vol",
   resethints = "reset-hints",
+  memoire = "mem", memory = "mem",
 }
 ns.ARG_ALIAS = {
   light = "leger", green = "vert", yellow = "jaune", tier = "palier", above = "dessus", below = "dessous",
@@ -3459,3 +3541,194 @@ ns.DebugExt[#ns.DebugExt + 1] = function()
   end
   return { "— Icônes des armes (3.5.18) — " .. ((#parts > 0) and table.concat(parts, " · ") or "aucune compétence d'arme lue") }
 end
+
+
+------------------------------------------------------------------------------
+-- Mémoire retenue : /drop mem
+-- GetAddOnMemoryUsage (Ko) avant / après collectgarbage, plus une ventilation
+-- estimée des tables retenues (SavedVariables, bases, index, snapshots).
+------------------------------------------------------------------------------
+local function MemSize(v, seen)
+  if v == nil then return 0 end
+  local t = type(v)
+  if t == "boolean" or t == "number" then return 16 end
+  if t == "function" or t == "userdata" or t == "thread" then return 40 end
+  if t == "string" then
+    if seen[v] then return 0 end
+    seen[v] = true
+    return 24 + #v
+  end
+  if t ~= "table" then return 0 end
+  if seen[v] then return 0 end
+  seen[v] = true
+  local n = 40
+  for k, x in pairs(v) do
+    n = n + 40 + MemSize(k, seen) + MemSize(x, seen)
+  end
+  return n
+end
+
+function ns.MemSize(v)
+  return MemSize(v, {})
+end
+
+local function MemKo(n)
+  n = tonumber(n) or 0
+  return n / 1024
+end
+
+local function MemMo(n)
+  n = tonumber(n) or 0
+  if n >= 1024 then
+    -- GetAddOnMemoryUsage is already in KB
+    return n / 1024
+  end
+  return n / (1024 * 1024)
+end
+
+function ns.MemBreakdown()
+  local rows, seen = {}, {}
+  local function add(name, obj, note)
+    rows[#rows + 1] = { name = name, bytes = MemSize(obj, seen), note = note }
+  end
+  -- seen is shared so overlaps (chars inside DropamineDB) aren't double-counted
+  -- if we add DB first then children with a fresh seen for the child-only view.
+  local db = rawget(_G, "DropamineDB") or ns.db
+  local old = rawget(_G, "OSRS_TotalLevelDB")
+  add("DropamineDB", db)
+  -- child views use a private seen so the user sees each bag's own weight
+  local function own(name, obj, note)
+    rows[#rows + 1] = { name = name, bytes = MemSize(obj, {}), note = note, child = true }
+  end
+  own("  ui", db and db.ui)
+  own("  scanner", db and db.scanner)
+  local scanner = db and db.scanner
+  if type(scanner) == "table" then
+    local nc, nn = 0, 0
+    for _ in pairs(scanner.creatures or {}) do nc = nc + 1 end
+    for _ in pairs(scanner.nodes or {}) do nn = nn + 1 end
+    own("    creatures", scanner.creatures, nc > 0 and (tostring(nc) .. " PNJ") or nil)
+    own("    nodes", scanner.nodes, nn > 0 and (tostring(nn) .. " nœuds") or nil)
+    own("    fishing", scanner.fishing)
+  end
+  own("  chars", db and db.chars)
+  if type(db) == "table" and type(db.chars) == "table" then
+    for key, c in pairs(db.chars) do
+      if type(c) == "table" then
+        local bits = {}
+        local function bit(label, obj)
+          local b = MemSize(obj, {})
+          if b >= 2048 then bits[#bits + 1] = label .. " " .. string.format("%.1f", b / 1024) .. " Ko" end
+        end
+        bit("sessLog", c.progress and c.progress.sessLog)
+        bit("semaines", c.progress and c.progress.sessWeeks)
+        bit("spots", c.progress and c.progress.spots)
+        bit("historique", c.history)
+        bit("recettes", c.recipes)
+        bit("pêche", c.fishing)
+        own("    " .. tostring(key), c, (#bits > 0) and table.concat(bits, ", ") or nil)
+      end
+    end
+  end
+  add("OSRS_TotalLevelDB", old, (old and db and old ~= db) and "copie encore chargée (migration)" or nil)
+  add("ScannerDB (base)", ns.ScannerDB)
+  add("index noms PNJ", ns.Scanner and ns.Scanner._npcNames)
+  add("recettes par composant", ns.Craft and ns.Craft._byReagent)
+  add("locales", ns.L)
+  add("catalogue", ns.CATALOG)
+  add("snapshot UI", ns.UI and ns.UI.snapshot)
+  add("échantillons rythme", ns.Rate and ns.Rate.samples)
+  add("cache GUID", ns.Scanner and ns.Scanner._guidCache)
+  add("cache objets scanner", ns.Scanner and ns.Scanner._itemCache)
+  return rows
+end
+
+function ns.AddonMemoryKB()
+  local name = ADDON or "Dropamine"
+  if type(_G.UpdateAddOnMemoryUsage) == "function" then pcall(_G.UpdateAddOnMemoryUsage) end
+  if type(_G.GetAddOnMemoryUsage) == "function" then
+    local ok, v = pcall(_G.GetAddOnMemoryUsage, name)
+    if ok then return tonumber(v) end
+  end
+  if type(collectgarbage) == "function" then
+    local ok, v = pcall(collectgarbage, "count")
+    if ok then return tonumber(v) end
+  end
+  return nil
+end
+
+function ns.PruneRetained()
+  local db = ns.EnsureDB and ns.EnsureDB() or ns.db
+  local n = 0
+  if type(db) == "table" and type(db.chars) == "table" then
+    for _, c in pairs(db.chars) do
+      if type(c) == "table" then
+        if ns.QoL and ns.QoL.PruneHistory then pcall(ns.QoL.PruneHistory, c) n = n + 1 end
+        if c.progress and ns.Efficiency and ns.Efficiency.CompactHist then
+          pcall(ns.Efficiency.CompactHist, c.progress)
+        end
+      end
+    end
+  end
+  if ns.Scanner and ns.Scanner.PruneLearned then pcall(ns.Scanner.PruneLearned) end
+  return n
+end
+
+function ns.MemReport()
+  ns.PruneRetained()
+  local before = ns.AddonMemoryKB()
+  local rows = ns.MemBreakdown()
+  local after
+  if type(collectgarbage) == "function" then pcall(collectgarbage, "collect") end
+  after = ns.AddonMemoryKB()
+  local function fmtKB(kb)
+    kb = tonumber(kb)
+    if not kb then return "?" end
+    if kb >= 1024 then return string.format("%.1f Mo", kb / 1024) end
+    return string.format("%.0f Ko", kb)
+  end
+  local function fmtB(b)
+    b = tonumber(b) or 0
+    if b >= 1024 * 1024 then return string.format("%.1f Mo", b / (1024 * 1024)) end
+    if b >= 1024 then return string.format("%.0f Ko", b / 1024) end
+    return string.format("%d o", b)
+  end
+  local lines = {}
+  local head = Tr["Dropamine mémoire : "] .. fmtKB(before)
+  if after then
+    head = head .. Tr[" (après GC : "] .. fmtKB(after)
+    if before and after and before > after then
+      head = head .. Tr[", libéré "] .. fmtKB(before - after)
+    end
+    head = head .. ")"
+  end
+  lines[#lines + 1] = head
+  for i = 1, #rows do
+    local r = rows[i]
+    if (r.bytes or 0) > 0 or not r.child then
+      local line = r.name .. " : " .. fmtB(r.bytes)
+      if r.note then line = line .. " (" .. r.note .. ")" end
+      lines[#lines + 1] = line
+    end
+  end
+  lines[#lines + 1] = Tr["Cible : moins de 18 Mo (niveau Flare). Le total de l'addon inclut aussi le code Lua et les cadres ; les lignes ci-dessus sont les tables retenues."]
+  for i = 1, #lines do
+    if ns.Print then ns.Print(lines[i]) else print(lines[i]) end
+  end
+  return lines, before, after, rows
+end
+
+ns.SlashExt = ns.SlashExt or {}
+ns.SlashExt.mem = function()
+  ns.MemReport()
+  return true
+end
+ns.SlashExt.memoire = ns.SlashExt.mem
+ns.SlashExt.memory = ns.SlashExt.mem
+
+ns.HelpExt = ns.HelpExt or {}
+ns.HelpExt[#ns.HelpExt + 1] = "/drop mem : mémoire de l'addon (GetAddOnMemoryUsage avant/après GC, ventilation des tables retenues)"
+
+ns.On("PLAYER_LOGIN", function()
+  pcall(ns.PruneRetained)
+end)

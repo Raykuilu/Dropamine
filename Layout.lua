@@ -90,6 +90,7 @@ function L.SetCols(n)
   if not (n and IsValid(n)) then return nil end
   if n == L.Cols() and L.applied and L.applied.cols == n then return n end
   DB().cols = (n ~= L.BASE_COLS) and n or nil
+  if ns.SaveActiveProfile then pcall(ns.SaveActiveProfile) end
   L.Apply()
   return n
 end
@@ -99,6 +100,7 @@ function L.SetScale(v)
   v = math.max(L.SCALE_MIN, math.min(L.SCALE_MAX, math.floor(v + 0.5)))
   local same = (v == L.Scale()) and L.applied and L.applied.scale == v
   DB().scale = (v ~= 100) and v or nil
+  if ns.SaveActiveProfile then pcall(ns.SaveActiveProfile) end
   if same then return v end
   -- taille dynamique : mesures de la grille recalculées, panneau remis en page,
   -- coin haut-gauche conservé (L.Apply), bord / coins à épaisseur native

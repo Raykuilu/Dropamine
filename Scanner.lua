@@ -59,6 +59,41 @@ function Scanner.DB()
   return s
 end
 
+-- Bornes : ne pas garder une copie des PNJ déjà dans ScannerDB s'ils n'ont
+-- aucun butin appris ; plafonner les créatures apprises (les moins lootées sortent).
+Scanner.CREATURES_MAX = 2500
+function Scanner.PruneLearned()
+  local s = Scanner.DB()
+  if not s or type(s.creatures) ~= "table" then return 0 end
+  local static = ns.ScannerDB and ns.ScannerDB.npcs
+  local dropped = 0
+  for id, c in pairs(s.creatures) do
+    local has = false
+    if type(c) == "table" then
+      if type(c.items) == "table" and next(c.items) then has = true end
+      if type(c.skills) == "table" and next(c.skills) then has = true end
+      if (tonumber(c.loots) or 0) > 0 then has = true end
+    end
+    if not has and static and static[id] then
+      s.creatures[id] = nil
+      dropped = dropped + 1
+    end
+  end
+  local list = {}
+  for id, c in pairs(s.creatures) do
+    list[#list + 1] = { id = id, loots = (type(c) == "table" and (tonumber(c.loots) or 0)) or 0 }
+  end
+  if #list > Scanner.CREATURES_MAX then
+    table.sort(list, function(a, b) return a.loots < b.loots end)
+    local excess = #list - Scanner.CREATURES_MAX
+    for i = 1, excess do
+      s.creatures[list[i].id] = nil
+      dropped = dropped + 1
+    end
+  end
+  return dropped
+end
+
 -- 3.3.7 : lecture ROBUSTE des identifiants d'unité (GUID).
 -- CAUSE du bug en jeu : « local kind, …, id = strsplit and strsplit("-", guid) »
 -- — en Lua, « a and f() » ne garde que la 1re valeur de f() : kind = "Creature",

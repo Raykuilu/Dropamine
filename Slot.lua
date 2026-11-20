@@ -231,25 +231,64 @@ local function CallBag(fn, bag)
   if ok then return a, b end
 end
 
+-- Places libres dans les sacs GÉNÉRAUX seulement (bagType 0).
+-- Exclus : carquois, munitions, âme, métier, trousseau de clés.
+-- Nil si l'API n'a rien renvoyé (chargement / BAG_UPDATE transitoire) :
+-- on ne traite jamais une lecture ratée comme « 0 place ».
+S.BAG_CONFIRM = 0.75
+function S.BagFreeFn()
+  if type(_G.C_Container) == "table" and type(_G.C_Container.GetContainerNumFreeSlots) == "function" then
+    return _G.C_Container.GetContainerNumFreeSlots
+  end
+  if type(_G.GetContainerNumFreeSlots) == "function" then return _G.GetContainerNumFreeSlots end
+  return nil
+end
+
+function S.BagIndexList()
+  local out, seen = {}, {}
+  local function add(bag)
+    if bag == nil then return end
+    bag = N(bag)
+    if not bag or seen[bag] then return end
+    -- trousseau de clés (souvent -2) : jamais compté
+    local keyring = N(_G.KEYRING_CONTAINER) or -2
+    if bag == keyring or bag < 0 then return end
+    seen[bag] = true
+    out[#out + 1] = bag
+  end
+  add(0) -- sac à dos
+  local n = N(_G.NUM_BAG_SLOTS) or 4
+  for i = 1, n do add(i) end
+  if _G.REAGENTBAG_CONTAINER then add(_G.REAGENTBAG_CONTAINER) end
+  if (N(_G.NUM_REAGENTBAG_SLOTS) or 0) > 0 then add(n + 1) end
+  return out
+end
+
 function S.FreeBagSlots()
   if S._simFree ~= nil then return S._simFree end
-  local free = 0
-  local n = _G.NUM_BAG_SLOTS or 4
-  local fn = _G.GetContainerNumFreeSlots
-  if type(_G.C_Container) == "table" and type(_G.C_Container.GetContainerNumFreeSlots) == "function" then
-    fn = _G.C_Container.GetContainerNumFreeSlots
-  end
+  local fn = S.BagFreeFn()
   if type(fn) ~= "function" then return nil end
-  for bag = 0, n do
-    local a = CallBag(fn, bag)
-    if type(a) == "number" then free = free + a end
+  local free, seen = 0, 0
+  local bags = S.BagIndexList()
+  for i = 1, #bags do
+    local a, typ = CallBag(fn, bags[i])
+    -- typ nil : certains clients ne renvoient que les places ; le sac à dos est général.
+    typ = N(typ)
+    if typ == nil or typ == 0 then
+      if type(a) == "number" then
+        free = free + a
+        seen = seen + 1
+      end
+    end
   end
+  if seen == 0 then return nil end
   return free
 end
 
 function S.LiveBags()
   if S._sim.bags then return true end
   local free = S.FreeBagSlots()
+  if free == nil then return false end
   return free == 0
 end
 
@@ -695,15 +734,41 @@ function S.IconAnchor(t)
   return t.icon or t.iconSlot or t.slotBorder or t
 end
 
-function S.IconInset(t, anchor)
-  anchor = anchor or S.IconAnchor(t)
-  local slot = t and (t.iconSlot or t)
-  local inset = slot and N(slot._ringInset) or 0
-  if not inset or inset <= 0 then
-    local size = 32
-    if anchor and anchor.GetWidth then size = N(anchor:GetWidth()) or size end
-    inset = math.max(2, math.floor(size * 3 / 32 + 0.5))
+-- Taille intérieure de l'icône (goutte en barre ~14 px, case grille ~32 px).
+-- Ne jamais se fier à GetWidth d'un cadre seulement ancré : avant le layout
+-- (et dans le harnais) ça rend souvent 0 ou la taille par défaut (100).
+function S.IconInnerSize(t)
+  if not t then return 16, 16, nil, 2 end
+  local anchor = S.IconAnchor(t)
+  local aw, ah = 0, 0
+  local function take(obj)
+    if not obj then return end
+    if aw < 2 and obj.GetWidth then aw = N(obj:GetWidth()) or aw end
+    if ah < 2 and obj.GetHeight then ah = N(obj:GetHeight()) or ah end
   end
+  take(anchor)
+  take(t.icon)
+  take(t.iconSlot)
+  if aw < 2 and t._wideH then
+    aw = math.max(8, (N(t._wideH) or 16) - 2)
+  end
+  -- Repli : barre large = petite goutte ; grille = icône de case.
+  if aw < 2 then aw = (t._wideOn and 14) or 32 end
+  if ah < 2 then ah = aw end
+  local inset = 0
+  local slot = t.iconSlot or t
+  if slot then inset = N(slot._ringInset) or 0 end
+  if not inset or inset <= 0 then
+    inset = math.max(2, math.floor(aw * 3 / 32 + 0.5))
+  end
+  if inset * 2 >= aw then inset = math.max(1, math.floor(aw / 8)) end
+  local w = math.max(1, aw - inset * 2)
+  local h = math.max(1, ah - inset * 2)
+  return w, h, anchor, inset, aw, ah
+end
+
+function S.IconInset(t, anchor)
+  local _, _, _, inset = S.IconInnerSize(t)
   return inset
 end
 
@@ -732,34 +797,46 @@ function S.PlaceIconClip(t)
   if not t then return nil end
   local clip, content = S.EnsureIconClip(t)
   if not clip then return nil end
-  local anchor = S.IconAnchor(t)
-  local inset = S.IconInset(t, anchor)
+  local w, h, anchor, inset = S.IconInnerSize(t)
   if clip.ClearAllPoints then pcall(clip.ClearAllPoints, clip) end
+  -- Taille posée explicitement : on ne laisse pas un défaut 100×50 recouvrir la fiole.
+  if clip.SetSize then pcall(clip.SetSize, clip, w, h) end
+  if clip.SetWidth then pcall(clip.SetWidth, clip, w) end
+  if clip.SetHeight then pcall(clip.SetHeight, clip, h) end
   if clip.SetPoint and anchor then
-    pcall(clip.SetPoint, clip, "TOPLEFT", anchor, "TOPLEFT", inset, -inset)
-    pcall(clip.SetPoint, clip, "BOTTOMRIGHT", anchor, "BOTTOMRIGHT", -inset, inset)
+    pcall(clip.SetPoint, clip, "CENTER", anchor, "CENTER", 0, 0)
   elseif clip.SetAllPoints and anchor then
     pcall(clip.SetAllPoints, clip, anchor)
   end
-  local w, h = 16, 16
-  if clip.GetWidth then
-    local cw, ch = N(clip:GetWidth()), N(clip:GetHeight())
-    if (not cw or cw < 1) and anchor and anchor.GetWidth then
-      cw = math.max(1, (N(anchor:GetWidth()) or 16) - inset * 2)
-      ch = math.max(1, (N(anchor:GetHeight()) or cw) - inset * 2)
-    end
-    if cw and cw >= 1 then w = cw end
-    if ch and ch >= 1 then h = ch end
-  end
   if content then
+    if content.ClearAllPoints then pcall(content.ClearAllPoints, content) end
     if content.SetSize then pcall(content.SetSize, content, w, h) end
     if content.SetWidth then pcall(content.SetWidth, content, w) end
     if content.SetHeight then pcall(content.SetHeight, content, h) end
+    -- pas de SetAllPoints : le contenu doit rester à w×h, pas à une taille héritée.
   end
+  if clip.SetHorizontalScroll then pcall(clip.SetHorizontalScroll, clip, 0) end
+  if clip.SetVerticalScroll then pcall(clip.SetVerticalScroll, clip, 0) end
+  clip._innerW, clip._innerH = w, h
   if clip.Show then clip:Show() end
   if t.SetClipsChildren then pcall(t.SetClipsChildren, t, true) end
   if t.icon and t.icon.SetClipsChildren then pcall(t.icon.SetClipsChildren, t.icon, true) end
   return clip, content, w, h
+end
+
+-- Place une texture par un coin + SetSize (jamais seulement SetHeight après
+-- un étirement LEFT/RIGHT, qui laisse la taille par défaut et déborde).
+function S.PlaceClippedTex(tex, parent, w, h, x, y)
+  if not tex then return end
+  if tex.SetParent and parent then pcall(tex.SetParent, tex, parent) end
+  if tex.ClearAllPoints then pcall(tex.ClearAllPoints, tex) end
+  w, h = math.max(1, N(w) or 1), math.max(1, N(h) or 1)
+  if tex.SetSize then pcall(tex.SetSize, tex, w, h) end
+  if tex.SetWidth then pcall(tex.SetWidth, tex, w) end
+  if tex.SetHeight then pcall(tex.SetHeight, tex, h) end
+  if tex.SetPoint and parent then
+    pcall(tex.SetPoint, tex, "BOTTOMLEFT", parent, "BOTTOMLEFT", x or 0, y or 0)
+  end
 end
 
 function S.EnsureSlotZ(t)
@@ -767,12 +844,11 @@ function S.EnsureSlotZ(t)
   local parent = t.icon or t.slotBorder or t
   local ok, clip = pcall(CreateFrame, "ScrollFrame", nil, t)
   if not (ok and clip) then return nil end
-  if clip.SetAllPoints and parent then pcall(clip.SetAllPoints, clip, parent) end
   if clip.EnableMouse then pcall(clip.EnableMouse, clip, false) end
   local okC, content = pcall(CreateFrame, "Frame", nil, clip)
   if not (okC and content) then return nil end
   if clip.SetScrollChild then pcall(clip.SetScrollChild, clip, content) end
-  if content.SetAllPoints then pcall(content.SetAllPoints, content, clip) end
+  -- Taille posée dans ApplySlotZ (IconInnerSize), pas SetAllPoints.
   local zs = {}
   for i = 1, 3 do
     local fs = content.CreateFontString and content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -800,25 +876,23 @@ function S.ApplySlotZ(t, on)
   end
   local clip = S.EnsureSlotZ(t)
   if not clip then return end
-  local anchor = S.IconAnchor(t)
-  local inset = S.IconInset and S.IconInset(t, anchor) or 2
+  local w, h, anchor, inset = S.IconInnerSize(t)
   if clip.ClearAllPoints then pcall(clip.ClearAllPoints, clip) end
+  if clip.SetSize then pcall(clip.SetSize, clip, w, h) end
+  if clip.SetWidth then pcall(clip.SetWidth, clip, w) end
+  if clip.SetHeight then pcall(clip.SetHeight, clip, h) end
   if clip.SetPoint and anchor then
-    pcall(clip.SetPoint, clip, "TOPLEFT", anchor, "TOPLEFT", inset, -inset)
-    pcall(clip.SetPoint, clip, "BOTTOMRIGHT", anchor, "BOTTOMRIGHT", -inset, inset)
+    pcall(clip.SetPoint, clip, "CENTER", anchor, "CENTER", 0, 0)
   elseif clip.SetAllPoints and anchor then
     pcall(clip.SetAllPoints, clip, anchor)
   end
-  local w, h = 16, 16
-  if clip.GetWidth then
-    w = N(clip:GetWidth()) or w
-    h = N(clip:GetHeight()) or h
+  if clip._content then
+    if clip._content.ClearAllPoints then pcall(clip._content.ClearAllPoints, clip._content) end
+    if clip._content.SetSize then pcall(clip._content.SetSize, clip._content, w, h) end
+    if clip._content.SetWidth then pcall(clip._content.SetWidth, clip._content, w) end
+    if clip._content.SetHeight then pcall(clip._content.SetHeight, clip._content, h) end
   end
-  if (not w or w < 1) and anchor and anchor.GetWidth then
-    w = math.max(1, (N(anchor:GetWidth()) or 16) - inset * 2)
-    h = math.max(1, (N(anchor:GetHeight()) or w) - inset * 2)
-  end
-  if clip._content and clip._content.SetSize then pcall(clip._content.SetSize, clip._content, w, h) end
+  clip._innerW, clip._innerH = w, h
   if clip.Show then clip:Show() end
   -- barre large : la goutte du puits cède la place aux z ; en grille, l'icône
   -- de la case total reste visible, les z se dessinent par-dessus (clipés).
@@ -832,10 +906,10 @@ function S.TickSlotZ(dt)
   local t = S.FlaskTile and S.FlaskTile() or (ns.Wide and ns.Wide.TotalTile and ns.Wide.TotalTile())
   if not (t and t._slotZ and S.TakesRestedZ()) then return end
   local clip = t._slotZ
-  local h = 16
-  if clip.GetHeight then h = N(clip:GetHeight()) or h end
-  local w = 16
-  if clip.GetWidth then w = N(clip:GetWidth()) or w end
+  local w, h = clip._innerW, clip._innerH
+  if not w or not h or w < 1 or h < 1 then
+    w, h = S.IconInnerSize(t)
+  end
   for i, z in ipairs(clip.z or {}) do
     z.age = (z.age or 0) + dt
     if z.age >= 0 then
@@ -936,7 +1010,8 @@ function S.ApplyCombatLiq(t)
   local fill = S.fill or {}
   local p = math.max(0, math.min(1, (N(fill.p) or 0) * (N(fill.drain) or 1)))
   local grey = N(fill.grey) or 0
-  local show = style ~= "off" and p > 0.01 and grey < 0.85
+  -- En barre large, le remplissage combat est déjà dans les segments horizontaux.
+  local show = (not t._wideOn) and style ~= "off" and p > 0.01 and grey < 0.85
   local liq = t._cLiq
   if not show then
     if liq and liq.Hide then liq:Hide() end
@@ -947,9 +1022,12 @@ function S.ApplyCombatLiq(t)
   local clip, content, w, h = S.PlaceIconClip(t)
   w, h = w or 16, h or 16
   if liq.ClearAllPoints then pcall(liq.ClearAllPoints, liq) end
-  if content and liq.SetAllPoints then pcall(liq.SetAllPoints, liq, content)
-  elseif clip and liq.SetAllPoints then pcall(liq.SetAllPoints, liq, clip)
-  end
+  if liq.SetParent and content then pcall(liq.SetParent, liq, content) end
+  -- SetSize explicite, pas SetAllPoints (évite d'hériter d'une taille 100×50).
+  if liq.SetSize then pcall(liq.SetSize, liq, w, h) end
+  if liq.SetWidth then pcall(liq.SetWidth, liq, w) end
+  if liq.SetHeight then pcall(liq.SetHeight, liq, h) end
+  if liq.SetPoint then pcall(liq.SetPoint, liq, "BOTTOMLEFT", content or clip, "BOTTOMLEFT", 0, 0) end
   -- Remplissage depuis le bas, strictement dans le clip (jamais au-dessus de h).
   local inset = math.max(1, w * 0.18)
   local bodyH = math.max(1, (h * 0.72) * p)
@@ -991,7 +1069,7 @@ function S.ApplyCombatLiq(t)
   if liq.bubbles then
     if style == "bubbles" and p > 0.15 and grey < 0.5 then
       if liq.bubbles.SetTexture then pcall(liq.bubbles.SetTexture, liq.bubbles, S.COMBAT_A_SHEET) end
-      if liq.bubbles.SetAllPoints then pcall(liq.bubbles.SetAllPoints, liq.bubbles, liq) end
+      S.PlaceClippedTex(liq.bubbles, liq, w, h, 0, 0)
       local fi = S._frame.combatA or 1
       if liq.bubbles.SetTexCoord then pcall(liq.bubbles.SetTexCoord, liq.bubbles, S.TexCoord(fi, 32)) end
       if liq.bubbles.SetAlpha then pcall(liq.bubbles.SetAlpha, liq.bubbles, math.min(1, (p - 0.15) / 0.25)) end
@@ -999,6 +1077,13 @@ function S.ApplyCombatLiq(t)
     else
       if liq.bubbles.Hide then liq.bubbles:Hide() end
     end
+  end
+  local mask = S.IconMaskFor(t)
+  if mask then
+    local function maskTex(tex)
+      if tex and tex.AddMaskTexture then pcall(tex.AddMaskTexture, tex, mask) end
+    end
+    maskTex(liq.blue) maskTex(liq.red) maskTex(liq.wave) maskTex(liq.bubbles)
   end
   if liq.SetFrameLevel and t.GetFrameLevel then
     pcall(liq.SetFrameLevel, liq, (t:GetFrameLevel() or 1) + 2)
@@ -1304,17 +1389,56 @@ function S.NotifyDurability(force)
     "durability")
 end
 
+function S.BagsLoading()
+  local F = ns.Flight
+  if F and (F.SafetyPause and F.SafetyPause()) then return true end
+  if F and F._loading then return true end
+  return false
+end
+
 function S.CheckBags()
   local now = Now()
-  local full = S.LiveBags() and S.Opt("slotBags")
-  -- le délai ne doit pas empêcher de reset le toast une fois qu'une place se libère
-  if not full then
-    S._bagsToastShown = false
-    S._bagsWereFull = false
+  -- simulation DEV : toast immédiat, sans debounce
+  if S._sim.bags then
+    if not S.Opt("slotBags") then return end
+    if not S._bagsToastShown then S.NotifyBags() end
+    S._bagsWereFull = true
     return
   end
-  if S._bagsAt and now - S._bagsAt < 0.2 and not S._sim.bags then return end
+  if not S.Opt("slotBags") then
+    S._bagsToastShown, S._bagsWereFull, S._bagsZeroSince = false, false, nil
+    return
+  end
+  if S.BagsLoading() then return end
+  local free = S.FreeBagSlots()
+  -- Pas plein (places libres, lecture ratée, ou fin de simulation) : retirer le marqueur.
+  if free == nil or free > 0 then
+    S._bagsToastShown = false
+    S._bagsWereFull = false
+    if free and free > 0 then
+      S._bagsLastFree = free
+      S._bagsZeroSince = nil
+    end
+    return
+  end
+  -- 0 place générale : attendre une confirmation (BAG_UPDATE renvoie souvent 0 un instant).
+  S._bagsZeroSince = S._bagsZeroSince or now
+  local wait = S.BAG_CONFIRM or 0.75
+  if (now - S._bagsZeroSince) < wait then
+    S._bagsAt = now
+    if type(_G.C_Timer) == "table" and type(_G.C_Timer.After) == "function" then
+      if not S._bagsTimer then
+        S._bagsTimer = true
+        _G.C_Timer.After(wait, function()
+          S._bagsTimer = nil
+          pcall(S.CheckBags)
+        end)
+      end
+    end
+    return
+  end
   S._bagsAt = now
+  S._bagsLastFree = 0
   if not S._bagsToastShown then S.NotifyBags() end
   S._bagsWereFull = true
 end
@@ -1345,10 +1469,16 @@ end
 ------------------------------------------------------------------------------
 function S.EnsureRegenWave(t)
   if not t then return nil end
-  local _, content = S.PlaceIconClip(t)
+  local _, content, w, h = S.PlaceIconClip(t)
   local parent = content or t
+  if t._eat then
+    if parent then
+      if t._eat.body and t._eat.body.SetParent then pcall(t._eat.body.SetParent, t._eat.body, parent) end
+      if t._eat.wave and t._eat.wave.SetParent then pcall(t._eat.wave.SetParent, t._eat.wave, parent) end
+    end
+    return t._eat
+  end
   if not (parent and type(parent.CreateTexture) == "function") then return nil end
-  if t._eat then return t._eat end
   local body = parent:CreateTexture(nil, "ARTWORK", nil, 3)
   local wave = parent:CreateTexture(nil, "ARTWORK", nil, 4)
   if not (body and wave) then return nil end
@@ -1360,6 +1490,11 @@ function S.EnsureRegenWave(t)
   local tex = (ns.Rested and ns.Rested.WAVE_TEX) or (MEDIA .. "Dropamine-Wave")
   if wave.SetTexture then pcall(wave.SetTexture, wave, tex) end
   if wave.SetVertexColor then pcall(wave.SetVertexColor, wave, 0.60, 0.80, 1.00, 0.80) end
+  -- Taille initiale dans le clip, jamais la taille par défaut du client.
+  S.PlaceClippedTex(body, parent, w or 16, 1, 0, 0)
+  S.PlaceClippedTex(wave, parent, w or 16, 1, 0, 0)
+  if body.Hide then body:Hide() end
+  if wave.Hide then wave:Hide() end
   t._eat = { body = body, wave = wave, u = 0 }
   return t._eat
 end
@@ -1385,27 +1520,17 @@ function S.ApplyRegenWave(dt)
   local e = S.EnsureRegenWave(t)
   if not e then return end
   local clip, content, w, H = S.PlaceIconClip(t)
-  H = H or 16
+  w, H = w or 16, H or 16
   local a = content or clip or t.icon or t
   local L = math.min(H * 0.55, H)
-  if e.body.ClearAllPoints then pcall(e.body.ClearAllPoints, e.body) end
-  if e.body.SetPoint then
-    pcall(e.body.SetPoint, e.body, "BOTTOMLEFT", a, "BOTTOMLEFT", 0, 0)
-    pcall(e.body.SetPoint, e.body, "BOTTOMRIGHT", a, "BOTTOMRIGHT", 0, 0)
-  end
-  if e.body.SetHeight then pcall(e.body.SetHeight, e.body, L) end
+  S.PlaceClippedTex(e.body, a, w, L, 0, 0)
   if e.body.Show then e.body:Show() end
   local R = ns.Rested
   e.u = (e.u or 0) + dt / ((R and R.LIQ and R.LIQ.charge and R.LIQ.charge.period) or 2.4)
   if e.u > 1 then e.u = e.u - math.floor(e.u) end
   local wh, wy = math.min(8, H), math.max(0, L - 5)
   if wy + wh > H then wy = math.max(0, H - wh) end
-  if e.wave.ClearAllPoints then pcall(e.wave.ClearAllPoints, e.wave) end
-  if e.wave.SetPoint then
-    pcall(e.wave.SetPoint, e.wave, "BOTTOMLEFT", a, "BOTTOMLEFT", 0, wy)
-    pcall(e.wave.SetPoint, e.wave, "BOTTOMRIGHT", a, "BOTTOMRIGHT", 0, wy)
-  end
-  if e.wave.SetHeight then pcall(e.wave.SetHeight, e.wave, wh) end
+  S.PlaceClippedTex(e.wave, a, w, wh, 0, wy)
   if e.wave.SetTexCoord then
     local u = e.u * ((R and R.WAVE_U) or 0.5)
     pcall(e.wave.SetTexCoord, e.wave, u, 0, u + ((R and R.WAVE_U) or 0.5), 1)
@@ -1501,7 +1626,7 @@ if ns.On then
     "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
     "UNIT_SPELLCAST_CHANNEL_START", "UNIT_SPELLCAST_CHANNEL_STOP",
     "UNIT_SPELLCAST_CHANNEL_UPDATE",
-    "BAG_UPDATE", "CHAT_MSG_LOOT", "LOOT_CLOSED",
+    "BAG_UPDATE", "BAG_UPDATE_DELAYED", "CHAT_MSG_LOOT", "LOOT_CLOSED",
     "UPDATE_INVENTORY_DURABILITY", "PLAYER_EQUIPMENT_CHANGED",
     "UNIT_AURA", "UI_ERROR_MESSAGE",
     "PLAYER_ENTERING_WORLD", "PLAYER_UPDATE_RESTING",
@@ -1513,7 +1638,7 @@ if ns.On then
   for i = 1, #evs do
     local ev = evs[i]
     ns.On(ev, function(...)
-      if ev == "BAG_UPDATE" or ev == "CHAT_MSG_LOOT" or ev == "LOOT_CLOSED" then
+      if ev == "BAG_UPDATE" or ev == "BAG_UPDATE_DELAYED" or ev == "CHAT_MSG_LOOT" or ev == "LOOT_CLOSED" then
         pcall(S.OnCatch)
         pcall(S.CheckBags)
       end
