@@ -559,6 +559,141 @@ local function WeaponTestSkill()
   return name, id, icon, nil
 end
 
+Options.TEST_GAP = 1.5
+Options.TEST_DEBOUNCE = 0.4
+
+local function TestNow()
+  if type(GetTime) == "function" then
+    local ok, v = pcall(GetTime)
+    if ok and type(v) == "number" then return v end
+  end
+  return 0
+end
+
+local function After(sec, fn)
+  if type(_G.C_Timer) == "table" and type(_G.C_Timer.After) == "function" then
+    _G.C_Timer.After(sec, fn)
+    return
+  end
+  local f = Options._testTimer
+  if not f and type(CreateFrame) == "function" then
+    local ok, fr = pcall(CreateFrame, "Frame", "DropamineOptTestTimer", _G.UIParent)
+    if ok and fr then
+      f = fr
+      f._osrsOwn = true
+      if f.EnableMouse then pcall(f.EnableMouse, f, false) end
+      if f.Show then pcall(f.Show, f) end
+      Options._testTimer = f
+    end
+  end
+  Options._testWait = Options._testWait or {}
+  Options._testWait[#Options._testWait + 1] = { t = sec or 0, fn = fn }
+  if not f or not f.SetScript then return end
+  f:SetScript("OnUpdate", function(self, dt)
+    local q = Options._testWait
+    if not (q and q[1]) then
+      pcall(self.SetScript, self, "OnUpdate", nil)
+      return
+    end
+    local i = 1
+    while i <= #q do
+      q[i].t = (q[i].t or 0) - (dt or 0)
+      if q[i].t <= 0 then
+        local cb = table.remove(q, i).fn
+        if cb then pcall(cb) end
+      else
+        i = i + 1
+      end
+    end
+    if not q[1] then pcall(self.SetScript, self, "OnUpdate", nil) end
+  end)
+end
+
+local function RememberTile(tile)
+  if not tile then return end
+  Options._testSnap = Options._testSnap or { tiles = {} }
+  local snap = Options._testSnap.tiles
+  if snap[tile] then return end
+  local fs = tile.levelFS
+  snap[tile] = {
+    countTop = tile._countTop,
+    levelText = fs and fs.GetText and fs:GetText() or nil,
+  }
+end
+
+local function PreviewTileFx(opts)
+  local C = ns.Compact
+  if not (C and C.Announce and C.TargetsFor) then return end
+  local targets = C.TargetsFor(opts)
+  if not (targets and targets[1]) then return end
+  for _, tg in ipairs(targets) do
+    if tg.key and tg.key ~= "total" and C.TileByKey then
+      RememberTile(C.TileByKey(tg.key))
+    end
+  end
+  pcall(C.Announce, opts, targets)
+end
+
+function Options.ResetTestState()
+  local UI, C, S = ns.UI, ns.Compact, ns.Slot
+  if UI and UI.dropsActive then
+    for i = #UI.dropsActive, 1, -1 do
+      local f = UI.dropsActive[i]
+      if f and (f._testToast or (f._tintOpts and f._tintOpts.test)) then
+        if f._fx then
+          if f._fx.glowAnim and f._fx.glowAnim.Stop then pcall(f._fx.glowAnim.Stop, f._fx.glowAnim) end
+          if f._fx.burstAnim and f._fx.burstAnim.Stop then pcall(f._fx.burstAnim.Stop, f._fx.burstAnim) end
+          if f._fx.fx and f._fx.fx.Hide then pcall(f._fx.fx.Hide, f._fx.fx) end
+          if f._fx.burst and f._fx.burst.Hide then pcall(f._fx.burst.Hide, f._fx.burst) end
+        end
+        if UI.DismissDrop then pcall(UI.DismissDrop, UI, f) end
+      end
+    end
+  end
+  if C and C.pool then
+    for _, f in ipairs(C.pool) do
+      if f and not f._busy then
+        if f.ag and f.ag.Stop then pcall(f.ag.Stop, f.ag) end
+        if f.Hide then pcall(f.Hide, f) end
+        f._busy = nil
+      end
+    end
+  end
+  local snap = Options._testSnap and Options._testSnap.tiles
+  if snap then
+    for tile, st in pairs(snap) do
+      if tile then
+        if st.countTop ~= nil then tile._countTop = st.countTop end
+        if tile._osrsPulse then
+          local pul = tile._osrsPulse
+          pul._pulseOn = nil
+          if pul.ag and pul.ag.Stop then pcall(pul.ag.Stop, pul.ag) end
+          if pul.SetScript then pcall(pul.SetScript, pul, "OnUpdate", nil) end
+          if pul.SetAlpha then pcall(pul.SetAlpha, pul, 0) end
+          if pul.Hide then pcall(pul.Hide, pul) end
+        end
+        if tile._osrsGain then
+          local g = tile._osrsGain
+          if g.ag and g.ag.Stop then pcall(g.ag.Stop, g.ag) end
+          if g.SetScript then pcall(g.SetScript, g, "OnUpdate", nil) end
+          if g.Hide then pcall(g.Hide, g) end
+        end
+        if UI and UI.UpdateTile and tile.data then pcall(UI.UpdateTile, UI, tile, tile.data) end
+      end
+    end
+  end
+  if S and S.HideBarSpark then pcall(S.HideBarSpark) end
+  if S and S.HideFlySpark then pcall(S.HideFlySpark) end
+  if C then C.holds = {} end
+  Options._testSnap, Options._testQ = nil, {}
+  Options._testPlaying, Options._testCurrent = nil, nil
+  Options._testLastKey, Options._testLastAt = nil, nil
+  Options._testWait = {}
+  if Options._testTimer and Options._testTimer.SetScript then
+    pcall(Options._testTimer.SetScript, Options._testTimer, "OnUpdate", nil)
+  end
+end
+
 local function TestToast(kind)
   local ui = ns.UI
   if not (ui and ui.SpawnDrop) then return end
@@ -585,7 +720,6 @@ local function TestToast(kind)
     title, sub, cur, maxv = wname .. " +1", tostring(curV) .. " / " .. tostring(maxV), curV, maxV
     opts.kind, opts.skillId, opts.skillName = "skill", wid, wname
     icon = wicon or "Interface\\Icons\\Ability_Defend"
-    icon = ProfIcon("skinning", "Interface\\Icons\\INV_Misc_Pelt_Wolf_01")
   elseif kind == "tier" then
     title, sub = Tr["Palier atteint"], Tr["Va voir ton maître"]
     opts.kind, opts.variant, opts.skillId, opts.skillName = "palier", "gold", "skinning", Tr["Dépeçage"]
@@ -635,9 +769,13 @@ local function TestToast(kind)
     sub = (ui.LevelTotalLine and ui:LevelTotalLine()) or ""
     opts.kind, opts.variant, opts.big = "levelup", "gold", true
   end
+  opts.force, opts.test = true, true
   local f = ui:SpawnDrop(icon, title, sub, cur, maxv, nil, opts)
-  if f and kind == "levelup" and ui.AttachFlareFx then pcall(ui.AttachFlareFx, ui, f, true) end
-  if f and kind == "max" and ui.AttachFlareFx then pcall(ui.AttachFlareFx, ui, f, true) end
+  if f then
+    f._testToast = true
+    if (kind == "levelup" or kind == "max") and ui.AttachFlareFx then pcall(ui.AttachFlareFx, ui, f, true) end
+    PreviewTileFx(opts)
+  end
   return f
 end
 
@@ -660,11 +798,58 @@ function Options.PlayTestSound(key)
   return nil
 end
 
-function Options.RunTest(key)
+function Options.PlayTestNow(key)
   local kind = Options.TEST[key]
   if not kind then return end
   if kind == "sound" then return Options.PlayTestSound(key) end
   return TestToast(kind)
+end
+
+function Options.KickTests()
+  if Options._testPlaying then return end
+  Options._testQ = Options._testQ or {}
+  local key = table.remove(Options._testQ, 1)
+  if not key then
+    Options.ResetTestState()
+    return
+  end
+  Options._testPlaying, Options._testCurrent = true, key
+  -- Un seul toast/effet à la fois : on range le précédent, on garde le cliché pour la remise à zéro.
+  if ns.UI and ns.UI.dropsActive then
+    for i = #ns.UI.dropsActive, 1, -1 do
+      local f = ns.UI.dropsActive[i]
+      if f and f._testToast and ns.UI.DismissDrop then pcall(ns.UI.DismissDrop, ns.UI, f) end
+    end
+  end
+  local ok, result = pcall(Options.PlayTestNow, key)
+  Options._testLastResult = (ok and result) or nil
+  After(Options.TEST_GAP or 1.5, function()
+    Options._testPlaying, Options._testCurrent = nil, nil
+    Options.KickTests()
+  end)
+  return Options._testLastResult
+end
+
+function Options.RunTest(key)
+  local kind = Options.TEST[key]
+  if not kind then return end
+  local now = TestNow()
+  if key == Options._testLastKey and now > 0 and Options._testLastAt
+    and (now - Options._testLastAt) < (Options.TEST_DEBOUNCE or 0.4) then
+    return Options._testLastResult
+  end
+  Options._testLastKey, Options._testLastAt = key, now
+  Options._testQ = Options._testQ or {}
+  if Options._testCurrent == key then return Options._testLastResult end
+  for i = 1, #Options._testQ do
+    if Options._testQ[i] == key then return Options._testLastResult end
+  end
+  if not Options._testPlaying then
+    table.insert(Options._testQ, 1, key)
+    return Options.KickTests()
+  end
+  Options._testQ[#Options._testQ + 1] = key
+  return Options._testLastResult
 end
 
 function Options.ResetSection(secId)

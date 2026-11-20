@@ -1,6 +1,7 @@
 # Changelog
 
 ## 3.6.3
+- Options « Tester » buttons are queued one at a time (~1.5 s apart), with click debounce. They never write fake gains into history, the session, SavedVariables or totals. Tile +1 / veil / spark are a reversible preview on pooled frames; at the end of the queue animations stop, tile values and veils are restored, and test toasts are released.
 - Memory: history days keep 30-day aggregates only (raw event/curve/log fields pruned); session recaps stay slim (no tip dump). Achievement context reuses one buffer. Toast pool is capped at 8. A conservative watchdog (out of combat, owned pools only) clears a hidden frame’s leftover OnUpdate, stops an animation on a hidden frame or one past 2× its duration, and dismisses a toast older than its lifetime + 5 s — it never touches a visible toast, a running animation still in time, or an open window. Incremental collectgarbage(“step”) still runs only out of combat, and also after large jobs (history prune, recipe read, deferred bag/aura flush, Progression refresh, recap archive).
 - Tile gain pop draws a visible type-colored veil over the icon (ADD / OVERLAY, peak alpha ~0.5, 0.4 s fade; red XP, blue weapons/Defense, green professions), including on pooled tiles. The “+1” already used the type color; the veil no longer stays hidden by a missing texture, draw layer, icon mask, or an alpha-0 / Hide leftover.
 - Options Tester buttons include a blue weapons/Defense test (toast tint, tile +1, veil and total-bar spark). XP (red) and profession skill (green) tests are unchanged.

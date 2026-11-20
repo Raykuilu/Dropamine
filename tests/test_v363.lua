@@ -4283,6 +4283,85 @@ do
   if live and UI and UI.DismissDrop and not live._inPool then pcall(UI.DismissDrop, UI, live) end
 end
 
+do
+  local O, UI, C, P = ns.Options, ns.UI, ns.Compact, ns.Progress
+  local function pump(maxN)
+    maxN = maxN or 200
+    local n = 0
+    while n < maxN and (O._testPlaying or (O._testQ and O._testQ[1]) or (timers and #timers > 0)) do
+      n = n + 1
+      flushTimers()
+    end
+    if O.ResetTestState then O.ResetTestState() end
+    while timers and #timers > 0 do table.remove(timers) end
+  end
+  local keys = {}
+  for k in pairs(O.TEST or {}) do keys[#keys + 1] = k end
+  table.sort(keys)
+  ok(#keys > 5, "Tester : une batterie de boutons (" .. tostring(#keys) .. ")")
+  -- amorce : remplit le vivier une fois
+  for _, k in ipairs(keys) do O.RunTest(k) end
+  pump()
+  local created0 = UI._toastCreated or 0
+  local origCF = _G.CreateFrame
+  local made = 0
+  _G.CreateFrame = function(...)
+    made = made + 1
+    return origCF(...)
+  end
+  local sessPts, histPts
+  if P and P.C then
+    local pr, ch = P.C()
+    sessPts = pr.session and pr.session.pts
+    histPts = 0
+    if ch and ch.history then
+      for _, h in pairs(ch.history) do histPts = histPts + (tonumber(h.pts) or 0) end
+    end
+  end
+  collectgarbage("collect")
+  collectgarbage("collect")
+  local mem0 = collectgarbage("count")
+  for _ = 1, 3 do
+    for _, k in ipairs(keys) do O.RunTest(k) end
+  end
+  local qn = #(O._testQ or {})
+  ok(qn <= #keys, "Tester : clics rapides sans tripler la file (" .. qn .. " ≤ " .. #keys .. ")")
+  pump()
+  _G.CreateFrame = origCF
+  ok(made == 0, "Tester 3× : aucun nouveau cadre hors vivier (" .. tostring(made) .. ")")
+  ok((UI._toastCreated or 0) <= created0, "Tester 3× : toasts du vivier uniquement (créés " .. tostring(UI._toastCreated) .. " ≤ " .. tostring(created0) .. ")")
+  local leftover
+  for _, f in ipairs((UI and UI.dropsActive) or {}) do
+    if f and f._testToast then leftover = true end
+  end
+  ok(not leftover, "Tester 3× : plus de toast de test actif")
+  ok(not (C and C.holds and next(C.holds)), "Tester 3× : pas de retenue de case")
+  local veilLeft
+  if C and C.Tiles then
+    for _, tile in ipairs(C.Tiles() or {}) do
+      if tile._osrsPulse and tile._osrsPulse.shown then veilLeft = true end
+      if tile._osrsGain and tile._osrsGain.shown then veilLeft = true end
+    end
+  end
+  ok(not veilLeft, "Tester 3× : voile / +1 rangés")
+  if sessPts ~= nil then
+    local pr, ch = P.C()
+    local sess1 = pr.session and pr.session.pts
+    local hist1 = 0
+    if ch and ch.history then
+      for _, h in pairs(ch.history) do hist1 = hist1 + (tonumber(h.pts) or 0) end
+    end
+    ok(sess1 == sessPts, "Tester 3× : session inchangée")
+    ok(hist1 == histPts, "Tester 3× : historique inchangé")
+  else
+    ok(true, "Tester 3× : pas de session à comparer")
+  end
+  collectgarbage("collect")
+  collectgarbage("collect")
+  local mem1 = collectgarbage("count")
+  ok(mem1 <= mem0 + 128, "Tester 3× : mémoire revenue au socle (" .. string.format("%.1f", mem1) .. " / " .. string.format("%.1f", mem0) .. " Ko)")
+end
+
 ok(errs() == 0, "aucune erreur UI (3.6.3)")
 print(failures == 0 and "\n3.6.3 : TOUS LES TESTS PASSENT" or ("\n3.6.3 : " .. failures .. " ÉCHEC(S)"))
 os.exit(failures == 0 and 0 or 1)
