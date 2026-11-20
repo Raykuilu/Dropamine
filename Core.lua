@@ -9,7 +9,7 @@ end
 _G.Dropamine = ns
 ns.ADDON = ADDON
 local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
-ns.VERSION = "3.6.3"
+ns.VERSION = "3.7.0"
 -- DEV ONLY : une seule ligne à passer à true pour rétablir la section Options « Test » et /drop test.
 -- Éteint sur la version publique.
 ns.DEV_TEST = false
@@ -3747,7 +3747,7 @@ end
 ns.HELP_SHORT = {
   "|cffffd100Dropamine|r — /drop (ou /dropamine) ou le bouton de minicarte ouvre / ferme le panneau",
   "  Réglages : /drop options · /drop edit (déplacer / redimensionner) · /drop reset · /drop minimap",
-  "  Affichage : /drop theme flare|leger|classic · colonnes 2|3|5|10 · taille 50-200 · total on|off · verrou on|off · vol on|off",
+  "  Affichage : /drop theme flare|leger|classic · colonnes 2|3|5|10 · taille 90-200 · total on|off · verrou on|off · vol on|off",
   "  Métiers : /drop alertes on|off · activite on|off · liens on|off · recettes on|off",
   "  Objectifs : clic droit sur une case · /drop objectif <compétence> <rang> · objectif clear",
   "  JcJ : /drop pvp on|off · pvp marques on|off",

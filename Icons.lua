@@ -37,13 +37,16 @@ local function GOLDC() return H.GOLD or I.GOLD end
 -- le panneau, son bord et ses coins restent à l'échelle 1 (épaisseur native).
 I.BASE = { ICON = 36, TILE = 40, HGAP = 8, VGAP = 12, COUNT_MAX = 13, COUNT_MIN = 8 }   -- 3.3.17 : écart vertical 12 (pastille entière dans l’écart)
 I.VGAP_MIN = 12       -- place de la pastille « N prêt » (taille fixe) au-dessus de la case
+-- Plancher : case = bouton d'action par défaut (36 px). En dessous, rang / max se chevauchent.
+I.TILE_MIN = 36
+I.ICON_MIN = 32
 function I.SetMetrics(k)
   k = ns.N(k) or 1
   if k <= 0 then k = 1 end
   local B = I.BASE
   local function R(v) return math.floor(v * k + 0.5) end
-  I.ICON = math.max(16, R(B.ICON))
-  I.TILE = math.max(I.ICON + 2, R(B.TILE))
+  I.ICON = math.max(I.ICON_MIN or 32, R(B.ICON))
+  I.TILE = math.max(I.TILE_MIN or 36, I.ICON + 2, R(B.TILE))
   I.HGAP = math.max(2, R(B.HGAP))
   I.VGAP = math.max(I.VGAP_MIN, R(B.VGAP))
   I.STEP = I.TILE + I.VGAP

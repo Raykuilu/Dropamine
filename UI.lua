@@ -4677,7 +4677,7 @@ local TOAST_LIGHT_H = 26
 function UI.ToastScaleK()
   local pct = (ns.Layout and ns.Layout.Scale and ns.Layout.Scale()) or 100
   local k = (ns.N and ns.N(pct) or tonumber(pct) or 100) / 100
-  if k < 0.5 then k = 0.5 end
+  if k < 0.9 then k = 0.9 end
   if k > 2 then k = 2 end
   return k
 end
