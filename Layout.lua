@@ -79,7 +79,7 @@ function L.GridSize(cols, rows)
   local barOn = totalOn and Wd and Wd.ShouldWiden and Wd.ShouldWiden(cols, n)
   if barOn then
     local skillRows = math.max(1, math.ceil((n - 1) / cols))
-    local slim = math.max((Wd.MIN_H or 14), math.floor(tile * (Wd.SLIM or 0.45) + 0.5))
+    local slim = (Wd.RowHeight and Wd.RowHeight(tile)) or math.max((Wd.MIN_H or 14), math.floor(tile * (Wd.SLIM or 0.45) + 0.5))
     local gh = skillRows * tile + math.max(0, skillRows - 1) * vg + vg + slim
     return gw, gh, cols, skillRows
   end

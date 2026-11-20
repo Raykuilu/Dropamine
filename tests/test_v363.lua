@@ -3532,6 +3532,198 @@ do
   end
 end
 
+
+print("== 3.6.3 : rangée total responsive, tooltip d'état, charge du sac")
+do
+  local S, Wd, L, I, UI = ns.Slot, ns.Wide, ns.Layout, ns.Icons, ns.UI
+  local savedScale = ns.db and ns.db.ui and ns.db.ui.scale
+
+  local function at(pct)
+    if ns.db and ns.db.ui then ns.db.ui.scale = (pct ~= 100) and pct or nil end
+    if L and L.SyncMetrics then L.SyncMetrics() end
+    return Wd.Metrics(I.TILE)
+  end
+  if Wd and Wd.Metrics then
+    local lo, mid, hi = at(50), at(100), at(200)
+    ok(lo.h >= (Wd.MIN_H or 16) and lo.isz >= (Wd.MIN_ISZ or 14)
+      and lo.bh >= (Wd.MIN_BAR_H or 4) and lo.font >= (Wd.MIN_FONT or 10)
+      and lo.minBarW >= (Wd.MIN_BAR_W or 24) and lo.pad >= (Wd.MIN_PAD or 3),
+      "rangée total 50 % : planchers fiole / police / barre / longueur / marge")
+    ok(hi.bh > mid.bh and hi.font > mid.font and hi.isz > mid.isz and hi.pad > mid.pad,
+      "rangée total : fiole, texte, barre et marges plus grands à 200 % qu'à 100 %")
+    local r100, r200 = mid.bh / mid.tile, hi.bh / hi.tile
+    ok(math.abs(r100 - r200) < 0.03, "épaisseur barre : même ratio à 100 % et 200 % (" .. string.format("%.3f/%.3f", r100, r200) .. ")")
+    ok(mid.font == mid.font and hi.font >= mid.font, "police total posée en px, pas étirée")
+    ok((Wd.MIN_ISZ or 14) >= 14, "fiole : taille minimale définie")
+  end
+  if ns.db and ns.db.ui then ns.db.ui.scale = savedScale end
+  if L and L.SyncMetrics then L.SyncMetrics() end
+
+  -- Toast « Nouveaux sorts » : icône recadrée après recyclage d'un toast grand.
+  if UI and UI.SpawnDrop and UI.ReleaseToast then
+    local big = UI:SpawnDrop(ns.LEVEL_ICON or "Interface\\Icons\\X", "Level up", "x", nil, nil, nil,
+      { kind = "levelup", big = true, force = true, variant = "gold" })
+    local bigSize = big and big.iconSlot and (big.iconSlot.width or (big.iconSlot.GetWidth and big.iconSlot:GetWidth()))
+    if UI.DismissDrop then pcall(UI.DismissDrop, UI, big) else UI:ReleaseToast(big) end
+    local g = UI:SpawnDrop(ns.SPELLS_ICON or "Interface\\Icons\\X", Tr and Tr["Nouveaux sorts"] or "Nouveaux sorts",
+      "Va voir ton maître de classe", nil, nil, nil,
+      { kind = "spells", variant = "gold", light = true, force = true })
+    ok(g and g.iconSlot, "Nouveaux sorts : cadre avec iconSlot")
+    if g and g.iconSlot then
+      local tm = UI.ToastMetrics and UI.ToastMetrics({ light = true })
+      local expect = tm and tm.icon
+      local w = g.iconSlot.width or (g.iconSlot.GetWidth and g.iconSlot:GetWidth())
+      if expect and w then
+        ok(math.abs(w - expect) < 1.5, "Nouveaux sorts : icône à la taille légère (" .. tostring(w) .. " vs " .. tostring(expect) .. "), pas le toast précédent")
+      end
+      ok(g.iconSlot.parent == g or (g.iconSlot.GetParent and g.iconSlot:GetParent() == g),
+        "Nouveaux sorts : icône parente du toast")
+      local pts = g.iconSlot.points
+      ok(pts and #pts >= 1, "Nouveaux sorts : ancre du vivier réinitialisée")
+    end
+    if g then
+      if UI.DismissDrop then pcall(UI.DismissDrop, UI, g) else UI:ReleaseToast(g) end
+    end
+  end
+
+  -- Sac : icône seulement pendant la charge, pas à cause des buffs résultants.
+  if S and S.LiveSleepingBag and S.SyncSleepingBag then
+    local prevCh, prevCast, prevSit = _G.UnitChannelInfo, _G.UnitCastingInfo, _G.IsSitting
+    local miss
+    local prevNotify = S.NotifySleepingBagMiss
+    S.NotifySleepingBagMiss = function(...) miss = true if prevNotify then return prevNotify(...) end end
+    S.ClearSim()
+    S._restedStacks, S._auraFresh = 3, true
+    S._bagBuilding, S._bagSession, S._bagStartedAt, S._bagUsing = false, nil, nil, nil
+    _G.UnitChannelInfo = function() return nil end
+    _G.UnitCastingInfo = function() return nil end
+    _G.IsSitting = function() return true end
+    ok(not S.LiveSleepingBag(), "Bien reposé 3/3 seul (assis) : pas d'icône sac")
+    pcall(S.SyncSleepingBag)
+    ok(not S.LiveSleepingBag(), "Sync : un buff résultant ne rouvre pas la charge")
+
+    _G.UnitChannelInfo = function()
+      return "Unroll Bag", nil, nil, nil, nil, nil, nil, nil, nil, 429961
+    end
+    S._restedStacks = 0
+    pcall(S.SyncSleepingBag)
+    ok(S.LiveSleepingBag(), "canal Unroll Bag 429961 : charge active")
+    S._restedStacks = 1
+    ok(S.SleepingBagStacks() == 1, "pendant la charge : palier 1")
+    S._restedStacks = 2
+    ok(S.SleepingBagStacks() == 2, "pendant la charge : palier 2")
+    S._restedStacks = 3
+    ok(S.SleepingBagStacks() == 3, "pendant la charge : palier 3")
+    -- fin du canal, on reste assis (encore dans le sac) : la session continue
+    _G.UnitChannelInfo = function() return nil end
+    ok(S.SleepingBagCharging(), "après le jet de 15 s, encore assis : charge en cours")
+    -- on se lève : la charge se termine, le buff 3/3 reste
+    _G.IsSitting = function() return false end
+    miss = nil
+    pcall(S.SyncSleepingBag)
+    ok(not S.LiveSleepingBag(), "fin de charge : l'icône part malgré Bien reposé 3/3")
+
+    -- départ anticipé : toast palier manqué
+    S.ClearSim()
+    _G.IsSitting = function() return true end
+    _G.UnitChannelInfo = function()
+      return "Sac de couchage", nil, nil, nil, nil, nil, nil, nil, nil, 429961
+    end
+    S._restedStacks, S._auraFresh = 1, true
+    pcall(S.SyncSleepingBag)
+    ok(S.LiveSleepingBag(), "charge palier 1")
+    _G.UnitChannelInfo = function() return nil end
+    _G.IsStanding = function() return true end
+    _G.IsSitting = function() return false end
+    miss = nil
+    pcall(S.SyncSleepingBag)
+    ok(not S.LiveSleepingBag(), "interruption : icône retirée")
+    ok(miss == true, "interruption avant 3/3 : toast palier manqué")
+
+    ok(S.IsResultingBagBuffName and S.IsResultingBagBuffName("Au repos"), "« Au repos » est un buff résultant")
+    ok(S.IsResultingBagBuffName("Chaleur du feu"), "« Chaleur du feu » est un buff résultant")
+    ok(S.IsResultingBagBuffName("Well-Rested"), "Well-Rested est un buff résultant")
+    ok(not S.IsSleepingBagActionName("Au repos"), "« Au repos » n'est pas une action de charge")
+    ok(not S.IsSleepingBagActionName("Bien reposé"), "« Bien reposé » n'est pas une action de charge")
+    ok(S.IsSleepingBagActionName("Unroll Bag"), "Unroll Bag est une action de charge")
+    ok(S.IsSleepingBagActionName("Sac de couchage"), "Sac de couchage est une action de charge")
+
+    -- Tooltip pendant la charge : palier, écoulé, prochain palier
+    S.ClearSim()
+    S.SetSleepingBagSim(1)
+    S._bagStartedAt = (GetTime and GetTime() or 0) - 90
+    local tt = { lines = {} }
+    function tt:AddLine(text) self.lines[#self.lines + 1] = tostring(text or "") end
+    function tt:SetText(text) self.lines[#self.lines + 1] = tostring(text or "") end
+    function tt:AddDoubleLine(a, b) self.lines[#self.lines + 1] = tostring(a) .. " " .. tostring(b or "") end
+    local kind = S.FillStateTip(tt)
+    ok(kind == "sleepingbag", "tooltip sac : bloc d'état pendant la charge")
+    local blob = table.concat(tt.lines, " | ")
+    ok(blob:find("1/3", 1, true), "tooltip sac : palier 1/3")
+    ok(blob:find("90") or blob:find("1 min", 1, true), "tooltip sac : temps écoulé")
+    ok(blob:find("Prochain palier") or blob:find("Next tier"), "tooltip sac : prochain palier")
+    S.ClearSim()
+
+    _G.UnitChannelInfo, _G.UnitCastingInfo, _G.IsSitting = prevCh, prevCast, prevSit
+    S.NotifySleepingBagMiss = prevNotify
+  end
+
+  if S and S.IsCampfireName then
+    ok(not S.IsCampfireName("Chaleur du feu"), "« Chaleur du feu » n'est pas un feu de camp")
+    ok(not S.IsCampfireName("Warmth of the Fire"), "Warmth of the Fire n'est pas un feu de camp")
+    ok(S.IsCampfireName("Feu de camp accueillant"), "Feu de camp accueillant reste reconnu")
+    ok(S.IsCampfireName("Cozy Fire"), "Cozy Fire reste reconnu")
+  end
+
+  -- Tooltip repos + feu (valeurs réelles seulement)
+  if S and S.FillStateTip then
+    local prevRest, prevXPMax, prevIsRest = _G.GetXPExhaustion, _G.UnitXPMax, _G.IsResting
+    _G.GetXPExhaustion = function() return 4000 end
+    _G.UnitXPMax = function() return 8000 end
+    _G.IsResting = function() return true end
+    S.ClearSim()
+    S.SetSim("rested", true)
+    S.NoteRestZone()
+    S._restEnteredAt = (GetTime and GetTime() or 0) - 125
+    local tt = { lines = {} }
+    function tt:AddLine(text) self.lines[#self.lines + 1] = tostring(text or "") end
+    function tt:SetText(text) self.lines[#self.lines + 1] = tostring(text or "") end
+    function tt:AddDoubleLine(a, b) self.lines[#self.lines + 1] = tostring(a) .. " " .. tostring(b or "") end
+    ok(S.FillStateTip(tt) == "rested", "tooltip repos : bloc d'état")
+    local blob = table.concat(tt.lines, " | ")
+    ok(blob:find("4000", 1, true), "tooltip repos : XP de repos réelle")
+    ok(blob:find("50") or blob:find("%%"), "tooltip repos : pourcentage du niveau")
+    S.ClearSim()
+    _G.GetXPExhaustion, _G.UnitXPMax, _G.IsResting = prevRest, prevXPMax, prevIsRest
+
+    -- feu : pas de durée inventée si l'aura n'en a pas
+    S.ClearSim()
+    S.SetCampfireSim("burst")
+    S._campStartedAt = (GetTime and GetTime() or 0) - 40
+    tt = { lines = {} }
+    function tt:AddLine(text) self.lines[#self.lines + 1] = tostring(text or "") end
+    function tt:SetText(text) self.lines[#self.lines + 1] = tostring(text or "") end
+    local k = S.FillStateTip(tt)
+    ok(k == "campfire", "tooltip feu : bloc d'état")
+    blob = table.concat(tt.lines, " | ")
+    ok(not blob:find("Temps restant") and not blob:find("Time remaining"),
+      "tooltip feu sans expirationTime : pas de durée inventée")
+    ok(blob:find("Allumé depuis") or blob:find("Lit for") or blob:find("40") or blob:find("s"),
+      "tooltip feu : temps depuis le début réel")
+    S.ClearSim()
+  end
+
+  if S and S.StartTipTicker then
+    local owner = { mouse = true }
+    function owner:IsMouseOver() return self.mouse end
+    local n = 0
+    S.StartTipTicker(owner, function() n = n + 1 end)
+    ok(S._tipFrame or S._tipOwner == owner, "ticker d'infobulle : démarré au survol")
+    S.StopTipTicker()
+    ok(S._tipOwner == nil, "ticker d'infobulle : arrêté en quittant")
+  end
+end
+
 ok(errs() == 0, "aucune erreur UI (3.6.3)")
 print(failures == 0 and "\n3.6.3 : TOUS LES TESTS PASSENT" or ("\n3.6.3 : " .. failures .. " ÉCHEC(S)"))
 os.exit(failures == 0 and 0 or 1)

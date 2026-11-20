@@ -6117,7 +6117,9 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
     slot = CreateSlotButton(f, iconSize, true)
     f.iconSlot, f.icon = slot, slot.iconTex
   else
-    if slot.SetSize then pcall(slot.SetSize, slot, iconSize, iconSize) end
+    -- Vivier : recaler taille, anneau et points (un toast « big » recyclé
+    -- en « Nouveaux sorts » léger débordait du cadre).
+    if ResizeSlotButton then ResizeSlotButton(slot, iconSize) end
     if slot.ClearAllPoints then pcall(slot.ClearAllPoints, slot) end
   end
   if light then slot:SetPoint("LEFT", f, "LEFT", math.max(3, math.floor((pad or 7) * 0.6 + 0.5)), 0)

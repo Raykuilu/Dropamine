@@ -14,8 +14,20 @@ local Wd = {}
 ns.Wide = Wd
 Wd.BAR_H = 4
 Wd.PAD = 5
-Wd.SLIM = 0.50      -- hauteur de la barre = 50 % d'une case (min 16 px)
+Wd.SLIM = 0.50      -- hauteur de la rangée = 50 % d'une case
 Wd.MIN_H = 16
+-- Référence à 40 px (100 %) : tout zoome uniformément avec la taille de case.
+-- Polish.lua peut relever la référence (barre Flare 8, police 11, min 20).
+Wd.REF_TILE  = 40
+Wd.REF_BAR_H = 5          -- 0.125 × case (entre 0,12 et 0,15)
+Wd.REF_PAD   = 5
+Wd.REF_FONT  = 13         -- même rapport que le chiffre de case (COUNT_MAX)
+Wd.REF_EDGE  = 3
+Wd.MIN_BAR_H = 4
+Wd.MIN_BAR_W = 24
+Wd.MIN_FONT  = 10
+Wd.MIN_PAD   = 3
+Wd.MIN_ISZ   = 14
 Wd.FILL = ns.STYLE.BORDER   -- #A67D45 (palette FlareUI, voir STYLE.md) — filet de la jauge
 Wd.TRACK = { 0, 0, 0, 0.55 }
 Wd.TEX = "Interface\\TargetingFrame\\UI-StatusBar"
@@ -45,6 +57,37 @@ function Wd.FillInset()
 end
 
 local function N(v) return ns.N and ns.N(v) or tonumber(v) end
+
+-- Mesures de la rangée total : zoom uniforme depuis la référence 40 px,
+-- avec planchers pour rester lisible à 50 %. La barre occupe le reste en largeur.
+-- Les polices sont posées en px (SetFont), jamais étirées par SetScale.
+function Wd.Metrics(tile)
+  tile = N(tile) or (ns.Icons and ns.Icons.TILE) or Wd.REF_TILE or 40
+  local refT = Wd.REF_TILE or 40
+  if refT <= 0 then refT = 40 end
+  local k = tile / refT
+  local function px(ref, minv)
+    return math.max(minv or 0, math.floor((ref or 0) * k + 0.5))
+  end
+  local h = math.max(Wd.MIN_H or 16, math.floor(tile * (Wd.SLIM or 0.5) + 0.5))
+  local bh = px(Wd.REF_BAR_H or Wd.BAR_H or 5, Wd.MIN_BAR_H or 4)
+  if bh > math.max(Wd.MIN_BAR_H or 4, h - 2) then bh = math.max(Wd.MIN_BAR_H or 4, h - 2) end
+  local pad = px(Wd.REF_PAD or Wd.PAD or 5, Wd.MIN_PAD or 3)
+  local font = px(Wd.REF_FONT or Wd.TEXT_SIZE or 13, Wd.MIN_FONT or 10)
+  if font > math.max(Wd.MIN_FONT or 10, h - 4) then font = math.max(Wd.MIN_FONT or 10, h - 4) end
+  local isz = math.max(Wd.MIN_ISZ or 14, h - 2)
+  local edge = px(Wd.REF_EDGE or Wd.EDGE_OUT or 3, 2)
+  local I = ns.Icons
+  return {
+    tile = tile, k = k, h = h, bh = bh, pad = pad, font = font, isz = isz,
+    minBarW = Wd.MIN_BAR_W or 24, edgeOut = edge,
+    fontPath = (I and I.COUNT_PATH) or "Fonts\\ARIALN.TTF",
+    fontFlags = (I and I.TEXT_FLAGS) or "",
+  }
+end
+function Wd.RowHeight(tile)
+  return Wd.Metrics(tile).h
+end
 
 -- Réduit les marges si la piste est trop étroite pour les appliquer telles quelles.
 local function ClampInsets(il, ir, it, ib, inner, bh)
@@ -168,6 +211,7 @@ local function Parts(t)
 end
 
 local function HideTip(self)
+  if ns.Slot and ns.Slot.StopTipTicker then pcall(ns.Slot.StopTipTicker) end
   if ns.ProgressUI and ns.ProgressUI.HideMini then pcall(ns.ProgressUI.HideMini) end
   local tt = _G.GameTooltip
   if not (tt and tt.Hide) then return end
@@ -179,11 +223,8 @@ local function HideTip(self)
 end
 
 -- noMini : survol depuis la fenêtre Progression (pas de mini-graphe ni d'aide au clic)
-function Wd.ShowBarTip(owner, noMini)
-  local tt = _G.GameTooltip
-  if not (tt and owner) then return end
-  pcall(tt.SetOwner, tt, owner, "ANCHOR_TOP")
-  if tt.ClearLines then tt:ClearLines() end
+function Wd.FillTotalTip(tt, noMini)
+  if not tt then return end
   tt:AddLine(Tr["Niveau total"])
   local segs = Segments()
   local colors = Wd.SEG_COLORS
@@ -206,8 +247,22 @@ function Wd.ShowBarTip(owner, noMini)
   if not noMini and ns.ProgressUI then
     tt:AddLine(Tr["Clic : fenêtre Progression"], 0.6, 0.8, 1)
   end
+end
+
+function Wd.ShowBarTip(owner, noMini)
+  local tt = _G.GameTooltip
+  if not (tt and owner) then return end
+  pcall(tt.SetOwner, tt, owner, "ANCHOR_TOP")
+  if tt.ClearLines then tt:ClearLines() end
+  local S = ns.Slot
+  local hasState = S and S.FillStateTip and S.FillStateTip(tt)
+  if hasState and tt.AddLine then tt:AddLine(" ") end
+  Wd.FillTotalTip(tt, noMini)
   tt:Show()
   if not noMini and ns.ProgressUI and ns.ProgressUI.ShowMini then pcall(ns.ProgressUI.ShowMini, tt, owner) end
+  if S and S.StartTipTicker then
+    S.StartTipTicker(owner, function() Wd.ShowBarTip(owner, noMini) end)
+  end
 end
 Wd.HideTip = HideTip
 
@@ -405,8 +460,11 @@ function Wd.Paint(t)
   local d = t.data
   local cur, max = N(d.current) or 0, N(d.apiMax) or N(ns.TOTAL_MAX) or 0
   local w, h = N(t._wideW) or (t.GetWidth and N(t:GetWidth())) or 0, N(t._wideH) or (t.GetHeight and N(t:GetHeight())) or 0
-  local isz = math.max(8, h - 2)                       -- petite icône carrée à gauche
-  local iconX = math.floor(h / 2 + 0.5)
+  local m = Wd.Metrics((ns.Icons and ns.Icons.TILE) or h)
+  if (N(t._wideH) or 0) > 0 then h = N(t._wideH) end
+  local isz = m.isz
+  local slotW = isz + 2
+  local iconX = math.floor(slotW / 2 + 0.5)
   for _, k in ipairs(ICON_PARTS) do
     local r = t[k]
     if r and r.ClearAllPoints then
@@ -419,31 +477,38 @@ function Wd.Paint(t)
   if t.countFS2 then t.countFS2:Hide() end
   local pct = (max > 0) and math.max(0, math.min(1, cur / max)) or 0
   p.text:ClearAllPoints()
-  p.text:SetPoint("LEFT", t, "LEFT", h + Wd.PAD - 2, 0)
+  p.text:SetPoint("LEFT", t, "LEFT", slotW + m.pad, 0)
   p.text:SetText(string.format("%d / %d", cur, max))
-  -- Légère hausse de police, plafonnée pour rester dans la rangée (pixel-aligned).
-  if p.text.GetFont and p.text.SetFont then
-    local okF, path, size, flags = pcall(p.text.GetFont, p.text)
-    if okF and path then
-      local want = math.max(10, math.min((h or 16) - 4, math.floor((size or 10) * 1.12 + 0.5)))
-      if p._fontH ~= want then
-        pcall(p.text.SetFont, p.text, path, want, flags or "")
-        p._fontH = want
-      end
+  local path, flags = m.fontPath, m.fontFlags
+  if p.text.GetFont then
+    local okF, gp, _, gf = pcall(p.text.GetFont, p.text)
+    if okF and gp and gp ~= "" then path, flags = gp, gf or flags end
+  end
+  if p.text.SetFont and path then
+    local want = m.font
+    if p._fontH ~= want then
+      pcall(p.text.SetFont, p.text, path, want, flags or "")
+      p._fontH = want
     end
   end
   local okW, tw = pcall(p.text.GetStringWidth, p.text)
   tw = (okW and N(tw)) or 56
-  local left = h + Wd.PAD - 2 + tw + Wd.PAD
-  local inner = math.max(10, w - left - Wd.PAD)
-  local bh = Wd.BAR_H
-  local by = math.floor((h - bh) / 2)
+  local pad = m.pad
+  local edge = m.edgeOut or 0
+  local left = slotW + pad + tw + pad + edge
+  local inner = w - left - pad - edge
+  if inner < (m.minBarW or 24) then
+    inner = math.max(8, inner)
+  end
+  local bh = m.bh
+  local by = math.floor((h - bh) / 2 + 0.5)
   p.track:ClearAllPoints()
   p.track:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", left, by)
   p.track:SetSize(inner, bh)
   p.track:SetVertexColor(Wd.TRACK[1], Wd.TRACK[2], Wd.TRACK[3], Wd.TRACK[4])
   p.track:Show() p.text:Show()
-  Wd.last = { w = w, h = h, cur = cur, max = max, pct = pct, inner = inner }
+  Wd.last = { w = w, h = h, cur = cur, max = max, pct = pct, inner = inner,
+    left = left, by = by, bh = bh, isz = isz, pad = pad, font = m.font, edgeOut = edge }
   Wd.LayoutSegments(t, left, by, inner, bh, cur, max)
   Wd.MuteBarHighlight(t)
 end
@@ -512,7 +577,7 @@ function Wd.Apply(wrap)
   y = (ok and N(y)) or 0
   total:ClearAllPoints()
   total:SetPoint("TOPLEFT", total:GetParent() or wrap, "TOPLEFT", 0, y)
-  local sh = math.max(Wd.MIN_H, math.floor(th * Wd.SLIM + 0.5))
+  local sh = (Wd.RowHeight and Wd.RowHeight(th)) or math.max(Wd.MIN_H, math.floor(th * Wd.SLIM + 0.5))
   total:SetSize(gw, sh)
   local hx = lay.hitPad and lay.hitPad.x or 0
   if total._cell then total._cell.x, total._cell.w = -hx, gw + 2 * hx end
@@ -919,6 +984,7 @@ do
       elseif F.ShowPauseExplanation then pcall(F.ShowPauseExplanation, self) end
     end)
     hit:SetScript("OnLeave", function(self)
+      if ns.Slot and ns.Slot.StopTipTicker then pcall(ns.Slot.StopTipTicker) end
       local tt = _G.GameTooltip
       if not tt then return end
       if type(tt.IsOwned) == "function" then
