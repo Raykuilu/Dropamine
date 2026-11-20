@@ -2038,14 +2038,16 @@ end
 function F.HideActiveToasts()
   local ui = ns.UI
   if not (ui and ui.dropsActive) then return end
-  for i = 1, #ui.dropsActive do
+  -- 3.6.3 : le toast d'astuce « premier vol » reste jusqu'au clic.
+  for i = #ui.dropsActive, 1, -1 do
     local f = ui.dropsActive[i]
-    if f then
+    if f and not f._sticky then
       if f.Hide then pcall(f.Hide, f) end
       if f.SetScript then pcall(f.SetScript, f, "OnUpdate", nil) end
+      table.remove(ui.dropsActive, i)
     end
   end
-  ui.dropsActive = {}
+  if ui.PackDrops then pcall(ui.PackDrops, ui) end
 end
 
 function F.ResetHints()
@@ -2064,9 +2066,10 @@ function F.MaybeShowHint()
   local icon = "Interface\\AddOns\\Dropamine\\Media\\Hourglass"
   local ok, f = pcall(ui.SpawnDrop, ui, icon,
     Tr["Suivi en pause pendant le vol."],
-    Tr["Le sablier disparaît à l'atterrissage."],
+    Tr["Le scan reprend dès l'atterrissage."],
     nil, nil, nil,
-    { force = true, kind = "flight-hint", dedupeKey = "flight-hint" })
+    { force = true, sticky = true, kind = "flight-hint", dedupeKey = "flight-hint",
+      hint = Tr["Clic pour fermer"] })
   if ok and f then
     ch.flightPauseHint = true
     return f

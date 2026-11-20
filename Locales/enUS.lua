@@ -1210,6 +1210,13 @@ E["En pause pendant le vol"] = "Paused while flying"
 
 E["Suivi en pause pendant le vol."] = "Tracking paused while flying."
 E["Le sablier disparaît à l'atterrissage."] = "The hourglass goes away when you land."
+E["Le scan reprend dès l'atterrissage."] = "Scanning resumes as soon as you land."
+E["Clic pour fermer"] = "Click to dismiss"
+E["Métier : %s"] = "Profession: %s"
+E["Rang requis : %d"] = "Required rank: %d"
+E["Difficulté : %s"] = "Difficulty: %s"
+E["Réalisable maintenant : %d"] = "Can craft now: %d"
+E["Composants manquants :"] = "Missing reagents:"
 E["astuces réinitialisées."] = "hints reset."
 E["/drop reset-hints : réafficher les astuces (sablier en vol, …)"] = "/drop reset-hints: show the hints again (hourglass while flying, …)"
 
