@@ -621,9 +621,10 @@ local function RememberTile(tile)
   }
 end
 
-local function PreviewTileFx(opts)
+local function PreviewTileFx(opts, drop)
   -- Testers : le +1 / voile jouent à l'affichage du toast de test (en jeu,
   -- le vrai gain reste calé sur l'arrivée de l'éclat, après le toast).
+  -- Le +1 voyageur part de l'icône du toast de test vers la bonne case.
   local C = ns.Compact
   if not (C and C.Announce and C.TargetsFor) then return end
   local targets = C.TargetsFor(opts)
@@ -634,6 +635,7 @@ local function PreviewTileFx(opts)
     end
   end
   pcall(C.Announce, opts, targets)
+  if drop and C.PreviewFly then pcall(C.PreviewFly, drop, opts, targets) end
 end
 
 function Options.ResetTestState()
@@ -776,7 +778,7 @@ local function TestToast(kind)
   if f then
     f._testToast = true
     if (kind == "levelup" or kind == "max") and ui.AttachFlareFx then pcall(ui.AttachFlareFx, ui, f, true) end
-    PreviewTileFx(opts)
+    PreviewTileFx(opts, f)
   end
   return f
 end

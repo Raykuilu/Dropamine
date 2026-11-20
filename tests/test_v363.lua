@@ -152,6 +152,11 @@ local function newObj(class, name, parent)
   function f:SetAlpha(a) self.alpha = a end
   function f:GetAlpha() return self.alpha end
   function f:GetEffectiveScale() return self._scale or 1 end
+  function f:GetCenter()
+    local r = __rect(self)
+    if not r then return nil end
+    return (r.l + r.r) / 2, (r.t + r.b) / 2
+  end
   function f:SetClipsChildren(v) self.clipsChildren = v and true or false end
   function f:SetMovable() end
   function f:EnableMouse(v) self.mouse = v and true or false end
@@ -4505,6 +4510,11 @@ do
     drop:ClearAllPoints()
     drop:SetPoint("BOTTOMLEFT", _G.UIParent, "BOTTOMLEFT", 160, 360)
     drop:Show()
+    drop.icon = drop:CreateTexture(nil, "ARTWORK")
+    drop.icon:SetSize(32, 32)
+    drop.icon:ClearAllPoints()
+    drop.icon:SetPoint("LEFT", drop, "LEFT", 4, 0)
+    if drop.icon.Show then drop.icon:Show() end
     local tile = CreateFrame("Button", "DropamineFlyTile", Win.frame)
     tile:SetSize(40, 40)
     tile:ClearAllPoints()
@@ -4535,9 +4545,17 @@ do
       for _, ff in ipairs(C.pool or {}) do if ff._entry == e then return ff end end
     end)()
     ok(f and f._busy and f:IsShown(), "57 : éclat pris dans le vivier et visible")
-    local clip = C.clip
-    ok(clip and clip.clipsChildren, "57 : éclat découpé dans le panneau")
-    ok(f.GetParent and f:GetParent() == clip, "57 : éclat parenté au cadre de découpe")
+    local host = (f.GetParent and f:GetParent()) or nil
+    ok(host and host ~= Win.frame and host ~= C.clip,
+      "61 : +1 sur un overlay UIParent, pas découpé dans le panneau")
+    local ix, iy
+    if C.ScreenCenter then ix, iy = C.ScreenCenter(drop.icon) end
+    ok(f._x and ix and math.abs(f._x - ix) < 3 and math.abs((f._y or 0) - (iy or 0)) < 3,
+      "61 : départ = centre de l'icône du toast (" .. tostring(f._x) .. "," .. tostring(f._y) .. " / " .. tostring(ix) .. "," .. tostring(iy) .. ")")
+    ok(f._y and f._y > 300, "61 : le départ n'est pas clampé au bord du panneau (y=" .. tostring(f._y) .. ")")
+    if f.fs and f.fs.GetText then
+      ok(f.fs:GetText() == "+1", "61 : le voyageur affiche +1")
+    end
     local x0, y0 = f._x, f._y
     if C.FlyStep then C.FlyStep(f, (C.FLY or 0.55) * 0.5) end
     ok(f._x and x0 and (f._y ~= y0 or f._x ~= x0),
@@ -4564,6 +4582,60 @@ do
     ok(not f._busy and not f:IsShown(), "57 : éclat rendu au vivier (caché, libre)")
     C.Land = baseLand
     C.Tiles = prevTiles
+
+    -- Repli : toast caché / sans icône → départ juste au-dessus de la case.
+    do
+      local tileB = CreateFrame("Button", "DropamineFlyTileFb", Win.frame)
+      tileB:SetSize(40, 40)
+      tileB:ClearAllPoints()
+      tileB:SetPoint("BOTTOMLEFT", Win.frame, "BOTTOMLEFT", 40, 20)
+      tileB.data = { kind = "skill", skillName = "Dépeçage", id = "skinning", name = "Dépeçage" }
+      tileB.icon = tileB:CreateTexture(nil, "ARTWORK")
+      tileB.icon:SetSize(36, 36)
+      tileB.icon:SetPoint("CENTER", tileB, "CENTER", 0, 0)
+      function C.Tiles() return { tileB } end
+      local hidden = CreateFrame("Frame", "DropamineFlyToastHid", _G.UIParent)
+      hidden:SetSize(80, 40)
+      hidden:SetPoint("BOTTOMLEFT", _G.UIParent, "BOTTOMLEFT", 160, 360)
+      hidden:Hide()
+      local e2 = { drop = hidden, kind = "skill",
+        targets = { { key = "s:Dépeçage", gain = 1 } }, born = 0, opts = { kind = "skill" }, preview = true }
+      C.Launch(e2)
+      local f2
+      for _, ff in ipairs(C.pool or {}) do if ff._entry == e2 then f2 = ff break end end
+      local ax, ay
+      if C.AboveTile then ax, ay = C.AboveTile(tileB) end
+      ok(f2 and f2._x and ax and math.abs(f2._x - ax) < 4 and math.abs((f2._y or 0) - (ay or 0)) < 4,
+        "61 : sans icône de toast, départ juste au-dessus de la case")
+      if C.FinishFly and f2 then C.FinishFly(f2, e2) end
+      C.Tiles = prevTiles
+    end
+
+    -- La cible est la bonne case selon le type de gain.
+    do
+      local function mk(name, data)
+        local t = CreateFrame("Button", name, Win.frame)
+        t:SetSize(36, 36)
+        t:SetPoint("TOPLEFT", Win.frame, "TOPLEFT", 0, 0)
+        t.data = data
+        t:Show()
+        return t
+      end
+      local tW = mk("DropamineTWep", { kind = "skill", skillName = "Épées", id = "swords", name = "Épées" })
+      local tD = mk("DropamineTDef", { kind = "skill", skillName = "Défense", id = "defense", name = "Défense" })
+      local tP = mk("DropamineTProf", { kind = "skill", skillName = "Cuisine", id = "cooking", name = "Cuisine" })
+      local tX = mk("DropamineTXP", { kind = "level", name = "Niveau" })
+      function C.Tiles() return { tW, tD, tP, tX } end
+      local tw = C.SkillTile({ kind = "skill", skillName = "Épées", skillId = "swords" })
+      local td = C.SkillTile({ kind = "skill", skillName = "Défense", skillId = "defense" })
+      local tp = C.SkillTile({ kind = "skill", skillName = "Cuisine", skillId = "cooking" })
+      local txp = C.TargetsFor({ kind = "xp" })
+      ok(tw == tW, "61 : armes → case Épées")
+      ok(td == tD, "61 : Défense → case Défense")
+      ok(tp == tP, "61 : métier → case Cuisine")
+      ok(txp and txp[1] and txp[1].key == "level", "61 : XP → case Niveau")
+      C.Tiles = prevTiles
+    end
   end
 end
 

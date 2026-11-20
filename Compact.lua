@@ -383,11 +383,19 @@ function C.TileByKey(key)
   for _, t in ipairs(C.Tiles()) do if C.HoldKey(t.data) == key then return t end end
 end
 function C.SkillTile(opts)
+  if not opts then return nil end
+  if opts.kind == "xp" or opts.kind == "levelup" then
+    return C.TileByKey and C.TileByKey("level")
+  end
+  local wantName = opts.skillName or opts.name
+  local wantId = opts.skillId or opts.skillID or opts.id
   for _, t in ipairs(C.Tiles()) do
     local d = t.data
-    if d.kind ~= "total" and d.kind ~= "level" and not d.placeholder then
-      if (opts.skillName and (d.skillName == opts.skillName or d.name == opts.skillName))
-        or (opts.skillId and d.id == opts.skillId) then return t end
+    if d and d.kind ~= "total" and not d.placeholder then
+      if d.kind == "level" and (opts.kind == "xp" or opts.kind == "levelup") then return t end
+      local id = d.id or d.skillId or d.skillID
+      if wantId and id and tostring(id) == tostring(wantId) then return t end
+      if wantName and (d.skillName == wantName or d.name == wantName) then return t end
     end
   end
 end
@@ -470,6 +478,8 @@ function C.Register(drop, iconPath, opts)
       drop:HookScript("OnHide", function(self)
         local en = self._osrsFly
         if not en or en.launched then return end
+        -- Avant que le toast disparaisse : mémoriser le centre de SON icône.
+        if C.SnapToast then C.SnapToast(en) end
         local function check() if not DropAlive(self) then C.Launch(en) end end
         if not After(0, check) then check() end
       end)
@@ -498,6 +508,7 @@ function C.Register(drop, iconPath, opts)
       if v then C.holds[tg.key] = { value = v, entry = e } end
     end
   end
+  if C.SnapToast then C.SnapToast(e) end
   return e
 end
 
@@ -541,6 +552,83 @@ local function HostCenter(o, host)
   return (ux - hl * s) / s, (uy - hb * s) / s
 end
 local function Center(o) return AbsCenter(o) end
+
+-- Icône à l'intérieur du toast (slot ou texture).
+function C.ToastIcon(drop)
+  if not drop then return nil end
+  return drop.icon or drop.iconTex or (drop.iconSlot and (drop.iconSlot.iconTex or drop.iconSlot.icon)) or drop.iconSlot or drop.Icon or drop.IconTexture
+end
+
+-- Centre en espace UIParent : GetCenter × échelle effective.
+function C.ScreenCenter(o)
+  if not o then return nil end
+  local cx, cy
+  if o.GetCenter then
+    local ok, x, y = pcall(o.GetCenter, o)
+    if ok and N(x) and N(y) then cx, cy = x, y end
+  end
+  if not (cx and cy) then
+    return AbsCenter(o)
+  end
+  local es, us = 1, 1
+  if o.GetEffectiveScale then
+    local ok, s = pcall(o.GetEffectiveScale, o)
+    if ok and N(s) and s > 0 then es = s end
+  end
+  local parent = _G.UIParent
+  if parent and parent.GetEffectiveScale then
+    local ok, s = pcall(parent.GetEffectiveScale, parent)
+    if ok and N(s) and s > 0 then us = s end
+  end
+  if not us or us <= 0 then us = 1 end
+  return cx * es / us, cy * es / us
+end
+
+-- Juste au-dessus de la case (repli si le toast / son icône est absent).
+function C.AboveTile(tile)
+  if not tile then return nil end
+  local ex, ey = C.ScreenCenter(tile.icon or tile)
+  if not ex then return nil end
+  local h = C.TileHeight and C.TileHeight(tile) or (tile.GetHeight and N(tile:GetHeight())) or 40
+  if not h or h < 1 then h = 40 end
+  local o = tile.icon or tile
+  if o.GetEffectiveScale and _G.UIParent and _G.UIParent.GetEffectiveScale then
+    local es = N(o:GetEffectiveScale()) or 1
+    local us = N(_G.UIParent:GetEffectiveScale()) or 1
+    if us > 0 then h = h * es / us end
+  end
+  return ex, ey + h / 2 + (C.GAIN_START_K or 0.4) * h
+end
+
+function C.SnapToast(e)
+  if not e then return end
+  local icon = C.ToastIcon and C.ToastIcon(e.drop)
+  local x, y
+  if icon and C.ScreenCenter then x, y = C.ScreenCenter(icon) end
+  if x and y then e._iconX, e._iconY = x, y end
+end
+
+-- Vol du +1 : cadre d'incrustation sur UIParent, SANS découpe (le toast est hors du panneau).
+function C.FlyHost()
+  local parent = _G.UIParent
+  local h = C.overlay
+  if not h then
+    h = CreateFrame("Frame", "DropamineFlyOverlay", parent)
+    h._osrsOwn, h._osrsOverlay = true, true
+    if h.EnableMouse then pcall(h.EnableMouse, h, false) end
+    if h.SetFrameStrata then pcall(h.SetFrameStrata, h, "TOOLTIP") end
+    C.overlay = h
+  elseif h.SetParent and h.GetParent and parent and h:GetParent() ~= parent then
+    pcall(h.SetParent, h, parent)
+  end
+  if h.ClearAllPoints then h:ClearAllPoints() end
+  if h.SetAllPoints then h:SetAllPoints(parent) end
+  local pw = (parent and parent.GetWidth and N(parent:GetWidth())) or 0
+  local ph = (parent and parent.GetHeight and N(parent:GetHeight())) or 0
+  if h.SetSize and pw > 0 and ph > 0 then h:SetSize(pw, ph) end
+  if h.Show then h:Show() end
+  return h
+end
 
 function C.FlyerSize(tile)
   local sz
@@ -607,15 +695,26 @@ end
 function C.FlyStep(f, elapsed)
   if not (f and f._busy and f._entry) then return end
   local e = f._entry
-  local host = (f.GetParent and f:GetParent()) or C.ClipHost()
+  local host = (f.GetParent and f:GetParent()) or (C.FlyHost and C.FlyHost()) or _G.UIParent
   local tile = (e._flyKey and C.TileByKey and C.TileByKey(e._flyKey)) or e._flyTile
   local sx, sy = e._sx, e._sy
+  -- Départ vivant = icône du toast tant qu'il est visible ; sinon le cliché.
   if e.drop and e.drop.IsShown and e.drop:IsShown() then
-    local x, y = HostCenter(e.drop, host)
-    if x then sx, sy, e._sx, e._sy = x, y, x, y end
+    local icon = C.ToastIcon and C.ToastIcon(e.drop)
+    local x, y
+    if C.ScreenCenter then x, y = C.ScreenCenter(icon or e.drop) end
+    if x then sx, sy, e._sx, e._sy, e._iconX, e._iconY = x, y, x, y, x, y end
+  elseif e._iconX then
+    sx, sy = e._iconX, e._iconY
   end
   local ex, ey
-  if tile then ex, ey = HostCenter(tile.icon or tile, host) end
+  if tile and C.ScreenCenter then ex, ey = C.ScreenCenter(tile.icon or tile) end
+  if not (ex and ey) and tile then
+    ex, ey = HostCenter(tile.icon or tile, host)
+  end
+  if not (sx and sy) and tile and C.AboveTile then
+    sx, sy = C.AboveTile(tile)
+  end
   if not (sx and ex and ey) then C.FinishFly(f, e) return end
   local sz = C.FlyerSize(tile)
   if f.SetSize then f:SetSize(sz, sz) end
@@ -626,7 +725,7 @@ function C.FlyStep(f, elapsed)
   local u = k * k
   local x = sx + (ex - sx) * u
   local y = sy + (ey - sy) * u
-  x, y = ClampInHost(host, x, y, sz / 2)
+  -- Pas de clamp dans le panneau : le toast est hors cadre, le +1 doit pouvoir en partir.
   if f.ClearAllPoints then f:ClearAllPoints() end
   if f.SetPoint then f:SetPoint("CENTER", host, "BOTTOMLEFT", x, y) end
   f._x, f._y = x, y
@@ -670,6 +769,15 @@ function C.Flyer()
   f.icon = f:CreateTexture(nil, "ARTWORK")
   f.icon:SetAllPoints(f)
   if f.icon.SetTexCoord then pcall(f.icon.SetTexCoord, f.icon, 0.07, 0.93, 0.07, 0.93) end
+  local okFs, fs = pcall(f.CreateFontString, f, nil, "OVERLAY", "NumberFontNormal")
+  if not (okFs and fs) and f.CreateFontString then fs = f:CreateFontString(nil, "OVERLAY") end
+  if fs then
+    pcall(fs.SetFont, fs, I.COUNT_PATH or "Fonts\\ARIALN.TTF", 16, I.TEXT_FLAGS or "OUTLINE")
+    if I.CleanText then I.CleanText(fs) end
+    fs:SetPoint("CENTER", f, "CENTER", 0, 0)
+    if fs.SetWordWrap then pcall(fs.SetWordWrap, fs, false) end
+    f.fs = fs
+  end
   if f.CreateAnimationGroup then
     local ok, ag = pcall(f.CreateAnimationGroup, f)
     if ok and ag then
@@ -709,18 +817,38 @@ function C.Launch(e)
     return
   end
   if not (W.IsShown() and main) then C.Release(e) e.skipped = true return end
-  -- Ancrages VIVANTS (position et échelle courantes), pas une taille mémorisée.
-  local host = C.ClipHost and C.ClipHost() or _G.UIParent
-  local sx, sy = HostCenter(e.drop, host)
-  local ex, ey = HostCenter(main.icon or main, host)
-  if not (sx and ex) then C.Land(e) return end
+  -- Départ = centre de l'icône du toast (GetCenter × échelle), en espace UIParent.
+  -- Jamais découpé dans le panneau (le toast est à l'extérieur).
+  if C.SnapToast then C.SnapToast(e) end
+  local host = (C.FlyHost and C.FlyHost()) or _G.UIParent
+  local icon = C.ToastIcon and C.ToastIcon(e.drop)
+  local sx, sy
+  if icon and C.ScreenCenter then sx, sy = C.ScreenCenter(icon) end
+  if not (sx and sy) then sx, sy = e._iconX, e._iconY end
+  local ex, ey
+  if C.ScreenCenter then ex, ey = C.ScreenCenter(main.icon or main) end
+  if not (ex and ey) then ex, ey = HostCenter(main.icon or main, host) end
+  if not (sx and sy) and C.AboveTile then sx, sy = C.AboveTile(main) end
+  if not (ex and ey) then C.Land(e) return end
+  if not (sx and sy) then sx, sy = ex, ey end
   local f = C.Flyer()
   if f.SetParent then pcall(f.SetParent, f, host) end
+  if f.SetFrameStrata then pcall(f.SetFrameStrata, f, "TOOLTIP") end
   local sz = C.FlyerSize(main)
   if f.SetSize then f:SetSize(sz, sz) end
   f._busy, f._entry, f._t = true, e, 0
-  if f.icon then pcall(f.icon.SetTexture, f.icon, e.icon or ns.LEVEL_ICON or WHITE8) end
-  sx, sy = ClampInHost(host, sx, sy, sz / 2)
+  local gain = (mainTg and mainTg.gain and mainTg.gain > 0) and math.floor(mainTg.gain + 0.5) or 1
+  if f.fs and f.fs.SetText then
+    f.fs:SetText("+" .. tostring(gain))
+    local col = (C.GainColor and C.GainColor(e.opts or { kind = e.kind })) or (C.SharedGainColor and C.SharedGainColor())
+    if col and f.fs.SetTextColor then pcall(f.fs.SetTextColor, f.fs, col[1], col[2], col[3]) end
+    if f.fs.Show then f.fs:Show() end
+  end
+  if f.icon then
+    -- Le voyageur est le +1 ; l'icône du toast sert de point de départ, pas de texture emportée.
+    if f.icon.SetTexture then pcall(f.icon.SetTexture, f.icon, WHITE8) end
+    if f.icon.SetAlpha then pcall(f.icon.SetAlpha, f.icon, 0) end
+  end
   f:ClearAllPoints()
   f:SetPoint("CENTER", host, "BOTTOMLEFT", sx, sy)
   f:SetAlpha(1)
@@ -737,12 +865,26 @@ function C.Launch(e)
   if C.FlyStep then C.FlyStep(f, 0) end
 end
 
+-- Vol d'aperçu (Options Tester) : part de l'icône du toast de test, sans retenue ni 2e Announce.
+function C.PreviewFly(drop, opts, targets)
+  if not (drop and opts) then return nil end
+  targets = targets or (C.TargetsFor and C.TargetsFor(opts, drop))
+  if not (targets and targets[1]) then return nil end
+  local e = {
+    drop = drop, icon = opts.icon, kind = opts.kind, targets = targets,
+    born = Now(), opts = opts, preview = true,
+  }
+  if C.SnapToast then C.SnapToast(e) end
+  C.Launch(e)
+  return e
+end
+
 -- Arrivée : vraie valeur, pulsation dorée, gain vert.
 function C.Land(e, quiet)
   if e.landed then return end
   e.landed = true
-  C.Release(e)
-  if quiet or not W.IsShown() then return end
+  if not e.preview then C.Release(e) end
+  if quiet or e.preview or not W.IsShown() then return end
   C.landed = C.landed + 1
   if P.Wake then P.Wake("éclat") end
   if C.Announce then
