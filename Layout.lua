@@ -95,12 +95,8 @@ function L.GridSize(cols, rows)
   if barOn then
     local skillRows = math.max(1, math.ceil((n - 1) / cols))
     local slim = (Wd.RowHeight and Wd.RowHeight(tile)) or math.max((Wd.MIN_H or 28), math.floor(tile * (Wd.SLIM or 0.45) + 0.5))
-    -- Rangée total : si la grille est plus étroite que fiole + texte 13 px + barre 60 px,
-    -- le cadre s'élargit (les cases restent à leur taille).
-    if Wd.MinRowWidth and Wd.Metrics then
-      local need = Wd.MinRowWidth(Wd.Metrics(tile))
-      if need and gw < need then gw = need end
-    end
+    -- Largeur = grille de cases seule : au plancher, marges G/D = marges H/B.
+    -- Plus d'élargissement pour la barre de total (ça gonflait les côtés).
     local gh = skillRows * tile + math.max(0, skillRows - 1) * vg + vg + slim
     return gw, gh, cols, skillRows
   end
@@ -136,8 +132,9 @@ function L.ContentSize(cols, rows)
   local gw, gh, c, r = L.GridSize(cols, rows)
   return gw + 2 * pad, gh + 2 * pad, pad, gw, gh, c, r
 end
--- Plancher unique : cases 36 px, fiole ~ case, barre ~100 px, 5 col. en référence.
--- Le cadre, les tuiles et la barre s'arrêtent au même point.
+-- Plancher unique : cases 36 px, 5 col. en référence.
+-- Largeur min = grille de cases + la même marge sur les 4 côtés (G=D=H=B).
+-- Le cadre et les tuiles s'arrêtent au même point.
 function L.MinMetrics()
   local B = I.BASE or { TILE = 40, ICON = 36, HGAP = 8, VGAP = 12 }
   local k = (L.SCALE_MIN or 90) / 100
@@ -158,10 +155,7 @@ function L.MinContentSize(cols)
   if barOn then
     rows = math.max(1, math.ceil(math.max(0, n - 1) / cols))
     local slim = (Wd.RowHeight and Wd.RowHeight(tile)) or math.max(tile, Wd.MIN_H or 36)
-    if Wd.MinRowWidth and Wd.Metrics then
-      local need = Wd.MinRowWidth(Wd.Metrics(tile))
-      if need and gw < need then gw = need end
-    end
+    -- Largeur min = grille de cases (marges = L.MARGIN des 4 côtés).
     gh = rows * tile + math.max(0, rows - 1) * vg + vg + slim
   else
     rows = L.Rows(cols)

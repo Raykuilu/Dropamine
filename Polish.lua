@@ -199,12 +199,13 @@ if Wd then
   Wd.BAR_H = 8
   Wd.PAD = 6
   Wd.SLIM = 0.5
-  Wd.MIN_H = 36
+  Wd.MIN_H = 25      -- rangée = glyphe de fiole (~70 % de la case 36)
   Wd.MIN_BAR_H = 12
   Wd.MIN_BAR_W = 100
   Wd.MIN_FONT = nil  -- le total suit I.NumberSizes (plus petit que le rang)
   Wd.MIN_ISZ = 25    -- 70 % de la case plancher 36 px
   Wd.ICON_K = 0.70
+  Wd.STATE_ICON_K = 0.55
   -- Référence 100 % (zoom uniforme au-dessus des planchers absolus).
   Wd.REF_BAR_H = 8
   Wd.REF_PAD = 6

@@ -1396,6 +1396,15 @@ function S.ApplyStateIcon(t, key, mode)
   local side = math.min(w, h)
   side = math.max(6, side - 1)
   local x, y = (w - side) * 0.5, (h - side) * 0.5
+  -- Z de repos seulement : ~55 % de la case, centré dans le puits 70 %.
+  if key == "rested" and t._wideOn then
+    local tile = (ns.Icons and ns.Icons.TILE) or 40
+    local Wd = ns.Wide
+    local zsz = (Wd and Wd.StateIconSize and Wd.StateIconSize(tile))
+      or math.max(1, math.floor(tile * ((Wd and Wd.STATE_ICON_K) or 0.55) + 0.5))
+    side = math.max(6, math.min(zsz, math.min(w, h)))
+    x, y = (w - side) * 0.5, (h - side) * 0.5
+  end
   local alpha = 1
   local phase = S._phase or 0
   mode = mode or "pulse"
@@ -1587,11 +1596,14 @@ end
 -- (et dans le harnais) ça rend souvent 0 ou la taille par défaut (100).
 function S.IconInnerSize(t)
   if not t then return 16, 16, nil, 2 end
-  -- En barre : glyphe seul à ~70 % de la case, centré sur la 1re colonne, sans filet.
+  -- En barre : fiole / combat / vol ~70 % de la case, centrés sur la 1re colonne.
+  -- Toujours I.TILE, jamais la hauteur de rangée. Le Z de repos est réduit à part (55 %).
   if t._wideOn then
-    local tile = (ns.Icons and ns.Icons.TILE) or (ns.N and ns.N(t._wideH)) or t._wideH or 40
+    local tile = (ns.Icons and ns.Icons.TILE) or 40
     tile = (ns.N and ns.N(tile)) or tonumber(tile) or 40
-    local s = (ns.Wide and ns.Wide.IconSize and ns.Wide.IconSize(tile)) or math.max(1, math.floor(tile * ((ns.Wide and ns.Wide.ICON_K) or 0.70) + 0.5))
+    local Wd = ns.Wide
+    local s = (Wd and Wd.IconSize and Wd.IconSize(tile))
+      or math.max(1, math.floor(tile * ((Wd and Wd.ICON_K) or 0.70) + 0.5))
     local anchor = t.icon or t.iconSlot or t
     return s, s, anchor, 0, s, s
   end

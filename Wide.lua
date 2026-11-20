@@ -15,7 +15,7 @@ ns.Wide = Wd
 Wd.BAR_H = 4
 Wd.PAD = 5
 Wd.SLIM = 0.50      -- hauteur de la rangée = 50 % d'une case
-Wd.MIN_H = 36
+Wd.MIN_H = 25   -- hauteur de rangée = glyphe de fiole (~70 % de la case 36)
 -- Référence à 40 px (100 %) : tout zoome uniformément avec la taille de case.
 -- Polish.lua peut relever la référence (barre Flare 8, police 11, min 20).
 Wd.REF_TILE  = 40
@@ -28,14 +28,25 @@ Wd.MIN_BAR_W = 100
 Wd.MIN_FONT  = 13
 Wd.MIN_PAD   = 3
 Wd.MIN_ISZ   = 25   -- 70 % de la case plancher 36 px
-Wd.ICON_K    = 0.70 -- glyphe seul, sans cadre, ~70 % de la hauteur de case
+Wd.ICON_K       = 0.70 -- fiole (goutte) : ~70 % de la hauteur de case
+Wd.STATE_ICON_K = 0.55 -- Z de repos seulement ; fiole / vol / combat restent à ICON_K
 function Wd.IconSize(tile)
   tile = (ns.N and ns.N(tile)) or tonumber(tile) or (ns.Icons and ns.Icons.TILE) or Wd.REF_TILE or 40
   return math.max(1, math.floor(tile * (Wd.ICON_K or 0.70) + 0.5))
 end
+function Wd.StateIconSize(tile)
+  tile = (ns.N and ns.N(tile)) or tonumber(tile) or (ns.Icons and ns.Icons.TILE) or Wd.REF_TILE or 40
+  return math.max(1, math.floor(tile * (Wd.STATE_ICON_K or 0.55) + 0.5))
+end
 function Wd.ColCenter(tile)
   tile = (ns.N and ns.N(tile)) or tonumber(tile) or (ns.Icons and ns.Icons.TILE) or Wd.REF_TILE or 40
   return math.floor(tile / 2 + 0.5)
+end
+-- Centre du glyphe = centre de la 1re colonne de cases (tient compte du décalage de grille).
+function Wd.FirstColCenter(tile)
+  local Lyt = ns.Layout
+  local ox = (Lyt and Lyt.GridOriginX and Lyt.GridOriginX()) or 0
+  return ox + (Wd.ColCenter and Wd.ColCenter(tile) or math.floor((tile or 40) / 2 + 0.5))
 end
 Wd.FILL = ns.STYLE.BORDER   -- #A67D45 (palette FlareUI, voir STYLE.md) — filet de la jauge
 Wd.TRACK = { 0, 0, 0, 0.55 }
@@ -80,17 +91,16 @@ function Wd.Metrics(tile)
   local function px(ref, minv)
     return math.max(minv or 0, math.floor((ref or 0) * k + 0.5))
   end
-  local minH = Wd.MIN_H or 36
+  local minH = Wd.MIN_H or 25
   local minBh = Wd.MIN_BAR_H or 12
-  local minIsz = Wd.MIN_ISZ or 36
-  -- Rangée ~ hauteur de case ; glyphe de fiole ~ 70 % (pas de cadre).
-  local h = math.max(minH, tile, math.floor(tile * (Wd.SLIM or 0.5) + 0.5))
+  local minIsz = Wd.MIN_ISZ or 25
+  -- Rangée = hauteur du glyphe de fiole (~70 % de la case), pas une case entière.
   local bh = px(Wd.REF_BAR_H or Wd.BAR_H or 5, minBh)
   local pad = px(Wd.REF_PAD or Wd.PAD or 5, Wd.MIN_PAD or 3)
   local sizes = I and I.NumberSizes and I.NumberSizes(tile) or nil
   local font = (sizes and sizes.total) or math.max(8, math.floor((Wd.REF_FONT or 11) * k + 0.5))
   local isz = math.max(minIsz, Wd.IconSize(tile))
-  h = math.max(h, tile, isz, bh + 2, font + 4)
+  local h = math.max(minH, isz, bh, font or 0)
   local edge = px(Wd.REF_EDGE or Wd.EDGE_OUT or 3, 2)
   local I = ns.Icons
   return {
@@ -149,16 +159,26 @@ function Wd.PlanTotalRow(w, m, twOf)
   end
   if tw <= 0 then tw = Wd.ReserveTextW(font) end
   local minW = Wd.MinRowWidth(m, tw)
+  -- La rangée tient dans la largeur réelle du cadre (plus d'élargissement forcé).
   local used = w
-  if used < minW then used = minW end
+  if not used or used <= 0 then used = minW end
+  local Lyt = ns.Layout
+  local ox = (Lyt and Lyt.GridOriginX and Lyt.GridOriginX()) or 0
   local gap = pad + edge
-  local left = slotW + pad + tw + gap
+  local textX = ox + slotW + pad
+  local left = ox + slotW + pad + tw + gap
   local inner = used - left - pad - edge
-  if inner < minBar then inner = minBar end
+  if inner < 1 then
+    inner = 1
+    left = math.max(ox + slotW + pad, used - inner - pad - edge)
+    inner = math.max(1, used - left - pad - edge)
+  elseif used + 0.01 >= minW and inner < minBar then
+    inner = minBar
+  end
   left = math.floor(left + 0.5)
   inner = math.floor(inner + 0.5)
+  textX = math.floor(textX + 0.5)
   local by = math.floor((h - bh) / 2 + 0.5)
-  local textX = slotW + pad
   return {
     isz = isz, slotW = slotW, pad = pad, edge = edge, font = font, tw = tw,
     left = left, inner = inner, overlay = false, minBar = minBar, minW = minW,
@@ -577,7 +597,8 @@ function Wd.PlaceVialIcon(t, m)
   if not t then return end
   local tile = (m and m.tile) or (ns.Icons and ns.Icons.TILE) or 40
   local isz = Wd.IconSize and Wd.IconSize(tile) or math.floor(tile * (Wd.ICON_K or 0.70) + 0.5)
-  local cx = Wd.ColCenter and Wd.ColCenter(tile) or math.floor(tile / 2 + 0.5)
+  local cx = Wd.FirstColCenter and Wd.FirstColCenter(tile)
+    or ((Wd.ColCenter and Wd.ColCenter(tile) or math.floor(tile / 2 + 0.5)))
   Wd.HideVialChrome(t)
   if t.icon and t.icon.ClearAllPoints then
     t.icon:ClearAllPoints()
@@ -973,12 +994,12 @@ do
     h:ClearAllPoints()
     local w, ht = IconWH(t)
     if t.icon then
-      -- Même ancre que la goutte ; SetSize ensuite pour que la taille suive
-      -- même si SetAllPoints est un no-op (harness de test).
+      -- Même ancre et taille que la goutte (sablier validé à ~70 %).
       if h.SetAllPoints then pcall(h.SetAllPoints, h, t.icon) end
       h:SetPoint("CENTER", t.icon, "CENTER", 0, 0)
     else
-      local iconX = math.floor((t._wideH or w) / 2 + 0.5)
+      local iconX = (Wd.FirstColCenter and Wd.FirstColCenter((ns.Icons and ns.Icons.TILE) or t._wideH or w))
+        or math.floor((t._wideH or w) / 2 + 0.5)
       h:SetPoint("CENTER", t, "LEFT", iconX, 0)
     end
     if h.SetSize then h:SetSize(w, ht) end
