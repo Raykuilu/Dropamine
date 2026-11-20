@@ -4213,7 +4213,10 @@ function WD.Sweep()
     for _, f in ipairs(UI._toastPool or {}) do one(f) end
   end
   if C then
-    for _, f in ipairs(C.pool or {}) do one(f) end
+    for _, f in ipairs(C.pool or {}) do
+      -- éclat en vol : ne pas couper l'OnUpdate ni l'anim
+      if not (f._busy or f._entry) then one(f) end
+    end
     if C.Tiles then
       local ok, tiles = pcall(C.Tiles)
       if ok and type(tiles) == "table" then

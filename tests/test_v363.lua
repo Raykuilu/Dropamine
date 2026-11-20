@@ -151,6 +151,8 @@ local function newObj(class, name, parent)
   function f:GetFrameLevel() return self.level end
   function f:SetAlpha(a) self.alpha = a end
   function f:GetAlpha() return self.alpha end
+  function f:GetEffectiveScale() return self._scale or 1 end
+  function f:SetClipsChildren(v) self.clipsChildren = v and true or false end
   function f:SetMovable() end
   function f:EnableMouse(v) self.mouse = v and true or false end
   function f:IsMouseEnabled() return self.mouse end
@@ -4367,6 +4369,112 @@ do
   _G.InCombatLockdown = prevCombat or function() return false end
   -- ne pas laisser le toast de test visible fausser d'autres asserts
   if live and UI and UI.DismissDrop and not live._inPool then pcall(UI.DismissDrop, UI, live) end
+end
+
+
+print("== 3.7.0 : éclat toast → case (ancrages vivants) et marges égales")
+do
+  local C, L, I, Wd = ns.Compact, ns.Layout, ns.Icons, ns.Wide
+  local Win = ns.Window
+  -- 58 : la grille de cases est centrée ; surplus partagé à gauche et à droite.
+  if L and L.TileGridWidth and L.GridOriginX and L.ContentSize then
+    if ns.db and ns.db.ui then ns.db.ui.scale = 90 ns.db.ui.cols = nil ns.db.ui.showTotal = true end
+    if Wd then Wd.forceShown = true end
+    if L.SyncMetrics then L.SyncMetrics() end
+    local nat = L.TileGridWidth(5)
+    local fw, fh, pad, gw = L.ContentSize(5)
+    local ox = L.GridOriginX(5, gw)
+    ok(nat > 0 and gw >= nat, "58 : largeur utile >= grille de cases (" .. tostring(gw) .. " / " .. tostring(nat) .. ")")
+    ok(ox == math.floor((gw - nat) / 2), "58 : décalage = surplus / 2 (ox=" .. tostring(ox) .. ")")
+    local left, right = (pad or 12) + ox, (pad or 12) + (gw - nat - ox)
+    ok(math.abs(left - right) <= 1, "58 : marges gauche et droite égales (" .. tostring(left) .. " / " .. tostring(right) .. ")")
+    -- La barre occupe la largeur utile ; elle dépasse les cases de la même distance de chaque côté.
+    local overL, overR = ox, gw - nat - ox
+    ok(math.abs(overL - overR) <= 1, "58 : la barre s'aligne : même dépassement des deux côtés (" .. tostring(overL) .. " / " .. tostring(overR) .. ")")
+    if ns.db and ns.db.ui then ns.db.ui.scale = nil end
+    if L.SyncMetrics then L.SyncMetrics() end
+    local nat100 = L.TileGridWidth(5)
+    local _, _, pad100, gw100 = L.ContentSize(5)
+    local ox100 = L.GridOriginX(5, gw100)
+    local l100, r100 = (pad100 or 12) + ox100, (pad100 or 12) + (gw100 - nat100 - ox100)
+    ok(math.abs(l100 - r100) <= 1, "58 : marges égales à 100 % (" .. tostring(l100) .. " / " .. tostring(r100) .. ")")
+  end
+
+  -- 57 : vol d'éclat — ancrages courants, découpe, vivier, watchdog ; timing inchangé.
+  if C and C.Launch and C.Flyer and Win and Win.frame then
+    if not Win.IsShown then function Win.IsShown() return Win.frame and Win.frame:IsShown() end end
+    Win.frame:Show()
+    if not Win.frame.GetWidth then function Win.frame:GetWidth() return self.width or 300 end end
+    if not Win.frame.GetHeight then function Win.frame:GetHeight() return self.height or 200 end end
+    Win.frame.width, Win.frame.height = 300, 200
+    Win.frame:ClearAllPoints()
+    Win.frame:SetPoint("BOTTOMLEFT", _G.UIParent, "BOTTOMLEFT", 100, 100)
+    -- toast au-dessus du panneau, case plus bas
+    local drop = CreateFrame("Frame", "DropamineFlyToast", _G.UIParent)
+    drop:SetSize(80, 40)
+    drop:ClearAllPoints()
+    drop:SetPoint("BOTTOMLEFT", _G.UIParent, "BOTTOMLEFT", 160, 360)
+    drop:Show()
+    local tile = CreateFrame("Button", "DropamineFlyTile", Win.frame)
+    tile:SetSize(40, 40)
+    tile:ClearAllPoints()
+    tile:SetPoint("BOTTOMLEFT", Win.frame, "BOTTOMLEFT", 40, 20)
+    tile.data = { kind = "skill", skillName = "Dépeçage", id = "skinning", name = "Dépeçage" }
+    tile:Show()
+    tile.icon = tile:CreateTexture(nil, "ARTWORK")
+    tile.icon:SetSize((I and I.ICON) or 36, (I and I.ICON) or 36)
+    tile.icon:ClearAllPoints()
+    tile.icon:SetPoint("CENTER", tile, "CENTER", 0, 0)
+    local prevTiles = C.Tiles
+    function C.Tiles() return { tile } end
+    local landed = 0
+    local baseLand = C.Land
+    function C.Land(e, quiet)
+      landed = landed + 1
+      e.landed = true
+      if baseLand then
+        -- ne pas lancer Pulse/Gain ici : on vérifie seulement l'arrivée
+      end
+    end
+    local e = { drop = drop, icon = "Interface\\Icons\\X", kind = "skill",
+      targets = { { key = "s:Dépeçage", gain = 1 } }, born = 0, opts = { kind = "skill" } }
+    -- En jeu le +1 / voile restent à l'arrivée (après le toast) : Launch ne doit pas Land tout de suite.
+    C.Launch(e)
+    ok(e.launched and not e.landed, "57 : le vol part après le toast, le +1 n'est pas anticipé")
+    local f = e and (function()
+      for _, ff in ipairs(C.pool or {}) do if ff._entry == e then return ff end end
+    end)()
+    ok(f and f._busy and f:IsShown(), "57 : éclat pris dans le vivier et visible")
+    local clip = C.clip
+    ok(clip and clip.clipsChildren, "57 : éclat découpé dans le panneau")
+    ok(f.GetParent and f:GetParent() == clip, "57 : éclat parenté au cadre de découpe")
+    local x0, y0 = f._x, f._y
+    if C.FlyStep then C.FlyStep(f, (C.FLY or 0.55) * 0.5) end
+    ok(f._x and x0 and (f._y ~= y0 or f._x ~= x0),
+      "57 : l'éclat n'est pas figé (il avance) (" .. tostring(x0) .. "," .. tostring(y0) .. " → " .. tostring(f._x) .. "," .. tostring(f._y) .. ")")
+    -- La case bouge : l'ancrage d'arrivée suit la position COURANTE.
+    tile:ClearAllPoints()
+    tile:SetPoint("BOTTOMLEFT", Win.frame, "BOTTOMLEFT", 200, 20)
+    tile.icon:ClearAllPoints()
+    tile.icon:SetPoint("CENTER", tile, "CENTER", 0, 0)
+    local midX = f._x
+    if C.FlyStep then C.FlyStep(f, (C.FLY or 0.55) * 0.4) end
+    ok(f._x and midX and f._x ~= midX,
+      "57 : l'arrivée suit la case déplacée (pas de taille en cache) (" .. tostring(midX) .. " → " .. tostring(f._x) .. ")")
+    -- Watchdog : ne tue pas un éclat en vol.
+    local wd = ns.Watchdog
+    if wd and wd.Sweep then
+      local script = f.GetScript and f:GetScript("OnUpdate")
+      pcall(wd.Sweep)
+      ok(f._busy and f:IsShown() and (f.GetScript and f:GetScript("OnUpdate") == script),
+        "57 : le watchdog ne coupe pas un éclat en vol")
+    end
+    if C.FinishFly then C.FinishFly(f, e) else C.Land(e) end
+    ok(e.landed and landed >= 1, "57 : arrivée sur la bonne case, Land appelé")
+    ok(not f._busy and not f:IsShown(), "57 : éclat rendu au vivier (caché, libre)")
+    C.Land = baseLand
+    C.Tiles = prevTiles
+  end
 end
 
 do

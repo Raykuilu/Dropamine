@@ -509,16 +509,130 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   return f
 end
 
-local function Center(o)
+-- Centre actuel d'un objet, en coordonnées UIParent (échelle effective).
+-- Jamais de taille ou de position mémorisée : on relit GetLeft/GetRight.
+local function AbsCenter(o)
+  if not o then return nil end
   local l, r, t, b = RectOf(o)
   if not l then return nil end
   local s = 1
-  if o.GetEffectiveScale and UIParent and UIParent.GetEffectiveScale then
+  local parent = _G.UIParent
+  if o.GetEffectiveScale and parent and parent.GetEffectiveScale then
     local ok1, es = pcall(o.GetEffectiveScale, o)
-    local ok2, us = pcall(UIParent.GetEffectiveScale, UIParent)
+    local ok2, us = pcall(parent.GetEffectiveScale, parent)
     if ok1 and ok2 and N(es) and N(us) and us > 0 then s = es / us end
   end
   return (l + r) / 2 * s, (t + b) / 2 * s
+end
+local function HostCenter(o, host)
+  local ux, uy = AbsCenter(o)
+  if not ux then return nil end
+  if not host or host == _G.UIParent then return ux, uy end
+  local hl, _, _, hb = RectOf(host)
+  if not hl then return ux, uy end
+  local s = 1
+  local parent = _G.UIParent
+  if host.GetEffectiveScale and parent and parent.GetEffectiveScale then
+    local ok1, es = pcall(host.GetEffectiveScale, host)
+    local ok2, us = pcall(parent.GetEffectiveScale, parent)
+    if ok1 and ok2 and N(es) and N(us) and us > 0 then s = es / us end
+  end
+  return (ux - hl * s) / s, (uy - hb * s) / s
+end
+local function Center(o) return AbsCenter(o) end
+
+function C.FlyerSize(tile)
+  local sz
+  if tile and tile.icon and tile.icon.GetWidth then
+    sz = N(tile.icon:GetWidth())
+  end
+  if not sz or sz < 4 then
+    sz = (I and I.ICON) or (ns.Icons and ns.Icons.ICON) or C.FLY_SIZE or 22
+  end
+  return math.max(10, math.floor(sz + 0.5))
+end
+
+-- Cadre de découpe : l'éclat reste à l'intérieur du panneau.
+function C.ClipHost()
+  local parent = W and W.frame
+  if not parent then return _G.UIParent end
+  local c = C.clip
+  if not c then
+    c = CreateFrame("Frame", nil, parent)
+    c._osrsOwn = true
+    if c.EnableMouse then pcall(c.EnableMouse, c, false) end
+    if c.SetClipsChildren then pcall(c.SetClipsChildren, c, true) end
+    C.clip = c
+  elseif c.SetParent and c.GetParent and c:GetParent() ~= parent then
+    pcall(c.SetParent, c, parent)
+  end
+  if c.ClearAllPoints then c:ClearAllPoints() end
+  if c.SetAllPoints then c:SetAllPoints(parent) end
+  local pw = (parent.GetWidth and N(parent:GetWidth())) or 0
+  local ph = (parent.GetHeight and N(parent:GetHeight())) or 0
+  if c.SetSize and pw > 0 and ph > 0 then c:SetSize(pw, ph) end
+  if c.SetFrameLevel and parent.GetFrameLevel then
+    pcall(c.SetFrameLevel, c, (parent:GetFrameLevel() or 1) + 30)
+  end
+  if c.Show then c:Show() end
+  return c
+end
+
+function C.FinishFly(f, e)
+  if f then
+    if f.SetScript then pcall(f.SetScript, f, "OnUpdate", nil) end
+    if f.ag and f.ag.Stop then pcall(f.ag.Stop, f.ag) end
+    if f.Hide then f:Hide() end
+    f._busy, f._entry, f._t = nil, nil, nil
+  end
+  if e and not e.landed then C.Land(e) end
+end
+
+local function ClampInHost(host, x, y, half)
+  if not host then return x, y end
+  local hl, hr, ht, hb = RectOf(host)
+  local hw = (hr and hl) and (hr - hl) or (host.GetWidth and N(host:GetWidth())) or 0
+  local hh = (ht and hb) and (ht - hb) or (host.GetHeight and N(host:GetHeight())) or 0
+  half = half or 0
+  if hw > half * 2 then
+    if x < half then x = half elseif x > hw - half then x = hw - half end
+  end
+  if hh > half * 2 then
+    if y < half then y = half elseif y > hh - half then y = hh - half end
+  end
+  return x, y
+end
+
+function C.FlyStep(f, elapsed)
+  if not (f and f._busy and f._entry) then return end
+  local e = f._entry
+  local host = (f.GetParent and f:GetParent()) or C.ClipHost()
+  local tile = (e._flyKey and C.TileByKey and C.TileByKey(e._flyKey)) or e._flyTile
+  local sx, sy = e._sx, e._sy
+  if e.drop and e.drop.IsShown and e.drop:IsShown() then
+    local x, y = HostCenter(e.drop, host)
+    if x then sx, sy, e._sx, e._sy = x, y, x, y end
+  end
+  local ex, ey
+  if tile then ex, ey = HostCenter(tile.icon or tile, host) end
+  if not (sx and ex and ey) then C.FinishFly(f, e) return end
+  local sz = C.FlyerSize(tile)
+  if f.SetSize then f:SetSize(sz, sz) end
+  f._t = (f._t or 0) + (elapsed or 0)
+  local dur = C.FLY or 0.55
+  local k = (dur > 0) and (f._t / dur) or 1
+  if k > 1 then k = 1 end
+  local u = k * k
+  local x = sx + (ex - sx) * u
+  local y = sy + (ey - sy) * u
+  x, y = ClampInHost(host, x, y, sz / 2)
+  if f.ClearAllPoints then f:ClearAllPoints() end
+  if f.SetPoint then f:SetPoint("CENTER", host, "BOTTOMLEFT", x, y) end
+  f._x, f._y = x, y
+  if f.SetAlpha then
+    if k < 0.6 then f:SetAlpha(1) else f:SetAlpha(1 - (k - 0.6) / 0.4 * 0.8) end
+  end
+  if k >= 1 then C.FinishFly(f, e) end
 end
 
 local function NewAnim(ag, kind)
@@ -538,9 +652,11 @@ end
 
 function C.Flyer()
   C.pool = C.pool or {}
-  for _, f in ipairs(C.pool) do if not f._busy then return f end end
+  for _, f in ipairs(C.pool) do
+    if not f._busy and f._osrsFlyer then return f end
+  end
   local f = CreateFrame("Frame", nil, UIParent)
-  f._osrsOwn = true
+  f._osrsOwn, f._osrsFlyer = true, true
   if f.EnableMouse then f:EnableMouse(false) end
   pcall(f.SetFrameStrata, f, "DIALOG")
   f:SetSize(C.FLY_SIZE, C.FLY_SIZE)
@@ -563,7 +679,7 @@ function C.Flyer()
       if f.sc then pcall(f.sc.SetDuration, f.sc, C.FLY) ScaleAnim(f.sc, 0.6) end
       f.al = NewAnim(ag, "Alpha")
       if f.al then pcall(f.al.SetDuration, f.al, C.FLY * 0.4) if f.al.SetStartDelay then pcall(f.al.SetStartDelay, f.al, C.FLY * 0.6) end AlphaAnim(f.al, 1, 0.2) end
-      ag:SetScript("OnFinished", function() f:Hide() f._busy = nil if f._entry then C.Land(f._entry) end end)
+      ag:SetScript("OnFinished", function() if C.FinishFly then C.FinishFly(f, f._entry) elseif f._entry then C.Land(f._entry) end end)
     end
   end
   f:Hide()
@@ -592,27 +708,32 @@ function C.Launch(e)
     return
   end
   if not (W.IsShown() and main) then C.Release(e) e.skipped = true return end
-  local sx, sy = Center(e.drop)
-  local ex, ey = Center(main.icon or main)
+  -- Ancrages VIVANTS (position et échelle courantes), pas une taille mémorisée.
+  local host = C.ClipHost and C.ClipHost() or _G.UIParent
+  local sx, sy = HostCenter(e.drop, host)
+  local ex, ey = HostCenter(main.icon or main, host)
   if not (sx and ex) then C.Land(e) return end
   local f = C.Flyer()
-  f._busy, f._entry = true, e
-  pcall(f.icon.SetTexture, f.icon, e.icon or ns.LEVEL_ICON or WHITE8)
+  if f.SetParent then pcall(f.SetParent, f, host) end
+  local sz = C.FlyerSize(main)
+  if f.SetSize then f:SetSize(sz, sz) end
+  f._busy, f._entry, f._t = true, e, 0
+  if f.icon then pcall(f.icon.SetTexture, f.icon, e.icon or ns.LEVEL_ICON or WHITE8) end
+  sx, sy = ClampInHost(host, sx, sy, sz / 2)
   f:ClearAllPoints()
-  f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", sx, sy)
+  f:SetPoint("CENTER", host, "BOTTOMLEFT", sx, sy)
   f:SetAlpha(1)
   f:Show()
   e.from, e.to = { sx, sy }, { ex, ey }
+  e._sx, e._sy = sx, sy
+  e._flyTile, e._flyKey = main, (main.data and C.HoldKey and C.HoldKey(main.data)) or nil
   C.flights = C.flights + 1
-  if f.ag and f.tr then
-    pcall(f.tr.SetOffset, f.tr, ex - sx, ey - sy)
-    if f.ag.Stop then pcall(f.ag.Stop, f.ag) end
-    f.ag:Play()
-    After(C.FLY + 0.5, function() if not e.landed then f:Hide() f._busy = nil C.Land(e) end end)
-  else
-    f:Hide() f._busy = nil
-    C.Land(e)
-  end
+  if f.ag and f.ag.Stop then pcall(f.ag.Stop, f.ag) end
+  if f.SetScript then f:SetScript("OnUpdate", C.FlyStep) end
+  -- Même durée qu'avant (C.FLY) : le +1 / voile reste à l'arrivée, après le toast.
+  After(C.FLY + 0.5, function() if not e.landed then C.FinishFly(f, e) end end)
+  -- Premier pas immédiat (le harnais de tests n'a pas de boucle OnUpdate).
+  if C.FlyStep then C.FlyStep(f, 0) end
 end
 
 -- Arrivée : vraie valeur, pulsation dorée, gain vert.
