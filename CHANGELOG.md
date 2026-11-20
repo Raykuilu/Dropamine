@@ -1,6 +1,7 @@
 # Changelog
 
 ## 3.6.3
+- test9: campfire, combat (single sword), food, drink, both (split disc) and rest (Z) use custom Dropamine guideline icons (64×64 TGA, dark disc, bronze rim, thick cream glyph) instead of generic game icons. Flight hourglass and fishing keep their validated art. Same pool, no leak.
 - test8: the compact frame always uses the *current* tile size (scale slider / `/drop taille`), for every column count including defaults — never the old 40 px / 262-wide list. Recomputed on the size slider. The last tile no longer overlaps the right border; the frame ends 12 px below the total bar, with no leftover gap.
 - test8: flask states (rest, campfire, combat, fishing, eating, flight, death, …) only swap the official *total vial icon*. The total bar and its number stay visible at full width, as a plain static fill. No profession-tile badges, no state animation on the bar, no frame change driven by a state. Rest is a guideline icon (dark disc + cream/bronze Z, gentle float), not a plain letter. Combat uses a single basic sword (`INV_Sword_04`).
 - test8: `/drop test totaladd red|blue|green` (and live gains) tint the falling drop correctly. After the drop hits, one pooled spark in the same color travels the bar to the current fill tip and flashes briefly (~0.6 s, alpha back to 0, no per-frame allocation).

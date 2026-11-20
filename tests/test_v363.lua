@@ -2525,8 +2525,8 @@ do
   ok(not tot._cLiq or tot._cLiq.shown == false, "combat grille : plus de bandes liquide")
   ok(tot._stIcon and tot._stIcon.shown ~= false, "combat grille : icône de jeu visible")
   local ctex = tot._stIcon and (tot._stIcon._texSet or tot._stIcon._tex)
-  ok(type(ctex) == "string" and ctex:find("INV_Sword_04", 1, true),
-    "combat grille : INV_Sword_04 (" .. tostring(ctex) .. ")")
+  ok(type(ctex) == "string" and ctex:find("Combat-Icon", 1, true),
+    "combat grille : Combat-Icon (" .. tostring(ctex) .. ")")
   if tot.icon then
     ok(tot.icon.shown == false, "combat grille : la fiole officielle est remplacée")
   end
@@ -2891,8 +2891,8 @@ do
     if tot.icon then ok(tot.icon.shown ~= false, label .. " : fiole restaurée") end
   end
   S.SetCombatStyle("bubbles")
-  after("combat", "INV_Sword_04", "combat")
-  after("campfire", "Spell_Fire_Fire", "feu de camp")
+  after("combat", "Combat-Icon", "combat")
+  after("campfire", "Campfire-Icon", "feu de camp")
 
   -- Repas : disque fourchette / tasse remplace la fiole
   S.ClearSim()
@@ -2901,15 +2901,22 @@ do
   ok(S.Want("eating"), "repas : état allumé")
   ok(tot._stIcon and tot._stIcon.shown ~= false, "repas food : disque visible")
   local fp = texOf(tot._stIcon)
-  ok(type(fp) == "string" and fp:find("Fork", 1, true), "repas food : fourchette (" .. tostring(fp) .. ")")
+  ok(type(fp) == "string" and fp:find("Food-Icon", 1, true), "repas food : Food-Icon (" .. tostring(fp) .. ")")
   if tot.icon then ok(tot.icon.shown == false, "repas : fiole remplacée") end
   S.SetEatSim("drink")
   pcall(S.ApplyTotal)
   local dp = texOf(tot._stIcon)
-  ok(type(dp) == "string" and dp:find("INV_Drink", 1, true), "repas drink : tasse (" .. tostring(dp) .. ")")
+  ok(type(dp) == "string" and dp:find("Drink-Icon", 1, true), "repas drink : Drink-Icon (" .. tostring(dp) .. ")")
   S.ClearSim()
   pcall(S.ApplyTotal)
   if tot.icon then ok(tot.icon.shown ~= false, "repas : fiole restaurée") end
+
+  S.SetEatSim("both")
+  pcall(S.ApplyTotal)
+  local bp = texOf(tot._stIcon)
+  ok(type(bp) == "string" and bp:find("Eat-Both-Icon", 1, true), "repas both : Eat-Both-Icon (" .. tostring(bp) .. ")")
+  S.ClearSim()
+  pcall(S.ApplyTotal)
 
   -- Repos : Z crème/bronze remplace la fiole, pas de bandes (grille et barre)
   S.ClearSim()
@@ -2917,10 +2924,10 @@ do
   pcall(S.ApplyTotal)
   pcall(S.ApplyRestIcon, tot)
   ok(S.Active() == "rested", "repos : Active = rested")
-  ok(tot._restZ and tot._restZ.shown ~= false, "repos : icône Z visible")
-  ok(tot._restZ and tot._restZ.fs and (tot._restZ.fs._txt == "Z" or (tot._restZ.fs.GetText and tot._restZ.fs:GetText() == "Z")),
-    "repos : glyphe Z")
-  ok(tot._restZ and tot._restZ.disc, "repos : disque sombre guideline (pas une lettre nue)")
+  ok(tot._stIcon and tot._stIcon.shown ~= false, "repos : icône Z visible")
+  local rz = texOf(tot._stIcon)
+  ok(type(rz) == "string" and rz:find("Rest-Icon", 1, true), "repos : Rest-Icon maison (" .. tostring(rz) .. ")")
+  ok(tot._stIcon and tot._stIcon._kind == "rested", "repos : glyphe d'état = rested")
   if tot.icon then ok(tot.icon.shown == false, "repos : fiole officielle remplacée") end
   ok(not tot._cLiq or tot._cLiq.shown == false, "repos grille : pas de bandes")
   if tot._slotZ then ok(tot._slotZ.shown == false, "repos : pas de z superposés, un seul Z") end
@@ -2978,7 +2985,7 @@ do
   S.ClearSim()
   pcall(S.ApplyTotal)
   if tot.icon then ok(tot.icon.shown ~= false, "repos : fiole restaurée") end
-  ok(not tot._restZ or tot._restZ.shown == false, "repos : Z rangé après la fin")
+  ok(not tot._stIcon or tot._stIcon.shown == false or tot._stIcon._kind ~= "rested", "repos : Z rangé après la fin")
 
   -- Cadre exact : 3 col. sans total = 3×3 ; avec total = 3 rangées + barre fine.
   UI.snapshot = UI.snapshot or {}
