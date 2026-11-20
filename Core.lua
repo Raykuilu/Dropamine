@@ -9,7 +9,7 @@ end
 _G.Dropamine = ns
 ns.ADDON = ADDON
 local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
-ns.VERSION = "3.5.22"
+ns.VERSION = "3.6.0"
 
 
 -- v2.5.0 : valeurs « secrètes » de Forever (UnitStat, UnitXP… en combat).

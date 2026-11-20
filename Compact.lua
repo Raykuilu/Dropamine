@@ -190,6 +190,12 @@ function C.FillTooltip(tt, d, tile)
   tt:SetText(m.title, GOLD[1], GOLD[2], GOLD[3])
   for _, l in ipairs(m.lines) do tt:AddLine(l[1], l[2], l[3], l[4], l[5]) end
   if d and d.kind == "total" and ns.QoL and ns.QoL.AltTooltip then pcall(ns.QoL.AltTooltip, tt) end
+  -- 3.6.0 : clic sur le total = fenêtre Progression
+  if d and d.kind == "total" and ns.ProgressUI then
+    tt:AddLine(" ", 1, 1, 1)
+    tt:AddLine(Tr["Clic : fenêtre Progression"], 0.6, 0.8, 1)
+    if ns.Opt and ns.Opt("partage") then tt:AddLine(Tr["Maj + clic : partager"], 0.6, 0.6, 0.6) end
+  end
   if d and d.kind ~= "total" and not d.placeholder then
     tt:AddLine(" ", 1, 1, 1)
     -- 3.5.5 : « Maj + clic : partager » seulement si l'option est active
@@ -211,9 +217,14 @@ function I.OnEnter(self)
     GameTooltip:Show()
     self._tipShown = true
     if P.RefreshTipColors then SafeStep("couleurs de l'infobulle", P.RefreshTipColors) end
+    -- 3.6.0 : mini-graphe 7 jours sous l'infobulle du total
+    if d.kind == "total" and ns.ProgressUI and ns.ProgressUI.ShowMini then
+      SafeStep("mini-graphe 7 jours", ns.ProgressUI.ShowMini, GameTooltip, self)
+    end
   end
 end
 function I.OnLeave(self)
+  if ns.ProgressUI and ns.ProgressUI.HideMini then pcall(ns.ProgressUI.HideMini) end
   if GameTooltip and self._tipShown then GameTooltip:Hide() end
   self._tipShown = nil
   self._hover = false

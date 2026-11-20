@@ -1769,15 +1769,29 @@ function UI:BuildGrid(parent, namePrefix)
   foot:SetScript("OnEnter", function(self)
     if UI.snapshot then UI:ShowDetailBreakdown(UI.snapshot) end
     UI:ShowRulesTooltip(self)
+    -- 3.6.0 : clic = fenêtre Progression, mini-graphe 7 jours
+    local PUi = ns.ProgressUI
+    if PUi and GameTooltip and GameTooltip.IsShown and GameTooltip:IsShown() then
+      GameTooltip:AddLine(Tr["Clic : fenêtre Progression"], 0.6, 0.8, 1)
+      GameTooltip:Show()
+      if PUi.ShowMini then pcall(PUi.ShowMini, GameTooltip, self) end
+    end
   end)
   foot:SetScript("OnLeave", function()
+    if ns.ProgressUI and ns.ProgressUI.HideMini then pcall(ns.ProgressUI.HideMini) end
     if GameTooltip then GameTooltip:Hide() end
     local d = UI.selected
     if d then UI:ShowDetailCached(d) end
   end)
   -- v2.7.2 : tout le bandeau est cliquable (sélectionne « Niveau total »).
   if foot.RegisterForClicks then pcall(foot.RegisterForClicks, foot, "LeftButtonUp") end
-  foot:SetScript("OnClick", function() UI:SelectTile(UI.TOTAL_DATA) end)
+  foot:SetScript("OnClick", function(self, button)
+    UI:SelectTile(UI.TOTAL_DATA)
+    if ns.ProgressUI and ns.ProgressUI.OnTotalClick then
+      if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
+      ns.ProgressUI.OnTotalClick(self, button)
+    end
+  end)
   wrap:SetScript("OnSizeChanged", function(fr)
     if wrap._snap and UI:SizeChangedFor(fr, "grid") then UI:LayoutGrid(wrap, wrap._snap) end
   end)

@@ -302,6 +302,13 @@ local function OnClick(self, button)
     return
   end
   UI:SelectTile(self.data)
+  -- 3.6.0 : clic gauche sur la fiole / case du total -> fenêtre Progression
+  -- (un glisser est déjà filtré par Theme.WireTileDrag)
+  if self.data.kind == "total" and not shift and ns.ProgressUI and ns.ProgressUI.OnTotalClick then
+    if ns.ProgressUI.HideMini then pcall(ns.ProgressUI.HideMini) end
+    if GameTooltip and self._tipShown and GameTooltip.Hide then GameTooltip:Hide() self._tipShown = nil end
+    ns.ProgressUI.OnTotalClick(self, button)
+  end
 end
 
 function V.NewTile(parent)

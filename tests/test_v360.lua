@@ -1,4 +1,4 @@
--- Tests hors jeu 3.6.0 (phase 1) : barre « prochain point », SafeOpen (AtlasLoot),
+-- Tests hors jeu 3.6.0 (phases 1 et 2) : barre « prochain point », SafeOpen (AtlasLoot),
 -- PosGuard, Edit Mode ↔ Réglages 2.0, mode calme, profil par personnage,
 -- Progress.lua (session, historique, série, objectif, succès, coins, partage, récap).
 -- Harnais repris tel quel de test_v340.lua (lignes 17-739).
@@ -1124,13 +1124,403 @@ do
   -- résumé
   prints = prints
   local nP = #prints
-  slash("progression")
-  ok(#prints > nP, "/drop progression affiche le résumé")
+  slash("progression texte")
+  ok(#prints > nP, "/drop progression texte affiche le résumé")
   slash("succes")
   ok(lastPrint():find("/", 1, true), "/drop succes : compte des succès")
   local okH = pcall(slash, "help")
   ok(okH, "/drop help sans erreur")
   ok(errs() == 0, "aucune erreur UI en fin de tests")
+end
+
+-- ===========================================================================
+print("== 3.6.0 phase 2 : fenêtre Progression (ProgressUI.lua)")
+do
+  local PU = ns.ProgressUI
+  local L = ns.L
+  local Th = ns.Theme
+  local function popTimers() local n = #timers while #timers > 0 do local t = table.remove(timers, 1) t() end return n end
+  local toc = io.open(addonDir .. "/Dropamine.toc"):read("*a")
+  ok(toc:find("Progress.lua\nProgressUI.lua", 1, true), ".toc : ProgressUI.lua juste après Progress.lua")
+  ok(toc:find("## Version: 3.6.0", 1, true), ".toc : ## Version: 3.6.0")
+  ok(type(PU) == "table" and type(PU.Toggle) == "function", "ns.ProgressUI.Toggle disponible")
+  ok(PU.frame == nil, "fenêtre pas créée au chargement (construite au premier clic)")
+  ok(PU.mini ~= nil, "mini-graphe préparé à PLAYER_LOGIN (hors combat)")
+  -- (0) jamais de cadre créé en combat : ouverture reportée
+  local nCF = 0
+  local baseCF = _G.CreateFrame
+  _G.CreateFrame = function(...) nCF = nCF + 1 return baseCF(...) end
+  _G.InCombatLockdown = function() return true end
+  local nP = #prints
+  ok(PU.Open() == false and PU.frame == nil, "ouverture en combat : rien n'est créé")
+  ok(nCF == 0, "aucun CreateFrame en combat (" .. nCF .. ")")
+  ok(tostring(prints[nP + 1]):find(L["fenêtre Progression : elle s'ouvrira à la fin du combat."], 1, true) ~= nil, "message : ouverture à la fin du combat (" .. tostring(prints[nP + 1]) .. ")")
+  _G.InCombatLockdown = function() return false end
+  if ns._regenFrame then ns._regenFrame.scripts.OnEvent(ns._regenFrame, "PLAYER_REGEN_ENABLED") end
+  ok(PU.frame ~= nil and PU.IsShown(), "fin du combat : fenêtre construite et ouverte")
+  ok(nCF > 0, "cadres créés hors combat seulement")
+  _G.CreateFrame = baseCF
+  ok(PU.stats.builds == 1, "construite une seule fois")
+  local f = PU.frame
+  ok(f:GetName() == "DropamineProgressFrame", "nom de cadre global (Échap)")
+  local inSpecial = false
+  for _, n in ipairs(_G.UISpecialFrames) do if n == "DropamineProgressFrame" then inSpecial = true end end
+  ok(inSpecial, "UISpecialFrames : Échap ferme la fenêtre")
+  ok(f.width == 680 and f.height == 500, "taille 680 × 500 (maquette)")
+  ok(f.strata == "HIGH", "strate HIGH")
+  ok(f.titleFS.text:find(L["Progression"], 1, true) and f.titleFS.text:find("Dropamine", 1, true), "titre « Dropamine · Progression » (" .. f.titleFS.text .. ")")
+  ok(f.subFS.text:find("Druide", 1, true) and f.subFS.text:find("25", 1, true), "sous-titre nom · classe niv. (" .. f.subFS.text .. ")")
+  ok(f.banner.totalFS.text == tostring(UI.snapshot.total), "bandeau : total = snapshot (" .. f.banner.totalFS.text .. ")")
+  ok(f.banner.maxFS.text:find(tostring(UI.snapshot.totalMax), 1, true), "bandeau : / max")
+  local w = f.banner.widths
+  local Wd = ns.Wide
+  local ref = Wd.SegmentWidths(UI.snapshot.segments, f.banner.barW, UI.snapshot.total, UI.snapshot.totalMax)
+  ok(w and w[1] == ref[1] and w[2] == ref[2] and w[3] == ref[3], "barre 3 segments = règles de Wide (min. rouge compris)")
+  ok(w[1] >= 1, "segment rouge (niveau) visible : " .. tostring(w[1]) .. " px")
+  ok(#f.banner.badges == 3 and f.banner.badges[1].fs.text:find("25", 1, true), "badges : Niv. 25, combat, métiers")
+  PU.Close()
+  ok(not PU.IsShown(), "fermeture")
+  -- (1) clic gauche sur la fiole (case du total)
+  local totalTile
+  for _, t in ipairs(UI.embed.tiles or {}) do if t.data and t.data.kind == "total" and t:IsShown() then totalTile = t break end end
+  ok(totalTile ~= nil, "case du total trouvée")
+  if totalTile then
+    local click = totalTile.scripts.OnClick
+    click(totalTile, "LeftButton")
+    ok(PU.IsShown(), "clic gauche sur la fiole : fenêtre ouverte")
+    click(totalTile, "LeftButton")
+    ok(not PU.IsShown(), "second clic : fenêtre fermée (bascule)")
+    -- glisser : pas de bascule
+    totalTile._thDragged = true
+    click(totalTile, "LeftButton")
+    ok(not PU.IsShown(), "après un glisser : pas d'ouverture")
+    ok(totalTile._thDragged == nil, "drapeau de glisser consommé")
+    -- Maj + clic : partage conservé
+    local shared = 0
+    local baseShare = ns.QoL.ShareTile
+    ns.QoL.ShareTile = function() shared = shared + 1 return true end
+    local wasP = ns.Opt("partage")
+    ns.SetOpt("partage", true)
+    shiftDown = true
+    click(totalTile, "LeftButton")
+    shiftDown = false
+    ok(shared == 1 and not PU.IsShown(), "Maj + clic : partage, pas de fenêtre")
+    ns.QoL.ShareTile = baseShare
+    ns.SetOpt("partage", wasP)
+    -- clic droit : objectif (pas la fenêtre)
+    local basePrompt = UI.PromptGoal
+    UI.PromptGoal = function() end
+    click(totalTile, "RightButton")
+    UI.PromptGoal = basePrompt
+    ok(not PU.IsShown(), "clic droit : pas de fenêtre")
+    -- infobulle + mini-graphe 7 jours
+    ns.Icons.OnEnter(totalTile)
+    ok(PU.mini:IsShown(), "survol du total : mini-graphe 7 jours affiché")
+    ok(PU.mini.strata == "TOOLTIP" and PU.mini.parent == _G.UIParent, "mini-graphe : strate TOOLTIP, enfant d'UIParent")
+    ok(#PU.mini.items == 7 and PU.mini.items[7].today, "7 barres, aujourd'hui en dernier")
+    local initials = {}
+    for i = 1, 7 do initials[i] = PU.mini.days[i].text end
+    ok(#initials[1] == 1 and initials[7] == PU.DayInitial(P.Weekday(P.Today())), "initiales des jours (" .. table.concat(initials) .. ")")
+    ok(PU.mini.sum.text:find("+", 1, true), "total des 7 jours affiché (" .. PU.mini.sum.text .. ")")
+    ok(PU.mini.vals[7].text == tostring(PU.mini.items[7].total) or PU.mini.items[7].total == 0, "points du jour au-dessus de la barre")
+    ok(PU.mini.points[1] and PU.mini.points[1][2] == _G.GameTooltip, "accroché à l'infobulle")
+    ok(not PU.mini.mouse, "mini-graphe : pas de souris (rien de collant)")
+    ns.Icons.OnLeave(totalTile)
+    ok(not PU.mini:IsShown(), "fin du survol : mini-graphe caché")
+    -- garde-fou : infobulle cachée par un autre addon
+    ns.Icons.OnEnter(totalTile)
+    _G.GameTooltip:Hide()
+    PU.MiniWatch(PU.mini, 0.2)
+    ok(not PU.mini:IsShown(), "infobulle disparue : mini-graphe caché par le garde-fou")
+    _G.GameTooltip:Show()
+    ns.Icons.OnLeave(totalTile)
+    -- texte d'infobulle
+    local lines = {}
+    local baseAdd = _G.GameTooltip.AddLine
+    _G.GameTooltip.AddLine = function(_, t) lines[#lines + 1] = tostring(t) end
+    C_mod = ns.Compact
+    ns.Compact.FillTooltip(_G.GameTooltip, totalTile.data, totalTile)
+    _G.GameTooltip.AddLine = baseAdd
+    ok(table.concat(lines, "\n"):find(L["Clic : fenêtre Progression"], 1, true), "infobulle du total : « Clic : fenêtre Progression »")
+    -- Wide : clic sur la barre du total
+    local parts = totalTile._wideParts
+    if not (parts and parts.hit) then
+      -- vue Wide non active ici : barre du total montée sur une case de test
+      local wt = CreateFrame("Button", nil, _G.UIParent)
+      wt.data = totalTile.data
+      parts = ns.Wide.EnsureSegs(wt)
+    end
+    if parts and parts.hit then
+      local hit = parts.hit
+      ok(hit.scripts.OnMouseUp ~= nil, "barre Wide : OnMouseUp branché")
+      ok(hit._thDragWired, "barre Wide : glisser = déplacer le panneau")
+      hit.scripts.OnMouseUp(hit, "LeftButton")
+      ok(PU.IsShown(), "clic sur la barre Wide : fenêtre ouverte")
+      hit.scripts.OnMouseUp(hit, "LeftButton")
+      ok(not PU.IsShown(), "second clic Wide : fermée")
+      hit._thDragged = true
+      hit.scripts.OnMouseUp(hit, "LeftButton")
+      ok(not PU.IsShown() and hit._thDragged == nil, "Wide : glisser puis relâcher → pas de bascule")
+      hit.scripts.OnMouseUp(hit, "RightButton")
+      ok(not PU.IsShown(), "Wide : clic droit ignoré")
+      hit.scripts.OnEnter(hit)
+      ok(PU.mini:IsShown(), "survol de la barre Wide : mini-graphe")
+      hit.scripts.OnLeave(hit)
+      ok(not PU.mini:IsShown(), "sortie de la barre Wide : mini-graphe caché")
+      ns.Wide.ShowBarTip(hit, true)
+      ok(not PU.mini:IsShown(), "infobulle de la barre dans la fenêtre : sans mini-graphe")
+      local shared = 0
+      local baseShare = ns.QoL.ShareTile
+      ns.QoL.ShareTile = function() shared = shared + 1 return true end
+      local wasP = ns.Opt("partage")
+      ns.SetOpt("partage", true)
+      shiftDown = true
+      hit.scripts.OnMouseUp(hit, "LeftButton")
+      shiftDown = false
+      ns.QoL.ShareTile = baseShare
+      ns.SetOpt("partage", wasP)
+      ok(shared == 1 and not PU.IsShown(), "Wide : Maj + clic = partage, pas de fenêtre")
+      -- glisser réel : OnDragStart → déplacement du panneau, puis relâcher
+      if hit.scripts.OnMouseDown then hit.scripts.OnMouseDown(hit, "LeftButton") end
+      for _, fn in ipairs(hit.hooks.OnMouseDown or {}) do fn(hit, "LeftButton") end
+      hit.scripts.OnDragStart(hit)
+      local moved = hit._thDragged == true
+      hit.scripts.OnDragStop(hit)
+      hit.scripts.OnMouseUp(hit, "LeftButton")
+      ok(not PU.IsShown(), "Wide : glisser réel (panneau " .. (moved and "déplacé" or "verrouillé") .. ") → pas de fenêtre")
+    else
+      ok(true, "barre Wide absente dans ce mode (pas de test)")
+    end
+  end
+  -- bandeau de l'UI : clic
+  local foot = UI.embed and UI.embed.foot
+  if foot and foot.scripts.OnClick then
+    foot.scripts.OnClick(foot, "LeftButton")
+    ok(PU.IsShown(), "clic sur le bandeau du total (UI) : fenêtre ouverte")
+    foot.scripts.OnClick(foot, "LeftButton")
+    ok(not PU.IsShown(), "second clic sur le bandeau : fermée")
+  end
+  -- (2) commandes
+  slash("progression")
+  ok(PU.IsShown(), "/drop progression : ouvre la fenêtre")
+  slash("progression")
+  ok(not PU.IsShown(), "/drop progression : referme")
+  slash("progress")
+  ok(PU.IsShown(), "/drop progress (alias anglais) : ouvre")
+  PU.Close()
+  slash("progression succes")
+  ok(PU.IsShown() and PU.State().tab == "ach", "/drop progression succes : onglet Succès")
+  slash("progression semaine")
+  ok(PU.IsShown() and PU.State().tab == "weekly", "/drop progression semaine : onglet Récap hebdo")
+  local nP2 = #prints
+  slash("progression texte")
+  ok(#prints > nP2 and PU.IsShown(), "/drop progression texte : résumé dans le chat")
+  ok(type(ns.ShowStats) == "function", "/drop stats intact")
+  local helpOk = false
+  for _, l in ipairs(ns.HelpExt) do if l:find("fenêtre Progression", 1, true) and L[l] ~= l then helpOk = true end end
+  ok(helpOk, "aide : /drop progression ouvre la fenêtre")
+  -- (3) onglets
+  PU.Open()
+  for _, t in ipairs(PU.TABS) do
+    PU.lastError = nil
+    PU.SetTab(t.id)
+    local shownOk = f.pages[t.id]:IsShown()
+    for id, pg in pairs(f.pages) do if id ~= t.id and pg:IsShown() then shownOk = false end end
+    ok(shownOk, "onglet " .. t.id .. " : seule sa page est visible")
+    ok(PU.lastError == nil, "onglet " .. t.id .. " : rafraîchi sans erreur (" .. tostring(PU.lastError) .. ")")
+  end
+  local achTab
+  for _, b in ipairs(f.tabs) do if b.id == "ach" then achTab = b end end
+  local got, all = P.UnlockedCount()
+  ok(achTab.fs.text == L["Succès"] .. " (" .. got .. "/" .. all .. ")" and all == 18, "onglet « Succès (N/18) » : " .. achTab.fs.text)
+  -- Vue d'ensemble
+  PU.SetTab("overview")
+  local ov = f.pages.overview
+  ok(#ov.kpi == 4, "4 cartes KPI")
+  ok(ov.kpi[2].sub.text:find(L["Session : +%d pts en %s"]:match("^[^%%]+"), 1, true), "KPI points : « Session : +N pts en … »")
+  ok(ov.kpi[3].value.text:find(L["%d jours d'affilée"]:gsub("%%d ", ""), 1, true) or ov.kpi[3].value.text:find(L["%d jour d'affilée"]:gsub("%%d ", ""), 1, true), "KPI série")
+  local nBars = 0
+  for _, b in ipairs(ov.left.chart.bars) do if b:IsShown() then nBars = nBars + 1 end end
+  ok(nBars == 7, "histogramme 7 jours : 7 barres (" .. nBars .. ")")
+  PU.SetPeriod("d30")
+  nBars = 0
+  for _, b in ipairs(ov.left.chart.bars) do if b:IsShown() then nBars = nBars + 1 end end
+  ok(nBars == 30 and ov.left.title.text:find("30", 1, true), "pastille 30 j : 30 barres")
+  PU.SetPeriod("session")
+  ok(PU.State().period == "session" and ov.left.title.text == L["Progression de la session"], "pastille Session")
+  PU.SetMetric("xph") PU.SetMetric("total") PU.SetMetric("cat")
+  ok(PU.lastError == nil, "pastilles Total / XP/h / Catégories sans erreur")
+  PU.SetPeriod("d7")
+  -- infobulle d'une barre
+  local bar1 = ov.left.chart.bars[7]
+  if bar1.scripts.OnEnter then bar1.scripts.OnEnter(bar1) ok(true, "survol d'une barre : infobulle") end
+  if bar1.scripts.OnLeave then bar1.scripts.OnLeave(bar1) end
+  ok(ov.right.curve ~= nil and PU.lastError == nil, "courbe de session (textures seules)")
+  ok(ov.bottom[1].head.text:find(L["Dernier succès"], 1, true) and ov.bottom[2].head.text:find(L["Meilleur spot actuel"], 1, true), "bas : dernier succès, meilleur spot")
+  -- objectif : +5 / +10 / Éditer
+  local g = ov.kpi[4]
+  local t0 = P.GoalTarget()
+  g.plus5.scripts.OnClick(g.plus5, "LeftButton")
+  ok(P.GoalTarget() == t0 + 5, "objectif +5 (" .. t0 .. " → " .. P.GoalTarget() .. ")")
+  g.plus10.scripts.OnClick(g.plus10, "LeftButton")
+  ok(P.GoalTarget() == t0 + 15, "objectif +10")
+  ok(g.value.text:find("/ +" .. (t0 + 15), 1, true), "carte objectif rafraîchie (" .. g.value.text .. ")")
+  g.edit.scripts.OnClick(g.edit, "LeftButton")
+  ok(g.input:IsShown() and not g.value:IsShown() and g.input.text == tostring(t0 + 15), "Éditer : saisie en place")
+  g.input:SetText("42")
+  if g.input.scripts.OnEnterPressed then g.input.scripts.OnEnterPressed(g.input) else PU.ApplyGoalEdit("42") end
+  ok(P.GoalTarget() == 42 and not g.input:IsShown(), "Entrée : objectif = 42")
+  g.edit.scripts.OnClick(g.edit, "LeftButton")
+  g.input:SetText("999")
+  if g.input.scripts.OnEscapePressed then g.input.scripts.OnEscapePressed(g.input) else PU.CancelGoalEdit() end
+  ok(P.GoalTarget() == 42 and not g.input:IsShown(), "Échap : saisie annulée")
+  P.SetGoal(t0)
+  -- Graphiques
+  PU.SetTab("charts")
+  local ch = f.pages.charts
+  local nb = 0
+  for _, b in ipairs(ch.card.chart.bars) do if b:IsShown() then nb = nb + 1 end end
+  local lastBar = ch.card.chart.bars[nb]
+  lastBar.scripts.OnClick(lastBar, "LeftButton")
+  ok(ch.card.chart.selected == nb, "Graphiques : clic sur une barre = sélection")
+  local row = ch.detail.rows[1]
+  if row:IsShown() and row.key then
+    row.scripts.OnClick(row, "LeftButton")
+    ok(PU.skillFilter == row.key and ch.card.title.text:find(L["%s — points par jour"]:gsub("^%%s", ""), 1, true), "clic sur une compétence : graphique filtré")
+    ch.detail.clear.scripts.OnClick(ch.detail.clear, "LeftButton")
+    ok(PU.skillFilter == nil, "« Tout afficher » : filtre retiré")
+  else
+    ok(ch.detail.empty:IsShown(), "détail vide : message")
+  end
+  -- Succès
+  PU.SetTab("ach")
+  local ach = f.pages.ach
+  local nUnl, nLock, lockBar = 0, 0, false
+  for i, c in ipairs(ach.cards) do
+    if c:IsShown() then
+      if c._hi then nUnl = nUnl + 1 if c.when.text == "" then nUnl = -99 end
+      else nLock = nLock + 1 if c.bar.track:IsShown() then lockBar = true end end
+    end
+  end
+  ok(nUnl == got and nUnl + nLock == 18, "Succès : " .. nUnl .. " débloqués (dorés, datés) + " .. nLock .. " verrouillés")
+  ok(lockBar, "succès verrouillés : barre de progression")
+  ok(PU.ScrollAch(10000) == math.max(0, ach.childH - PU.CONTENT_H) and PU.ScrollAch(-99999) == 0, "défilement borné")
+  -- Spots
+  PU.SetTab("spots")
+  local sp = f.pages.spots.card
+  local list = P.AllSpots()
+  local nr = 0
+  for _, r in ipairs(sp.rows) do if r.zone:IsShown() then nr = nr + 1 end end
+  ok(nr == math.min(#list, #sp.rows) and sp.count == #list, "Spots : " .. nr .. " ligne(s)")
+  if #list > 1 then ok((list[1].avg or 0) <= (list[2].avg or math.huge), "Spots : rythme le plus rapide en tête") end
+  local baseAll = P.AllSpots
+  P.AllSpots = function() return {} end
+  PU.Refresh()
+  ok(sp.empty:IsShown(), "Spots : état vide")
+  P.AllSpots = baseAll
+  -- Récap hebdo
+  PU.SetTab("weekly")
+  local wk = f.pages.weekly
+  ok(wk.L.big.text:find("^%+") and wk.L.lines[1].text:find(L["vs semaine dernière : %s%d"]:match("^[^%%]+"), 1, true), "Récap : total lun.–dim. et comparaison")
+  local nwb = 0
+  for _, b in ipairs(wk.R.chart.bars) do if b:IsShown() then nwb = nwb + 1 end end
+  ok(nwb == 7 and wk.R.chart.bars[1].lab.text == PU.DayShort(1), "Récap : 7 barres lun. → dim.")
+  -- (4) thèmes
+  local colors = {}
+  for _, m in ipairs({ "leger", "classic", "flare" }) do
+    Th.Set(m)
+    ok(f._theme == m and PU.Mode() == m, "thème " .. m .. " appliqué à la fenêtre")
+    local c = f.pages.weekly.L.bg and f.pages.weekly.L.bg._colorTex or (PU.cards[1].bg and PU.cards[1].bg._colorTex)
+    colors[m] = c and table.concat({ c[1] or 0, c[2] or 0, c[3] or 0 }, ",") or "?"
+    if m == "leger" then ok(f.flat:IsShown() and not (f.skin and f.skin:IsShown()), "Léger : fond plat, sans habillage")
+    else ok(f.skin == nil or f.skin:IsShown(), m .. " : habillage du thème") end
+    for _, t in ipairs(PU.TABS) do PU.lastError = nil PU.SetTab(t.id) ok(PU.lastError == nil, m .. " / " .. t.id .. " sans erreur") end
+  end
+  ok(colors.leger ~= colors.flare or colors.classic ~= colors.flare, "les palettes diffèrent selon le thème")
+  -- (5) rafraîchissement regroupé
+  popTimers()
+  local r0 = PU.stats.refreshes
+  P.Notify("gain") P.Notify("gain") P.Notify("xp")
+  ok(#timers == 1, "3 changements → 1 seul rafraîchissement programmé")
+  popTimers()
+  ok(PU.stats.refreshes == r0 + 1, "un rafraîchissement exécuté")
+  PU.Close()
+  P.Notify("gain")
+  ok(#timers == 0, "fenêtre fermée : aucun rafraîchissement")
+  -- en combat : ni cadre créé ni erreur
+  PU.Open()
+  _G.InCombatLockdown = function() return true end
+  nCF = 0
+  _G.CreateFrame = function(...) nCF = nCF + 1 return baseCF(...) end
+  PU.Refresh()
+  if totalTile then ns.Icons.OnEnter(totalTile) ns.Icons.OnLeave(totalTile) end
+  _G.CreateFrame = baseCF
+  _G.InCombatLockdown = function() return false end
+  ok(nCF == 0, "en combat : rafraîchissement + mini-graphe sans CreateFrame")
+  -- déplacement
+  f.scripts.OnDragStart(f)
+  f.scripts.OnDragStop(f)
+  ok(ns.db.ui.progressPos ~= nil, "position mémorisée après déplacement")
+  -- Partager
+  local sharedTxt
+  local baseP = P.Share
+  P.Share = function(ch) sharedTxt = ch == nil and "zone" or ch return true end
+  f.share.scripts.OnClick(f.share, "LeftButton")
+  P.Share = baseP
+  ok(sharedTxt == "zone", "« Partager » : texte posé dans la zone de saisie (pas d'envoi)")
+  f.close.scripts.OnClick(f.close, "LeftButton")
+  ok(not PU.IsShown(), "X : fermée")
+  -- Réglages : bouton « Ouvrir la fenêtre »
+  local O = ns.Options
+  if O and O.Build then
+    if not (O.sectionResets and O.sectionResets.progress) then pcall(O.Build) end
+    ok(O.sectionResets and O.sectionResets.progress ~= nil, "Réglages : section Progression présente")
+    local b = PU.optButton or PU.AddOptionsButton()
+    ok(b ~= nil, "Réglages : bouton « Ouvrir la fenêtre »")
+    if b then b.scripts.OnClick(b) ok(PU.IsShown(), "bouton des réglages : fenêtre ouverte") PU.Close() end
+  end
+  -- (6) aucun CreateLine non protégé, Lua 5.1
+  local bad = {}
+  for line in toc:gmatch("[^\r\n]+") do
+    if line:match("%.lua%s*$") and not line:match("^%s*#") then
+      local file = line:gsub("\\", "/"):gsub("%s+$", "")
+      local src = io.open(addonDir .. "/" .. file):read("*a")
+      local n = 0
+      for l in src:gmatch("[^\n]+") do
+        local code = l:gsub("%-%-.*$", "")
+        if code:find(":CreateLine(", 1, true) and not code:find("if ", 1, true) and not code:find("pcall", 1, true) then bad[#bad + 1] = file end
+      end
+    end
+  end
+  ok(#bad == 0, "aucun CreateLine non protégé (" .. table.concat(bad, ", ") .. ")")
+  -- (7) enUS complet, sans doublon
+  local E = ns.LOCALES.enUS
+  local missing, seen, dups = {}, {}, {}
+  local enSrc = io.open(addonDir .. "/Locales/enUS.lua"):read("*a")
+  for k in enSrc:gmatch('\nE%["(.-)"%]%s*=') do if seen[k] then dups[#dups + 1] = k end seen[k] = true end
+  ok(#dups == 0, "enUS : aucune clé en double (" .. table.concat(dups, " | ") .. ")")
+  for line in toc:gmatch("[^\r\n]+") do
+    if line:match("%.lua%s*$") and not line:match("^%s*#") then
+      local file = line:gsub("\\", "/"):gsub("%s+$", "")
+      if not file:find("^Locales/") then
+        local src = io.open(addonDir .. "/" .. file):read("*a")
+        for k in src:gmatch('Tr%["(.-[^\\])"%]') do
+          local key = k:gsub("\\n", "\n"):gsub('\\"', '"'):gsub("\\\\", "\\")
+          if E[key] == nil then missing[#missing + 1] = file .. ": " .. key end
+        end
+      end
+    end
+  end
+  local labels = {}
+  for _, t in ipairs(PU.TABS) do labels[#labels + 1] = t.label end
+  for _, t in ipairs(PU.PERIODS) do labels[#labels + 1] = t.label end
+  for _, t in ipairs(PU.METRICS) do labels[#labels + 1] = t.label end
+  for _, d in ipairs(PU.DAY_SHORT) do labels[#labels + 1] = d end
+  for _, l in ipairs(ns.HelpExt) do labels[#labels + 1] = l end
+  for _, k in ipairs(labels) do if E[k] == nil then missing[#missing + 1] = "libellé: " .. k end end
+  ok(#missing == 0, "enUS : toutes les chaînes traduites (" .. #missing .. " manquante(s)) " .. table.concat(missing, " | "):sub(1, 400))
+  ok(PU.lastError == nil and PU.stats.errors == 0, "aucune erreur dans la fenêtre Progression (" .. tostring(PU.lastError) .. ")")
+  ok(errs() == 0, "aucune erreur UI après la phase 2")
 end
 
 print(failures == 0 and "\n3.6.0 : TOUS LES TESTS PASSENT" or ("\n3.6.0 : " .. failures .. " ÉCHEC(S)"))
