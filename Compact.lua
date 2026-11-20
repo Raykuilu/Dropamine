@@ -503,7 +503,7 @@ end
 local baseSpawn = UI.SpawnDrop
 function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opts)
   local f = baseSpawn(self, iconPath, title, subtitle, barCur, barMax, rightValue, opts)
-  if f and type(opts) == "table" and C.KINDS[opts.kind] and not f._editPreview then
+  if f and type(opts) == "table" and C.KINDS[opts.kind] and not f._editPreview and not opts.test then
     SafeStep("toast → case", C.Register, f, iconPath, opts)
   end
   return f

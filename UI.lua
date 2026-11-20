@@ -6383,6 +6383,22 @@ end
 -- Effets sur un drop : lueur de bord (pulse ×2) + éclat doré (grossit, s'estompe).
 function UI:AttachFlareFx(f, strong)
   if not f or not f.CreateTexture then return nil end
+  if f._fx then
+    local out = f._fx
+    if out.glowAnim and out.glowAnim.Stop then pcall(out.glowAnim.Stop, out.glowAnim) end
+    if out.burstAnim and out.burstAnim.Stop then pcall(out.burstAnim.Stop, out.burstAnim) end
+    if out.fx then
+      if out.fx.SetAlpha then pcall(out.fx.SetAlpha, out.fx, 0) end
+      if out.fx.Show then pcall(out.fx.Show, out.fx) end
+    end
+    if out.glowAnim and out.glowAnim.Play then pcall(out.glowAnim.Play, out.glowAnim) end
+    if strong and out.burst then
+      if out.burst.Show then pcall(out.burst.Show, out.burst) end
+      if out.burstAnim and out.burstAnim.Play then pcall(out.burstAnim.Play, out.burstAnim) end
+    end
+    if UI.ApplyToastTint then UI.ApplyToastTint(f, f._tintOpts or {}) end
+    return out
+  end
   local F = ns.Style.FLARE
   local fx = CreateFrame("Frame", nil, f)
   fx:SetAllPoints(f)
