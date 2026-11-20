@@ -5279,15 +5279,23 @@ end
 function UI:WireDropMouse(f)
   if not f or not f.SetScript then return end
   if f.EnableMouse then pcall(f.EnableMouse, f, not self._inEditMode) end
-  f:SetScript("OnEnter", function(self) self._hover = true ToastAlpha(self, 1) end)
-  f:SetScript("OnLeave", function(self) self._hover = false if self._restart then self._restart() end end)
+  f:SetScript("OnEnter", function(self)
+    self._hover = true
+    ToastAlpha(self, 1)
+    if ns.ToastFit and ns.ToastFit.ShowTooltip then pcall(ns.ToastFit.ShowTooltip, self) end
+  end)
+  f:SetScript("OnLeave", function(self)
+    self._hover = false
+    if ns.ToastFit and ns.ToastFit.HideTooltip then pcall(ns.ToastFit.HideTooltip, self) end
+  end)
   f:SetScript("OnMouseUp", function(self, button)
     -- mode édition / déplacement : jamais d'ouverture (le clic sert au glisser)
     if self._dragged then self._dragged = nil return end
     if UI._inEditMode or self._editPreview then return end
     local df = UI.dropsFrame
     if df and (df._osrsMoving or df._osrsEditMoving) then return end
-    if button == "RightButton" then UI:DismissDrop(self)
+    -- sticky (astuce premier vol) : tout clic ferme le toast, sans ouvrir une tuile.
+    if button == "RightButton" or self._sticky then UI:DismissDrop(self)
     else UI:OpenFromDrop(self._target, self) end
   end)
   -- 3.0.0 : le glisser sur un drop déplace le SUPPORT (mode édition ou
@@ -5315,6 +5323,7 @@ end
 
 function UI:DismissDrop(f)
   if not f then return end
+  if ns.ToastFit and ns.ToastFit.HideTooltip then pcall(ns.ToastFit.HideTooltip, f) end
   if f.SetScript then pcall(f.SetScript, f, "OnUpdate", nil) end
   f._hover = false
   if f.Hide then pcall(f.Hide, f) end
@@ -5446,6 +5455,10 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
           if o._light and subtitle and subtitle ~= "" then title = title .. "  |cffffffff" .. subtitle .. "|r" end
         end
         if o.titleFS and title then o.titleFS:SetText(title) end
+        o._fullTitle = title or o._fullTitle
+        o._fullSub = subtitle or o._fullSub
+        if opts.toastData then o._toastData = opts.toastData end
+        if opts.sticky then o._sticky = true end
         self:BumpDropTitle(o)
         if o.subFS and subtitle then o.subFS:SetText(subtitle) end
         if o.hintFS and opts.hint then o.hintFS:SetText(opts.hint) end
@@ -5464,7 +5477,10 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   for i = 1, #self.dropsActive do if not self.dropsActive[i]._editPreview then live = live + 1 end end
   while live >= (UI.DROP_MAX or 5) do
     local idx
-    for i = 1, #self.dropsActive do if not self.dropsActive[i]._editPreview then idx = i break end end
+    for i = 1, #self.dropsActive do
+      local o = self.dropsActive[i]
+      if o and not o._editPreview and not o._sticky then idx = i break end
+    end
     if not idx then break end
     local o = table.remove(self.dropsActive, idx)
     if o.SetScript then pcall(o.SetScript, o, "OnUpdate", nil) end
@@ -5508,6 +5524,7 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   titleFS:SetPoint("TOPLEFT", slot, "TOPRIGHT", 7, 1)
   titleFS:SetPoint("RIGHT", f, "RIGHT", -8, 0)
   if titleFS.SetWordWrap then titleFS:SetWordWrap(false) end
+  if titleFS.SetMaxLines then titleFS:SetMaxLines(1) end
   titleFS:SetText(title or "")
   local tc = (variant and variant.title) or GOLD
   titleFS:SetTextColor(tc[1], tc[2], tc[3])
@@ -5520,6 +5537,7 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   subFS:SetPoint("TOPLEFT", titleFS, "BOTTOMLEFT", 0, -2)
   subFS:SetPoint("RIGHT", f, "RIGHT", -8, 0)
   if subFS.SetWordWrap then subFS:SetWordWrap(false) end
+  if subFS.SetMaxLines then subFS:SetMaxLines(1) end
   subFS:SetText(subtitle or "")
   subFS:SetTextColor(1, 1, 1)
 
@@ -5527,6 +5545,7 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   hintFS:SetPoint("TOPLEFT", subFS, "BOTTOMLEFT", 0, -1)
   hintFS:SetPoint("RIGHT", f, "RIGHT", -8, 0)
   if hintFS.SetWordWrap then hintFS:SetWordWrap(false) end
+  if hintFS.SetMaxLines then hintFS:SetMaxLines(1) end
   hintFS:SetText(hint or "")
   hintFS:SetTextColor(0.25, 1.00, 0.25)
   if not hint or hint == "" then hintFS:Hide() end
@@ -5563,6 +5582,9 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
     f.barHold, f.bar = hold, sbar
   end
   f.titleFS, f.subFS = titleFS, subFS
+  f._fullTitle, f._fullSub = title or "", subtitle or ""
+  f._toastData = opts.toastData
+  f._sticky = opts.sticky and true or nil
   self.dropsActive[#self.dropsActive + 1] = f
   self:PackDrops()
   ToastAlpha(f, 0)
@@ -5594,9 +5616,20 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
       ToastAlpha(self, 0)
       return
     end
+    -- Survol : la minuterie et le défilement (ToastFit) sont en pause, repris à la sortie.
     if self._hover then
-      t = TOAST_FADEIN
-      ToastAlpha(self, 1)
+      if t >= TOAST_FADEIN then ToastAlpha(self, 1)
+      else ToastAlpha(self, math.min(1, t / TOAST_FADEIN)) end
+      return
+    end
+    -- Toast « sticky » (astuce premier vol) : reste jusqu'au clic, pas de fondu automatique.
+    if self._sticky then
+      if t < TOAST_FADEIN then
+        t = t + (elapsed or 0.03)
+        ToastAlpha(self, math.min(1, t / TOAST_FADEIN))
+      else
+        ToastAlpha(self, 1)
+      end
       return
     end
     t = t + (elapsed or 0.03)

@@ -881,9 +881,15 @@ function CO.Wire(f)
     f._coEnter = function(self, ...)
       if orig then orig(self, ...) end
       if self._craft and not CO.Arm(self) and GameTooltip then
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText(Tr[CO.HINT], 1, 1, 1)
-        GameTooltip:Show()
+        -- 3.6.3 : ne pas écraser l'infobulle déjà remplie (texte intégral + recette).
+        if GameTooltip.IsOwned and GameTooltip:IsOwned(self) then
+          if GameTooltip.AddLine then GameTooltip:AddLine(Tr[CO.HINT], 0.25, 1, 0.25, true) end
+          if GameTooltip.Show then GameTooltip:Show() end
+        else
+          GameTooltip:SetOwner(self, "ANCHOR_TOP")
+          GameTooltip:SetText(Tr[CO.HINT], 1, 1, 1)
+          GameTooltip:Show()
+        end
       end
     end
     f:SetScript("OnEnter", f._coEnter)

@@ -257,6 +257,9 @@ function Craft.BindToastItems(frame, matches)
     if frame.titleFS and lines[1] and frame.titleFS.SetText then pcall(frame.titleFS.SetText, frame.titleFS, lines[1]) end
     if frame.subFS and frame.subFS.SetText then pcall(frame.subFS.SetText, frame.subFS, lines[2] or "") end
     if frame.hintFS and lines[3] and frame.hintFS.SetText then pcall(frame.hintFS.SetText, frame.hintFS, lines[3]) end
+    frame._fullTitle = lines[1] or frame._fullTitle
+    frame._fullSub = lines[2] or frame._fullSub
+    if ns.ToastFit and ns.ToastFit.FitSoon then pcall(ns.ToastFit.FitSoon, frame) end
   end
   for _, m in ipairs(matches) do
     if m.item and (not m.itemName or m.itemName == "" or (ns.BareItemIdLabel and ns.BareItemIdLabel(m.itemName))) then
@@ -300,6 +303,71 @@ function Craft.WhyLines(c, skill, creature)
 end
 
 -- Recettes réalisables avec les sacs -----------------------------------------
+function Craft.AvailCount(r)
+  if not r then return 0 end
+  local n
+  for _, rg in ipairs(r.reagents or {}) do
+    if not rg.id then n = 0 break end
+    local k = math.floor(Craft.ItemCount(rg.id) / math.max(1, rg.count or 1))
+    n = (n == nil) and k or math.min(n, k)
+  end
+  if n == nil and N(r.avail) then n = N(r.avail) end
+  return n or 0
+end
+
+function Craft.MissingReagents(r)
+  local out = {}
+  if not r then return out end
+  for _, rg in ipairs(r.reagents or {}) do
+    local need = math.max(1, rg.count or 1)
+    local have = rg.id and Craft.ItemCount(rg.id) or 0
+    if have < need then
+      out[#out + 1] = { id = rg.id, name = ItemName(rg.id, rg.name), have = have, need = need }
+    end
+  end
+  return out
+end
+
+function Craft:FillToastTooltip(tt, data)
+  if not tt or not data or not tt.AddLine then return end
+  local e = data.entries and data.entries[1]
+  local m = data.matches and data.matches[1]
+  local r = data.recipe or (e and e.recipe) or (m and m.recipe)
+  local skill = data.skill or (e and e.skill)
+  local diff = data.diff or (e and e.diff) or (m and m.diff)
+  if skill then
+    local nm = (ns.SkillDisplayName and ns.SkillDisplayName(skill)) or skill
+    pcall(tt.AddLine, tt, string.format(Tr["Métier : %s"], tostring(nm)), 1, 1, 1, true)
+  end
+  if r and r.req then
+    pcall(tt.AddLine, tt, string.format(Tr["Rang requis : %d"], r.req), 1, 1, 1, true)
+  end
+  if diff then
+    local lab = (S and S.DIFF_FR and S.DIFF_FR[diff]) or diff
+    lab = Tr[lab] or lab
+    local col = Craft.Color and Craft.Color(diff)
+    local cr, cg, cb = 1, 1, 1
+    if type(col) == "table" then cr, cg, cb = col[1] or 1, col[2] or 1, col[3] or 1 end
+    pcall(tt.AddLine, tt, string.format(Tr["Difficulté : %s"], tostring(lab)), cr, cg, cb, true)
+  end
+  local n = data.n
+  if n == nil and e then n = e.n end
+  if n == nil and r then n = Craft.AvailCount(r) end
+  if n ~= nil then
+    pcall(tt.AddLine, tt, string.format(Tr["Réalisable maintenant : %d"], n), 1, 1, 1, true)
+  end
+  local missing = data.missing
+  if missing == nil and r then missing = Craft.MissingReagents(r) end
+  if type(missing) == "table" and #missing > 0 then
+    pcall(tt.AddLine, tt, Tr["Composants manquants :"], 1, 0.25, 0.25, true)
+    for i = 1, #missing do
+      local rg = missing[i]
+      local nm = rg.name or (ItemName and ItemName(rg.id)) or Tr["composant"]
+      pcall(tt.AddLine, tt, string.format("  %s (%d/%d)", tostring(nm), rg.have or 0, rg.need or 1), 1, 0.60, 0.60, true)
+    end
+  end
+end
+
 function Craft.ItemCount(id)
   local v = N(Call(_G.GetItemCount, id))
   if v == nil and type(_G.C_Item) == "table" then v = N(Call(_G.C_Item.GetItemCount, id)) end
@@ -377,7 +445,15 @@ function Craft.Notify(gains)
     local e = gains[i]
     lines[i] = Craft.Paint(e.diff, string.format(Tr["%d × %s %s (+1)"], e.n, tostring(e.recipe.name), e.n > 1 and Tr["possibles"] or Tr["possible"]))
   end
-  local f = ns.UI:SpawnDrop(gains[1].recipe.icon, lines[1], lines[2], nil, nil, nil, { kind = "craft", hint = lines[3] })
+  local g1 = gains[1]
+  local f = ns.UI:SpawnDrop(g1.recipe.icon, lines[1], lines[2], nil, nil, nil, {
+    kind = "craft", hint = lines[3],
+    toastData = {
+      kind = "craft", skill = g1.skill, entries = gains,
+      recipe = g1.recipe, n = g1.n, diff = g1.diff,
+      item = g1.recipe and (g1.recipe.itemID or g1.recipe.item),
+    },
+  })
   Craft.lastNotify = lines
   return f
 end

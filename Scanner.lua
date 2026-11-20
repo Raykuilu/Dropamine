@@ -941,7 +941,13 @@ function Scanner.OnPlateAdded(unit)
     if not silent then
     local lines = ns.Craft and ns.Craft.MatchLines(seen and seen.name, matches) or {}
     local f = ns.UI:SpawnDrop(e and e.icon, lines[1] or ((e and ns.CatalogDisplayName(e) or skill) .. Tr[" : "] .. tostring(seen and seen.name)), lines[2], nil, nil, nil,
-      { kind = "scanner", hint = lines[3], hintRaw = true })
+      { kind = "scanner", hint = lines[3], hintRaw = true,
+        toastData = {
+          kind = "scanner", skill = skill, matches = matches,
+          recipe = matches and matches[1] and matches[1].recipe,
+          diff = matches and matches[1] and matches[1].diff,
+          item = matches and matches[1] and matches[1].item,
+        } })
     if f and ns.Craft and ns.Craft.BindToastItems then pcall(ns.Craft.BindToastItems, f, matches) end
     if ((ns.SoundOk and ns.SoundOk("scannerSound")) or (not ns.SoundOk and ns.OptOff("scannerSound"))) and type(PlaySound) == "function" then
       local kit = _G.SOUNDKIT and _G.SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON
