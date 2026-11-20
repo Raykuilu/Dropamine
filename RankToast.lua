@@ -205,7 +205,7 @@ function RT.Show(list)
   local ui = ns.UI
   if not (ui and ui.SpawnDrop) then return nil end
   local title = RT.Title(list)
-  local icon = list[1] and list[1].icon or "Interface\\Icons\\INV_Misc_Book_11"
+  local icon = list[1] and list[1].icon or ns.FALLBACK_ICON
   local ok, f = pcall(ui.SpawnDrop, ui, icon, title, nil, nil, nil, nil, {
     force = true, sticky = true, kind = "rank-trainer",
     dedupeKey = RT.DEDUPE, skillId = list[1] and list[1].id,
@@ -215,6 +215,7 @@ function RT.Show(list)
     RT._toast = f
     RT._shownKey = RT.IdsKey(list)
     RT._queued = nil
+    if RT.ApplyBadge then pcall(RT.ApplyBadge, f) end
     return f
   end
   return nil
@@ -335,4 +336,35 @@ if ns.Options then
     table.insert(order, at, RT.OPT)
   end
   if ns.Options.All then ns.Options.ITEMS = ns.Options.All() end
+end
+
+
+-- Badge chevron bronze, superposé à l'icône du métier, masqué dans le cercle.
+function RT.ApplyBadge(frame)
+  if not frame then return nil end
+  local slot = frame.iconSlot or frame
+  local parent = slot
+  if type(parent.CreateTexture) ~= "function" then parent = frame end
+  if type(parent.CreateTexture) ~= "function" then return nil end
+  local b = frame._rankBadge
+  if not b then
+    b = parent:CreateTexture(nil, "OVERLAY", nil, 7)
+    frame._rankBadge = b
+  end
+  local tex = ns.RANK_BADGE or "Interface\\AddOns\\Dropamine\\Media\\Rank-Badge"
+  if b.SetTexture then pcall(b.SetTexture, b, tex) end
+  local icon = (slot and (slot.iconTex or slot.icon)) or frame.icon
+  if icon and b.SetAllPoints then
+    pcall(b.SetAllPoints, b, icon)
+  elseif icon and b.SetPoint then
+    if b.ClearAllPoints then pcall(b.ClearAllPoints, b) end
+    pcall(b.SetPoint, b, "TOPLEFT", icon, "TOPLEFT", 0, 0)
+    pcall(b.SetPoint, b, "BOTTOMRIGHT", icon, "BOTTOMRIGHT", 0, 0)
+  end
+  if b.SetTexCoord then pcall(b.SetTexCoord, b, 0, 1, 0, 1) end
+  if slot and slot._flareMask and b.AddMaskTexture then
+    pcall(b.AddMaskTexture, b, slot._flareMask)
+  end
+  if b.Show then b:Show() end
+  return b
 end

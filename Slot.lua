@@ -1,7 +1,7 @@
 -- Dropamine 3.6.3 : le puits de la fiole dit ce que tu fais maintenant.
 -- Un seul gestionnaire possède la texture de la goutte. Un symbole à la fois,
--- selon la priorité mort > vol > (épée de combat, si ce style est choisi) >
--- AFK > pêche > nage > z de repos > goutte. Le liquide de combat (rouge + bleu,
+-- selon la priorité mort > vol / trajet > (épée de combat, si ce style est choisi) >
+-- AFK > sacs pleins > pêche > nage > usure (option, défaut off) > z de repos > goutte. Le liquide de combat (rouge + bleu,
 -- vert qui s'efface) est une couche derrière le symbole. Style réglable :
 -- Bulles (défaut, maquette A), Épée (maquette C) ou Désactivé.
 -- Feuilles 8×4 de 64 px, OnUpdate cadencé, pas d'AnimationGroups.
@@ -10,8 +10,8 @@ local Tr = ns.L
 local S = {}
 ns.Slot = S
 
-S.ORDER_SWORD   = { "death", "flight", "combat", "afk", "fishing", "swimming", "rested" }
-S.ORDER_DEFAULT = { "death", "flight", "afk", "fishing", "swimming", "rested" }
+S.ORDER_SWORD   = { "death", "flight", "combat", "afk", "bags", "fishing", "swimming", "durability", "rested" }
+S.ORDER_DEFAULT = { "death", "flight", "afk", "bags", "fishing", "swimming", "durability", "rested" }
 
 local MEDIA = "Interface\\AddOns\\Dropamine\\Media\\"
 S.SHEETS = {
@@ -20,13 +20,16 @@ S.SHEETS = {
   afk       = { tex = MEDIA .. "Afk-Sheet",      frames = 32, step = 0.10 },
   fishing   = { tex = MEDIA .. "Fishing-Sheet",  frames = 32, step = 0.10 },
   swimming  = { tex = MEDIA .. "Swimming-Sheet", frames = 32, step = 0.10 },
+  bags      = { tex = MEDIA .. "Bags-Sheet",     frames = 32, step = 0.10 },
+  durability= { tex = MEDIA .. "Durability-Sheet", frames = 32, step = 0.12 },
 }
 S.TRAINER_SHEET = MEDIA .. "Trainer-Sheet"
 S.COMBAT_A_SHEET = MEDIA .. "Combat-A-Sheet"
 S.OPT_KEYS = {
   death = "slotDeath", flight = "slotFlight",
-  afk = "slotAfk", fishing = "slotFishing", swimming = "slotSwimming",
-  rested = "slotRested", trainer = "slotTrainer",
+  afk = "slotAfk", bags = "slotBags", fishing = "slotFishing", swimming = "slotSwimming",
+  durability = "slotDurability",
+  rested = "slotRested", trainer = "slotTrainer", eating = "slotEating",
 }
 
 function S.CombatStyle()
@@ -70,8 +73,8 @@ S.fill = { p = 0, grey = 0, drain = 1, targetP = 0, targetGrey = 0, targetDrain 
 S._phase = 0
 S._jolt = 0
 S._fishUntil = 0
-S._frame = { death = 1, combat = 1, afk = 1, fishing = 1, swimming = 1, trainer = 1 }
-S._acc = { death = 0, combat = 0, afk = 0, fishing = 0, swimming = 0, trainer = 0 }
+S._frame = { death = 1, combat = 1, afk = 1, fishing = 1, swimming = 1, trainer = 1, bags = 1, durability = 1 }
+S._acc = { death = 0, combat = 0, afk = 0, fishing = 0, swimming = 0, trainer = 0, bags = 0, durability = 0 }
 S._zBits = {}
 
 local function N(v)
@@ -107,6 +110,12 @@ local function Approach(cur, target, rate, dt)
 end
 
 function S.Opt(key)
+  -- usure : coupée par défaut (OptOff) ; les autres cases sont allumées par défaut
+  if key == "slotDurability" then
+    if ns.OptOff then return ns.OptOff(key) and true or false end
+    local ui = ns.db and ns.db.ui
+    return ui and ui[key] == true or false
+  end
   if ns.Opt then return ns.Opt(key) ~= false end
   return true
 end
@@ -139,7 +148,9 @@ function S.LiveDeath()
 end
 
 function S.LiveFlight()
+  if S._sim.flight or S._sim.transport then return true end
   local F = ns.Flight
+  if F and F.ShowHourglass then return F.ShowHourglass() and true or false end
   return (F and F.Paused and F.Paused()) and true or false
 end
 
@@ -214,6 +225,100 @@ function S.LiveTrainer()
   return false
 end
 
+local function CallBag(fn, bag)
+  if type(fn) ~= "function" then return nil end
+  local ok, a, b = pcall(fn, bag)
+  if ok then return a, b end
+end
+
+function S.FreeBagSlots()
+  if S._simFree ~= nil then return S._simFree end
+  local free = 0
+  local n = _G.NUM_BAG_SLOTS or 4
+  local fn = _G.GetContainerNumFreeSlots
+  if type(_G.C_Container) == "table" and type(_G.C_Container.GetContainerNumFreeSlots) == "function" then
+    fn = _G.C_Container.GetContainerNumFreeSlots
+  end
+  if type(fn) ~= "function" then return nil end
+  for bag = 0, n do
+    local a = CallBag(fn, bag)
+    if type(a) == "number" then free = free + a end
+  end
+  return free
+end
+
+function S.LiveBags()
+  if S._sim.bags then return true end
+  local free = S.FreeBagSlots()
+  return free == 0
+end
+
+function S.LowestDurability()
+  if S._simDura ~= nil then return S._simDura end
+  local worst
+  local fn = _G.GetInventoryItemDurability
+  if type(fn) ~= "function" then return nil end
+  for slot = 1, 23 do
+    local ok, cur, mx = pcall(fn, slot)
+    if ok and type(cur) == "number" and type(mx) == "number" and mx > 0 then
+      local r = cur / mx
+      if not worst or r < worst then worst = r end
+    end
+  end
+  return worst
+end
+
+function S.LiveDurability()
+  if S._sim.durability then return true end
+  local r = S.LowestDurability()
+  return r ~= nil and r < 0.20
+end
+
+local EAT_NAMES = {
+  drink = true, food = true, ["food & drink"] = true, ["food and drink"] = true,
+  boisson = true, nourriture = true, ["boisson et nourriture"] = true,
+  ["nourriture et boisson"] = true, refreshment = true, restauration = true,
+  eating = true, drinking = true, eat = true,
+}
+local NOT_EAT = { ["well fed"] = true, ["bien nourri"] = true, ["bien nourrie"] = true }
+
+local function AuraName(i)
+  if type(_G.C_UnitAuras) == "table" and type(_G.C_UnitAuras.GetAuraDataByIndex) == "function" then
+    local ok, data = pcall(_G.C_UnitAuras.GetAuraDataByIndex, "player", i, "HELPFUL")
+    if ok and type(data) == "table" then return data.name or data.Name end
+  end
+  if type(_G.UnitAura) == "function" then
+    local ok, name = pcall(_G.UnitAura, "player", i, "HELPFUL")
+    if ok then return name end
+  end
+  if type(_G.UnitBuff) == "function" then
+    local ok, name = pcall(_G.UnitBuff, "player", i)
+    if ok then return name end
+  end
+  return nil
+end
+
+function S.FoodDrinkAura()
+  for i = 1, 40 do
+    local name = AuraName(i)
+    if not name then break end
+    local f = (ns.Fold and ns.Fold(name)) or (type(name) == "string" and name:lower()) or ""
+    if NOT_EAT[f] then
+      -- Well Fed / Bien nourri : buff après le repas, pas le canal de régénération
+    elseif EAT_NAMES[f] or f:find("drink", 1, true) or f:find("boisson", 1, true)
+        or (f:find("food", 1, true) and not f:find("foodbuff", 1, true))
+        or f:find("nourriture", 1, true) then
+      return name
+    end
+  end
+  return nil
+end
+
+function S.LiveEating()
+  if S._sim.eating or S._sim.eat then return true end
+  return S.FoodDrinkAura() and true or false
+end
+
 function S.Want(id)
   local key = S.OPT_KEYS[id]
   if key and not S.Opt(key) then return false end
@@ -221,12 +326,16 @@ function S.Want(id)
   if id == "flight" then return S.LiveFlight() end
   if id == "combat" then return S.CombatStyle() == "sword" and S.LiveCombat() end
   if id == "afk" then return S.LiveAfk() end
+  if id == "bags" then return S.LiveBags() end
   if id == "fishing" then return S.LiveFishing() end
   if id == "swimming" then return S.LiveSwimming() end
+  if id == "durability" then return S.LiveDurability() end
   if id == "rested" then return S.LiveRested() end
   if id == "trainer" then return S.LiveTrainer() end
+  if id == "eating" then return S.LiveEating() end
   return false
 end
+
 
 function S.Active()
   local order = S.Priority and S.Priority() or S.ORDER_DEFAULT
@@ -666,19 +775,36 @@ end
 S.TIPS = {
   death     = { "Mort ou fantôme", "Le suivi est en pause jusqu'à la résurrection." },
   flight    = { "En pause pendant le vol", "Le scan reprend dès l'atterrissage." },
+  transport = { "En pause pendant le trajet", "Le scan reprend à l'arrivée." },
   afk       = { "Absent", "Tu es absent." },
+  bags      = { "Sacs pleins", "Le butin sera perdu." },
   fishing   = { "En train de pêcher", "La ligne est lancée." },
   swimming  = { "À la nage", "Tu nages." },
+  durability= { "Équipement usé", "Une pièce d'équipement est sous 20 %." },
+  eating    = { "En train de manger ou de boire", "La fiole se remplit doucement." },
   rested    = { "Au repos", "Tu te reposes à l'auberge ou en capitale." },
 }
 S.COMBAT_TIP = "En combat : XP et armes en cours"
 
 function S.ShowExplanation(owner)
   local act = S.Active()
-  if act == "drop" and S.LiveFlight() then act = "flight" end
+  if act == "flight" then
+    local F = ns.Flight
+    if F and F.OnTransport and F.OnTransport() and not (F.OnTaxi and F.OnTaxi()) then act = "transport" end
+    if S._sim.transport and not S._sim.flight then act = "transport" end
+  end
+  if act == "drop" and S.LiveFlight() then
+    local F = ns.Flight
+    if S._sim.transport or (F and F.OnTransport and F.OnTransport() and not (F.OnTaxi and F.OnTaxi())) then
+      act = "transport"
+    else
+      act = "flight"
+    end
+  end
   if act == "drop" and S.CombatLiquidOn() and (S.LiveCombat() or ((S.fill and S.fill.p) or 0) > 0.05) then
     act = "combat"
   end
+  if act == "drop" and S.Want("eating") then act = "eating" end
   if act == "drop" then return end
   local tt = _G.GameTooltip
   if not (tt and owner) then return end
@@ -714,8 +840,10 @@ function S.NeedsDriver()
   local act = S.Active()
   if act ~= "drop" then return true end
   if S.Want("trainer") then return true end
+  if S.Want("eating") then return true end
   if S.FillBusy() then return true end
   if (S._jolt or 0) > 0 then return true end
+  if S._eatOn then return true end
   local F = ns.Flight
   if F and (F.Paused and F.Paused() or (F._vis or 0) > 0) then return true end
   return false
@@ -770,6 +898,7 @@ function S.Tick(dt)
   S.ApplyTotal()
   S.ApplyFlaskFill()
   S.ApplyCombatLiq()
+  S.ApplyRegenWave(dt)
   S.ApplyTrainerGlints()
   S.TickSlotZ(dt)
 end
@@ -781,7 +910,11 @@ function S.Refresh(reason)
   S.ApplyTotal()
   S.ApplyFlaskFill()
   S.ApplyCombatLiq()
+  S.ApplyRegenWave(0)
   S.ApplyTrainerGlints()
+  S.CheckBags()
+  S.CheckDurability()
+  if not (ns.PausedForFlight and ns.PausedForFlight()) then pcall(S.FlushPendingToasts) end
   local RT = ns.RankToast
   if RT and RT.Refresh then pcall(RT.Refresh, reason) end
 end
@@ -796,6 +929,162 @@ end
 ------------------------------------------------------------------------------
 -- Options
 ------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+-- Toasts discrets (une fois jusqu'à disparition de la condition)
+------------------------------------------------------------------------------
+function S.SpawnOnce(key, icon, title, kind)
+  local ui = ns.UI
+  if not (ui and ui.SpawnDrop) then return nil end
+  if ns.PausedForFlight and ns.PausedForFlight() then
+    S._pendingToast = S._pendingToast or {}
+    S._pendingToast[key] = { icon = icon, title = title, kind = kind }
+    return nil
+  end
+  local ok, f = pcall(ui.SpawnDrop, ui, icon, title, nil, nil, nil, nil, {
+    kind = kind, dedupeKey = key,
+  })
+  return ok and f or nil
+end
+
+function S.FlushPendingToasts()
+  local pend = S._pendingToast
+  if not pend then return end
+  S._pendingToast = nil
+  for key, t in pairs(pend) do
+    if key == "bags-full" and not S.LiveBags() then
+    elseif key == "low-durability" and not S.LiveDurability() then
+    else
+      S.SpawnOnce(key, t.icon, t.title, t.kind)
+    end
+  end
+end
+
+function S.NotifyBags(force)
+  if not S.Opt("slotBags") and not force then return end
+  if S._bagsToastShown and not force then return end
+  S._bagsToastShown = true
+  return S.SpawnOnce("bags-full",
+    "Interface\\AddOns\\Dropamine\\Media\\Bags-Icon",
+    Tr["Sacs pleins : le butin sera perdu"],
+    "bags-full")
+end
+
+function S.NotifyDurability(force)
+  if not S.Opt("slotDurability") and not force then return end
+  if S._duraToastShown and not force then return end
+  S._duraToastShown = true
+  return S.SpawnOnce("low-durability",
+    "Interface\\AddOns\\Dropamine\\Media\\Durability-Icon",
+    Tr["Équipement usé : une pièce est sous 20 %"],
+    "durability")
+end
+
+function S.CheckBags()
+  local now = Now()
+  local full = S.LiveBags() and S.Opt("slotBags")
+  -- le délai ne doit pas empêcher de reset le toast une fois qu'une place se libère
+  if not full then
+    S._bagsToastShown = false
+    S._bagsWereFull = false
+    return
+  end
+  if S._bagsAt and now - S._bagsAt < 0.2 and not S._sim.bags then return end
+  S._bagsAt = now
+  if not S._bagsToastShown then S.NotifyBags() end
+  S._bagsWereFull = true
+end
+
+function S.CheckDurability()
+  if S.LiveDurability() and S.Opt("slotDurability") then
+    if not S._duraToastShown then S.NotifyDurability() end
+  else
+    local r = S.LowestDurability()
+    if r == nil or r >= 0.20 then S._duraToastShown = false end
+  end
+end
+
+function S.OnInvFullError(event, msg, ...)
+  local s = tostring(msg or event or "")
+  local f = (ns.Fold and ns.Fold(s)) or s:lower()
+  if (f:find("inventaire", 1, true) and f:find("plein", 1, true))
+    or (f:find("inventory", 1, true) and f:find("full", 1, true))
+    or f:find("bags are full", 1, true) or f:find("sacs sont pleins", 1, true)
+    or f:find("err_inv_full", 1, true) then
+    if ns.Efficiency and ns.Efficiency.NoteBagMiss then pcall(ns.Efficiency.NoteBagMiss) end
+    S.CheckBags()
+  end
+end
+
+------------------------------------------------------------------------------
+-- Vague de repas (réutilise le style « repos » : Dropamine-Wave)
+------------------------------------------------------------------------------
+function S.EnsureRegenWave(t)
+  if not t or type(t.CreateTexture) ~= "function" then return nil end
+  if t._eat then return t._eat end
+  local parent = t.icon or t
+  local body = parent.CreateTexture and parent:CreateTexture(nil, "ARTWORK", nil, 3)
+  local wave = parent.CreateTexture and parent:CreateTexture(nil, "ARTWORK", nil, 4)
+  if not (body and wave) then return nil end
+  if body.SetColorTexture then pcall(body.SetColorTexture, body, 0.60, 0.80, 1.00, 0.36)
+  elseif body.SetTexture then
+    pcall(body.SetTexture, body, "Interface\\Buttons\\WHITE8X8")
+    if body.SetVertexColor then pcall(body.SetVertexColor, body, 0.60, 0.80, 1.00, 0.36) end
+  end
+  local tex = (ns.Rested and ns.Rested.WAVE_TEX) or (MEDIA .. "Dropamine-Wave")
+  if wave.SetTexture then pcall(wave.SetTexture, wave, tex) end
+  if wave.SetVertexColor then pcall(wave.SetVertexColor, wave, 0.60, 0.80, 1.00, 0.80) end
+  t._eat = { body = body, wave = wave, u = 0 }
+  return t._eat
+end
+
+function S.HideRegenWave(t)
+  local e = t and t._eat
+  if not e then return end
+  if e.body and e.body.Hide then e.body:Hide() end
+  if e.wave and e.wave.Hide then e.wave:Hide() end
+  S._eatOn = false
+end
+
+function S.ApplyRegenWave(dt)
+  dt = N(dt) or 0
+  local Wd = ns.Wide
+  local t = Wd and Wd.TotalTile and Wd.TotalTile()
+  if not t then return end
+  local inCombatFill = S.CombatLiquidOn() and ((S.fill and S.fill.p) or 0) > 0.05
+  local show = S.Want("eating") and not inCombatFill and not (S.Opt("slotDeath") and S.LiveDeath())
+  if not show then
+    S.HideRegenWave(t)
+    return
+  end
+  local e = S.EnsureRegenWave(t)
+  if not e then return end
+  local a = t.icon or t
+  local H = (a.GetHeight and N(a:GetHeight())) or 16
+  local L = H * 0.55
+  if e.body.ClearAllPoints then pcall(e.body.ClearAllPoints, e.body) end
+  if e.body.SetPoint then
+    pcall(e.body.SetPoint, e.body, "BOTTOMLEFT", a, "BOTTOMLEFT", 0, 0)
+    pcall(e.body.SetPoint, e.body, "BOTTOMRIGHT", a, "BOTTOMRIGHT", 0, 0)
+  end
+  if e.body.SetHeight then pcall(e.body.SetHeight, e.body, L) end
+  if e.body.Show then e.body:Show() end
+  local R = ns.Rested
+  e.u = (e.u or 0) + dt / ((R and R.LIQ and R.LIQ.charge and R.LIQ.charge.period) or 2.4)
+  if e.u > 1 then e.u = e.u - math.floor(e.u) end
+  if e.wave.ClearAllPoints then pcall(e.wave.ClearAllPoints, e.wave) end
+  if e.wave.SetPoint then
+    pcall(e.wave.SetPoint, e.wave, "BOTTOMLEFT", a, "BOTTOMLEFT", 0, math.max(0, L - 5))
+    pcall(e.wave.SetPoint, e.wave, "BOTTOMRIGHT", a, "BOTTOMRIGHT", 0, math.max(0, L - 5))
+  end
+  if e.wave.SetHeight then pcall(e.wave.SetHeight, e.wave, 8) end
+  if e.wave.SetTexCoord then
+    local u = e.u * ((R and R.WAVE_U) or 0.5)
+    pcall(e.wave.SetTexCoord, e.wave, u, 0, u + ((R and R.WAVE_U) or 0.5), 1)
+  end
+  if e.wave.Show then e.wave:Show() end
+  S._eatOn = true
+end
+
 S.OPTIONS = {
   { type = "check", key = "slotDeath", label = "Crâne à la mort", default = true,
     help = "Dans le puits de la fiole : un crâne, fiole vidée et grisée, suivi en pause jusqu'à la résurrection." },
@@ -809,10 +1098,16 @@ S.OPTIONS = {
     set = function(v) S.SetCombatStyle(v) S.Refresh("option") end },
   { type = "check", key = "slotAfk", label = "Horloge AFK", default = true,
     help = "Une horloge de bronze à aiguille tournante quand tu es absent." },
+  { type = "check", key = "slotBags", label = "Sacs pleins", default = true,
+    help = "Un sac dans le puits et un toast quand il n'y a plus de place : le butin sera perdu." },
   { type = "check", key = "slotFishing", label = "Hameçon à la pêche", default = true,
     help = "Un hameçon qui tangue tant que la ligne est lancée, et un petit sursaut quand la prise arrive dans les sacs." },
   { type = "check", key = "slotSwimming", label = "Bulles à la nage", default = true,
     help = "Des bulles montent dans le puits tant que tu nages." },
+  { type = "check", key = "slotDurability", label = "Équipement usé", default = false,
+    help = "Un bouclier fendu dans le puits et un toast quand une pièce équipée passe sous 20 % de durabilité. Coupé par défaut." },
+  { type = "check", key = "slotEating", label = "Vague au repas", default = true,
+    help = "Une vague douce dans la fiole pendant que tu manges ou bois (régénération)." },
   { type = "check", key = "slotRested", label = "« z » de repos sur la fiole", default = true,
     help = "Les « z » de repos montent dans le puits de la fiole à l'auberge ou en capitale, s'il n'y a pas d'autre symbole." },
   { type = "check", key = "slotTrainer", label = "Éclat maître à proximité", default = true,
@@ -855,7 +1150,7 @@ end
 local prevOpt = ns.OnOptionChanged
 function ns.OnOptionChanged(key, value)
   if prevOpt then pcall(prevOpt, key, value) end
-  if type(key) == "string" and (key:find("^slot", 1) or key == "trainerRankToast" or key == "combatStyle") then
+  if type(key) == "string" and (key:find("^slot", 1) or key == "trainerRankToast" or key == "combatStyle" or key == "quietAuto") then
     pcall(S.Refresh, "option")
   end
   -- slotFlight off : cacher le sablier même en vol
@@ -873,6 +1168,8 @@ if ns.On then
     "UNIT_SPELLCAST_CHANNEL_START", "UNIT_SPELLCAST_CHANNEL_STOP",
     "UNIT_SPELLCAST_CHANNEL_UPDATE",
     "BAG_UPDATE", "CHAT_MSG_LOOT", "LOOT_CLOSED",
+    "UPDATE_INVENTORY_DURABILITY", "PLAYER_EQUIPMENT_CHANGED",
+    "UNIT_AURA", "UI_ERROR_MESSAGE",
     "PLAYER_ENTERING_WORLD", "PLAYER_UPDATE_RESTING",
     "TRAINER_SHOW", "TRAINER_CLOSED", "GOSSIP_SHOW", "GOSSIP_CLOSED",
     "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT",
@@ -884,6 +1181,13 @@ if ns.On then
     ns.On(ev, function(...)
       if ev == "BAG_UPDATE" or ev == "CHAT_MSG_LOOT" or ev == "LOOT_CLOSED" then
         pcall(S.OnCatch)
+        pcall(S.CheckBags)
+      end
+      if ev == "UPDATE_INVENTORY_DURABILITY" or ev == "PLAYER_EQUIPMENT_CHANGED" then
+        pcall(S.CheckDurability)
+      end
+      if ev == "UI_ERROR_MESSAGE" then
+        pcall(S.OnInvFullError, ...)
       end
       pcall(S.Refresh, ev)
     end)

@@ -42,8 +42,12 @@ PU.TABS = {
   { id = "ach", label = "Succès" },
   { id = "spots", label = "Spots de farm" },
   { id = "weekly", label = "Récap hebdo" },
+  { id = "efficiency", label = "Efficacité" },
 }
 PU.PERIODS = { { id = "session", label = "Session" }, { id = "d7", label = "7 j" }, { id = "d30", label = "30 j" } }
+
+PU.EFF_PERIODS = { { id = "session", label = "Session" }, { id = "d7", label = "7 j" }, { id = "d30", label = "30 j" } }
+
 PU.METRICS = { { id = "total", label = "Total" }, { id = "xph", label = "XP/h" }, { id = "cat", label = "Catégories" } }
 PU.DAY_SHORT = { "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim" }
 PU.stats = { builds = 0, refreshes = 0, deferred = 0, requests = 0, mini = 0, miniHidden = 0, opens = 0, errors = 0 }
@@ -75,12 +79,60 @@ local function UIDB()
 end
 local function State()
   local s = UIDB()
-  if s.tab ~= "overview" and s.tab ~= "charts" and s.tab ~= "ach" and s.tab ~= "spots" and s.tab ~= "weekly" then s.tab = "overview" end
+  if s.tab ~= "overview" and s.tab ~= "charts" and s.tab ~= "ach" and s.tab ~= "spots" and s.tab ~= "weekly" and s.tab ~= "efficiency" then s.tab = "overview" end
+  if s.effPeriod ~= "session" and s.effPeriod ~= "d7" and s.effPeriod ~= "d30" then s.effPeriod = "session" end
   if s.period ~= "session" and s.period ~= "d7" and s.period ~= "d30" then s.period = "d7" end
   if s.metric ~= "total" and s.metric ~= "xph" and s.metric ~= "cat" then s.metric = "cat" end
   return s
 end
 PU.State = State
+
+function PU.SetEffPeriod(id)
+  local s = State()
+  if id ~= "session" and id ~= "d7" and id ~= "d30" then return s.effPeriod end
+  s.effPeriod = id
+  PU.Refresh()
+  return id
+end
+
+function PU.AtMaxLevel()
+  local E = ns.Efficiency
+  if E and E.AtMaxLevel then return E.AtMaxLevel() end
+  local lvl = N(ns.GetPlayerLevel and Call(ns.GetPlayerLevel)) or N(Call(_G.UnitLevel, "player")) or 0
+  local mx = N(ns.MAX_PLAYER_LEVEL) or N(_G.MAX_PLAYER_LEVEL) or 60
+  return lvl > 0 and mx > 0 and lvl >= mx
+end
+
+function PU.ScanTruncateTips(root)
+  if not root then return end
+  local function walk(fr)
+    if not fr then return end
+    if type(fr.GetRegions) == "function" then
+      local ok, regs = pcall(function() return { fr:GetRegions() } end)
+      if ok and type(regs) == "table" then
+        for i = 1, #regs do
+          local r = regs[i]
+          if r and r.GetObjectType then
+            local ok2, typ = pcall(r.GetObjectType, r)
+            if ok2 and typ == "FontString" and r.GetText then
+              local txt = r._fullText or Call(r.GetText, r) or ""
+              PU.BindTruncateTip(r, txt, r._tipExtra, N(r.GetWidth and r:GetWidth()) or 0)
+            end
+          end
+        end
+      end
+    end
+    if type(fr.GetChildren) == "function" then
+      local ok, ch = pcall(function() return { fr:GetChildren() } end)
+      if ok and type(ch) == "table" then
+        for i = 1, #ch do walk(ch[i]) end
+      end
+    end
+  end
+  walk(root)
+end
+
+
 
 ------------------------------------------------------------------------------
 -- Palettes par thème (jetons Style / Theme / ClassicTheme)
@@ -218,8 +270,97 @@ function PU.SetFittedText(fs, texts, maxW)
   end
   fs:SetText(chosen or "")
   if maxW > 0 and fs.SetWidth then fs:SetWidth(maxW) end
+  PU.BindTruncateTip(fs, texts[1] or chosen, nil, maxW)
   return chosen
 end
+
+------------------------------------------------------------------------------
+-- Infobulle si le texte est tronqué (GetStringWidth / IsTruncated)
+------------------------------------------------------------------------------
+function PU.IsTruncated(fs, visW)
+  if not fs then return false end
+  if type(fs.IsTruncated) == "function" then
+    local ok, v = pcall(fs.IsTruncated, fs)
+    if ok and v == true then return true end
+  end
+  local sw = Width(fs, 0)
+  visW = N(visW) or (fs.GetWidth and N(fs:GetWidth())) or 0
+  return visW > 0 and sw > visW + 0.5
+end
+
+function PU.EnsureTipHit(fs)
+  if not fs then return nil end
+  if fs._tipHit then return fs._tipHit end
+  local parent = (fs.GetParent and fs:GetParent()) or fs.parent
+  if not parent or type(CreateFrame) ~= "function" then return nil end
+  local hit = CreateFrame("Frame", nil, parent)
+  if not hit then return nil end
+  if hit.EnableMouse then pcall(hit.EnableMouse, hit, false) end
+  if hit.SetAllPoints then pcall(hit.SetAllPoints, hit, fs) end
+  if hit.SetFrameLevel and parent.GetFrameLevel then
+    pcall(hit.SetFrameLevel, hit, (N(parent:GetFrameLevel()) or 1) + 6)
+  end
+  hit:SetScript("OnEnter", function(self)
+    if not self._active then return end
+    local tt = _G.GameTooltip
+    if not tt then return end
+    pcall(tt.SetOwner, tt, self, "ANCHOR_TOP")
+    if tt.ClearLines then tt:ClearLines() end
+    if self._full and tt.AddLine then tt:AddLine(self._full, 1, 0.82, 0, true) end
+    if type(self._extra) == "table" then
+      for i = 1, #self._extra do
+        if self._extra[i] and tt.AddLine then tt:AddLine(self._extra[i], 1, 1, 1, true) end
+      end
+    elseif type(self._extra) == "string" and self._extra ~= "" and tt.AddLine then
+      tt:AddLine(self._extra, 1, 1, 1, true)
+    end
+    if tt.Show then tt:Show() end
+  end)
+  hit:SetScript("OnLeave", function()
+    local tt = _G.GameTooltip
+    if tt and tt.Hide then tt:Hide() end
+  end)
+  fs._tipHit = hit
+  return hit
+end
+
+function PU.BindTruncateTip(fs, fullText, extra, visW)
+  if not fs then return end
+  local trunc = PU.IsTruncated(fs, visW)
+  local hit = PU.EnsureTipHit(fs)
+  if not hit then return end
+  hit._full = fullText
+  hit._extra = extra
+  hit._active = trunc and type(fullText) == "string" and fullText ~= ""
+  if hit.EnableMouse then pcall(hit.EnableMouse, hit, hit._active and true or false) end
+  if hit.SetAllPoints then pcall(hit.SetAllPoints, hit, fs) end
+end
+
+function PU.BindTip(fs, fullText, extra, visW)
+  -- comme BindTruncateTip, mais aussi quand on a un détail utile, même non tronqué
+  if not fs then return end
+  local trunc = PU.IsTruncated(fs, visW)
+  local hasExtra = (type(extra) == "table" and #extra > 0) or (type(extra) == "string" and extra ~= "")
+  local hit = PU.EnsureTipHit(fs)
+  if not hit then return end
+  hit._full = fullText
+  hit._extra = extra
+  hit._active = (trunc or hasExtra) and type(fullText) == "string" and fullText ~= ""
+  if hit.EnableMouse then pcall(hit.EnableMouse, hit, hit._active and true or false) end
+  if hit.SetAllPoints then pcall(hit.SetAllPoints, hit, fs) end
+end
+
+local function FmtWhen(ts, dayKey)
+  if type(dayKey) == "string" and dayKey ~= "" then return dayKey end
+  ts = N(ts)
+  if ts and ts > 0 and type(_G.date) == "function" then
+    local ok, s = pcall(_G.date, "%d/%m/%Y", ts)
+    if ok and type(s) == "string" then return s end
+  end
+  return nil
+end
+PU.FmtWhen = FmtWhen
+
 
 function PU.Card(parent, x, y, w, h, title)
   local c = CreateFrame("Frame", nil, parent)
@@ -373,8 +514,10 @@ function PU.DayItems(days, skillKey)
   local _, c = P.C()
   local items = {}
   for i, h in ipairs(hist) do
+    local dayEff = c.history[h.day]
+    local xpFrac = (type(dayEff) == "table" and (N(dayEff.xpFrac) or (dayEff.eff and N(dayEff.eff.xpFrac)))) or N(h.xpFrac) or 0
     local it = { day = h.day, total = h.pts or 0, level = h.level or 0, combat = h.combat or 0, prof = h.prof or 0,
-      xp = h.xp or 0, today = (h.day == today) }
+      xp = h.xp or 0, xpFrac = xpFrac, today = (h.day == today) }
     if skillKey then
       local e = c.history[h.day]
       local v = type(e) == "table" and e.skills and N(e.skills[skillKey]) or 0
@@ -428,7 +571,10 @@ end
 ------------------------------------------------------------------------------
 local function ItemValue(it, metric)
   if not it then return 0 end
-  if metric == "xph" then return N(it.xp) or 0 end
+  if metric == "xph" then
+    -- uniquement la fraction de niveau mesurée (xpFrac) ; on n'invente pas un % à partir de l'XP brute
+    return N(it.xpFrac) or 0
+  end
   return N(it.total) or 0
 end
 PU.ItemValue = ItemValue
@@ -656,12 +802,13 @@ PU.Interp = Interp
 -- Points de la courbe : échantillons de la session + le point « maintenant ».
 function PU.CurvePoints()
   local pts = {}
+  local maxed = PU.AtMaxLevel and PU.AtMaxLevel()
   for _, e in ipairs(P.Curve() or {}) do
-    pts[#pts + 1] = { t = N(e.t) or 0, a = N(e.xph) or 0, b = N(e.pph) or 0 }
+    pts[#pts + 1] = { t = N(e.t) or 0, a = (not maxed and N(e.xph) or 0) or 0, b = N(e.pph) or 0 }
   end
   local r = P.Rates()
   if r and r.elapsed and (#pts == 0 or r.elapsed > pts[#pts].t) then
-    pts[#pts + 1] = { t = r.elapsed, a = N(r.xph) or 0, b = N(r.pph) or 0, live = true }
+    pts[#pts + 1] = { t = r.elapsed, a = (not maxed and N(r.xph) or 0) or 0, b = N(r.pph) or 0, live = true }
   end
   return pts
 end
@@ -885,6 +1032,19 @@ function PU.BuildTabs(f)
     x = x + w + 6
     f.tabs[#f.tabs + 1] = btn
   end
+  local used = x - 6 - PU.PAD
+  if used > PU.CONTENT_W then
+    local scale = PU.CONTENT_W / used
+    x = PU.PAD
+    for i = 1, #f.tabs do
+      local btn = f.tabs[i]
+      local w = math.max(44, math.floor((btn:GetWidth() or 60) * scale + 0.5))
+      btn:SetWidth(w)
+      btn:ClearAllPoints()
+      btn:SetPoint("TOPLEFT", f, "TOPLEFT", x, -126)
+      x = x + w + 4
+    end
+  end
 end
 
 local function Page(f, id)
@@ -985,8 +1145,9 @@ function PU.BuildOverview(f)
     p.bottom[i] = c
   end
   PU.SetLogo(p.bottom[1].icon)
-  pcall(p.bottom[2].icon.SetTexture, p.bottom[2].icon, "Interface\\Icons\\INV_Misc_Map_01")
-  if p.bottom[2].icon.SetTexCoord then p.bottom[2].icon:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+  local farm = ns.FARM_ICON or (PU.MEDIA .. "Farm-Spots-Icon")
+  pcall(p.bottom[2].icon.SetTexture, p.bottom[2].icon, farm)
+  if p.bottom[2].icon.SetTexCoord then p.bottom[2].icon:SetTexCoord(0, 1, 0, 1) end
 end
 
 -- Onglet 2 : Graphiques ------------------------------------------------------
@@ -1153,6 +1314,73 @@ function PU.BuildWeekly(f)
   R.topEmpty:SetPoint("TOPLEFT", R, "TOPLEFT", 10, -204)
 end
 
+function PU.BuildEfficiency(f)
+  local p = Page(f, "efficiency")
+  p.period = PU.Pills(p, PU.EFF_PERIODS, PU.CONTENT_W, 2, function() return State().effPeriod or "session" end, function(id) PU.SetEffPeriod(id) end)
+
+  local score = PU.Card(p, 0, 28, PU.CONTENT_W, 80, Tr["Temps actif"])
+  p.score = score
+  score.value = FS(score, "GameFontNormalHuge", "title")
+  score.value:SetPoint("TOPLEFT", score, "TOPLEFT", 12, -18)
+  score.sub = FS(score, "GameFontHighlightSmall", "sub")
+  score.sub:SetPoint("LEFT", score.value, "RIGHT", 10, 0)
+  if score.sub.SetWidth then score.sub:SetWidth(PU.CONTENT_W - 160) end
+  if score.sub.SetHeight then score.sub:SetHeight(14) end
+  if score.value.SetHeight then score.value:SetHeight(28) end
+  score.track = Tex(score, "ARTWORK", 1)
+  Place(score.track, score, 12, 50, PU.CONTENT_W - 24, 8)
+  score.seg = { Tex(score, "ARTWORK", 2), Tex(score, "ARTWORK", 2), Tex(score, "ARTWORK", 2) }
+  score.split = FS(score, "GameFontHighlightSmall", "text")
+  score.split:SetPoint("TOPLEFT", score, "TOPLEFT", 12, -62)
+  if score.split.SetWidth then score.split:SetWidth(PU.CONTENT_W - 24) end
+  if score.split.SetHeight then score.split:SetHeight(14) end
+
+  local gw = math.floor((PU.CONTENT_W - 16) / 3)
+  p.stat = {}
+  local stitles = { Tr["Morts"], Tr["Butin perdu"], Tr["Pêche"] }
+  for i = 1, 3 do
+    local c = PU.Card(p, (i - 1) * (gw + 8), 116, gw, 50, stitles[i])
+    c.value = FS(c, "GameFontNormalLarge", "text")
+    c.value:SetPoint("TOPLEFT", c, "TOPLEFT", 8, -18)
+    c.sub = FS(c, "GameFontHighlightSmall", "sub")
+    c.sub:SetPoint("TOPLEFT", c, "TOPLEFT", 8, -36)
+    if c.sub.SetWidth then c.sub:SetWidth(gw - 16) end
+    if c.value.SetHeight then c.value:SetHeight(16) end
+    if c.sub.SetHeight then c.sub:SetHeight(12) end
+    p.stat[i] = c
+  end
+
+  local profit = PU.Card(p, 0, 174, PU.CONTENT_W, 110, Tr["Rentabilité"])
+  p.profit = profit
+  profit.net = FS(profit, "GameFontNormal", "text")
+  profit.net:SetPoint("TOPLEFT", profit, "TOPLEFT", 10, -18)
+  if profit.net.SetWidth then profit.net:SetWidth(PU.CONTENT_W - 20) end
+  if profit.net.SetHeight then profit.net:SetHeight(14) end
+  profit.rows = {}
+  for i = 1, 3 do
+    local fs = FS(profit, "GameFontHighlightSmall", "text")
+    fs:SetPoint("TOPLEFT", profit, "TOPLEFT", 10, -(36 + (i - 1) * 16))
+    if fs.SetWidth then fs:SetWidth(PU.CONTENT_W - 20) end
+    if fs.SetHeight then fs:SetHeight(14) end
+    profit.rows[i] = fs
+  end
+  profit.empty = FS(profit, "GameFontDisableSmall", "sub")
+  profit.empty:SetPoint("TOPLEFT", profit, "TOPLEFT", 10, -40)
+  if profit.empty.SetWidth then profit.empty:SetWidth(PU.CONTENT_W - 20) end
+  if profit.empty.SetHeight then profit.empty:SetHeight(28) end
+
+  p.flags = FS(p, "GameFontHighlightSmall", "text")
+  p.flags:SetPoint("TOPLEFT", p, "TOPLEFT", 4, -286)
+  if p.flags.SetWidth then p.flags:SetWidth(PU.CONTENT_W - 8) end
+  if p.flags.SetHeight then p.flags:SetHeight(12) end
+  p.tip = FS(p, "GameFontDisableSmall", "sub")
+  p.tip:SetPoint("TOPLEFT", p, "TOPLEFT", 4, -300)
+  if p.tip.SetWidth then p.tip:SetWidth(PU.CONTENT_W - 8) end
+  if p.tip.SetHeight then p.tip:SetHeight(14) end
+  return p
+end
+
+
 function PU.Build()
   if PU.frame then return PU.frame end
   if InCombat() then return nil end
@@ -1187,6 +1415,7 @@ function PU.Build()
   PU.BuildAch(f)
   PU.BuildSpots(f)
   PU.BuildWeekly(f)
+  PU.BuildEfficiency(f)
   f.foot = FS(f, "GameFontDisableSmall", "sub", "CENTER")
   f.foot:SetPoint("BOTTOM", f, "BOTTOM", 0, 9)
   f.foot:SetText(Tr["Clic gauche sur la fiole ou /drop progression · Échap pour fermer"])
@@ -1321,14 +1550,30 @@ function PU.RefreshOverview(p)
   local r = P.Rates()
   local s = P.Session()
   local k = p.kpi
-  -- 1. Rythme XP
-  if r.xph and r.xph > 0 then
+  -- 1. Rythme XP (masqué au niveau max ; lph = XP/h / UnitXPMax)
+  local maxed = PU.AtMaxLevel and PU.AtMaxLevel()
+  if maxed then
+    k[1].title:SetText(Tr["Niveau max"])
+    k[1].value:SetText("—")
+    k[1].sub:SetText(Tr["Les rythmes d'XP sont masqués au niveau maximum."])
+    k[1].value._tipExtra, k[1].sub._tipExtra = nil, nil
+  elseif r.xph and r.xph > 0 then
+    k[1].title:SetText(Tr["Rythme XP"])
     k[1].value:SetText(Thousands(r.xph) .. Tr[" XP/h"])
     local lvl = N(ns.GetPlayerLevel and Call(ns.GetPlayerLevel)) or 0
-    local parts = { Fmt2(r.lph or (r.xph and 0) or 0) .. Tr[" niv./h"] }
+    local parts = { Fmt2(r.pctLevelPerHour or ((r.lph or 0) * 100) or 0) .. Tr[" % niv./h"] }
     if r.etaLevel then parts[#parts + 1] = string.format(Tr["niv. %d ≈ %s"], lvl + 1, Dur(r.etaLevel)) end
     k[1].sub:SetText(table.concat(parts, " · "))
+    local extra = {}
+    if r.etaLevel then
+      extra[#extra + 1] = string.format(Tr["Temps estimé pour le niveau %d : %s"], lvl + 1, Dur(r.etaLevel))
+    end
+    extra[#extra + 1] = Tr["Le rythme en % de niveau / h rend les sessions comparables d'un niveau à l'autre."]
+    k[1].sub._fullText = table.concat(parts, " · ")
+    k[1].sub._tipExtra = extra
+    k[1].value._tipExtra = extra
   else
+    k[1].title:SetText(Tr["Rythme XP"])
     k[1].value:SetText("—")
     k[1].sub:SetText((r.base or 0) < (P.MIN_RATE_SECS or 120) and Tr["mesure en cours…"] or Tr["pas d'XP cette session"])
   end
@@ -1339,10 +1584,17 @@ function PU.RefreshOverview(p)
   local st = P.Streak()
   local R = P.Records()
   k[3].value:SetText(string.format(st.n == 1 and Tr["%d jour d'affilée"] or Tr["%d jours d'affilée"], st.n))
+  local recLong = string.format(Tr["Max session +%d · Max heure +%d"], R.bestSession, R.bestHour)
   PU.SetFittedText(k[3].sub, {
-    string.format(Tr["Max session +%d · Max heure +%d"], R.bestSession, R.bestHour),
+    recLong,
     string.format(Tr["Sess. +%d · Heure +%d"], R.bestSession, R.bestHour),
   }, (k[3]._w or 0) - 16)
+  local recTip = { recLong }
+  if R.bestSessionAt then recTip[#recTip + 1] = Tr["Meilleure session"] .. " " .. (PU.FormatWhen(R.bestSessionAt) or "") end
+  if R.bestHourAt then recTip[#recTip + 1] = Tr["Meilleure heure"] .. " " .. (PU.FormatWhen(R.bestHourAt) or "") end
+  k[3].sub._fullText = recLong
+  k[3].sub._tipExtra = recTip
+  k[3].value._tipExtra = recTip
   -- 4. Objectif
   local g = P.Goal()
   k[4].value:SetText(string.format(Tr["+%d / +%d pts"], g.pts, g.target))
@@ -1372,7 +1624,16 @@ function PU.RefreshOverview(p)
     else e.dot:Hide() e.fs:Hide() e.n:Hide() end
   end
   if #top == 0 then p.right.topEmpty:SetText(Tr["Aucun point cette session pour l'instant."]) p.right.topEmpty:Show() else p.right.topEmpty:Hide() end
-  -- bas : dernier succès, meilleur spot
+  if maxed then
+    if p.right.k1 then p.right.k1:Hide() end
+    if p.right.k1FS then p.right.k1FS:Hide() end
+    p.right.title:SetText(Tr["Courbe de session (pts/h)"])
+  else
+    if p.right.k1 then p.right.k1:Show() end
+    if p.right.k1FS then p.right.k1FS:Show() end
+    p.right.title:SetText(Tr["Courbe de session (XP/h & pts/h)"])
+  end
+  -- bas : dernier succès, rentabilité / meilleur spot
   local got, all = P.UnlockedCount()
   local last = P.LastAchievement()
   local b1, b2 = p.bottom[1], p.bottom[2]
@@ -1385,16 +1646,45 @@ function PU.RefreshOverview(p)
     b1.line:SetText(Tr["Aucun succès pour l'instant : le premier arrive vite !"] .. " · " .. string.format(Tr["%d / %d débloqués"], got, all))
     if b1.icon.SetDesaturated then pcall(b1.icon.SetDesaturated, b1.icon, true) end
   end
-  local spot = P.BestSpot()
-  if spot then
-    b2.head:SetText(Tr["Meilleur spot actuel"] .. " · " .. spot.zone .. " (" .. PU.SkillName(spot.skill) .. ")")
+  local E = ns.Efficiency
+  local profit = E and E.Report and E.Report("session")
+  profit = profit and profit.profit or nil
+  local mix = profit and profit.bestMix
+  local money = E and E.FormatMoney
+  if mix then
+    b2.head:SetText(Tr["Meilleur spot mixte"] .. " · " .. (mix.zone or "?"))
     local parts = {}
-    if spot.avg then parts[#parts + 1] = "≈ " .. Fmt1(spot.avg) .. Tr[" min/rang"] end
-    parts[#parts + 1] = string.format(Tr["+%d pts mesurés"], spot.pts)
+    if money and N(mix.goldPerHour) then parts[#parts + 1] = money(mix.goldPerHour, false) .. Tr[" /h"] end
+    if N(mix.pctLevelPerHour) then parts[#parts + 1] = Fmt2(mix.pctLevelPerHour) .. Tr[" % niv./h"]
+    elseif N(mix.gathersPerHour) then parts[#parts + 1] = Fmt1(mix.gathersPerHour) .. Tr[" pal./h"] end
+    if money and profit.moneyNet ~= nil then parts[#parts + 1] = Tr["session"] .. " " .. money(profit.moneyNet, true) end
     b2.line:SetText(table.concat(parts, " · "))
+    local tip = { E.ScoringTip and E.ScoringTip() or "" }
+    if profit.bestProg and profit.bestProg.zone then
+      tip[#tip + 1] = Tr["Meilleur spot progression"] .. " : " .. profit.bestProg.zone
+    end
+    if profit.bestGold and profit.bestGold.zone then
+      tip[#tip + 1] = Tr["Meilleur spot or"] .. " : " .. profit.bestGold.zone
+    end
+    b2.head._fullText = b2.head:GetText()
+    b2.line._fullText = b2.line:GetText()
+    b2.head._tipExtra, b2.line._tipExtra = tip, tip
+    PU.BindTip(b2.head, b2.head._fullText, tip, (b2._w or 0) - 54)
+    PU.BindTip(b2.line, b2.line._fullText, tip, (b2._w or 0) - 54)
   else
-    b2.head:SetText(Tr["Meilleur spot actuel"])
-    b2.line:SetText(Tr["Aucun coin de récolte mesuré pour l'instant."])
+    local spot = P.BestSpot()
+    if spot then
+      b2.head:SetText(Tr["Meilleur spot actuel"] .. " · " .. spot.zone .. " (" .. PU.SkillName(spot.skill) .. ")")
+      local parts = {}
+      if spot.avg then parts[#parts + 1] = "≈ " .. Fmt1(spot.avg) .. Tr[" min/rang"] end
+      parts[#parts + 1] = string.format(Tr["+%d pts mesurés"], spot.pts)
+      b2.line:SetText(table.concat(parts, " · "))
+    else
+      b2.head:SetText(Tr["Meilleur spot actuel"])
+      b2.line:SetText(Tr["Aucun coin de récolte mesuré pour l'instant."])
+    end
+    b2.head._fullText = b2.head:GetText()
+    b2.line._fullText = b2.line:GetText()
   end
 end
 
@@ -1584,7 +1874,171 @@ function PU.RefreshWeekly(p)
   if #cur.skills == 0 then R.topEmpty:SetText(Tr["Rien encore cette semaine."]) R.topEmpty:Show() else R.topEmpty:Hide() end
 end
 
-PU.REFRESHERS = { overview = "RefreshOverview", charts = "RefreshCharts", ach = "RefreshAch", spots = "RefreshSpots", weekly = "RefreshWeekly" }
+local function RateLine(s)
+  local bits = {}
+  if N(s.pctLevelPerHour) then
+    bits[#bits + 1] = Fmt2(s.pctLevelPerHour) .. Tr[" % niv./h"]
+  elseif N(s.gathersPerHour) then
+    bits[#bits + 1] = Fmt1(s.gathersPerHour) .. Tr[" pal./h"]
+  end
+  if N(s.goldPerHour) then
+    local E = ns.Efficiency
+    local g = E and E.FormatMoney and E.FormatMoney(s.goldPerHour, false)
+    if g then bits[#bits + 1] = g .. Tr[" /h"] end
+  end
+  return table.concat(bits, " · ")
+end
+
+function PU.RefreshEfficiency(p)
+  local E = ns.Efficiency
+  if not E then return end
+  local period = State().effPeriod or "session"
+  E.Pulse("ui")
+  local rep = E.Report(period)
+  if not rep then return end
+  local pal = PU.Pal()
+  local score = rep.score
+  local pct = (type(score) == "number") and math.floor(score * 100 + 0.5) or nil
+  local c = p.score
+  if pct and (N(rep.total) or 0) >= (E.MIN_SECS or 60) then
+    c.value:SetText(tostring(pct) .. " %")
+    c.sub:SetText(Tr["Part du temps de session passée à progresser (combat, récolte, artisanat)."])
+  else
+    c.value:SetText("—")
+    c.sub:SetText(Tr["mesure en cours…"] or "…")
+  end
+  local total = N(rep.total) or 0
+  local function share(v)
+    if total <= 0 then return 0 end
+    return (N(v) or 0) / total
+  end
+  local a, d, o = share(rep.active), share(rep.dead), share(rep.other)
+  local barW = PU.CONTENT_W - 24
+  local x = 12
+  local cols = { pal.good or { 0.45, 0.7, 0.35, 1 }, pal.bad or { 0.7, 0.28, 0.22, 1 }, pal.track or { 0.3, 0.3, 0.3, 1 } }
+  local shares = { a, d, o }
+  Paint(c.track, pal.track)
+  for i = 1, 3 do
+    local w = math.floor(barW * shares[i] + 0.5)
+    if shares[i] > 0 and w < 1 then w = 1 end
+    if i == 3 then w = math.max(0, 12 + barW - x) end
+    if w > 0 then
+      Place(c.seg[i], c, x, 50, w, 8)
+      Paint(c.seg[i], cols[i])
+      c.seg[i]:Show()
+      x = x + w
+    else
+      c.seg[i]:Hide()
+    end
+  end
+  c.split:SetText(string.format(Tr["actif %d %% · temps mort %d %% · autre %d %%"],
+    math.floor(a * 100 + 0.5), math.floor(d * 100 + 0.5), math.floor(o * 100 + 0.5)))
+  c.split._tipExtra = {
+    Tr["Le score d'efficacité est uniquement la part de temps actif. Il ne dépend ni des points / h ni de l'XP / h."],
+  }
+
+  local deaths = rep.deaths or {}
+  p.stat[1].value:SetText(tostring(N(deaths.n) or 0))
+  p.stat[1].sub:SetText((N(deaths.secs) and deaths.secs > 0) and (Tr["dont "] .. (Dur(deaths.secs) or "")) or Tr["aucune cette période"])
+
+  p.stat[2].value:SetText(tostring(N(rep.bagMiss) or 0))
+  p.stat[2].sub:SetText(Tr["tentatives à sacs pleins"])
+
+  local fish = rep.fish or {}
+  if N(fish.n) and fish.n > 0 then
+    p.stat[3].value:SetText(tostring(fish.n))
+    local sub = {}
+    if fish.perHour then sub[#sub + 1] = Fmt1(fish.perHour) .. Tr[" /h"] end
+    p.stat[3].sub:SetText(table.concat(sub, " · "))
+  else
+    local weps = rep.weapons or {}
+    if #weps > 0 then
+      local w = weps[1]
+      p.stat[3].title:SetText(Tr["Armes"])
+      local frac = N(w.frac)
+      p.stat[3].value:SetText(frac and (string.format("%d %%", math.floor(frac * 100 + 0.5))) or "—")
+      p.stat[3].sub:SetText((w.name or "") .. (w.current and w.cap and string.format(" %d / %d", w.current, w.cap) or ""))
+    else
+      p.stat[3].title:SetText(Tr["Pêche"])
+      p.stat[3].value:SetText("—")
+      p.stat[3].sub:SetText(Tr["pas de mesure"])
+    end
+  end
+
+  -- informatif : % niveau / h (jamais le score ; masqué au niveau max)
+  if (not rep.maxLevel) and N(rep.pctLevelPerHour) then
+    c.sub:SetText(string.format(Tr["Part du temps actif. À titre informatif : %s %% niv./h."], Fmt2(rep.pctLevelPerHour)))
+  elseif rep.maxLevel then
+    c.sub:SetText(Tr["Part du temps de session passée à progresser (combat, récolte, artisanat). Les rythmes d'XP sont masqués au niveau maximum."])
+  end
+
+  local pr = rep.profit or (E.Profitability and E.Profitability(rep)) or {}
+  local money = E.FormatMoney
+  local netTxt = money and pr.moneyNet ~= nil and money(pr.moneyNet, true) or nil
+  local gph = (pr.goldPerHour ~= nil and money) and (money(pr.goldPerHour, true) .. Tr[" /h"]) or nil
+  local netLine
+  if netTxt then
+    netLine = Tr["Or net"] .. " : " .. netTxt
+    if gph then netLine = netLine .. " · " .. gph end
+    if pr.prev and pr.prev.moneyNet ~= nil and money then
+      netLine = netLine .. " · " .. Tr["session préc."] .. " " .. money(pr.prev.moneyNet, true)
+    end
+    p.profit.net:SetText(netLine)
+    p.profit.net._tipExtra = { E.ScoringTip and E.ScoringTip() or "" }
+  else
+    p.profit.net:SetText(Tr["Or net : pas encore mesuré sur cette période."])
+  end
+
+  local function fill(fs, label, spot)
+    if not (fs and spot) then return false end
+    local zone = spot.zone or spot.name or "?"
+    local line = label .. " : " .. zone
+    local extra = RateLine(spot)
+    if extra ~= "" then line = line .. " · " .. extra end
+    fs:SetText(line)
+    fs:Show()
+    local tip = { E.ScoringTip and E.ScoringTip() or "" }
+    if N(spot._pPct) then tip[#tip + 1] = string.format(Tr["Centile progression : %s"], Fmt1(spot._pPct)) end
+    if N(spot._gPct) then tip[#tip + 1] = string.format(Tr["Centile or / h : %s"], Fmt1(spot._gPct)) end
+    if N(spot.mixScore) then tip[#tip + 1] = string.format(Tr["Score mixte : %s"], Fmt1(spot.mixScore)) end
+    fs._fullText = line
+    fs._tipExtra = tip
+    PU.BindTip(fs, line, tip, PU.CONTENT_W - 20)
+    return true
+  end
+  local n = 0
+  if fill(p.profit.rows[1], Tr["Meilleur spot mixte"], pr.bestMix) then n = n + 1 end
+  if fill(p.profit.rows[2], Tr["Meilleur spot progression"], pr.bestProg) then n = n + 1 end
+  if fill(p.profit.rows[3], Tr["Meilleur spot or"], pr.bestGold) then n = n + 1 end
+  if n == 0 then
+    for i = 1, 3 do p.profit.rows[i]:SetText("") p.profit.rows[i]:Hide() end
+    p.profit.empty:SetText(Tr["Pas encore assez de temps mesuré sur un spot (minimum 1 min) pour classer la rentabilité."])
+    p.profit.empty:Show()
+  else
+    p.profit.empty:Hide()
+    for i = n + 1, 3 do p.profit.rows[i]:SetText("") p.profit.rows[i]:Hide() end
+  end
+
+  local flags = {}
+  local FLAG_TXT = {
+    trainer = "palier à apprendre chez le maître",
+    green = "beaucoup de recettes vertes ou grises (peu de paliers mesurés)",
+  }
+  for i, f in ipairs(rep.professions or {}) do
+    if f.flag then
+      local label = f.name or f.skill or "?"
+      local msg = FLAG_TXT[f.flag] or f.flag
+      flags[#flags + 1] = label .. " : " .. (Tr[msg] or msg)
+    end
+  end
+  p.flags:SetText(table.concat(flags, " · "))
+  p.flags._fullText = table.concat(flags, " · ")
+
+  p.tip:SetText(rep.tip or "")
+  p.tip._fullText = rep.tip or ""
+end
+
+PU.REFRESHERS = { overview = "RefreshOverview", charts = "RefreshCharts", ach = "RefreshAch", spots = "RefreshSpots", weekly = "RefreshWeekly", efficiency = "RefreshEfficiency" }
 function PU.Refresh()
   local f = PU.frame
   if not (f and f:IsShown()) then return false end
@@ -1599,6 +2053,7 @@ function PU.Refresh()
     if not ok2 then PU.lastError = err2 PU.stats.errors = PU.stats.errors + 1 end
   end
   PU.SyncPills()
+  if PU.ScanTruncateTips then pcall(PU.ScanTruncateTips, f) end
   return true
 end
 -- Regroupé : un seul rafraîchissement par fenêtre de 0,5 s (2 s en combat).

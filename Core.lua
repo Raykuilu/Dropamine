@@ -319,7 +319,10 @@ function ns.GetPlayerXP()
 end
 
 -- Icône d'une tuile / d'une compétence (pour les drops : jamais le portrait).
-ns.LEVEL_ICON = "Interface\\Icons\\INV_Misc_Book_11"
+ns.LEVEL_ICON = "Interface\\AddOns\\Dropamine\\Media\\XP-Icon"
+ns.SPELLS_ICON = "Interface\\AddOns\\Dropamine\\Media\\Spells-Icon"
+ns.RANK_BADGE = "Interface\\AddOns\\Dropamine\\Media\\Rank-Badge"
+ns.FARM_ICON = "Interface\\AddOns\\Dropamine\\Media\\Farm-Spots-Icon"
 
 -- 3.5.18 : icône absente = nil, 0, chaîne vide ou point d'interrogation (134400)
 function ns.IconMissing(icon)
@@ -2027,9 +2030,191 @@ function F.OnTaxi()
   return false
 end
 
+local function CallFn(name, ...)
+  local fn = _G[name]
+  if type(fn) ~= "function" then return nil end
+  local ok, a, b, c, d = pcall(fn, ...)
+  if ok then return a, b, c, d end
+end
+
+-- Noms pliés (FR + EN) des bateaux, zeppelins et du tram, Forever 1.60 / camelot.
+F.TRANSPORT_NAMES = {
+  ["deeprun tram"] = true, ["tram des profondeurs"] = true,
+  ["the thundercaller"] = true, ["le hurleciel"] = true,
+  ["the purple princess"] = true, ["la princesse violette"] = true,
+  ["the iron eagle"] = true, ["l'aigle de fer"] = true, ["laigle de fer"] = true,
+  ["the maiden's fancy"] = true, ["the maidens fancy"] = true,
+  ["la fierte de grom"] = true, ["la fierte de gromm"] = true,
+  ["the bravery"] = true, ["la bravoure"] = true,
+  ["the lady mehley"] = true, ["lady mehley"] = true,
+  ["the moonspray"] = true, ["l'ecumelette"] = true, ["lecumelette"] = true,
+  ["feathermoon ferry"] = true, ["ferry de plumelune"] = true, ["bac de plumelune"] = true,
+  ["the maiden's virtue"] = true, ["the maidens virtue"] = true,
+  ["the maiden's folly"] = true, ["the maidens folly"] = true,
+  ["zeppelin tower"] = true, ["tour du zeppelin"] = true, ["tour des zeppelins"] = true,
+  ["orgrimmar zeppelin"] = true, ["zeppelin d orgrimmar"] = true,
+  ["tirisfal zeppelin"] = true, ["grom'gol"] = true, ["gromgol"] = true,
+}
+-- mots qui, seuls comme nom de zone / sous-zone / minimap, suffisent
+F.TRANSPORT_WORDS = { "zeppelin", "zepplin", "zeplin", "deeprun" }
+
+function F.ZoneLooksTransport()
+  local names = {
+    CallFn("GetMinimapZoneText"),
+    CallFn("GetSubZoneText"),
+    CallFn("GetRealZoneText"),
+    CallFn("GetZoneText"),
+  }
+  for i = 1, #names do
+    local raw = names[i]
+    if type(raw) == "string" and raw ~= "" then
+      local f = (ns.Fold and ns.Fold(raw)) or raw:lower()
+      if F.TRANSPORT_NAMES[f] then return true, raw end
+      for w in pairs(F.TRANSPORT_WORDS) do
+        if f:find(w, 1, true) then return true, raw end
+      end
+    end
+  end
+  return false
+end
+
+function F.ApiOnTransport()
+  if F._simTransport then return true end
+  -- APIs optionnelles, toutes protégées (absentes sur une 1.12 stricte).
+  local tries = {
+    { "IsOnTransport" },
+    { "IsPlayerOnTransport" },
+    { "UnitIsOnTransport", "player" },
+    { "UnitOnTransport", "player" },
+  }
+  for i = 1, #tries do
+    local t = tries[i]
+    local v = CallFn(t[1], unpack(t, 2))
+    if v then return true end
+  end
+  for _, nsName in ipairs({ "C_Transport", "C_GameTransport", "C_Unit", "C_Vehicle", "C_Player" }) do
+    local t = _G[nsName]
+    if type(t) == "table" then
+      for _, meth in ipairs({ "IsOnTransport", "UnitIsOnTransport", "IsPlayerOnTransport", "GetTransportGUID" }) do
+        local fn = t[meth]
+        if type(fn) == "function" then
+          local ok, v = pcall(fn, t, "player")
+          if not ok then ok, v = pcall(fn, "player") end
+          if not ok then ok, v = pcall(fn) end
+          if ok and v then return true end
+        end
+      end
+    end
+  end
+  -- UnitInVehicle : un transport, pas une monture (IsMounted n'est pas un transport).
+  if CallFn("UnitInVehicle", "player") then return true end
+  if CallFn("UnitHasVehicleUI", "player") then return true end
+  if CallFn("UnitHasVehiclePlayerFrameUI", "player") then return true end
+  return false
+end
+
+function F.PlayerPos()
+  if type(_G.UnitPosition) == "function" then
+    local x, y, z = CallFn("UnitPosition", "player")
+    if type(x) == "number" and type(y) == "number" then return x, y, z or 0, "unit" end
+  end
+  if type(_G.C_Map) == "table" and type(_G.C_Map.GetBestMapForUnit) == "function" and type(_G.C_Map.GetPlayerMapPosition) == "function" then
+    local ok, map = pcall(_G.C_Map.GetBestMapForUnit, "player")
+    if ok and map then
+      local ok2, pos = pcall(_G.C_Map.GetPlayerMapPosition, map, "player")
+      if ok2 and pos then
+        local x = pos.x or (pos.GetXY and select(1, pos:GetXY()))
+        local y = pos.y or (pos.GetXY and select(2, pos:GetXY()))
+        if type(x) == "number" and type(y) == "number" and (x ~= 0 or y ~= 0) then
+          return x, y, 0, "map"
+        end
+      end
+    end
+  end
+  if type(_G.GetPlayerMapPosition) == "function" then
+    local x, y = CallFn("GetPlayerMapPosition", "player")
+    if type(x) == "number" and type(y) == "number" and (x ~= 0 or y ~= 0) then
+      return x, y, 0, "map2"
+    end
+  end
+  return nil
+end
+
+function F.DriftIsTransport()
+  -- Position qui dérive alors que la vitesse unitaire est ~0 (le bateau avance, pas le joueur).
+  -- Trois sondages d'affilée, pour ne pas prendre un recul ou un ascenceur pour un trajet.
+  local now = (type(GetTime) == "function" and GetTime()) or 0
+  local x, y, z, kind = F.PlayerPos()
+  local speed = CallFn("GetUnitSpeed", "player") or 0
+  if type(speed) ~= "number" then speed = 0 end
+  if CallFn("UnitOnTaxi", "player") then F._drift = nil return false end
+  if CallFn("IsSwimming") or CallFn("IsFalling") then F._drift = nil return false end
+  if not x then F._drift = nil return false end
+  local d = F._drift
+  if not d then
+    F._drift = { x = x, y = y, z = z, t = now, kind = kind, hits = 0, dist = 0 }
+    return false
+  end
+  local dt = now - (d.t or now)
+  if dt < 0.4 then return d.hits >= 3 end
+  local dx, dy = x - d.x, y - d.y
+  local dist = (dx * dx + dy * dy) ^ 0.5
+  -- cartes normalisées (0-1) : un bateau bouge typiquement de quelques 0.001 par seconde
+  local moved = (kind == "unit" and dist > 3) or (kind ~= "unit" and dist > 0.0008)
+  local still = speed < 1.5
+  -- marcher sur le pont : la vitesse unitaire est non nulle mais bien inférieure au déplacement de la carte
+  if kind == "unit" and speed > 0 and dist > speed * dt * 1.8 + 4 then
+    still = true
+  end
+  d.x, d.y, d.z, d.t, d.kind = x, y, z, now, kind
+  if moved and still then
+    d.hits = (d.hits or 0) + 1
+    d.dist = (d.dist or 0) + dist
+  else
+    d.hits = 0
+    d.dist = 0
+  end
+  return d.hits >= 3
+end
+
+function F.OnTransport()
+  if F._simTransport then return true end
+  if F.ApiOnTransport() then return true end
+  if F.ZoneLooksTransport() then return true end
+  if F.DriftIsTransport() then return true end
+  return false
+end
+
+function F.SafetyPause()
+  return (F._loading or F._cinematic or F._simLoading or F._simCinematic) and true or false
+end
+
+function F.TravelPause()
+  if F._simTaxi or F._simTransport then return true end
+  if not F.OptionOn() then return false end
+  return (F.OnTaxi() or F.OnTransport()) and true or false
+end
+
+function F.ShowHourglass()
+  if F.SafetyPause() then return false end
+  return F.TravelPause() and true or false
+end
+
 function F.Paused()
-  if F._simTaxi then return true end
-  return F.OptionOn() and F.OnTaxi() and true or false
+  if F._simTaxi or F._simTransport or F._simLoading or F._simCinematic then return true end
+  return (F.SafetyPause() or F.TravelPause()) and true or false
+end
+
+function F.SetLoading(on, why)
+  on = on and true or false
+  F._loading = on
+  F.Sync(why or (on and "loading-on" or "loading-off"))
+end
+
+function F.SetCinematic(on, why)
+  on = on and true or false
+  F._cinematic = on
+  F.Sync(why or (on and "cinematic-on" or "cinematic-off"))
 end
 function ns.PausedForFlight()
   return F.Paused()
@@ -2062,6 +2247,10 @@ end
 -- Premier trajet aérien de ce personnage : un toast explicatif (force = true,
 -- seule exception à « pas de toast en vol »). Une fois par personnage.
 function F.MaybeShowHint(force)
+  -- astuce premier vol : seulement un vrai trajet aérien, pas un bateau ni un chargement
+  if F._simTransport then return nil end
+  if F.OnTransport and F.OnTransport() and not F._simTaxi then return nil end
+  if not F.OnTaxi() or F.SafetyPause() then return nil end
   if not F.Paused() then return nil end
   local ch = ns.CharDB and ns.CharDB()
   if not ch then return nil end
@@ -2084,7 +2273,8 @@ end
 function F.OnBegin()
   F._silentLand = false
   -- Sablier d'abord : un échec du toast d'astuce ne doit jamais bloquer l'animation.
-  if F.BeginVisual then pcall(F.BeginVisual) end
+  -- Pas de sablier pendant un écran de chargement ou une cinématique (invisible).
+  if F.ShowHourglass and F.ShowHourglass() and F.BeginVisual then pcall(F.BeginVisual) end
   pcall(F.HideActiveToasts)
   if ns.Scanner and ns.Scanner.HideAll then pcall(ns.Scanner.HideAll) end
   if ns.Gather then
@@ -2142,17 +2332,24 @@ function F.SetTaxi(on, why)
 end
 
 function F.Sync(why)
-  -- Une simulation /drop test ne doit pas être annulée par le sondage UnitOnTaxi.
-  if F._simTaxi then
+  -- Une simulation /drop test ne doit pas être annulée par le sondage.
+  if F._simTaxi or F._simTransport or F._simLoading or F._simCinematic then
+    F.SetTaxi(true, why or "sim")
     F.EnsurePoll()
+    if F.ShowHourglass and F.ShowHourglass() then
+      if F.BeginVisual then pcall(F.BeginVisual) end
+    elseif F.EndVisual then
+      pcall(F.EndVisual)
+    end
     return F.Paused()
   end
-  local taxi = F.OnTaxi()
-  if F.OptionOn() then
-    F.SetTaxi(taxi, why or "sync")
-  elseif F._taxi then
-    -- option coupée en vol : on reprend tout de suite, sans file
-    F.SetTaxi(false, why or "option")
+  local want = F.SafetyPause() or F.TravelPause()
+  F.SetTaxi(want, why or "sync")
+  -- passage chargement → bateau encore en cours : démarrer le sablier sans OnBegin
+  if F._taxi and F.ShowHourglass and F.ShowHourglass() then
+    if F.BeginVisual then pcall(F.BeginVisual) end
+  elseif F._taxi and F.EndVisual then
+    pcall(F.EndVisual)
   end
   -- Le sondage reste toujours actif : à l'envol, UnitOnTaxi n'est souvent
   -- pas encore vrai au moment de PLAYER_CONTROL_LOST.
@@ -2215,6 +2412,7 @@ function F.EnsurePoll()
     if F._elapsed < F.POLL then return end
     F._elapsed = 0
     F.Sync("poll")
+    if ns.Efficiency and ns.Efficiency.Pulse then pcall(ns.Efficiency.Pulse, "poll") end
   end
   if f.SetScript then pcall(f.SetScript, f, "OnUpdate", F._onUpdate) end
   if f.Show then pcall(f.Show, f) end
@@ -2246,6 +2444,39 @@ if ns.On then
     onFlightEvent("UNIT_FLAGS")
     F.ScheduleRecheck("UNIT_FLAGS")
   end)
+  -- Chargement / cinématique : pause silencieuse, sans vider une file au retour.
+  -- Les événements peuvent manquer : ns.On protège RegisterEvent.
+  local hadLoading = ns.On("LOADING_SCREEN_ENABLED", function()
+    F._hasLoadingEvents = true
+    F.SetLoading(true, "LOADING_SCREEN_ENABLED")
+  end)
+  ns.On("LOADING_SCREEN_DISABLED", function()
+    F._hasLoadingEvents = true
+    F.SetLoading(false, "LOADING_SCREEN_DISABLED")
+  end)
+  ns.On("CINEMATIC_START", function() F.SetCinematic(true, "CINEMATIC_START") end)
+  ns.On("CINEMATIC_STOP", function() F.SetCinematic(false, "CINEMATIC_STOP") end)
+  -- PEW : terminer une pause de chargement si l'événement DISABLED n'existe pas.
+  -- Ne pas masquer les toasts sur un simple changement de zone sans écran de chargement.
+  ns.On("PLAYER_ENTERING_WORLD", function()
+    if F._loading and not F._hasLoadingEvents then
+      F.SetLoading(false, "PLAYER_ENTERING_WORLD")
+    elseif not F._loading and not F._hasLoadingEvents then
+      F._silentLand = true
+      if ns.Scanner and ns.Scanner.RescanPlates then pcall(ns.Scanner.RescanPlates) end
+      F._silentLand = false
+    end
+    F.Sync("PLAYER_ENTERING_WORLD")
+  end)
+  for _, ev in ipairs({
+    "VEHICLE_UPDATE", "UNIT_ENTERED_VEHICLE", "UNIT_EXITED_VEHICLE",
+    "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA",
+  }) do
+    ns.On(ev, function(event, unit)
+      if ev:find("UNIT_", 1, true) and unit and unit ~= "player" then return end
+      F.Sync(event or ev)
+    end)
+  end
 end
 
 -- Démarrer tout de suite, sans attendre LOGIN (et le cadre est affiché).
@@ -2287,6 +2518,13 @@ do
     { id = "combat",   label = "Combat",             tip = "Simule le combat selon le style choisi (bulles, épée ou désactivé)." },
     { id = "trainer",  label = "Maître à proximité", tip = "Simule un maître à proximité : éclat sur les cases de métier." },
     { id = "rankup",   label = "Rang supérieur disponible", tip = "Affiche le toast collant « rang supérieur disponible chez le maître »." },
+    { id = "bags",     label = "Sacs pleins",               tip = "Simule les sacs pleins : signal dans la fiole et un toast." },
+    { id = "transport",label = "Bateau / zeppelin",         tip = "Simule un trajet en bateau ou zeppelin : sablier et pause, comme en vol." },
+    { id = "loading",  label = "Chargement",                tip = "Simule un écran de chargement : pause silencieuse, sans sablier ni file de toasts." },
+    { id = "eating",   label = "Repas",                     tip = "Simule un repas ou une boisson : vague de régénération dans la fiole." },
+    { id = "dungeon",  label = "Donjon",                    tip = "Simule l'entrée en donjon : le mode calme instance s'active tout seul." },
+    { id = "durability", label = "Équipement usé",          tip = "Simule un équipement sous 20 % : signal dans la fiole et un toast." },
+    { id = "efficiency", label = "Efficacité",              tip = "Charge un jeu de mesures d'efficacité (temps actif, morts, sacs, spots) pour l'onglet Progression." },
   }
   T.ALIASES = {
     vol = "flight", fly = "flight", flight = "flight",
@@ -2299,6 +2537,13 @@ do
     combat = "combat",
     rankup = "rankup", rang = "rankup", palier = "rankup",
     toast = "toast", drop = "toast",
+    bags = "bags", sacs = "bags", sac = "bags",
+    transport = "transport", bateau = "transport", boat = "transport", zeppelin = "transport", zep = "transport",
+    loading = "loading", chargement = "loading", cinema = "loading", cinematic = "loading",
+    eating = "eating", eat = "eating", repas = "eating", boire = "eating", drink = "eating",
+    dungeon = "dungeon", donjon = "dungeon", instance = "dungeon",
+    durability = "durability", durabilite = "durability", usure = "durability",
+    efficiency = "efficiency", efficacite = "efficiency", eff = "efficiency",
     off = "off", stop = "off", tout = "off",
   }
   T.LONG_NAME = "Palourdes bouillies aux herbes du jardin de Westfall et un nom volontairement trop long pour le défilement"
@@ -2371,6 +2616,10 @@ do
     if id == "off" then return T.StopAll() end
     if id == "toast" then return T.Toast() end
     if id == "flight" then return T.StartFlight() end
+    if id == "transport" then return T.StartTransport() end
+    if id == "loading" then return T.StartLoading() end
+    if id == "dungeon" then return T.StartDungeon() end
+    if id == "efficiency" then return T.StartEfficiency() end
     local known
     for _, st in ipairs(T.STATES) do if st.id == id then known = st break end end
     if not known then
@@ -2386,14 +2635,99 @@ do
       return true
     end
     if ns.Slot and ns.Slot.SetSim then pcall(ns.Slot.SetSim, id, true) end
+    if id == "bags" and ns.Slot and ns.Slot.NotifyBags then pcall(ns.Slot.NotifyBags, true) end
+    if id == "durability" and ns.Slot and ns.Slot.NotifyDurability then pcall(ns.Slot.NotifyDurability, true) end
     if ns.Slot and ns.Slot.Refresh then pcall(ns.Slot.Refresh, "test") end
     ns.Print(string.format(Tr["test : %s simulé."], Tr[known.label] or known.label))
+    return true
+  end
+
+  function T.StartTransport()
+    if not T.Enabled() then return nil end
+    T._on = T._on or {}
+    T._on.transport = true
+    F._simTransport = true
+    if F.SetTaxi then pcall(F.SetTaxi, true, "test-transport") end
+    if ns.Slot and ns.Slot.SetSim then pcall(ns.Slot.SetSim, "transport", true) end
+    if ns.Slot and ns.Slot.Refresh then pcall(ns.Slot.Refresh, "test") end
+    ns.Print(Tr["test : trajet en bateau / zeppelin simulé (sablier + pause)."])
+    return true
+  end
+  function T.StopTransport()
+    T._on = T._on or {}
+    T._on.transport = nil
+    F._simTransport = nil
+    if ns.Slot and ns.Slot.SetSim then pcall(ns.Slot.SetSim, "transport", false) end
+    if F.SetTaxi then pcall(F.SetTaxi, false, "test-off") end
+    if F.Sync then pcall(F.Sync, "test-off") end
+    if ns.Slot and ns.Slot.Refresh then pcall(ns.Slot.Refresh, "test-off") end
+    return true
+  end
+  function T.StartLoading()
+    if not T.Enabled() then return nil end
+    T._on = T._on or {}
+    T._on.loading = true
+    F._simLoading = true
+    if F.SetLoading then pcall(F.SetLoading, true, "test-loading") end
+    ns.Print(Tr["test : écran de chargement simulé (pause silencieuse)."])
+    return true
+  end
+  function T.StopLoading()
+    T._on = T._on or {}
+    T._on.loading = nil
+    F._simLoading = nil
+    if F.SetLoading then pcall(F.SetLoading, false, "test-off") end
+    if F.Sync then pcall(F.Sync, "test-off") end
+    return true
+  end
+  function T.StartDungeon()
+    if not T.Enabled() then return nil end
+    T._on = T._on or {}
+    T._on.dungeon = true
+    local P = ns.Progress
+    if P then
+      P._simInstance = "party"
+      if P.AutoQuietSync then pcall(P.AutoQuietSync, true) end
+    end
+    ns.Print(Tr["test : entrée en donjon simulée (calme auto)."])
+    return true
+  end
+  function T.StopDungeon()
+    T._on = T._on or {}
+    T._on.dungeon = nil
+    local P = ns.Progress
+    if P then
+      P._simInstance = nil
+      if P.AutoQuietSync then pcall(P.AutoQuietSync, true) end
+    end
+    return true
+  end
+  function T.StartEfficiency()
+    if not T.Enabled() then return nil end
+    T._on = T._on or {}
+    T._on.efficiency = true
+    local E = ns.Efficiency
+    if E and E.SetSim then pcall(E.SetSim, true) end
+    local PU = ns.ProgressUI
+    if PU and PU.SetTab then pcall(PU.SetTab, "efficiency") end
+    if PU and PU.RequestRefresh then pcall(PU.RequestRefresh) end
+    ns.Print(Tr["test : données d'efficacité de démonstration chargées."])
+    return true
+  end
+  function T.StopEfficiency()
+    T._on = T._on or {}
+    T._on.efficiency = nil
+    if ns.Efficiency and ns.Efficiency.SetSim then pcall(ns.Efficiency.SetSim, false) end
     return true
   end
 
   function T.Stop(id)
     id = Norm(id)
     if id == "flight" then return T.StopFlight() end
+    if id == "transport" then return T.StopTransport() end
+    if id == "loading" then return T.StopLoading() end
+    if id == "dungeon" then return T.StopDungeon() end
+    if id == "efficiency" then return T.StopEfficiency() end
     if T._on then T._on[id] = nil end
     if id == "rankup" then
       if ns.RankToast and ns.RankToast.SetSim then pcall(ns.RankToast.SetSim, false) end
@@ -2414,13 +2748,20 @@ do
 
   function T.StopAll()
     if T._on and T._on.flight then T.StopFlight() end
+    if T._on and T._on.transport then T.StopTransport() end
+    if T._on and T._on.loading then T.StopLoading() end
+    if T._on and T._on.dungeon then T.StopDungeon() end
+    if T._on and T._on.efficiency then T.StopEfficiency() end
     if T._on then
       for id in pairs(T._on) do
-        if id ~= "flight" and T.Stop then T.Stop(id) end
+        if id ~= "flight" and id ~= "transport" and id ~= "loading" and id ~= "dungeon" and id ~= "efficiency" and T.Stop then T.Stop(id) end
       end
     end
     T._on = {}
     F._simTaxi = nil
+    F._simTransport = nil
+    F._simLoading = nil
+    F._simCinematic = nil
     if ns.Slot and ns.Slot.ClearSim then pcall(ns.Slot.ClearSim) end
     if ns.Slot and ns.Slot.Refresh then pcall(ns.Slot.Refresh, "test-off") end
     if ns.RankToast and ns.RankToast.SetSim then pcall(ns.RankToast.SetSim, false) end

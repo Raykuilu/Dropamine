@@ -59,7 +59,7 @@ Options.SECTIONS = {
       get = function() return DBui().locked and true or false end,
       set = function(v) DBui().locked = v and true or nil if LayoutM() and LayoutM().PlaceGrip then pcall(LayoutM().PlaceGrip) end end },
     { type = "check", key = "pauseFlying", label = "Pause pendant le vol", default = true, cmd = "/drop vol on|off",
-      help = "Met le suivi et les toasts en pause sur un trajet aérien. Rien n'est mis en file : à l'atterrissage, pas de rattrapage.",
+      help = "Met le suivi et les toasts en pause sur un trajet aérien, un bateau, un zeppelin ou le tram. Rien n'est mis en file : à l'arrivée, pas de rattrapage.",
       get = function() return not (DBui().pauseFlying == false) end,
       set = function(v)
         ns.SetOpt("pauseFlying", v and true or false)

@@ -58,3 +58,4 @@ ProgressUI.lua
 Rested.lua
 Slot.lua
 RankToast.lua
+Efficiency.lua

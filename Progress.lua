@@ -194,11 +194,18 @@ function P.Rates(now)
     local h = base / P.HOUR
     out.xph = (s.xp or 0) / h
     out.pph = (s.pts or 0) / h
-    out.lph = (s.levels or 0) / h
+    -- lph réel (niveaux gagnés / h) : souvent 0 dans une session ; on le garde à part
+    out.levelsPerHour = (s.levels or 0) / h
   end
   local cur, mx
   if ns.GetPlayerXPSafe then cur, mx = ns.GetPlayerXPSafe() end
   cur, mx = N(cur), N(mx)
+  out.xpCur, out.xpMax = cur, mx
+  -- niv./h comparable : XP/h divisée par le besoin du niveau courant (UnitXPMax)
+  if out.xph and mx and mx > 0 then
+    out.lph = out.xph / mx
+    out.pctLevelPerHour = out.lph * 100
+  end
   if out.xph and out.xph > 0 and cur and mx and mx > cur then
     out.etaLevel = (mx - cur) / out.xph * P.HOUR
   end
@@ -336,6 +343,18 @@ function P.OnXP()
   s.xp = (s.xp or 0) + d
   local h = P.DayEntry()
   h.xp = (N(h.xp) or 0) + d
+  -- fraction de niveau mesurée (delta / UnitXPMax au moment du gain), comparable entre niveaux
+  local frac
+  if lvl and plvl and lvl > plvl and pmax and pmax > 0 then
+    frac = ((pmax - prev) / pmax) + ((mx and mx > 0) and (cur / mx) or 0)
+  elseif mx and mx > 0 then
+    frac = d / mx
+  end
+  if frac and frac > 0 then
+    s.xpFrac = (N(s.xpFrac) or 0) + frac
+    h.xpFrac = (N(h.xpFrac) or 0) + frac
+    if ns.Efficiency and ns.Efficiency.NoteXpFrac then pcall(ns.Efficiency.NoteXpFrac, frac) end
+  end
   Activity(s, Wall())
   P.Notify("xp")
   return d
@@ -767,6 +786,9 @@ P.QUIET_KEEP = { levelup = true, max = true, achievement = true, goal = true, ti
 P.quietStats = { blocked = 0, changes = 0 }
 function P.QuietSetting() local v = ns.db and ns.db.ui and ns.db.ui.quietMode if v == "instance" or v == "group" then return v end return "off" end
 function P.InInstanceGroup()
+  if P._simInstance == "party" or P._simInstance == "raid" then
+    return P._simInstance, true
+  end
   local inInst, kind = Call(_G.IsInInstance)
   local inst = inInst and (kind == "party" or kind == "raid") and kind or nil
   local grouped = false
@@ -797,6 +819,44 @@ function P.RecomputeQuiet(silent)
   return on, why
 end
 function P.QuietActive() if P._quiet == nil then P.RecomputeQuiet(true) end return P._quiet and true or false end
+function P.AutoQuietOpt()
+  return not (ns.Opt and ns.Opt("quietAuto") == false)
+end
+-- Active le mode calme « instance » à l'entrée en donjon / raid, restaure le
+-- réglage précédent à la sortie. Ne combat pas un choix déjà « instance » ou « groupe ».
+function P.AutoQuietSync(silent)
+  local inst = select(1, P.InInstanceGroup())
+  local inDung = inst == "party" or inst == "raid"
+  if not P.AutoQuietOpt() then
+    if P._autoQuietHeld then
+      local prev = P._autoQuietPrev or "off"
+      P._autoQuietHeld, P._autoQuietPrev = nil, nil
+      if P.QuietSetting() == "instance" then
+        ns.SetOpt("quietMode", prev)
+      else
+        P.RecomputeQuiet(silent)
+      end
+    end
+    return
+  end
+  if inDung then
+    if not P._autoQuietHeld and P.QuietSetting() == "off" then
+      P._autoQuietPrev = "off"
+      P._autoQuietHeld = true
+      ns.SetOpt("quietMode", "instance")
+    else
+      P.RecomputeQuiet(silent)
+    end
+  elseif P._autoQuietHeld then
+    local prev = P._autoQuietPrev or "off"
+    P._autoQuietHeld, P._autoQuietPrev = nil, nil
+    if P.QuietSetting() == "instance" then
+      ns.SetOpt("quietMode", prev)
+    else
+      P.RecomputeQuiet(silent)
+    end
+  end
+end
 function P.Quiet() return { active = P.QuietActive(), why = P._quietWhy, mode = P.QuietSetting(), toasts = (ns.db and ns.db.ui and ns.db.ui.quietToasts) or "reduce", sounds = ns.Opt("quietSounds"), blocked = P.quietStats.blocked } end
 function P.QuietBlocks(opts)
   if not P.QuietActive() then return false end
@@ -982,7 +1042,8 @@ function P.Records()
   local dr = ns.Dopamine and ns.Dopamine.C and ns.Dopamine.C().records or {}
   return { bestSession = math.max(N(R.bestSession) or 0, N(dr.bestSession) or 0), bestHour = N(R.bestHour) or 0,
     bestDay = N(R.bestDay) or 0, bestDayKey = R.bestDayKey, longestCombo = N(R.longestCombo) or 0,
-    playtime = N(R.playtime) or 0, sessions = N(R.sessions) or 0, goalsHit = N(R.goalsHit) or 0 }
+    playtime = N(R.playtime) or 0, sessions = N(R.sessions) or 0, goalsHit = N(R.goalsHit) or 0,
+    bestSessionAt = R.bestSessionAt or dr.bestSessionAt, bestHourAt = R.bestHourAt }
 end
 function P.GetSession()
   local s = P.Session()
@@ -1040,7 +1101,14 @@ P.OPTIONS = {
   { type = "radio", key = "quietMode", label = "Mode calme", default = "off", cmd = "/drop calme off|instance|groupe",
     choices = { { "off", "Jamais" }, { "instance", "En donjon / raid" }, { "group", "En groupe ou en instance" } },
     help = "Réduit les toasts et coupe les sons en instance, ou dès que tu es en groupe. Les boutons Tester passent outre.",
-    set = function(v) ns.SetOpt("quietMode", v) P.RecomputeQuiet() end },
+    set = function(v)
+      -- un changement manuel en donjon : on arrête de « tenir » le calme auto
+      P._autoQuietHeld, P._autoQuietPrev = nil, nil
+      ns.SetOpt("quietMode", v) P.RecomputeQuiet()
+    end },
+  { type = "check", key = "quietAuto", label = "Calme auto en donjon", default = true,
+    help = "Active le mode calme « en donjon / raid » à l'entrée, et rétablit ton réglage à la sortie. Ne change pas le défaut du mode calme (jamais).",
+    set = function(v) ns.SetOpt("quietAuto", v and true or false) P.AutoQuietSync() end },
   { type = "radio", key = "quietToasts", label = "Toasts en mode calme", default = "reduce", cmd = "/drop calme toasts reduit|aucun|tous",
     choices = { { "reduce", "Seulement l'important" }, { "mute", "Aucun toast" }, { "keep", "Tous les toasts" } },
     help = "Seulement l'important : niveaux, maximums, objectifs, succès, récaps." },
@@ -1059,7 +1127,7 @@ P.OPTIONS = {
 if ns.Options then
   local H = ns.Options.EXTRA_HOME
   H.charProfile, H.smartSort, H.seasonal = "display", "display", "display"
-  H.quietMode, H.quietToasts, H.quietSounds = "notif", "notif", "sounds"
+  H.quietMode, H.quietAuto, H.quietToasts, H.quietSounds = "notif", "notif", "notif", "sounds"
   H.sessionGoal, H.goalToast, H.achievements, H.weeklyRecap = "progress", "progress", "progress", "progress"
   for _, it in ipairs(P.OPTIONS) do ns.Options.EXTRA[#ns.Options.EXTRA + 1] = it end
   ns.Options.ITEMS = ns.Options.All()
@@ -1238,6 +1306,8 @@ if ns.OnOptionChanged then
 end
 if ns.On then
   ns.On("PLAYER_ENTERING_WORLD", function()
+    pcall(P.AutoQuietSync, true)
+
     pcall(P.Session)
     pcall(P.RecomputeQuiet, true)
     if P._entered then return end
@@ -1256,7 +1326,7 @@ if ns.On then
   ns.On("PLAYER_XP_UPDATE", function() pcall(P.OnXP) end)
   ns.On("PLAYER_LEVEL_UP", function(_, lvl) pcall(P.OnLevelUp, lvl) end)
   for _, ev in ipairs({ "ZONE_CHANGED_NEW_AREA", "GROUP_ROSTER_UPDATE", "PARTY_MEMBERS_CHANGED", "RAID_ROSTER_UPDATE" }) do
-    ns.On(ev, function() pcall(P.RecomputeQuiet) end)
+    ns.On(ev, function() pcall(P.AutoQuietSync) pcall(P.RecomputeQuiet) end)
   end
   ns.On("PLAYER_LOGOUT", function() pcall(P.AccountTime) pcall(P.Sample, nil, true) end)
 end
