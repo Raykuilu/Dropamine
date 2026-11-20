@@ -1,5 +1,33 @@
 # Changelog
 
+## 3.6.0
+- New **Progress window** (ProgressUI.lua): left-click the flask / total tile (Compact and UI views), the total-level bar (Wide view) or the total banner, or type /drop progress (also /drop progression). The window can be dragged, stays on screen, and closes with the X or Escape. It follows the Flare, Light and Classic themes.
+- Header with the flask, your name, class and level, and a **Share** button. Share puts your session recap in the chat input box; nothing is sent until you press Enter. Under it, a total banner (total / max) with the same 3-segment bar as the Wide view (level, weapons & defense, professions, with the same minimum widths) and one badge per category.
+- **Overview** tab: 4 cards (XP pace and time to next level, points pace, streak and records, session goal with +5 / +10 / Edit). A 7-day / 30-day / session bar chart with Total / XP/h / Categories views, a session curve (XP/h and pts/h) with the session top 4, your latest achievement and your current best farm spot.
+- **Charts** tab: a larger chart. Click a bar for that day's skill-by-skill details, or click a skill to chart it alone.
+- **Achievements (N/18)** tab: unlocked achievements in gold with their date; locked ones are muted, with a progress bar.
+- **Farm spots** tab: zone / profession / points / pace (min per point), fastest first, with an empty-state message.
+- **Weekly recap** tab: Monday–Sunday total, comparison with last week, split by category, best day, streak, day-by-day chart and top skills of the week.
+- Total tooltip (Compact, Wide, UI banner): a 7-day mini chart under the tooltip, with day initials and daily points. It hides with the tooltip, never takes the mouse and never stays on screen.
+- Options › Progress: new **Open window** button. /drop stats is unchanged; /drop progress text still prints the summary in chat; /drop progress achievements | spots | week opens that tab.
+- Also in 3.6.0 (built in the first pass): the next-point bar resets to 0% on each point and hides in combat; AtlasLoot cannot close the panel by accident; Edit Mode follows the Settings 2.0 sections; quiet mode (dungeons / groups); per-character display profile; session goal, streak, 18 achievements, gathering spots per zone, weekly recap and /drop share.
+- Safe in combat: the window is never built in combat (it opens when combat ends), refreshes are grouped (0.5 s, 2 s in combat), and only textures and font strings are used (no CreateLine). All new texts are translated (enUS).
+
+---
+
+- Nouvelle **fenêtre Progression** (ProgressUI.lua) : clic gauche sur la fiole / case du total (vues Compacte et UI), sur la barre de niveau total (vue Wide) ou sur le bandeau du total, ou /drop progression (aussi /drop progress). La fenêtre se déplace, reste dans l'écran et se ferme avec le X ou Échap. Elle suit les thèmes Flare, Léger et Classique.
+- En-tête avec la fiole, ton nom, ta classe et ton niveau, et un bouton **Partager**. Partager pose le récap de ta session dans la zone de saisie du chat ; rien n'est envoyé tant que tu n'appuies pas sur Entrée. Dessous, un bandeau du total (total / max) avec la même barre 3 segments que la vue Wide (niveau, armes & défense, métiers, mêmes largeurs minimales) et un badge par catégorie.
+- Onglet **Vue d'ensemble** : 4 cartes (rythme XP et temps jusqu'au niveau suivant, rythme de points, série et records, objectif de session avec +5 / +10 / Éditer). Un histogramme 7 jours / 30 jours / session en vues Total / XP/h / Catégories, une courbe de session (XP/h et pts/h) avec le top 4 de la session, ton dernier succès et ton meilleur spot de farm actuel.
+- Onglet **Graphiques** : un graphique plus grand. Clic sur une barre pour le détail compétence par compétence de ce jour, ou clic sur une compétence pour la tracer seule.
+- Onglet **Succès (N/18)** : succès débloqués en or avec leur date ; les verrouillés sont atténués, avec une barre de progression.
+- Onglet **Spots de farm** : zone / métier / points / rythme (min par point), du plus rapide au plus lent, avec un message quand c'est vide.
+- Onglet **Récap hebdo** : total du lundi au dimanche, comparaison avec la semaine passée, répartition par catégorie, meilleur jour, série, histogramme jour par jour et top des compétences de la semaine.
+- Infobulle du total (Compacte, Wide, bandeau UI) : un mini-graphe 7 jours sous l'infobulle, avec les initiales des jours et les points du jour. Il se cache avec l'infobulle, ne prend jamais la souris et ne reste jamais à l'écran.
+- Réglages › Progression : nouveau bouton **Ouvrir la fenêtre**. /drop stats ne change pas ; /drop progression texte affiche toujours le résumé dans le chat ; /drop progression succes | spots | semaine ouvre l'onglet voulu.
+- Aussi en 3.6.0 (première passe) : la barre du prochain point repart à 0 % à chaque point et se cache en combat ; AtlasLoot ne peut plus fermer le panneau par erreur ; le mode Édition suit les sections des Réglages 2.0 ; mode calme (donjons / groupes) ; profil d'affichage par personnage ; objectif de session, série, 18 succès, spots de récolte par zone, récap hebdomadaire et /drop share.
+- Sûr en combat : la fenêtre n'est jamais construite en combat (elle s'ouvre à la fin du combat), les rafraîchissements sont regroupés (0,5 s, 2 s en combat), et seules des textures et des textes sont utilisés (pas de CreateLine). Tous les nouveaux textes sont traduits (enUS).
+
+
 ## 3.5.22
 - Settings 2.0: the options panel now follows the native Classic look (like LayerSwap). Gold-bordered boxed sections are gone. Section titles are plain gold. Every label is left-aligned, tight against its control — no centered text and no wide fixed widths that left holes in the row.
 - One family, one section, most-used first. **Display** gathers every look and transparency setting (theme, language, columns, size, idle transparency, hover background, fade delay, number color, total-level bar, next-point bar, lock). Then **Notifications & toasts**, **Sounds**, **Professions & highlighting**, and **Advanced** (including PvP). Existing settings, /drop commands and SavedVariables keys are unchanged.

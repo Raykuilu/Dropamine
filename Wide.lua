@@ -165,6 +165,7 @@ local function Parts(t)
 end
 
 local function HideTip(self)
+  if ns.ProgressUI and ns.ProgressUI.HideMini then pcall(ns.ProgressUI.HideMini) end
   local tt = _G.GameTooltip
   if not (tt and tt.Hide) then return end
   if tt.IsOwned then
@@ -174,7 +175,8 @@ local function HideTip(self)
   end
 end
 
-function Wd.ShowBarTip(owner)
+-- noMini : survol depuis la fenêtre Progression (pas de mini-graphe ni d'aide au clic)
+function Wd.ShowBarTip(owner, noMini)
   local tt = _G.GameTooltip
   if not (tt and owner) then return end
   pcall(tt.SetOwner, tt, owner, "ANCHOR_TOP")
@@ -194,7 +196,34 @@ function Wd.ShowBarTip(owner)
   local mx = snap and (N(snap.totalMax) or N(snap.ficMax)) or N(ns.TOTAL_MAX) or 2460
   if tt.AddLine then tt:AddLine(" ") end
   tt:AddDoubleLine(Tr["Total"], string.format("%d / %d", cur or 0, mx or 0), 1, 0.93, 0.80, 1, 0.93, 0.80)
+  if not noMini and ns.ProgressUI then
+    tt:AddLine(Tr["Clic : fenêtre Progression"], 0.6, 0.8, 1)
+  end
   tt:Show()
+  if not noMini and ns.ProgressUI and ns.ProgressUI.ShowMini then pcall(ns.ProgressUI.ShowMini, tt, owner) end
+end
+Wd.HideTip = HideTip
+
+-- 3.6.0 : clic gauche sur la barre du total -> fenêtre Progression.
+-- Maj+clic = partage (si l'option est active) ; un glisser ne clique pas.
+function Wd.OnBarClick(self, button)
+  if button and button ~= "LeftButton" then return false end
+  if self._thDragged then self._thDragged = nil return false end
+  if self.IsMouseOver then
+    local ok, over = pcall(self.IsMouseOver, self)
+    if ok and over == false then return false end
+  end
+  local t = self.GetParent and self:GetParent()
+  if _G.IsShiftKeyDown and _G.IsShiftKeyDown() then
+    if ns.Opt and ns.Opt("partage") and ns.QoL and ns.QoL.ShareTile and t and t.data then
+      pcall(ns.QoL.ShareTile, t.data)
+      return true
+    end
+    return false
+  end
+  HideTip(self)
+  if ns.ProgressUI and ns.ProgressUI.OnTotalClick then return ns.ProgressUI.OnTotalClick(self, "LeftButton") end
+  return false
 end
 
 function Wd.EnsureSegs(t)
@@ -216,24 +245,22 @@ function Wd.EnsureSegs(t)
       if p.hit.EnableMouse then p.hit:EnableMouse(true) end
       p.hit:SetScript("OnEnter", function(self) Wd.ShowBarTip(self) end)
       p.hit:SetScript("OnLeave", HideTip)
+      p.hit:SetScript("OnMouseUp", function(self, button) Wd.OnBarClick(self, button) end)
+      if ns.Theme and ns.Theme.WireDrag then pcall(ns.Theme.WireDrag, p.hit) end
     end
   end
   return p
 end
 
--- Pose les 3 segments (largeurs = points / plafond du total) et la zone de survol.
--- 3.5.21 : le remplissage est inset dans la piste (après l'arrondi du cadre)
--- et chaque segment non nul a une largeur minimale visible.
-function Wd.LayoutSegments(t, left, by, inner, bh, cur, max)
-  local p = Wd.EnsureSegs(t)
-  local segs = Segments()
+-- 3.6.0 : largeurs des 3 segments (niveau, armes + Défense, métiers) pour une
+-- piste de `track` px — fonction pure, partagée avec la fenêtre Progression.
+-- Mêmes règles qu'en 3.5.21 : minimum de 5 px par segment non nul, rouge
+-- (niveau) en paliers de 1 px (niv. 1) à 5 px (niv. 60).
+function Wd.SegmentWidths(segs, track, cur, max)
+  segs = segs or {}
+  track = math.max(0, N(track) or 0)
   max = N(max) or 0
   cur = N(cur) or 0
-  local il, ir, it, ib = Wd.FillInset()
-  il, ir, it, ib = ClampInsets(il, ir, it, ib, inner, bh)
-  local track = math.max(0, inner - il - ir)
-  local fh = math.max(0, bh - it - ib)
-  local fy = by + ib
   local filled = (max > 0) and math.max(0, math.min(track, math.floor(track * (cur / max) + 0.5))) or 0
   local widths, sumW, present = {}, 0, {}
   for i = 1, 3 do
@@ -279,6 +306,23 @@ function Wd.LayoutSegments(t, left, by, inner, bh, cur, max)
       filled = (widths[1] or 0) + (widths[2] or 0) + (widths[3] or 0)
     end
   end
+  return widths, filled
+end
+
+-- Pose les 3 segments (largeurs = points / plafond du total) et la zone de survol.
+-- 3.5.21 : le remplissage est inset dans la piste (après l'arrondi du cadre)
+-- et chaque segment non nul a une largeur minimale visible.
+function Wd.LayoutSegments(t, left, by, inner, bh, cur, max)
+  local p = Wd.EnsureSegs(t)
+  local segs = Segments()
+  max = N(max) or 0
+  cur = N(cur) or 0
+  local il, ir, it, ib = Wd.FillInset()
+  il, ir, it, ib = ClampInsets(il, ir, it, ib, inner, bh)
+  local track = math.max(0, inner - il - ir)
+  local fh = math.max(0, bh - it - ib)
+  local fy = by + ib
+  local widths, filled = Wd.SegmentWidths(segs, track, cur, max)
   local x = left + il
   local last
   for i = 1, 3 do

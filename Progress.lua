@@ -212,7 +212,9 @@ function P.Sample(now, force)
   if not force and last and now - last < P.SAMPLE_SECS then return false end
   local r = P.Rates(now)
   local curve = s.curve
-  curve[#curve + 1] = { t = math.max(0, now - (N(s.start) or now)), xph = Round(r.xph) or 0, pph = Round(r.pph) or 0, total = s.pts or 0 }
+  local sc = s.cat or {}
+  curve[#curve + 1] = { t = math.max(0, now - (N(s.start) or now)), xph = Round(r.xph) or 0, pph = Round(r.pph) or 0, total = s.pts or 0,
+    lv = N(sc.level) or 0, cb = N(sc.combat) or 0, pf = N(sc.prof) or 0, xp = s.xp or 0 }
   s.lastSample = now
   if #curve > P.CURVE_MAX then
     local keep = {}
@@ -244,6 +246,13 @@ local function HourSum(s, now)
 end
 function P.HourPoints(now) local s = P.Session() return HourSum(s, now or Wall()) end
 
+-- 3.6.0 phase 2 : abonnés (fenêtre Progression, infobulle) prévenus d'un
+-- changement ; ils regroupent eux-mêmes leurs rafraîchissements.
+P.listeners = P.listeners or {}
+function P.Listen(key, fn) if type(fn) == "function" then P.listeners[key] = fn end end
+function P.Notify(why)
+  for _, fn in pairs(P.listeners) do pcall(fn, why) end
+end
 function P.DayEntry(day)
   local _, c = P.C()
   day = day or P.Today()
@@ -287,6 +296,7 @@ function P.Gain(cat, key, name, delta, counts, now)
   local last = N(s.lastSample)
   if not last or now - last >= P.SAMPLE_MIN_GAP then P.Sample(now, true) end
   P.CheckAchievements("gain")
+  P.Notify("gain")
   return s
 end
 
@@ -324,7 +334,10 @@ function P.OnXP()
   end
   if d <= 0 then return 0 end
   s.xp = (s.xp or 0) + d
+  local h = P.DayEntry()
+  h.xp = (N(h.xp) or 0) + d
   Activity(s, Wall())
+  P.Notify("xp")
   return d
 end
 -- Combo (Dopamine.lua) : record de session et record absolu.
@@ -452,7 +465,8 @@ function P.History(days)
     local h = day and c.history[day]
     local cat = type(h) == "table" and h.cat or nil
     out[#out + 1] = { day = day, pts = P.DayPoints(day), total = h and N(h.total) or nil,
-      level = cat and N(cat.level) or 0, combat = cat and N(cat.combat) or 0, prof = cat and N(cat.prof) or 0 }
+      level = cat and N(cat.level) or 0, combat = cat and N(cat.combat) or 0, prof = cat and N(cat.prof) or 0,
+      xp = type(h) == "table" and N(h.xp) or 0 }
   end
   return out
 end
@@ -613,24 +627,24 @@ local function CountAtLeast(ctx, set, v)
   return n
 end
 P.ACHIEVEMENTS = {
-  { id = "goal1", name = "Premier objectif", desc = "Atteindre un objectif de session.", test = function(x) return x.goalsHit >= 1 end },
-  { id = "sess25", name = "Belle séance", desc = "25 points en une session.", test = function(x) return x.bestSession >= 25 end },
-  { id = "sess50", name = "Grosse séance", desc = "50 points en une session.", test = function(x) return x.bestSession >= 50 end },
-  { id = "sess100", name = "Marathon", desc = "100 points en une session.", test = function(x) return x.bestSession >= 100 end },
-  { id = "hour10", name = "Heure dorée", desc = "10 points en une heure.", test = function(x) return x.bestHour >= 10 end },
-  { id = "combo10", name = "Combo x10", desc = "10 points d'affilée, sans pause d'une minute.", test = function(x) return x.combo >= 10 end },
-  { id = "streak5", name = "Série de 5 jours", desc = "5 jours de suite avec au moins un point.", test = function(x) return x.streak >= 5 end },
-  { id = "streak14", name = "Série de 14 jours", desc = "14 jours de suite avec au moins un point.", test = function(x) return x.streak >= 14 end },
-  { id = "streak30", name = "Série de 30 jours", desc = "30 jours de suite avec au moins un point.", test = function(x) return x.streak >= 30 end },
-  { id = "total100", name = "Niveau total 100", desc = "Atteindre 100 au niveau total.", test = function(x) return x.total >= 100 end },
-  { id = "total500", name = "Niveau total 500", desc = "Atteindre 500 au niveau total.", test = function(x) return x.total >= 500 end },
-  { id = "total1000", name = "Niveau total 1000", desc = "Atteindre 1000 au niveau total.", test = function(x) return x.total >= 1000 end },
-  { id = "total2000", name = "Niveau total 2000", desc = "Atteindre 2000 au niveau total.", test = function(x) return x.total >= 2000 end },
-  { id = "firstmax", name = "Premier maximum", desc = "Un métier à 300.", test = function(x) return x.maxProf >= 1 end },
-  { id = "gather2", name = "Double récolte", desc = "Deux métiers de récolte à 150 ou plus.", test = function(x) return CountAtLeast(x, P.GATHER, 150) >= 2 end },
-  { id = "craft2", name = "Double artisan", desc = "Deux métiers d'artisanat à 225 ou plus.", test = function(x) return CountAtLeast(x, P.CRAFT, 225) >= 2 end },
-  { id = "explorer", name = "Explorateur", desc = "Des points de récolte dans 5 zones.", test = function(x) return x.zones >= 5 end },
-  { id = "level60", name = "Niveau maximum", desc = "Atteindre le niveau maximum.", test = function(x) return x.levelMax end },
+  { id = "goal1", of = "goalsHit", need = 1, name = "Premier objectif", desc = "Atteindre un objectif de session.", test = function(x) return x.goalsHit >= 1 end },
+  { id = "sess25", of = "bestSession", need = 25, name = "Belle séance", desc = "25 points en une session.", test = function(x) return x.bestSession >= 25 end },
+  { id = "sess50", of = "bestSession", need = 50, name = "Grosse séance", desc = "50 points en une session.", test = function(x) return x.bestSession >= 50 end },
+  { id = "sess100", of = "bestSession", need = 100, name = "Marathon", desc = "100 points en une session.", test = function(x) return x.bestSession >= 100 end },
+  { id = "hour10", of = "bestHour", need = 10, name = "Heure dorée", desc = "10 points en une heure.", test = function(x) return x.bestHour >= 10 end },
+  { id = "combo10", of = "combo", need = 10, name = "Combo x10", desc = "10 points d'affilée, sans pause d'une minute.", test = function(x) return x.combo >= 10 end },
+  { id = "streak5", of = "streak", need = 5, name = "Série de 5 jours", desc = "5 jours de suite avec au moins un point.", test = function(x) return x.streak >= 5 end },
+  { id = "streak14", of = "streak", need = 14, name = "Série de 14 jours", desc = "14 jours de suite avec au moins un point.", test = function(x) return x.streak >= 14 end },
+  { id = "streak30", of = "streak", need = 30, name = "Série de 30 jours", desc = "30 jours de suite avec au moins un point.", test = function(x) return x.streak >= 30 end },
+  { id = "total100", of = "total", need = 100, name = "Niveau total 100", desc = "Atteindre 100 au niveau total.", test = function(x) return x.total >= 100 end },
+  { id = "total500", of = "total", need = 500, name = "Niveau total 500", desc = "Atteindre 500 au niveau total.", test = function(x) return x.total >= 500 end },
+  { id = "total1000", of = "total", need = 1000, name = "Niveau total 1000", desc = "Atteindre 1000 au niveau total.", test = function(x) return x.total >= 1000 end },
+  { id = "total2000", of = "total", need = 2000, name = "Niveau total 2000", desc = "Atteindre 2000 au niveau total.", test = function(x) return x.total >= 2000 end },
+  { id = "firstmax", of = "maxProf", need = 1, name = "Premier maximum", desc = "Un métier à 300.", test = function(x) return x.maxProf >= 1 end },
+  { id = "gather2", ofCount = P.GATHER, at = 150, name = "Double récolte", desc = "Deux métiers de récolte à 150 ou plus.", test = function(x) return CountAtLeast(x, P.GATHER, 150) >= 2 end },
+  { id = "craft2", ofCount = P.CRAFT, at = 225, name = "Double artisan", desc = "Deux métiers d'artisanat à 225 ou plus.", test = function(x) return CountAtLeast(x, P.CRAFT, 225) >= 2 end },
+  { id = "explorer", of = "zones", need = 5, name = "Explorateur", desc = "Des points de récolte dans 5 zones.", test = function(x) return x.zones >= 5 end },
+  { id = "level60", of = "levelMaxN", need = 1, name = "Niveau maximum", desc = "Atteindre le niveau maximum.", test = function(x) return x.levelMax end },
 }
 function P.AchievementById(id)
   for _, a in ipairs(P.ACHIEVEMENTS) do if a.id == id then return a end end
@@ -712,9 +726,17 @@ function P.Seed()
 end
 function P.Achievements()
   local p = P.C()
+  local okC, ctx = pcall(P.Context)
+  if not okC then ctx = nil end
+  if ctx then ctx.levelMaxN = ctx.levelMax and 1 or 0 end
   local out = {}
   for _, a in ipairs(P.ACHIEVEMENTS) do
-    out[#out + 1] = { id = a.id, name = Tr[a.name], desc = Tr[a.desc], unlocked = p.ach[a.id] ~= nil, at = p.ach[a.id] }
+    local cur, target
+    if a.of and ctx then cur, target = N(ctx[a.of]) or 0, a.need end
+    if a.ofCount and ctx then cur, target = CountAtLeast(ctx, a.ofCount, a.at), 2 end
+    if cur and target then cur = math.min(cur, target) end
+    out[#out + 1] = { id = a.id, name = Tr[a.name], desc = Tr[a.desc], unlocked = p.ach[a.id] ~= nil, at = p.ach[a.id],
+      cur = cur, target = target }
   end
   return out
 end
@@ -890,6 +912,70 @@ end
 ------------------------------------------------------------------------------
 -- API complète pour la fenêtre Progression (Phase 2)
 ------------------------------------------------------------------------------
+-- Dernier succès débloqué (fenêtre Progression : bandeau du bas).
+function P.LastAchievement()
+  local best
+  for _, a in ipairs(P.Achievements()) do
+    if a.unlocked and (not best or (N(a.at) or 0) > (N(best.at) or 0)) then best = a end
+  end
+  return best
+end
+function P.UnlockedCount()
+  local n = 0
+  for _, a in ipairs(P.Achievements()) do if a.unlocked then n = n + 1 end end
+  return n, #P.ACHIEVEMENTS
+end
+-- Tous les coins (4 métiers de récolte), triés par rythme (min/pt) le plus rapide.
+function P.AllSpots(limit)
+  local out = {}
+  for _, id in ipairs({ "herbalism", "mining", "skinning", "fishing" }) do
+    for _, z in ipairs(P.Spots(id)) do z.skill = id out[#out + 1] = z end
+  end
+  table.sort(out, function(a, b)
+    local ra = (a.avg and a.pts >= 3) and a.avg or math.huge
+    local rb = (b.avg and b.pts >= 3) and b.avg or math.huge
+    if ra ~= rb then return ra < rb end
+    if a.pts ~= b.pts then return a.pts > b.pts end
+    return tostring(a.zone) < tostring(b.zone)
+  end)
+  if limit and #out > limit then for i = #out, limit + 1, -1 do out[i] = nil end end
+  return out
+end
+function P.BestSpot() return P.AllSpots(1)[1] end
+-- Points d'XP d'une journée (3.6.0 phase 2 ; 0 avant).
+function P.DayXP(day)
+  local _, c = P.C()
+  local h = c.history[day or P.Today()]
+  return type(h) == "table" and (N(h.xp) or 0) or 0
+end
+-- Points de la session découpés en tranches (graphique « Session »).
+function P.SessionBuckets(n)
+  n = N(n) or 8
+  local s = P.Session()
+  local curve = s.curve or {}
+  local now = Wall()
+  local elapsed = math.max(60, now - (N(s.start) or now))
+  local step = elapsed / n
+  local out = {}
+  for i = 1, n do out[i] = { t0 = (i - 1) * step, t1 = i * step, pts = 0, level = 0, combat = 0, prof = 0, xp = 0 } end
+  local pv = { total = 0, lv = 0, cb = 0, pf = 0, xp = 0 }
+  local pts = {}
+  for _, e in ipairs(curve) do pts[#pts + 1] = e end
+  local sc = s.cat or {}
+  pts[#pts + 1] = { t = elapsed, total = s.pts or 0, lv = N(sc.level) or 0, cb = N(sc.combat) or 0, pf = N(sc.prof) or 0, xp = s.xp or 0 }
+  for _, e in ipairs(pts) do
+    local i = math.max(1, math.min(n, math.floor((N(e.t) or 0) / step) + 1))
+    local b = out[i]
+    local d = function(k, pk) local v = (N(e[k]) or 0) - (N(pv[pk or k]) or 0) return v > 0 and v or 0 end
+    b.pts = b.pts + d("total")
+    b.level = b.level + d("lv")
+    b.combat = b.combat + d("cb")
+    b.prof = b.prof + d("pf")
+    b.xp = b.xp + d("xp")
+    pv = { total = N(e.total) or pv.total, lv = N(e.lv) or pv.lv, cb = N(e.cb) or pv.cb, pf = N(e.pf) or pv.pf, xp = N(e.xp) or pv.xp }
+  end
+  return out, step
+end
 function P.Records()
   local p = P.C()
   local R = p.records
@@ -920,6 +1006,7 @@ end
 function P.Tick()
   pcall(P.AccountTime)
   pcall(P.Sample)
+  P.Notify("tick")
 end
 function P.TickStep(_, elapsed)
   P._tickAcc = (P._tickAcc or 0) + (N(elapsed) or 0)
