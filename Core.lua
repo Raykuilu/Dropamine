@@ -2863,7 +2863,9 @@ do
       if S.Refresh then pcall(S.Refresh, "test") end
       if S.StartDriver then pcall(S.StartDriver) end
       if S.Tick then pcall(S.Tick, 0.05) end
+      if tt and tt.Hide then pcall(tt.Hide, tt) end
       S._suppressTip = nil
+      if tt and tt.Hide then pcall(tt.Hide, tt) end
     end
   end
 

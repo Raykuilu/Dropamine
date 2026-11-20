@@ -901,21 +901,23 @@ do
       return hit
     end
     if type(hit.ClearAllPoints) == "function" then pcall(hit.ClearAllPoints, hit) end
-    local anchor = t.slotBorder or t.icon or t
-    if type(hit.SetAllPoints) == "function" then pcall(hit.SetAllPoints, hit, anchor) end
-    if type(hit.SetPoint) == "function" then pcall(hit.SetPoint, hit, "CENTER", anchor, "CENTER", 0, 0) end
+    -- Uniquement sur l'icône : jamais la case entière (ça recouvre le compteur
+    -- et déclenche l'infobulle dès que la souris est sur la case voisine).
+    local anchor = t.icon or t.iconSlot or t
+    if type(hit.SetPoint) == "function" and anchor then
+      pcall(hit.SetPoint, hit, "CENTER", anchor, "CENTER", 0, 0)
+    end
     local w, ht = IconWH(t)
-    if t.slotBorder and type(t.slotBorder.GetWidth) == "function" then
-      w = N(t.slotBorder:GetWidth()) or (w * 1.6)
-      ht = N(t.slotBorder:GetHeight()) or w
-    else
-      w, ht = w * 1.6, ht * 1.6
+    if ns.Slot and ns.Slot.IconInnerSize then
+      local iw, ih = ns.Slot.IconInnerSize(t)
+      if iw and ih then w, ht = iw, ih end
     end
     if type(hit.SetSize) == "function" then pcall(hit.SetSize, hit, math.max(8, w), math.max(8, ht)) end
     if type(hit.SetFrameLevel) == "function" and type(t.GetFrameLevel) == "function" then
       pcall(hit.SetFrameLevel, hit, (t:GetFrameLevel() or 1) + 6)
     end
-    if type(hit.EnableMouse) == "function" then pcall(hit.EnableMouse, hit, true) end
+    local mouse = not (slot and slot._suppressTip)
+    if type(hit.EnableMouse) == "function" then pcall(hit.EnableMouse, hit, mouse and true or false) end
     if type(hit.Show) == "function" then pcall(hit.Show, hit) end
     return hit
   end

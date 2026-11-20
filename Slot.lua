@@ -1246,89 +1246,16 @@ end
 function S.ApplyGridFill(t)
   t = t or S.FlaskTile()
   if not t then return end
-  -- En combat le liquide rouge/bleu prend le relais.
-  local fill = S.fill or {}
-  local combatP = math.max(0, math.min(1, (N(fill.p) or 0) * (N(fill.drain) or 1)))
-  if combatP > 0.01 and S.CombatLiquidOn and S.CombatLiquidOn() then
-    if t._gFill then
-      if S.HideFlaskOverlay then S.HideFlaskOverlay(t._gFill) elseif t._gFill.Hide then t._gFill:Hide() end
-    end
-    return
-  end
-  local gf = S.EnsureGridFill(t)
-  if not gf then return end
-  local clip, content, w, h = S.PlaceIconClip(t)
-  w, h = w or 16, h or 16
-  if gf.SetParent and content and gf._clipParent ~= content then pcall(gf.SetParent, gf, content) end
-  if S.SetSizeIf(gf, w, h) or gf._clipParent ~= (content or clip) then
-    if gf.ClearAllPoints then pcall(gf.ClearAllPoints, gf) end
-    if gf.SetPoint then pcall(gf.SetPoint, gf, "BOTTOMLEFT", content or clip, "BOTTOMLEFT", 0, 0) end
-    gf._clipParent = content or clip
-  end
-  local out, p, grey, drain = S.FillRatios(t)
-  local track = 0
-  for i = 1, 3 do track = track + (out[i] or 0) end
-  -- Si TransformWidths a renvoyé les largeurs déjà en px, on se cale sur la somme.
-  local last = ns.Wide and ns.Wide.last
-  local denom = (last and last.track and last.track > 0 and last.track) or 100
-  local frac = math.max(0, math.min(1, (track / denom) * (N(drain) or 1)))
-  local inset = math.max(1, w * 0.18)
-  local baseY = math.max(0, h * 0.10)
-  local bodyH = math.max(1, (h * 0.72) * math.max(frac, 0.02))
-  if S.Active() == "rested" then
-    bodyH = bodyH + 0.03 * h * math.sin((S._phase or 0) * 2 * math.pi)
-  end
-  bodyH = math.max(1, math.min(h * 0.82, bodyH))
-  if baseY + bodyH > h then bodyH = math.max(1, h - baseY) end
-  local colors = (ns.Wide and ns.Wide.SEG_COLORS) or {
-    { 0.616, 0.278, 0.227, 1 }, { 0.329, 0.408, 0.604, 1 }, { 0.310, 0.498, 0.243, 1 }
-  }
-  local GREY = S.GREY or { 0.42, 0.42, 0.40 }
-  local layers = { gf.red, gf.blue, gf.green }
-  local y = baseY
-  local sum = math.max(0.0001, track)
-  for i = 1, 3 do
-    local tex = layers[i]
-    local share = (out[i] or 0) / sum
-    local hh = bodyH * share
-    local c = colors[i] or { 1, 1, 1, 1 }
-    local r = (c[1] or 1) + (GREY[1] - (c[1] or 1)) * (grey or 0)
-    local g = (c[2] or 1) + (GREY[2] - (c[2] or 1)) * (grey or 0)
-    local b = (c[3] or 1) + (GREY[3] - (c[3] or 1)) * (grey or 0)
-    local a = (c[4] or 1) * 0.82
-    if not tex or hh < 0.5 then
-      if tex and tex.Hide then tex:Hide() end
-    else
-      local tw = math.max(1, w - inset * 2)
-      S.PlaceClippedTex(tex, gf, tw, hh, inset, y)
-      if tex.SetTexture then pcall(tex.SetTexture, tex, "Interface\\Buttons\\WHITE8X8") end
-      if tex.SetAlpha then pcall(tex.SetAlpha, tex, 1) end
-      if tex.SetVertexColor then pcall(tex.SetVertexColor, tex, r, g, b, a) end
-      if tex.Show then tex:Show() end
-      y = y + hh
-    end
-  end
-  if gf.wave then
-    local wy = math.max(0, y - math.max(1, h * 0.08))
-    local wh = math.max(1, h * 0.10)
-    if wy + wh > h then wy = math.max(0, h - wh) end
-    S.PlaceClippedTex(gf.wave, gf, math.max(1, w - inset * 2), wh, inset, wy)
-    S.TickFlaskWave(0)
-    if gf.wave.Show then gf.wave:Show() end
-  end
-  local mask = S.IconMaskFor(t)
-  if mask then
-    local function maskTex(tex)
-      if tex and tex.AddMaskTexture then pcall(tex.AddMaskTexture, tex, mask) end
-    end
-    maskTex(gf.red) maskTex(gf.blue) maskTex(gf.green) maskTex(gf.wave)
+  -- En combat le liquide rouge/bleu prend le relais ; au repos on ne peint
+  -- plus de barres bleu/vert/rouge ni de vague par-dessus l'icône officielle.
+  if t._gFill then
+    if S.HideFlaskOverlay then S.HideFlaskOverlay(t._gFill) elseif t._gFill.Hide then t._gFill:Hide() end
   end
   if not S.ReplacesFlaskIcon(t) then
     if t.icon and t.icon.Show then t.icon:Show() end
   end
-  if gf.SetAlpha then pcall(gf.SetAlpha, gf, 1) end
-  if gf.Show then gf:Show() end
 end
+
 
 function S.ApplyFlaskFill(t)
   local Wd = ns.Wide
@@ -1421,31 +1348,45 @@ function S.ApplySheet(t, id)
   if h.SetTexture then pcall(h.SetTexture, h, sh.tex) end
   local fi = S._frame[id] or 1
   if h.SetTexCoord then pcall(h.SetTexCoord, h, TexCoord(fi, sh.frames)) end
-  -- Ancrer sur le puits (iconSlot / case), pas sur t.icon : cacher l'icône
-  -- ensuite ne doit pas emporter le glyphe d'état.
-  local iw, ih, anchor = 16, 16, (t.iconSlot or t.icon or t)
-  if S.IconInnerSize then
-    local w2, h2, a2 = S.IconInnerSize(t)
-    iw, ih, anchor = w2 or iw, h2 or ih, a2 or anchor
-  elseif t.icon and t.icon.GetWidth then
-    iw = N(t.icon:GetWidth()) or iw
-    ih = N(t.icon:GetHeight()) or iw
+  -- Toujours dans le clip de l'icône : jamais sur la case (ça recouvrirait le compteur).
+  local clip, content, iw, ih = S.PlaceIconClip(t)
+  iw, ih = iw or 16, ih or 16
+  local parent = content or clip
+  if h.SetParent and parent then pcall(h.SetParent, h, parent) end
+  local bar = t._wideOn and true or false
+  local sideW, sideH, x, y = iw, ih, 0, 0
+  -- Pêche : badge en coin (~1/3 en grille, petit en barre), fiole officielle conservée.
+  -- Les autres feuilles restent un glyphe dans la zone icône.
+  if id == "fishing" then
+    local frac = bar and 0.55 or (1 / 3)
+    local lo = bar and 5 or 8
+    local hi = bar and 8 or 14
+    local side = math.max(lo, math.min(hi, math.floor(math.min(iw, ih) * frac + 0.5)))
+    if side > iw then side = iw end
+    if side > ih then side = ih end
+    sideW, sideH, x, y = side, side, iw - side, ih - side
+    if t.icon and t.icon.Show then t.icon:Show() end
+  else
+    if t.icon and t.icon.Hide then t.icon:Hide() end
   end
-  if h.ClearAllPoints then pcall(h.ClearAllPoints, h) end
-  if h.SetSize then pcall(h.SetSize, h, math.max(8, iw), math.max(8, ih)) end
-  if h.SetPoint and anchor then pcall(h.SetPoint, h, "CENTER", anchor, "CENTER", 0, 0) end
-  if h.SetParent and t then pcall(h.SetParent, h, t) end
-  if id == "fishing" and (S._jolt or 0) > 0 and t.icon and h.ClearAllPoints and h.SetPoint then
+  if id == "fishing" and (S._jolt or 0) > 0 then
     local j = S._jolt
-    local ox = math.sin(j * 42) * 2.2 * j
-    local oy = math.cos(j * 31) * 2.2 * j
-    pcall(h.ClearAllPoints, h)
-    pcall(h.SetPoint, h, "TOPLEFT", t.icon, "TOPLEFT", ox, oy)
-    pcall(h.SetPoint, h, "BOTTOMRIGHT", t.icon, "BOTTOMRIGHT", ox, oy)
+    local ox = math.sin(j * 42) * 1.2 * j
+    local oy = math.cos(j * 31) * 1.2 * j
+    if x + ox < 0 then ox = -x end
+    if y + oy < 0 then oy = -y end
+    if x + sideW + ox > iw then ox = iw - x - sideW end
+    if y + sideH + oy > ih then oy = ih - y - sideH end
+    x, y = x + ox, y + oy
+  end
+  if S.PlaceClippedTex then
+    S.PlaceClippedTex(h, parent or t, sideW, sideH, x, y)
+  else
+    if h.ClearAllPoints then pcall(h.ClearAllPoints, h) end
+    if h.SetSize then pcall(h.SetSize, h, sideW, sideH) end
   end
   if h.SetAlpha then pcall(h.SetAlpha, h, 1) end
   if h.Show then h:Show() end
-  if t.icon and t.icon.Hide then t.icon:Hide() end
   return h
 end
 
@@ -1496,6 +1437,8 @@ end
 function S.ReplacesFlaskIcon(t)
   local act = S.Active and S.Active()
   if act == "sleepingbag" then return true end
+  -- Pêche : badge en coin, la fiole officielle reste.
+  if act == "fishing" then return false end
   if act and act ~= "drop" and S.SHEETS and S.SHEETS[act] then return true end
   return false
 end
@@ -1561,6 +1504,10 @@ function S.EnsureIconClip(t)
   S.SetSizeIf(clip, 1, 1)
   if clip.EnableMouse then pcall(clip.EnableMouse, clip, false) end
   if clip.SetClipsChildren then pcall(clip.SetClipsChildren, clip, true) end
+  if clip.SetHorizontalScroll then pcall(clip.SetHorizontalScroll, clip, 0) end
+  if clip.SetVerticalScroll then pcall(clip.SetVerticalScroll, clip, 0) end
+  -- Pas de barre / flèche de défilement (triangle parasite au-dessus de la case).
+  if clip.ScrollBar and clip.ScrollBar.Hide then pcall(clip.ScrollBar.Hide, clip.ScrollBar) end
   local okC, content = pcall(CreateFrame, "Frame", nil, clip)
   if okC and content then
     S.SetSizeIf(content, 1, 1)
@@ -1659,7 +1606,11 @@ function S.EnsureSlotZ(t)
   local parent = t.icon or t.slotBorder or t
   local ok, clip = pcall(CreateFrame, "ScrollFrame", nil, t)
   if not (ok and clip) then return nil end
+  S.SetSizeIf(clip, 1, 1)
   if clip.EnableMouse then pcall(clip.EnableMouse, clip, false) end
+  if clip.SetHorizontalScroll then pcall(clip.SetHorizontalScroll, clip, 0) end
+  if clip.SetVerticalScroll then pcall(clip.SetVerticalScroll, clip, 0) end
+  if clip.ScrollBar and clip.ScrollBar.Hide then pcall(clip.ScrollBar.Hide, clip.ScrollBar) end
   local okC, content = pcall(CreateFrame, "Frame", nil, clip)
   if not (okC and content) then return nil end
   if clip.SetScrollChild then pcall(clip.SetScrollChild, clip, content) end
@@ -2509,37 +2460,24 @@ function S.PlaceEatIcons(t, e, kind, parent, w, H, bar)
   w, H = w or 16, H or 16
   kind = kind or "food"
   local foodPath, drinkPath = S.EAT_ICON.food, S.EAT_ICON.drink
-  if bar then
-    local side = math.max(5, math.min(8, math.floor(math.min(w, H) * 0.55 + 0.5)))
-    if side > w then side = w end
-    if side > H then side = H end
-    if kind == "drink" then
-      PlaceGameIcon(e.drink, drinkPath, parent, side, w - side, H - side)
-      if e.food then HideTex(e.food) end
-    elseif kind == "both" then
-      if side * 2 + 1 > w then side = math.max(4, math.floor((w - 1) / 2)) end
-      PlaceGameIcon(e.food, foodPath, parent, side, w - side, H - side)
-      PlaceGameIcon(e.drink, drinkPath, parent, side, 0, H - side)
-    else
-      PlaceGameIcon(e.food, foodPath, parent, side, w - side, H - side)
-      if e.drink then HideTex(e.drink) end
-    end
+  -- Badge en coin (haut-droit), ~1/3 de l'icône en grille ; en barre on garde
+  -- la petite icône déjà en place. Jamais de remplacement de la fiole.
+  local frac = bar and 0.55 or (1 / 3)
+  local lo = bar and 5 or 8
+  local hi = bar and 8 or 14
+  local side = math.max(lo, math.min(hi, math.floor(math.min(w, H) * frac + 0.5)))
+  if side > w then side = w end
+  if side > H then side = H end
+  if kind == "drink" then
+    PlaceGameIcon(e.drink, drinkPath, parent, side, w - side, H - side)
+    if e.food then HideTex(e.food) end
+  elseif kind == "both" then
+    if side * 2 + 1 > w then side = math.max(bar and 4 or 6, math.floor((w - 1) / 2)) end
+    PlaceGameIcon(e.food, foodPath, parent, side, w - side, H - side)
+    PlaceGameIcon(e.drink, drinkPath, parent, side, 0, H - side)
   else
-    local side = math.min(w, H)
-    local x, y = (w - side) * 0.5, (H - side) * 0.5
-    if kind == "drink" then
-      PlaceGameIcon(e.drink, drinkPath, parent, side, x, y)
-      if e.food then HideTex(e.food) end
-    elseif kind == "both" then
-      PlaceGameIcon(e.food, foodPath, parent, side, x, y)
-      local badge = math.max(8, math.floor(side * 0.42 + 0.5))
-      if badge > w then badge = w end
-      if badge > H then badge = H end
-      PlaceGameIcon(e.drink, drinkPath, parent, badge, w - badge, 0)
-    else
-      PlaceGameIcon(e.food, foodPath, parent, side, x, y)
-      if e.drink then HideTex(e.drink) end
-    end
+    PlaceGameIcon(e.food, foodPath, parent, side, w - side, H - side)
+    if e.drink then HideTex(e.drink) end
   end
 end
 
@@ -2589,11 +2527,9 @@ function S.ApplyRegenWave(dt)
   local bar = t._wideOn and true or false
   S.EnsureEatIcons(e, a, w, H)
   S.PlaceEatIcons(t, e, kind, a, w, H, bar)
-  if bar then
-    if t.icon and t.icon.Show then t.icon:Show() end
-  else
-    -- Grille : l'icône de jeu occupe la zone de la fiole ; le compteur reste à côté.
-    if t.icon and t.icon.Hide then t.icon:Hide() end
+  -- La fiole officielle n'est jamais remplacée (badge en coin seulement).
+  if t.icon and t.icon.Show then t.icon:Show() end
+  if not bar then
     if e.wave then HideTex(e.wave) end
     if e.wave2 then HideTex(e.wave2) end
     S._eatOn = true
