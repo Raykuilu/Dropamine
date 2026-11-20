@@ -4222,7 +4222,8 @@ do
       ok(tint and expect, "Tester armes : teinte de toast bleue")
     end
   end
-  -- +1, voile et étincelle sur la case Défense (même si le vol d'éclat n'est pas lancé)
+  -- +1, voile et étincelle sur la case Défense (le voyageur est le +1 ; ici on vérifie Announce).
+  if defTile then defTile._gainPopAt = nil end
   if C and C.Announce then
     C.Announce({ kind = "skill", skillId = "defense", skillName = "Défense" },
       { { key = C.HoldKey and C.HoldKey(defTile.data) or "defense", gain = 1 }, { key = "total", gain = 1 } })
@@ -4556,6 +4557,9 @@ do
     if f.fs and f.fs.GetText then
       ok(f.fs:GetText() == "+1", "61 : le voyageur affiche +1")
     end
+    local iconHidden = (not f.icon) or (f.icon.shown == false) or ((f.icon.alpha or 0) < 0.05)
+    local glowHidden = (not f.glow) or (f.glow.shown == false) or ((f.glow.alpha or 0) < 0.05)
+    ok(iconHidden and glowHidden, "62 : pas d'image / icône qui voyage, seulement le +1")
     local x0, y0 = f._x, f._y
     if C.FlyStep then C.FlyStep(f, (C.FLY or 0.55) * 0.5) end
     ok(f._x and x0 and (f._y ~= y0 or f._x ~= x0),

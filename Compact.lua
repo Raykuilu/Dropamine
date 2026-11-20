@@ -78,7 +78,7 @@ end
 -- +1 coloré sur la case, puis une étincelle de même couleur quitte la case,
 -- rejoint la barre de total (arc court), la parcourt jusqu'au bout rempli et flash.
 -- La fiole elle-même n'est pas animée.
-function C.Announce(opts, targets)
+function C.Announce(opts, targets, skipGain)
   opts = opts or {}
   local color = C.GainColor(opts)
   local origin, wantSpark
@@ -93,7 +93,7 @@ function C.Announce(opts, targets)
         if not (tile._gainPopAt and now > 0 and (now - tile._gainPopAt) < 0.25) then
           tile._gainPopAt = now
           if C.Pulse then C.Pulse(tile, color) end
-          if tg.gain and tg.gain > 0 and C.Gain then
+          if not skipGain and tg.gain and tg.gain > 0 and C.Gain then
             C.Gain(tile, "+" .. tostring(math.floor(tg.gain + 0.5)), color)
           end
         end
@@ -671,6 +671,7 @@ function C.FinishFly(f, e)
   if f then
     if f.SetScript then pcall(f.SetScript, f, "OnUpdate", nil) end
     if f.ag and f.ag.Stop then pcall(f.ag.Stop, f.ag) end
+    if C.StripFlyerArt then C.StripFlyerArt(f) end
     if f.Hide then f:Hide() end
     f._busy, f._entry, f._t = nil, nil, nil
   end
@@ -750,25 +751,34 @@ local function ScaleAnim(a, sx)
   elseif a.SetScale then pcall(a.SetScale, a, sx, sx) end
 end
 
+-- Range icône / lueur héritées : le voyageur n'est plus qu'un « +1 » coloré.
+function C.StripFlyerArt(f)
+  if not f then return end
+  for _, k in ipairs({ "icon", "glow" }) do
+    local r = f[k]
+    if r then
+      if r.Hide then r:Hide() end
+      if r.SetAlpha then pcall(r.SetAlpha, r, 0) end
+      if r.SetTexture then pcall(r.SetTexture, r, "") end
+    end
+  end
+  if f.ag and f.ag.Stop then pcall(f.ag.Stop, f.ag) end
+end
+
 function C.Flyer()
   C.pool = C.pool or {}
   for _, f in ipairs(C.pool) do
-    if not f._busy and f._osrsFlyer then return f end
+    if not f._busy and f._osrsFlyer then
+      if C.StripFlyerArt then C.StripFlyerArt(f) end
+      return f
+    end
   end
   local f = CreateFrame("Frame", nil, UIParent)
   f._osrsOwn, f._osrsFlyer = true, true
   if f.EnableMouse then f:EnableMouse(false) end
-  pcall(f.SetFrameStrata, f, "DIALOG")
+  pcall(f.SetFrameStrata, f, "TOOLTIP")
   f:SetSize(C.FLY_SIZE, C.FLY_SIZE)
-  f.glow = f:CreateTexture(nil, "BACKGROUND")
-  f.glow:SetPoint("TOPLEFT", f, "TOPLEFT", -4, 4)
-  f.glow:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 4, -4)
-  pcall(f.glow.SetTexture, f.glow, WHITE8)
-  if f.glow.SetBlendMode then pcall(f.glow.SetBlendMode, f.glow, "ADD") end
-  if f.glow.SetVertexColor then pcall(f.glow.SetVertexColor, f.glow, TOAST_YELLOW[1], TOAST_YELLOW[2], TOAST_YELLOW[3], 0.45) end
-  f.icon = f:CreateTexture(nil, "ARTWORK")
-  f.icon:SetAllPoints(f)
-  if f.icon.SetTexCoord then pcall(f.icon.SetTexCoord, f.icon, 0.07, 0.93, 0.07, 0.93) end
+  -- Pas de texture d'icône ni de lueur : seulement le « +1 » coloré.
   local okFs, fs = pcall(f.CreateFontString, f, nil, "OVERLAY", "NumberFontNormal")
   if not (okFs and fs) and f.CreateFontString then fs = f:CreateFontString(nil, "OVERLAY") end
   if fs then
@@ -778,24 +788,10 @@ function C.Flyer()
     if fs.SetWordWrap then pcall(fs.SetWordWrap, fs, false) end
     f.fs = fs
   end
-  if f.CreateAnimationGroup then
-    local ok, ag = pcall(f.CreateAnimationGroup, f)
-    if ok and ag then
-      f.ag = ag
-      f.tr = NewAnim(ag, "Translation")
-      if f.tr then pcall(f.tr.SetDuration, f.tr, C.FLY) if f.tr.SetSmoothing then pcall(f.tr.SetSmoothing, f.tr, "IN") end end
-      f.sc = NewAnim(ag, "Scale")
-      if f.sc then pcall(f.sc.SetDuration, f.sc, C.FLY) ScaleAnim(f.sc, 0.6) end
-      f.al = NewAnim(ag, "Alpha")
-      if f.al then pcall(f.al.SetDuration, f.al, C.FLY * 0.4) if f.al.SetStartDelay then pcall(f.al.SetStartDelay, f.al, C.FLY * 0.6) end AlphaAnim(f.al, 1, 0.2) end
-      ag:SetScript("OnFinished", function() if C.FinishFly then C.FinishFly(f, f._entry) elseif f._entry then C.Land(f._entry) end end)
-    end
-  end
   f:Hide()
   C.pool[#C.pool + 1] = f
   return f
 end
-
 -- Lancement : seulement si le panneau est ouvert et la case visible ; sinon
 -- on libère en silence (la case affiche la vraie valeur, sans animation).
 function C.Launch(e)
@@ -838,16 +834,12 @@ function C.Launch(e)
   if f.SetSize then f:SetSize(sz, sz) end
   f._busy, f._entry, f._t = true, e, 0
   local gain = (mainTg and mainTg.gain and mainTg.gain > 0) and math.floor(mainTg.gain + 0.5) or 1
+  if C.StripFlyerArt then C.StripFlyerArt(f) end
   if f.fs and f.fs.SetText then
     f.fs:SetText("+" .. tostring(gain))
     local col = (C.GainColor and C.GainColor(e.opts or { kind = e.kind })) or (C.SharedGainColor and C.SharedGainColor())
     if col and f.fs.SetTextColor then pcall(f.fs.SetTextColor, f.fs, col[1], col[2], col[3]) end
     if f.fs.Show then f.fs:Show() end
-  end
-  if f.icon then
-    -- Le voyageur est le +1 ; l'icône du toast sert de point de départ, pas de texture emportée.
-    if f.icon.SetTexture then pcall(f.icon.SetTexture, f.icon, WHITE8) end
-    if f.icon.SetAlpha then pcall(f.icon.SetAlpha, f.icon, 0) end
   end
   f:ClearAllPoints()
   f:SetPoint("CENTER", host, "BOTTOMLEFT", sx, sy)
@@ -884,11 +876,12 @@ function C.Land(e, quiet)
   if e.landed then return end
   e.landed = true
   if not e.preview then C.Release(e) end
-  if quiet or e.preview or not W.IsShown() then return end
+  if quiet or not W.IsShown() then return end
   C.landed = C.landed + 1
   if P.Wake then P.Wake("éclat") end
+  -- Le « +1 » coloré a déjà voyagé depuis l'icône du toast ; à l'arrivée, seulement le voile.
   if C.Announce then
-    C.Announce(e.opts or { kind = e.kind }, e.targets)
+    C.Announce(e.opts or { kind = e.kind }, e.targets, true)
   else
     for _, tg in ipairs(e.targets) do
       if tg.key ~= "total" then
@@ -898,7 +891,6 @@ function C.Land(e, quiet)
           if not (tile._gainPopAt and now > 0 and (now - tile._gainPopAt) < 0.25) then
             tile._gainPopAt = now
             C.Pulse(tile)
-            if tg.gain and tg.gain > 0 then C.Gain(tile, "+" .. tostring(math.floor(tg.gain + 0.5))) end
           end
         end
       end
