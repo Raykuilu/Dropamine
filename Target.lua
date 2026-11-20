@@ -476,8 +476,12 @@ function T.Compute(tg)
       local sk = mat and T.MATERIAL_SKILL[mat]
       if sk and not seen[sk] and (Rank(sk) or 0) > 0 then
         seen[sk] = true
-        local nm = ns.Craft and ns.Craft.ItemName and ns.Craft.ItemName(id) or (Tr["objet "] .. id)
-        mark("id:" .. sk, "indirect", Tr["lien : "] .. Tr[T.MATERIAL_FR[mat]] .. " (" .. tostring(nm) .. Tr["), matière de ce métier"])
+        local nm = (ns.ItemDisplayName and ns.ItemDisplayName(id)) or (ns.Craft and ns.Craft.ItemName and ns.Craft.ItemName(id)) or nil
+        if nm and ns.BareItemIdLabel and ns.BareItemIdLabel(nm) then nm = nil end
+        local matLabel = Tr["lien : "] .. Tr[T.MATERIAL_FR[mat]]
+        if nm then matLabel = matLabel .. " (" .. tostring(nm) .. Tr["), matière de ce métier"]
+        else matLabel = matLabel .. Tr[", matière de ce métier"] end
+        mark("id:" .. sk, "indirect", matLabel)
       end
     end
   end
@@ -608,6 +612,7 @@ function T.Clear()
 end
 function T.Refresh(why)
   T.stats.events = T.stats.events + 1
+  if ns.PausedForFlight and ns.PausedForFlight() then T.Clear() return nil end
   if not T.Enabled() then T.Clear() return nil end
   local tg = T.ReadTarget()
   if not tg then T.Clear() return nil end

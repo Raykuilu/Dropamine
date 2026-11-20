@@ -58,6 +58,13 @@ Options.SECTIONS = {
       help = "Empêche de déplacer le panneau et le bouton par erreur.",
       get = function() return DBui().locked and true or false end,
       set = function(v) DBui().locked = v and true or nil if LayoutM() and LayoutM().PlaceGrip then pcall(LayoutM().PlaceGrip) end end },
+    { type = "check", key = "pauseFlying", label = "Pause pendant le vol", default = true, cmd = "/drop vol on|off",
+      help = "Met le suivi et les toasts en pause sur un trajet aérien. Rien n'est mis en file : à l'atterrissage, pas de rattrapage.",
+      get = function() return not (DBui().pauseFlying == false) end,
+      set = function(v)
+        ns.SetOpt("pauseFlying", v and true or false)
+        if ns.Flight and ns.Flight.Sync then pcall(ns.Flight.Sync, "option") end
+      end },
   } },
   { id = "notif", title = "Notifications et toasts", desc = "Toasts de gain : position, format et durée.", items = {
     { type = "check", key = "dropsEnabled", label = "Afficher les notifications", default = true, cmd = "/drop drops on|off",
@@ -160,7 +167,7 @@ Options.EXTRA_HELP = { historique = "Gains des 7 derniers jours dans l'infobulle
 
 -- 3.5.22 : ordre d'affichage dans chaque famille (les extras s'y insèrent).
 Options.ITEM_ORDER = {
-  display = { "theme", "lang", "charProfile", "cols", "scale", "opacity", "bgAlpha", "fadeDelay", "colorMode", "showTotal", "nextBar", "smartSort", "seasonal", "locked" },
+  display = { "theme", "lang", "charProfile", "cols", "scale", "opacity", "bgAlpha", "fadeDelay", "colorMode", "showTotal", "nextBar", "smartSort", "seasonal", "locked", "pauseFlying" },
   notif = { "dropsEnabled", "notifMode", "dropDir", "dropStyle", "xpDrops", "skillDrops", "flyAnim", "paliers", "objectifs", "levelUpAnim", "dropDuration", "dropBgAlpha", "scannerToast", "combo", "maxFx", "records", "prepalier", "jalons", "recapLogout", "quietMode", "quietToasts" },
   sounds = { "sounds", "quietSounds", "soundSkill", "soundPalier", "soundMax", "soundDaily", "soundRecord", "levelUpSound", "scannerSound" },
   progress = { "sessionGoal", "goalToast", "achievements", "weeklyRecap" },

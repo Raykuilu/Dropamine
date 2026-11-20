@@ -9,7 +9,7 @@ end
 _G.Dropamine = ns
 ns.ADDON = ADDON
 local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
-ns.VERSION = "3.6.2"
+ns.VERSION = "3.6.3"
 
 
 -- v2.5.0 : valeurs « secrètes » de Forever (UnitStat, UnitXP… en combat).
@@ -1895,6 +1895,291 @@ frame:SetScript("OnEvent", function(_, event, ...)
   end
 end)
 
+-- 3.6.3 : nom d'objet sans jamais afficher « objet 159 » / « item 159 ».
+-- Charge via Item:CreateFromItemID / ContinueOnItemLoad si le client l'a,
+-- sinon GetItemInfo + GET_ITEM_INFO_RECEIVED (Forever / classique).
+ns._itemNames = ns._itemNames or {}
+ns._itemWait = ns._itemWait or {}
+
+local function BareItemIdLabel(s)
+  if type(s) ~= "string" then return true end
+  s = s:match("^%s*(.-)%s*$") or s
+  if s == "" then return true end
+  if s:find("^objet%s+%d+$") or s:find("^item%s+%d+$") then return true end
+  local pref = Tr["objet "]
+  if type(pref) == "string" and pref ~= "" then
+    local esc = pref:gsub("(%W)", "%%%1")
+    if s:find("^" .. esc .. "%d+$") then return true end
+  end
+  return false
+end
+ns.BareItemIdLabel = BareItemIdLabel
+
+function ns.ItemDisplayName(id, fallback)
+  id = ns.N(id) or tonumber(id)
+  if not id then
+    if fallback and not BareItemIdLabel(fallback) then return fallback end
+    return nil
+  end
+  local cached = ns._itemNames[id]
+  if type(cached) == "string" and cached ~= "" then return cached end
+  local S = ns.Scanner
+  local it = S and S.StaticItem and S.StaticItem(id)
+  if type(it) == "table" and (it.fr or it.en) then
+    local nm = (ns.GameName and ns.GameName(it.en, it.fr)) or it.fr or it.en
+    if type(nm) == "string" and nm ~= "" then
+      ns._itemNames[id] = nm
+      return nm
+    end
+  end
+  local gi = _G.GetItemInfo or (type(_G.C_Item) == "table" and _G.C_Item.GetItemInfo)
+  if type(gi) == "function" then
+    local ok, nm = pcall(gi, id)
+    if ok and type(nm) == "string" and nm ~= "" then
+      ns._itemNames[id] = nm
+      return nm
+    end
+  end
+  if fallback and not BareItemIdLabel(fallback) then return fallback end
+  return nil
+end
+
+local function FireItemName(id, name)
+  if type(name) == "string" and name ~= "" then ns._itemNames[id] = name end
+  name = ns._itemNames[id]
+  local wait = ns._itemWait[id]
+  ns._itemWait[id] = nil
+  if not wait or not name then return name end
+  for i = 1, #wait do pcall(wait[i], name, id) end
+  return name
+end
+
+local function HookItemInfoEvent()
+  if ns._itemInfoHooked or not ns.On then return end
+  ns._itemInfoHooked = true
+  ns.On("GET_ITEM_INFO_RECEIVED", function(_, itemID, success)
+    itemID = ns.N(itemID) or tonumber(itemID)
+    if not itemID or success == false then return end
+    local nm = ns.ItemDisplayName(itemID)
+    if nm then FireItemName(itemID, nm) end
+  end)
+end
+
+local function RequestItemData(id)
+  local Item = _G.Item
+  if type(Item) == "table" and type(Item.CreateFromItemID) == "function" then
+    local ok, obj = pcall(Item.CreateFromItemID, id)
+    if not ok then ok, obj = pcall(function() return Item:CreateFromItemID(id) end) end
+    if ok and type(obj) == "table" and type(obj.ContinueOnItemLoad) == "function" then
+      pcall(obj.ContinueOnItemLoad, obj, function()
+        local nm = ns.ItemDisplayName(id)
+        if nm then FireItemName(id, nm) end
+      end)
+    end
+  end
+  local CI = _G.C_Item
+  if type(CI) == "table" and type(CI.RequestLoadItemDataByID) == "function" then
+    pcall(CI.RequestLoadItemDataByID, id)
+  end
+  local gi = _G.GetItemInfo
+  if type(gi) == "function" then
+    local ok, nm = pcall(gi, id)
+    if ok and type(nm) == "string" and nm ~= "" then return nm end
+  end
+  return nil
+end
+
+function ns.WhenItemName(id, cb)
+  id = ns.N(id) or tonumber(id)
+  if not id then return nil end
+  HookItemInfoEvent()
+  local nm = ns.ItemDisplayName(id)
+  if nm then
+    if type(cb) == "function" then pcall(cb, nm, id) end
+    return nm
+  end
+  if type(cb) == "function" then
+    local q = ns._itemWait[id]
+    if not q then q = {} ns._itemWait[id] = q end
+    q[#q + 1] = cb
+  end
+  return RequestItemData(id) and FireItemName(id, ns.ItemDisplayName(id)) or nil
+end
+
+-- 3.6.3 : pause du suivi et des toasts sur un trajet aérien.
+local F = {}
+ns.Flight = F
+F.POLL = 0.5
+
+function F.OptionOn()
+  return not (ns.Opt and ns.Opt("pauseFlying") == false)
+end
+
+function F.OnTaxi()
+  if type(_G.UnitOnTaxi) == "function" then
+    local ok, v = pcall(_G.UnitOnTaxi, "player")
+    if ok and v then return true end
+  end
+  return false
+end
+
+function F.Paused()
+  return F.OptionOn() and F.OnTaxi() and true or false
+end
+function ns.PausedForFlight()
+  return F.Paused()
+end
+
+local function wipeList(t)
+  if type(t) ~= "table" then return end
+  for k in pairs(t) do t[k] = nil end
+end
+
+function F.HideActiveToasts()
+  local ui = ns.UI
+  if not (ui and ui.dropsActive) then return end
+  for i = 1, #ui.dropsActive do
+    local f = ui.dropsActive[i]
+    if f then
+      if f.Hide then pcall(f.Hide, f) end
+      if f.SetScript then pcall(f.SetScript, f, "OnUpdate", nil) end
+    end
+  end
+  ui.dropsActive = {}
+end
+
+function F.OnBegin()
+  F._silentLand = false
+  F.HideActiveToasts()
+  if ns.Scanner and ns.Scanner.HideAll then pcall(ns.Scanner.HideAll) end
+  if ns.Gather then
+    if ns.Gather.queue then
+      for i = #ns.Gather.queue, 1, -1 do ns.Gather.queue[i] = nil end
+    end
+    wipeList(ns.Gather.queued)
+    if ns.Gather.HideAll then pcall(ns.Gather.HideAll) end
+  end
+  if ns.PvP and ns.PvP.HideAll then pcall(ns.PvP.HideAll)
+  elseif ns.PvP and ns.PvP.Release then
+    -- certains modules n'ont que Release / active
+    local active = ns.PvP.active
+    if type(active) == "table" then
+      for unit in pairs(active) do pcall(ns.PvP.Release, unit) end
+    end
+  end
+  if ns.Target and ns.Target.Clear then pcall(ns.Target.Clear) end
+end
+
+function F.OnEnd()
+  -- Aucune file de toasts : premier balayage d'atterrissage sans toast.
+  F._silentLand = true
+  if ns.Scanner and ns.Scanner.RescanPlates then pcall(ns.Scanner.RescanPlates) end
+  if ns.Gather and ns.Gather.Rescan then pcall(ns.Gather.Rescan) end
+  if ns.PvP and ns.PvP.Rescan then pcall(ns.PvP.Rescan)
+  elseif ns.PvP and ns.PvP.Evaluate and type(_G.C_NamePlate) == "table" and type(_G.C_NamePlate.GetNamePlates) == "function" then
+    local ok, plates = pcall(_G.C_NamePlate.GetNamePlates)
+    if ok then
+      for _, p in ipairs(plates or {}) do
+        local unit = p.namePlateUnitToken or (p.UnitFrame and p.UnitFrame.unit)
+        if unit then pcall(ns.PvP.Evaluate, unit) end
+      end
+    end
+  end
+  if ns.Target and ns.Target.Refresh then pcall(ns.Target.Refresh, "atterrissage") end
+  F._silentLand = false
+end
+
+function F.SetTaxi(on, why)
+  on = on and true or false
+  -- premier appel (login) : pas de « atterrissage » fictif
+  if F._taxi == nil then
+    F._taxi = on
+    F._why = why
+    if on then F.OnBegin() end
+    return F._taxi
+  end
+  if F._taxi == on then return F._taxi end
+  F._taxi = on
+  F._why = why
+  if on then F.OnBegin() else F.OnEnd() end
+  return F._taxi
+end
+
+function F.Sync(why)
+  local taxi = F.OnTaxi()
+  if F.OptionOn() then
+    F.SetTaxi(taxi, why or "sync")
+  elseif F._taxi then
+    -- option coupée en vol : on reprend tout de suite, sans file
+    F.SetTaxi(false, why or "option")
+  end
+  F.WantPoll(F.OptionOn() and (taxi or F._taxi))
+  return F.Paused()
+end
+
+function F.WantPoll(on)
+  if on then
+    F._pollOn = true
+    if F._pollFrame and F._pollFrame.SetScript then
+      pcall(F._pollFrame.SetScript, F._pollFrame, "OnUpdate", F._onUpdate)
+    end
+  else
+    F._pollOn = false
+    if F._pollFrame and F._pollFrame.SetScript then
+      pcall(F._pollFrame.SetScript, F._pollFrame, "OnUpdate", nil)
+    end
+  end
+end
+
+function F.EnsurePoll()
+  if F._pollFrame or type(CreateFrame) ~= "function" then return F._pollFrame end
+  local f = CreateFrame("Frame")
+  F._elapsed = 0
+  function F._onUpdate(_, dt)
+    if not F._pollOn then return end
+    F._elapsed = (F._elapsed or 0) + (tonumber(dt) or 0)
+    if F._elapsed < F.POLL then return end
+    F._elapsed = 0
+    F.Sync("poll")
+  end
+  f:SetScript("OnUpdate", F._onUpdate)
+  F._pollFrame = f
+  return f
+end
+
+if ns.On then
+  for _, ev in ipairs({ "PLAYER_CONTROL_LOST", "PLAYER_CONTROL_GAINED", "PLAYER_ENTERING_WORLD", "PLAYER_LOGIN" }) do
+    ns.On(ev, function()
+      HookItemInfoEvent()
+      F.EnsurePoll()
+      F.Sync(ev)
+    end)
+  end
+end
+
+ns.SlashExt = ns.SlashExt or {}
+ns.SlashExt.vol = function(rest)
+  local cur = F.OptionOn()
+  local v = ns.ParseOnOff(rest, cur)
+  ns.SetOpt("pauseFlying", v and true or false)
+  F.Sync("slash")
+  ns.Print(Tr["pause pendant le vol : "] .. (v and Tr["activée."] or Tr["désactivée."]))
+end
+ns.CMD_ALIAS = ns.CMD_ALIAS or {}
+ns.CMD_ALIAS.flight = "vol"
+ns.CMD_ALIAS.fly = "vol"
+ns.HelpExt = ns.HelpExt or {}
+ns.HelpExt[#ns.HelpExt + 1] = "/drop vol on|off : pause du suivi et des toasts sur un trajet aérien"
+
+ns.DebugExt = ns.DebugExt or {}
+ns.DebugExt[#ns.DebugExt + 1] = function()
+  return {
+    string.format("— Pause en vol (3.6.3) — option %s ; taxi %s ; en pause %s ; dernier %s",
+      tostring(F.OptionOn()), tostring(F.OnTaxi()), tostring(F.Paused()), tostring(F._why or "—"))
+  }
+end
+
+
 local function requestRefresh()
   if ns.UI and ns.UI.RequestRefresh then ns.UI:RequestRefresh() end
 end
@@ -2302,7 +2587,7 @@ end
 ns.HELP_SHORT = {
   "|cffffd100Dropamine|r — /drop (ou /dropamine) ou le bouton de minicarte ouvre / ferme le panneau",
   "  Réglages : /drop options · /drop edit (déplacer / redimensionner) · /drop reset · /drop minimap",
-  "  Affichage : /drop theme flare|leger|classic · colonnes 1|2|3|5|10 · taille 50-200 · total on|off · verrou on|off",
+  "  Affichage : /drop theme flare|leger|classic · colonnes 1|2|3|5|10 · taille 50-200 · total on|off · verrou on|off · vol on|off",
   "  Métiers : /drop alertes on|off · activite on|off · liens on|off · recettes on|off",
   "  Objectifs : clic droit sur une case · /drop objectif <compétence> <rang> · objectif clear",
   "  JcJ : /drop pvp on|off · pvp marques on|off",
@@ -2345,6 +2630,7 @@ ns.CMD_ALIAS = {
   goals = "objectif", colour = "couleurs", colours = "couleurs", categories = "categories",
   quiet = "calme", profile = "profil", week = "semaine", achievements = "succes", progress = "progression",
   sessiongoal = "but", target = "but",
+  flight = "vol", fly = "vol",
 }
 ns.ARG_ALIAS = {
   light = "leger", green = "vert", yellow = "jaune", tier = "palier", above = "dessus", below = "dessous",

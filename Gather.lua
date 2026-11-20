@@ -420,6 +420,7 @@ function G.Schedule()
 end
 function G.OnPlateAdded(unit)
   G.stats.events = G.stats.events + 1
+  if ns.PausedForFlight and ns.PausedForFlight() then return end
   if not G.Enabled() or InCombat() or not unit or G.queued[unit] then return end
   G.queued[unit] = true
   G.queue[#G.queue + 1] = unit
@@ -436,6 +437,7 @@ end
 function G.HideAll() for unit in pairs(G.active) do G.Release(unit) end end
 function G.Rescan()
   if InCombat() or not G.Enabled() then return end
+  if ns.PausedForFlight and ns.PausedForFlight() then return end
   local plates = type(_G.C_NamePlate) == "table" and Call(_G.C_NamePlate.GetNamePlates) or {}
   for _, p in ipairs(plates or {}) do
     local unit = p.namePlateUnitToken or (p.UnitFrame and p.UnitFrame.unit)

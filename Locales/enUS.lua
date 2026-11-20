@@ -1195,3 +1195,15 @@ E["XP de repos"] = "Rested XP"
 E[" % d'un niveau"] = "% of a level"
 E["Animation XP de repos"] = "Rested XP animation"
 E["Petits « z » dorés sur la case Niveau quand tu as de l'XP de repos, et une fiole qui se remplit pendant que tu te reposes."] = "Small golden z's on the Level tile while you have rested XP, and a flask that fills up while you rest."
+
+E["  Affichage : /drop theme flare|leger|classic · colonnes 1|2|3|5|10 · taille 50-200 · total on|off · verrou on|off · vol on|off"] = "  Display: /drop theme flare|light|classic · columns 1|2|3|5|10 · size 50-200 · total on|off · lock on|off · flight on|off"
+
+-- 3.6.3 : noms d'objets + pause en vol
+E["%s (+1)"] = "%s (+1)"
+E["composant"] = "reagent"
+E[", matière de ce métier"] = ", material for this profession"
+E["Pause pendant le vol"] = "Pause while flying"
+E["Met le suivi et les toasts en pause sur un trajet aérien. Rien n'est mis en file : à l'atterrissage, pas de rattrapage."] = "Pauses the tracker and toasts on a flight path. Nothing is queued: on landing, there is no backlog."
+E["pause pendant le vol : "] = "pause while flying: "
+E["/drop vol on|off : pause du suivi et des toasts sur un trajet aérien"] = "/drop flight on|off: pause the tracker and toasts on a flight path"
+E["En pause pendant le vol"] = "Paused while flying"
