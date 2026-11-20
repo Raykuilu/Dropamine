@@ -350,12 +350,38 @@ function S.DeathPause()
   return S.Opt("slotDeath") and S.LiveDeath()
 end
 
-function S.TakesRestedZ()
-  if S.Active() ~= "rested" then return false end
+function S.FlaskTile()
   local Wd = ns.Wide
   local t = Wd and Wd.TotalTile and Wd.TotalTile()
-  -- le puits de la goutte est celui de la barre Niveau total (disposition large)
-  return t and t.data and t.data.kind == "total" and t._wideOn and true or false
+  if t and t.data and t.data.kind == "total" then return t end
+  local ui = ns.UI
+  local tiles = ui and ui.embed and ui.embed.tiles
+  if tiles then
+    for i = 1, #tiles do
+      local tt = tiles[i]
+      if tt and tt.data and tt.data.kind == "total" then return tt end
+    end
+  end
+  return nil
+end
+
+function S.FlaskIsWide(t)
+  t = t or S.FlaskTile()
+  return t and t._wideOn and true or false
+end
+
+function S.TakesRestedZ()
+  -- z dans la fiole (barre large OU case grille 1/2/3/5 col.) si c'est l'état actif
+  if S.Active() ~= "rested" then return false end
+  local t = S.FlaskTile()
+  return t and t.data and t.data.kind == "total" and true or false
+end
+
+-- En barre large, les z quittent le portrait Niveau (règle historique).
+-- En grille, ils s'ajoutent dans la case total sans retirer ceux du portrait
+-- (les tests 3.6.2 et la vague de repos restent sur la case Niveau).
+function S.StealsLevelZ()
+  return S.TakesRestedZ() and S.FlaskIsWide()
 end
 
 ------------------------------------------------------------------------------
@@ -424,8 +450,19 @@ end
 function S.ApplyFlaskFill(t)
   local Wd = ns.Wide
   if not (Wd and Wd.EnsureSegs) then return end
-  t = t or (Wd.TotalTile and Wd.TotalTile())
+  t = t or S.FlaskTile() or (Wd.TotalTile and Wd.TotalTile())
   if not t then return end
+  -- Hors barre large : pas de segments horizontaux (le liquide combat / la vague
+  -- se peignent dans l'icône). On cache d'éventuels reliquats.
+  if not t._wideOn then
+    local pseg = t._pseg or (Wd.EnsureSegs and Wd.EnsureSegs(t))
+    if pseg and pseg.segs then
+      for i = 1, #pseg.segs do
+        if pseg.segs[i] and pseg.segs[i].Hide then pseg.segs[i]:Hide() end
+      end
+    end
+    return
+  end
   local last = Wd.last
   if not last or not last.widths or not last.track then return end
   local pseg = Wd.EnsureSegs(t)
@@ -557,13 +594,16 @@ function S.ApplySlotZ(t, on)
   if clip.SetSize then pcall(clip.SetSize, clip, w, h) end
   if clip._content and clip._content.SetSize then pcall(clip._content.SetSize, clip._content, w, h) end
   if clip.Show then clip:Show() end
-  if t.icon and t.icon.Hide then t.icon:Hide() end
+  -- barre large : la goutte du puits cède la place aux z ; en grille, l'icône
+  -- de la case total reste visible, les z se dessinent par-dessus (clipés).
+  if t._wideOn then
+    if t.icon and t.icon.Hide then t.icon:Hide() end
+  end
   if t._hg and t._hg.Hide then t._hg:Hide() end
 end
 
 function S.TickSlotZ(dt)
-  local Wd = ns.Wide
-  local t = Wd and Wd.TotalTile and Wd.TotalTile()
+  local t = S.FlaskTile and S.FlaskTile() or (ns.Wide and ns.Wide.TotalTile and ns.Wide.TotalTile())
   if not (t and t._slotZ and S.TakesRestedZ()) then return end
   local clip = t._slotZ
   local h = 16
@@ -591,6 +631,50 @@ function S.TickSlotZ(dt)
   end
 end
 
+-- Rogne un calque (liquide, vague, z) à l'intérieur de l'icône de la case :
+-- masque rond si le client le propose, sinon ScrollFrame, plus SetClipsChildren.
+function S.IconMaskFor(t)
+  if not t then return nil end
+  if t.icon and t.icon._thMask then return t.icon._thMask end
+  if t._flareMask then return t._flareMask end
+  local slot = t.iconSlot or t.icon or t
+  if type(slot.CreateMaskTexture) ~= "function" then return nil end
+  local ok, m = pcall(slot.CreateMaskTexture, slot)
+  if not (ok and m) then return nil end
+  local path = (ns.STYLE and ns.STYLE.FLARE and ns.STYLE.FLARE.mask)
+    or (ns.Style and ns.Style.FLARE and ns.Style.FLARE.mask)
+    or "Interface\CharacterFrame\TempPortraitAlphaMask"
+  pcall(m.SetTexture, m, path, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+  if m.SetAllPoints and slot then pcall(m.SetAllPoints, m, slot) end
+  t._flareMask = m
+  if t.icon then t.icon._thMask = t.icon._thMask or m end
+  return m
+end
+
+function S.ClipToIcon(frame, t)
+  if not (frame and t) then return frame end
+  local anchor = t.icon or t.slotBorder or t
+  if frame.ClearAllPoints then pcall(frame.ClearAllPoints, frame) end
+  if frame.SetAllPoints and anchor then pcall(frame.SetAllPoints, frame, anchor) end
+  local w, h = 16, 16
+  if anchor.GetWidth then w = N(anchor:GetWidth()) or w end
+  if anchor.GetHeight then h = N(anchor:GetHeight()) or h end
+  if frame.SetSize then pcall(frame.SetSize, frame, w, h) end
+  if frame.SetClipsChildren then pcall(frame.SetClipsChildren, frame, true) end
+  local mask = S.IconMaskFor(t)
+  if mask and frame.AddMaskTexture then
+    pcall(frame.AddMaskTexture, frame, mask)
+  end
+  if mask then
+    local function maskTex(tex)
+      if tex and tex.AddMaskTexture then pcall(tex.AddMaskTexture, tex, mask) end
+    end
+    maskTex(frame.blue) maskTex(frame.red) maskTex(frame.wave) maskTex(frame.bubbles)
+    maskTex(frame.body) maskTex(frame.eatWave)
+  end
+  return frame, w, h, anchor
+end
+
 function S.EnsureCombatLiq(t)
   if not t then return nil end
   if t._cLiq then return t._cLiq end
@@ -614,7 +698,7 @@ end
 
 function S.ApplyCombatLiq(t)
   local Wd = ns.Wide
-  t = t or (Wd and Wd.TotalTile and Wd.TotalTile())
+  t = t or S.FlaskTile() or (Wd and Wd.TotalTile and Wd.TotalTile())
   if not t then return end
   local style = S.CombatStyle()
   local fill = S.fill or {}
@@ -628,13 +712,9 @@ function S.ApplyCombatLiq(t)
   end
   liq = S.EnsureCombatLiq(t)
   if not liq then return end
-  local anchor = t.icon or t.slotBorder or t
-  if liq.ClearAllPoints then pcall(liq.ClearAllPoints, liq) end
-  if liq.SetAllPoints and anchor then pcall(liq.SetAllPoints, liq, anchor) end
-  local w, h = 16, 16
-  if anchor.GetWidth then w = N(anchor:GetWidth()) or w end
-  if anchor.GetHeight then h = N(anchor:GetHeight()) or h end
-  if liq.SetSize then pcall(liq.SetSize, liq, w, h) end
+  local _, w, h, anchor = S.ClipToIcon(liq, t)
+  w, h = w or 16, h or 16
+  anchor = anchor or t.icon or t
   -- Remplissage depuis le bas : le liquide monte avec p, surface ondulée.
   local inset = math.max(1, w * 0.18)
   local bodyH = math.max(1, (h * 0.72) * p)
@@ -1047,8 +1127,7 @@ end
 
 function S.ApplyRegenWave(dt)
   dt = N(dt) or 0
-  local Wd = ns.Wide
-  local t = Wd and Wd.TotalTile and Wd.TotalTile()
+  local t = S.FlaskTile and S.FlaskTile() or (ns.Wide and ns.Wide.TotalTile and ns.Wide.TotalTile())
   if not t then return end
   local inCombatFill = S.CombatLiquidOn() and ((S.fill and S.fill.p) or 0) > 0.05
   local show = S.Want("eating") and not inCombatFill and not (S.Opt("slotDeath") and S.LiveDeath())
@@ -1082,6 +1161,14 @@ function S.ApplyRegenWave(dt)
     pcall(e.wave.SetTexCoord, e.wave, u, 0, u + ((R and R.WAVE_U) or 0.5), 1)
   end
   if e.wave.Show then e.wave:Show() end
+  local mask = S.IconMaskFor(t)
+  if mask then
+    if e.body and e.body.AddMaskTexture then pcall(e.body.AddMaskTexture, e.body, mask) end
+    if e.wave and e.wave.AddMaskTexture then pcall(e.wave.AddMaskTexture, e.wave, mask) end
+  end
+  local anchor = t.icon or t
+  if t.SetClipsChildren then pcall(t.SetClipsChildren, t, true) end
+  if anchor and anchor.SetClipsChildren then pcall(anchor.SetClipsChildren, anchor, true) end
   S._eatOn = true
 end
 

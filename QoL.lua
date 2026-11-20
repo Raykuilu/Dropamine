@@ -406,6 +406,10 @@ end
 ns.SlashExt.recap = function(rest)
   local low = (rest or ""):lower()
   if low == "on" or low == "off" then return toggleCmd("recapLogout", Tr["récap à la déconnexion"])(low) end
+  if ns.ProgressUI and ns.ProgressUI.OpenRecap then
+    pcall(ns.ProgressUI.OpenRecap, "current")
+    return
+  end
   local l = Q.RecapLine()
   ns.Print(l or Tr["récap indisponible (compétences pas encore lues)."])
 end
