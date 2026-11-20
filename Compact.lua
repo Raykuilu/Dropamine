@@ -59,6 +59,22 @@ function C.SharedGainColor(color)
   return (G and G.green) or { 0.310, 0.498, 0.243 }
 end
 
+-- Flash du +1 : même teinte de type (rouge XP, bleu armes/Défense, vert métiers),
+-- éclaircie pour le pop. Jamais un vert unique pour toutes les cases.
+function C.PopColor(color, tile)
+  if (not color or type(color) ~= "table") and tile and tile.data and C.GainColor then
+    color = C.GainColor(tile.data)
+  end
+  color = C.SharedGainColor and C.SharedGainColor(color) or color or { 0.310, 0.498, 0.243 }
+  local k = C.POP_LIFT
+  if type(k) ~= "number" then k = 0.42 end
+  return {
+    math.min(1, color[1] + (1 - color[1]) * k),
+    math.min(1, color[2] + (1 - color[2]) * k),
+    math.min(1, color[3] + (1 - color[3]) * k),
+  }
+end
+
 -- +1 coloré sur la case, puis une étincelle de même couleur quitte la case,
 -- rejoint la barre de total (arc court), la parcourt jusqu'au bout rempli et flash.
 -- La fiole elle-même n'est pas animée.
@@ -323,7 +339,7 @@ C.FLY = 0.55          -- vol de l'éclat (s)
 C.GAIN_TIME = 1.5     -- gain vert : montée + fondu
 C.GAIN_RISE = 14      -- px
 C.PULSE_IN, C.PULSE_OUT = 0.08, 0.22   -- pop court
-C.POP_COLOR = { 0.55, 1.00, 0.55 }  -- flash vert clair du vrai +1
+C.POP_LIFT = 0.42  -- mélange vers le blanc : version plus claire de GAIN_COLORS
 C.FLY_SIZE = 22
 C.holds = {}          -- clé de case → valeur affichée tant que l'éclat vole
 C.flights = 0
@@ -636,7 +652,7 @@ function C.Pulse(t, color)
     p.tex:SetAllPoints(p)
     pcall(p.tex.SetTexture, p.tex, WHITE8)
     if p.tex.SetBlendMode then pcall(p.tex.SetBlendMode, p.tex, "ADD") end
-    local pc = C.POP_COLOR or { 0.55, 1.00, 0.55 }
+    local pc = C.PopColor(color, t)
     if p.tex.SetVertexColor then pcall(p.tex.SetVertexColor, p.tex, pc[1], pc[2], pc[3], 0.85) end
     if p.CreateAnimationGroup then
       local ok, ag = pcall(p.CreateAnimationGroup, p)
@@ -652,7 +668,7 @@ function C.Pulse(t, color)
   end
   local base = t.GetFrameLevel and t:GetFrameLevel() or 1
   pcall(p.SetFrameLevel, p, base + 6)
-  color = C.POP_COLOR or { 0.55, 1.00, 0.55 }
+  color = C.PopColor(color, t)
   if p.tex and p.tex.SetVertexColor then
     pcall(p.tex.SetVertexColor, p.tex, color[1], color[2], color[3], 0.85)
   end
