@@ -5465,13 +5465,23 @@ local GAIN_FALLBACK = {
 function UI.GainPalette()
   return ns.GAIN_COLORS or (ns.Slot and ns.Slot.ADD_COLORS) or GAIN_FALLBACK
 end
+-- Même teinte (rouge / bleu / vert), valeur abaissée pour coller au fond sombre.
+-- L'opacité du calque vient uniquement de « Fond des toasts », jamais d'un RVB.
+UI.TINT_VALUE = 0.40
+function UI.ShadeTint(c)
+  if type(c) ~= "table" then return c end
+  local k = UI.TINT_VALUE
+  if type(k) ~= "number" or k <= 0 then k = 0.40 end
+  if k > 1 then k = 1 end
+  return { (c[1] or 0) * k, (c[2] or 0) * k, (c[3] or 0) * k }
+end
 function UI.ToastTintColor(opts_or_fam)
   local fam = opts_or_fam
   if type(opts_or_fam) == "table" then fam = UI.ToastFamily(opts_or_fam) end
   local G = UI.GainPalette()
-  if fam == "level" then return G.red end
-  if fam == "weapon" then return G.blue end
-  if fam == "prof" then return G.green end
+  if fam == "level" then return UI.ShadeTint(G.red) end
+  if fam == "weapon" then return UI.ShadeTint(G.blue) end
+  if fam == "prof" then return UI.ShadeTint(G.green) end
   return nil
 end
 UI.TOAST_TINT = setmetatable({}, {
@@ -6137,8 +6147,13 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   local maxv = ns.N(barMax)
   local hint = opts.hint
 
-  -- Style « Léger » : une ligne compacte icône + texte, sans barre.
-  local light = opts.light or (ns.db and ns.db.ui and ns.db.ui.dropStyle == "leger")
+  -- Style « Léger » : une ligne compacte. S'il y a un titre ET un corps,
+  -- on force le toast complet : la rangée 20–26 px coupait le texte
+  -- (barre rouge vide, texte seulement en infobulle — « Nouveaux sorts »).
+  local light = opts.light or (ns.db and ns.db.ui and ns.db.ui.dropStyle == "leger") or false
+  if light and type(title) == "string" and title ~= "" and type(subtitle) == "string" and subtitle ~= "" then
+    light = false
+  end
   -- Complet : boîte compacte façon toast — icône 32 px à gauche, 3 lignes
   -- (titre or, ligne blanche, astuce verte) et fine barre en bas.
   local tm = UI.ToastMetrics and UI.ToastMetrics({
@@ -6449,7 +6464,7 @@ function UI:PlayLevelUp(level)
     local ui = self
     local function spellToast()
       local g = ui:SpawnDrop(ns.SPELLS_ICON, Tr["Nouveaux sorts"], Tr["Va voir ton maître de classe"], nil, nil, nil,
-        { kind = "spells", variant = "gold", light = true })
+        { kind = "spells", variant = "gold" })
       if g and ns.SoundOk("levelUpSound") and type(PlaySound) == "function" then
         local kit = (type(SOUNDKIT) == "table" and SOUNDKIT.IG_QUEST_LOG_OPEN) or 844
         pcall(PlaySound, kit)

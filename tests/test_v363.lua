@@ -2362,8 +2362,9 @@ do
   local tl = UI.TOAST_TINT.level
   local pal = ns.GAIN_COLORS or (ns.Slot and ns.Slot.ADD_COLORS)
   local expect = pal and pal.red or { 0.616, 0.278, 0.227 }
-  ok(tl and math.abs(tl[1] - expect[1]) < 1e-6 and math.abs(tl[2] - expect[2]) < 1e-6 and math.abs(tl[3] - expect[3]) < 1e-6,
-    "teinte XP : même rouge que la palette partagée")
+  ok(tl and (tl[1] / expect[1]) < 0.95 and (tl[1] / expect[1]) > 0.2
+    and math.abs(tl[2] - expect[2] * (tl[1] / expect[1])) < 0.03,
+    "teinte XP : même rouge, plus sombre que la palette")
   ok(((UI.TOAST_TINT.weapon[1] or 0) + (UI.TOAST_TINT.weapon[2] or 0) + (UI.TOAST_TINT.weapon[3] or 0)) >= 0.35,
     "teinte arme : pas de quasi-noir")
 
@@ -3327,18 +3328,27 @@ do
     ok(colorEq(S._sparkColor, expect), "étincelle " .. cat.name .. " = palette " .. cat.key)
     if UI and UI.ToastTintColor then
       local tint = UI.ToastTintColor(cat.opts)
-      -- xp / skill names : famille level / weapon / prof
       if tint then
-        ok(colorEq(tint, expect), "teinte toast " .. cat.name .. " = palette " .. cat.key)
+        local k = (expect[1] > 0.05) and (tint[1] / expect[1]) or nil
+        ok(k and k < 0.95 and k > 0.2
+          and math.abs(tint[2] - expect[2] * k) < 0.03
+          and math.abs(tint[3] - expect[3] * k) < 0.03,
+          "teinte toast " .. cat.name .. " = " .. cat.key .. " assombri, même teinte")
       end
     end
   end
   -- teintes indexées : plus de quasi-noir
   if UI and UI.TOAST_TINT then
-    ok(sum(UI.TOAST_TINT.weapon) >= 0.35, "TOAST_TINT.weapon n'est plus noir")
-    ok(colorEq(UI.TOAST_TINT.weapon, blue), "TOAST_TINT.weapon = GAIN_COLORS.blue")
-    ok(colorEq(UI.TOAST_TINT.level, red), "TOAST_TINT.level = GAIN_COLORS.red")
-    ok(colorEq(UI.TOAST_TINT.prof, green), "TOAST_TINT.prof = GAIN_COLORS.green")
+    ok(sum(UI.TOAST_TINT.weapon) >= 0.20 and sum(UI.TOAST_TINT.weapon) < sum(blue) - 0.05,
+      "TOAST_TINT.weapon : bleu plus sombre, pas noir")
+    local function darker(a, b, label)
+      local k = (b[1] > 0.05) and (a[1] / b[1]) or nil
+      ok(k and k < 0.95 and k > 0.2 and math.abs(a[2] - b[2]*k) < 0.03 and math.abs(a[3] - b[3]*k) < 0.03,
+        label)
+    end
+    darker(UI.TOAST_TINT.weapon, blue, "TOAST_TINT.weapon = bleu GAIN_COLORS assombri")
+    darker(UI.TOAST_TINT.level, red, "TOAST_TINT.level = rouge GAIN_COLORS assombri")
+    darker(UI.TOAST_TINT.prof, green, "TOAST_TINT.prof = vert GAIN_COLORS assombri")
   end
 
   -- Trajet d'étincelle : file, coalescence, case cachée, pool
@@ -3445,13 +3455,13 @@ do
       ok(fill, "fond teinté créé")
       if fill then
         ok(fill.shown ~= false, "fond teinté visible dès ApplyToastTint (1re frame)")
-        local g = (ns.GAIN_COLORS and ns.GAIN_COLORS.green) or S.ADD_COLORS.green
+        local g = (UI.TOAST_TINT and UI.TOAST_TINT.prof) or (UI.ShadeTint and UI.ShadeTint((ns.GAIN_COLORS and ns.GAIN_COLORS.green) or S.ADD_COLORS.green))
         local vc = fill._vcolor or fill._color
         if (f._tintR) then
           ok(math.abs((f._tintR or 0) - g[1]) < 0.01 and math.abs((f._tintG or 0) - g[2]) < 0.01,
-            "fond teinté Cuisine = GAIN_COLORS.green")
+            "fond teinté Cuisine = vert assombri")
         elseif vc then
-          ok(math.abs((vc[1] or 0) - g[1]) < 0.01, "fond teinté Cuisine = GAIN_COLORS.green")
+          ok(math.abs((vc[1] or 0) - g[1]) < 0.01, "fond teinté Cuisine = vert assombri")
         end
       end
       -- toasts recyclés : le curseur d'opacité s'applique aussi au vivier
@@ -3463,12 +3473,12 @@ do
         UI.ApplyToastTint(f2, { kind = "xp" })
         local host2 = f2._skinHost
         local fill2 = f2._tintFill
-        local red = (ns.GAIN_COLORS and ns.GAIN_COLORS.red) or { 0.616, 0.278, 0.227 }
+        local red = (UI.TOAST_TINT and UI.TOAST_TINT.level) or { 0.246, 0.111, 0.091 }
         ok((host2 and host2.alpha == 0) or (not host2 and fill2 and fill2.alpha == 0),
           "toast recyclé : 0 % = calque transparent")
         local c2 = fill2 and (fill2._colorTex or fill2._vcolor)
         ok(not c2 or (math.abs((c2[1] or 0) - red[1]) < 0.01 and math.abs((c2[4] or 1) - 1) < 1e-6),
-          "toast recyclé : RVB de teinte inchangé à 0 %")
+          "toast recyclé : RVB de teinte (sombre) inchangé à 0 %")
         if UI.ReleaseToast then UI:ReleaseToast(f2) end
       end
     end
@@ -3603,14 +3613,23 @@ do
     if UI.DismissDrop then pcall(UI.DismissDrop, UI, big) else UI:ReleaseToast(big) end
     local g = UI:SpawnDrop(ns.SPELLS_ICON or "Interface\\Icons\\X", Tr and Tr["Nouveaux sorts"] or "Nouveaux sorts",
       "Va voir ton maître de classe", nil, nil, nil,
-      { kind = "spells", variant = "gold", light = true, force = true })
+      { kind = "spells", variant = "gold", force = true })
     ok(g and g.iconSlot, "Nouveaux sorts : cadre avec iconSlot")
-    if g and g.iconSlot then
-      local tm = UI.ToastMetrics and UI.ToastMetrics({ light = true })
+    if g then
+      if ns.ToastFit and ns.ToastFit.Fit then ns.ToastFit.Fit(g) end
+      local gh = g:GetHeight() or g._h or 0
+      ok(gh >= 40 and not g._light, "Nouveaux sorts : toast complet (h=" .. tostring(gh) .. "), pas une barre de 20 px")
+      local tt = g.titleFS and g.titleFS.GetText and g.titleFS:GetText() or ""
+      local st = g.subFS and g.subFS.GetText and g.subFS:GetText() or ""
+      ok(tt ~= "" and (tt:find("Nouveaux sorts", 1, true) or tt:find("New spells", 1, true)),
+        "Nouveaux sorts : titre visible — " .. tostring(tt))
+      ok(st ~= "" and (st:find("maître", 1, true) or st:find("trainer", 1, true) or st:find("classe", 1, true)),
+        "Nouveaux sorts : corps visible — " .. tostring(st))
+      local tm = UI.ToastMetrics and UI.ToastMetrics({ light = false })
       local expect = tm and tm.icon
-      local w = g.iconSlot.width or (g.iconSlot.GetWidth and g.iconSlot:GetWidth())
+      local w = g.iconSlot and (g.iconSlot.width or (g.iconSlot.GetWidth and g.iconSlot:GetWidth()))
       if expect and w then
-        ok(math.abs(w - expect) < 1.5, "Nouveaux sorts : icône à la taille légère (" .. tostring(w) .. " vs " .. tostring(expect) .. "), pas le toast précédent")
+        ok(math.abs(w - expect) < 1.5, "Nouveaux sorts : icône taille normale (" .. tostring(w) .. " vs " .. tostring(expect) .. "), pas le 20 px léger")
       end
       ok(g.iconSlot.parent == g or (g.iconSlot.GetParent and g.iconSlot:GetParent() == g),
         "Nouveaux sorts : icône parente du toast")

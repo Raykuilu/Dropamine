@@ -266,6 +266,7 @@ function TF.ApplyHeight(f)
     if not lh or lh < 8 then lh = 8 end
     local lines = fs._tfLines or 1
     if lines < 1 then lines = 1 end
+    if text ~= "" and (fs._tfLines or 0) == 0 then lines = 1 end
     if h > pad then h = h + gap end
     h = h + lh * lines
   end
@@ -287,6 +288,11 @@ function TF.ApplyHeight(f)
     if ok and type(ih) == "number" and ih > 0 then icon = ih end
   end
   local minH = icon + pad * 2
+  if not f._light then
+    local full = 46
+    if ns.UI and ns.UI.ToastPx then full = ns.UI.ToastPx(46, 40) end
+    if minH < full then minH = full end
+  end
   if h < minH then h = minH end
   if HasFn(f, "SetHeight") then pcall(f.SetHeight, f, h) end
   f._h = h
