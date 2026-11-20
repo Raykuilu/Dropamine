@@ -56,3 +56,5 @@ ToastFit.lua
 Progress.lua
 ProgressUI.lua
 Rested.lua
+Slot.lua
+RankToast.lua
