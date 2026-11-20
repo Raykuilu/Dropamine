@@ -682,16 +682,24 @@ function Style.IconRing(slot, icon)
       mode = "ronde"
     end
   end
+  local size = (slot.GetWidth and slot:GetWidth()) or slot._slotSize or 32
+  size = tonumber(size) or 32
+  local inset = math.max(2, math.floor(size * 3 / 32 + 0.5))
+  slot._ringInset = inset
   if mode == "ronde" then
     pcall(r.SetTexture, r, F.ring) r.texPath = F.ring
-    if icon then icon:ClearAllPoints() icon:SetPoint("TOPLEFT", slot, "TOPLEFT", 3, -3) icon:SetPoint("BOTTOMRIGHT", slot, "BOTTOMRIGHT", -3, 3) end
+    if icon then
+      icon:ClearAllPoints()
+      icon:SetPoint("TOPLEFT", slot, "TOPLEFT", inset, -inset)
+      icon:SetPoint("BOTTOMRIGHT", slot, "BOTTOMRIGHT", -inset, inset)
+    end
   else
     mode = "biseautée"
     pcall(r.SetTexture, r, F.frame) r.texPath = F.frame
     if icon then
       icon:ClearAllPoints()
-      icon:SetPoint("TOPLEFT", slot, "TOPLEFT", 3, -3)
-      icon:SetPoint("BOTTOMRIGHT", slot, "BOTTOMRIGHT", -3, 3)
+      icon:SetPoint("TOPLEFT", slot, "TOPLEFT", inset, -inset)
+      icon:SetPoint("BOTTOMRIGHT", slot, "BOTTOMRIGHT", -inset, inset)
       if icon.SetTexCoord then pcall(icon.SetTexCoord, icon, 0.08, 0.92, 0.08, 0.92) end
     end
   end

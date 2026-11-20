@@ -49,7 +49,7 @@ function ns.FoldRaw(s)
   return s
 end
 
-ns.FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
+ns.FALLBACK_ICON = "Interface\\AddOns\\Dropamine\\Media\\Fallback-Icon"
 
 -- kind : "level" | "stat" | "profession" | "secondary" | "melee" | "ranged" | "defense" | "class"
 -- countsInTotal (hors armes) : true/false. Les armes passent par la règle « 2 meilleures ».
@@ -58,7 +58,7 @@ local CATALOG = {
   -- Général
   { id = "level", name = "Niveau", aliases = { "level", "character level" }, section = "Général",
     kind = "level", capKind = "level", countsInTotal = true,
-    icon = "Interface\\Icons\\INV_Misc_Book_11" },
+    icon = "Interface\\AddOns\\Dropamine\\Media\\XP-Icon" },
 
   -- Caractéristiques (affichées, pas dans le total fictif : aucun plafond documenté)
   { id = "stat1", name = "Force", aliases = { "strength" }, section = "Caractéristiques",

@@ -251,19 +251,34 @@ local function ReuseOrCreate(kind, name, parent, template)
 end
 
 
-local function SetTileIcon(tex, path)
+local function IsAddonMedia(path)
+  if type(path) ~= "string" then return false end
+  local f = string.lower(path):gsub("/", "\\")
+  return string.find(f, "interface\\addons\\dropamine\\media\\", 1, true) and true or false
+end
+
+local function SetTileIcon(tex, path, slot)
   if not tex then return end
   local icon = path or ns.FALLBACK_ICON
   local ok = tex.SetTexture and pcall(tex.SetTexture, tex, icon)
   if not ok and icon ~= ns.FALLBACK_ICON then
     pcall(tex.SetTexture, tex, ns.FALLBACK_ICON)
+    icon = ns.FALLBACK_ICON
   end
   -- 3.5.20 : la fiole a son propre alpha — ne pas recadrer (ça coupait la pointe).
+  -- 3.6.3 : nos icônes Media tiennent déjà dans le cercle (masque + retrait) ;
+  -- les icônes de jeu sont rognées (0,07) pour que le cadre cuit ne déborde pas.
   local fold = type(icon) == "string" and string.lower(icon):gsub("/", "\\") or ""
   local logo = string.find(fold, "skillstab", 1, true) or string.find(fold, "dropamine-icon", 1, true)
+  local media = IsAddonMedia(icon)
   if tex.SetTexCoord then
-    if logo then pcall(tex.SetTexCoord, tex, 0, 1, 0, 1)
+    if logo or media then pcall(tex.SetTexCoord, tex, 0, 1, 0, 1)
     else pcall(tex.SetTexCoord, tex, 0.07, 0.93, 0.07, 0.93) end
+  end
+  -- toast / anneau rond : recaler le masque et le retrait après SetTexture (tous les formats)
+  if slot and slot._ringLook and ns.Style and ns.Style.IconRing then
+    pcall(ns.Style.IconRing, slot, tex)
+    if slot._flareMask and tex.AddMaskTexture then pcall(tex.AddMaskTexture, tex, slot._flareMask) end
   end
 end
 
@@ -5262,6 +5277,58 @@ function UI:PackDrops()
   end
 end
 
+-- 3.6.3 : fond du toast = teinte sombre de la couleur de case (« un peu plus soutenu »).
+-- Bordure bronze inchangée. Toasts système (vol, sacs, usure…) restent neutres.
+UI.TOAST_TINT = {
+  level  = { 32/255, 17/255, 14/255 },  -- #20110E  famille #9D473A
+  weapon = { 18/255, 20/255, 27/255 },  -- #12141B  famille #54689A
+  prof   = { 16/255, 22/255, 12/255 },  -- #10160C  famille #4F7F3E
+}
+
+function UI.ToastFamily(opts)
+  opts = opts or {}
+  local kind = opts.kind or (opts.toastData and opts.toastData.kind)
+  if kind == "xp" or kind == "levelup" or kind == "level" or kind == "jalon" or kind == "spells" then
+    return "level"
+  end
+  if kind == "rank-trainer" or kind == "rankup" or kind == "craft" or kind == "pretier" or kind == "recipe" then
+    return "prof"
+  end
+  if kind == "flight-hint" or kind == "bags-full" or kind == "durability" or kind == "pvp" or kind == "weekly"
+    or kind == "achievement" or kind == "progress" or kind == "recap" or kind == "test" then
+    return nil
+  end
+  local id = opts.skillId
+  local dkind = opts.skillKind
+  if not dkind and id and ns.CATALOG_BY_ID and ns.CATALOG_BY_ID[id] then
+    dkind = ns.CATALOG_BY_ID[id].kind
+  end
+  if not dkind and id then
+    local snap = UI.snapshot
+    for _, d in ipairs((snap and (snap.allTiles or snap.tiles)) or {}) do
+      if d and (d.id == id or d.name == opts.skillName) then dkind = d.kind break end
+    end
+  end
+  if dkind == "level" then return "level" end
+  if dkind == "melee" or dkind == "ranged" or dkind == "defense" or dkind == "feral" or dkind == "class" then
+    return "weapon"
+  end
+  if dkind == "profession" or dkind == "secondary" then return "prof" end
+  if kind == "palier" then return "prof" end
+  return nil
+end
+
+function UI.ApplyToastTint(frame, opts)
+  if not (frame and frame._toastBg) then return nil end
+  local fam = UI.ToastFamily(opts)
+  frame._tintFamily = fam
+  local c = fam and UI.TOAST_TINT[fam]
+  if not c then return fam end
+  FillTexture(frame._toastBg, c[1], c[2], c[3], 1)
+  if frame._toastBg.SetAlpha then pcall(frame._toastBg.SetAlpha, frame._toastBg, 1) end
+  return fam
+end
+
 local DROP_VARIANTS = {
   gold = { border = { 1.00, 0.82, 0.10, 1 }, title = { 1.00, 0.86, 0.20 } },
   palier = { border = { 1.00, 0.55, 0.15, 1 }, title = { 1.00, 0.62, 0.20 } },
@@ -5512,12 +5579,13 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   f._kind = opts.kind
   if f.SetFrameStrata then pcall(f.SetFrameStrata, f, "HIGH") end
   ApplyRestToastChrome(f, variant and variant.border or nil)
+  UI.ApplyToastTint(f, opts)
 
-  -- Icône nette dans un cadre fin carré.
+  -- Icône dans l'anneau rond : masque circulaire + retrait, jamais hors du cercle.
   local slot = CreateSlotButton(f, iconSize, true)
   if light then slot:SetPoint("LEFT", f, "LEFT", 4, 0)
   else slot:SetPoint("TOPLEFT", f, "TOPLEFT", 7, -7) end
-  SetTileIcon(slot.iconTex, iconPath or ns.LEVEL_ICON or ns.FALLBACK_ICON)
+  SetTileIcon(slot.iconTex, iconPath or ns.LEVEL_ICON or ns.FALLBACK_ICON, slot)
   f.iconSlot, f.icon = slot, slot.iconTex
 
   local titleFS = Text(f, "GameFontNormal", "LEFT")
@@ -5777,7 +5845,7 @@ function UI:PlayLevelUp(level)
   if f and level and level >= 2 and level % 2 == 0 then
     local ui = self
     local function spellToast()
-      local g = ui:SpawnDrop("Interface\\Icons\\INV_Misc_Book_09", Tr["Nouveaux sorts"], Tr["Va voir ton maître de classe"], nil, nil, nil,
+      local g = ui:SpawnDrop(ns.SPELLS_ICON, Tr["Nouveaux sorts"], Tr["Va voir ton maître de classe"], nil, nil, nil,
         { kind = "spells", variant = "gold", light = true })
       if g and ns.SoundOk("levelUpSound") and type(PlaySound) == "function" then
         local kit = (type(SOUNDKIT) == "table" and SOUNDKIT.IG_QUEST_LOG_OPEN) or 844
