@@ -6068,6 +6068,15 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   if type(title) == "string" then title = StripStrayTimes(title) end
   if type(subtitle) == "string" then subtitle = StripStrayTimes(subtitle) end
   if opts.hint and type(opts.hint) == "string" then opts.hint = StripStrayTimes(opts.hint) end
+  local function blank(s)
+    if s == nil then return true end
+    s = tostring(s)
+    return s:gsub("%s+", "") == ""
+  end
+  -- Jamais un toast icône seule : titre et corps vides = on n'affiche rien.
+  if not self._inEditMode and not opts.force and blank(title) and blank(subtitle) and blank(opts.hint) then
+    return nil
+  end
   if ns.PausedForFlight and ns.PausedForFlight() and not self._inEditMode and not (opts and opts.force) then return end
   if not self:DropsEnabled() and not self._inEditMode and not (opts and opts.force) then return end
   self:BuildDrops()

@@ -8,6 +8,7 @@ ns.ToastFit = TF
 TF.MQ_WAIT  = 1.2   -- pause avant le défilement (s)
 TF.MQ_SPEED = 36    -- pixels / s
 TF.MQ_END   = 1.0   -- pause en fin de course (s)
+TF.MAX_LINES = 2   -- le toast grandit jusqu'à 2 lignes ; défilement ensuite seulement
 
 local function HasFn(obj, name)
   return type(obj) == "table" and type(obj[name]) == "function"
@@ -160,29 +161,63 @@ local function EnsureClip(f, fs)
   return mq
 end
 
+local function SetWrap(fs, on, maxLines)
+  if not fs then return end
+  if on then
+    if HasFn(fs, "SetWordWrap") then pcall(fs.SetWordWrap, fs, true) end
+    if HasFn(fs, "SetNonSpaceWrap") then pcall(fs.SetNonSpaceWrap, fs, true) end
+    if HasFn(fs, "SetMaxLines") then pcall(fs.SetMaxLines, fs, maxLines or (TF.MAX_LINES or 2)) end
+  else
+    SingleLine(fs)
+  end
+end
+
 local function FitLine(f, fs)
   if not fs or (fs.IsShown and not fs:IsShown()) then return end
-  SingleLine(fs)
   local text = (fs.GetText and fs:GetText()) or ""
   local need = (text ~= "" and TextWidth(fs)) or 0
   local room = TF.Avail(f, fs)
   if room < 8 then room = 8 end
-  -- Texte vide ou qui tient : le FS reste sur le toast, le clip (vivier) est masqué
-  -- pour ne pas recouvrir le titre / le corps (récap vide sauf l'icône).
+  local lh = LineHeight(fs)
+  if not lh or lh < 8 then lh = 8 end
+  local maxL = TF.MAX_LINES or 2
+  -- 1 ligne : le FS reste sur le toast, le clip du vivier est masqué.
   if text == "" or need <= room + 0.5 then
+    SetWrap(fs, false)
     if fs._mq then
       fs._mq.need, fs._mq.room, fs._mq.t, fs._mq.off = need, room, 0, 0
       HideClip(fs._mq)
       ReparentToToast(f, fs)
     end
+    if HasFn(fs, "SetHeight") then pcall(fs.SetHeight, fs, lh) end
+    fs._tfLines = (text == "") and 0 or 1
     return
   end
-  -- Replacer le FS dans le toast avant de recopier les ancres (vivier :
-  -- le texte était déjà dans le clip, souvent déjà décalé).
+  -- Jusqu'à 2 lignes : on enveloppe et on agrandit le toast (pas de défilement).
+  if need <= room * maxL + 8 then
+    if fs._mq then
+      fs._mq.need, fs._mq.room, fs._mq.t, fs._mq.off = need, room, 0, 0
+      HideClip(fs._mq)
+      ReparentToToast(f, fs)
+    end
+    SetWrap(fs, true, maxL)
+    if HasFn(fs, "SetWidth") then pcall(fs.SetWidth, fs, room) end
+    local lines = maxL
+    if HasFn(fs, "GetStringHeight") then
+      local ok, sh = pcall(fs.GetStringHeight, fs)
+      if ok and type(sh) == "number" and sh > 0 and lh > 0 then
+        lines = math.max(1, math.min(maxL, math.ceil((sh - 0.1) / lh)))
+      end
+    end
+    if HasFn(fs, "SetHeight") then pcall(fs.SetHeight, fs, lh * lines) end
+    fs._tfLines = lines
+    return
+  end
+  -- Repli : une ligne + défilement si le texte dépasse encore 2 lignes.
+  SetWrap(fs, false)
   ReparentToToast(f, fs)
   local mq = EnsureClip(f, fs)
   if not mq then return end
-  -- Recopie les ancres à chaque Fit : la colonne commence à droite de l'icône.
   if mq.clip then
     AnchorClip(f, fs, mq.clip)
     if HasFn(fs, "SetParent") then pcall(fs.SetParent, fs, mq.child) end
@@ -191,8 +226,6 @@ local function FitLine(f, fs)
     if mq.clip.Show then mq.clip:Show() end
     if mq.child and mq.child.Show then mq.child:Show() end
   end
-  local lh = LineHeight(fs)
-  if not lh or lh < 8 then lh = 8 end
   mq.need, mq.room, mq.t, mq.off = need, room, 0, 0
   if HasFn(mq.clip, "SetHeight") then pcall(mq.clip.SetHeight, mq.clip, lh) end
   if HasFn(mq.clip, "SetWidth") then pcall(mq.clip.SetWidth, mq.clip, room) end
@@ -201,6 +234,7 @@ local function FitLine(f, fs)
   if HasFn(fs, "SetWidth") then pcall(fs.SetWidth, fs, need) end
   if HasFn(fs, "SetHeight") then pcall(fs.SetHeight, fs, lh) end
   if HasFn(mq.clip, "SetHorizontalScroll") then pcall(mq.clip.SetHorizontalScroll, mq.clip, mq.off or 0) end
+  fs._tfLines = 1
 end
 
 -- Repose le texte dans le toast et remet le défilement à 0 (vivier).
@@ -219,21 +253,52 @@ function TF.Reset(f)
   end
 end
 
+function TF.ApplyHeight(f)
+  if not f then return end
+  local pad = (f._light and 4) or 7
+  local gap = 2
+  local h = pad
+  local function add(fs)
+    if not fs or (fs.IsShown and not fs:IsShown()) then return end
+    local text = (fs.GetText and fs:GetText()) or ""
+    if text == "" then return end
+    local lh = LineHeight(fs)
+    if not lh or lh < 8 then lh = 8 end
+    local lines = fs._tfLines or 1
+    if lines < 1 then lines = 1 end
+    if h > pad then h = h + gap end
+    h = h + lh * lines
+  end
+  add(f.titleFS)
+  add(f.subFS)
+  add(f.hintFS)
+  if f.barHold and not (f.barHold.IsShown and not f.barHold:IsShown()) then
+    local bh = 4
+    if HasFn(f.barHold, "GetHeight") then
+      local ok, v = pcall(f.barHold.GetHeight, f.barHold)
+      if ok and type(v) == "number" and v > 0 then bh = v end
+    end
+    h = h + 8 + bh
+  end
+  h = h + pad
+  local icon = 32
+  if f.iconSlot and HasFn(f.iconSlot, "GetHeight") then
+    local ok, ih = pcall(f.iconSlot.GetHeight, f.iconSlot)
+    if ok and type(ih) == "number" and ih > 0 then icon = ih end
+  end
+  local minH = icon + pad * 2
+  if h < minH then h = minH end
+  if HasFn(f, "SetHeight") then pcall(f.SetHeight, f, h) end
+  f._h = h
+  return h
+end
+
 function TF.Fit(f)
   if not f or not f.titleFS then return f end
-  if not f._tfBaseH and f.GetHeight then f._tfBaseH = f:GetHeight() or f._h end
-  if f._h and not f._tfBaseH then f._tfBaseH = f._h end
-  SingleLine(f.titleFS)
-  SingleLine(f.subFS)
-  SingleLine(f.hintFS)
-  -- Hauteur fixe : plus de passage à 2 lignes, plus de croissance.
-  if f._tfBaseH and f.SetHeight then
-    pcall(f.SetHeight, f, f._tfBaseH)
-    f._h = f._tfBaseH
-  end
   FitLine(f, f.titleFS)
   if f.subFS and (not f.subFS.IsShown or f.subFS:IsShown()) then FitLine(f, f.subFS) end
   if f.hintFS and (not f.hintFS.IsShown or f.hintFS:IsShown()) then FitLine(f, f.hintFS) end
+  TF.ApplyHeight(f)
   return f
 end
 

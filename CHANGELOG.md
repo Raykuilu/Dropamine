@@ -1,6 +1,7 @@
 # Changelog
 
 ## 3.6.3
+- Session recap toast uses a short title (“Session”) and one compact line (e.g. “+81 · +484 XP · +3 compétences · 76 min”). Toast text wraps on up to 2 lines and the toast grows to fit; a marquee is only used if the text is still too long. Empty title+body toasts are not shown. The grey-mob Defense reminder is tooltip-only (no toast).
 - Combat pre-selection on tiles that can gain is a thin border (liseré) in the gain color (red XP, blue weapons and Defense, green professions): no fill and no “+1” on the pre-light. An actual gain plays a single “+1” and a short bright pop in a lighter shade of the type color (red XP, blue weapons and Defense, green professions; no double +1 or double glow).
 - Memory: character cards are no longer rebuilt on every chart refresh; an incremental collectgarbage(“step”) runs every ~2 s while out of combat, to shrink Lua heap churn.
 - Session recap toast (“Récap de session — déconnexion”): the title and body are visible on the toast again. After the one-line marquee, recycled toasts could leave an empty clip over the text, so only the vial icon showed and the recap appeared only in the hover tooltip. Other toast types were checked against the same clip path. The session total baseline is the total at session start; a missing or 0 baseline (from an empty first reading) is no longer reported as a gain such as +981.
