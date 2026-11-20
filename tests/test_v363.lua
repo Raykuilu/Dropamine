@@ -1093,12 +1093,18 @@ do
     "texture = feuille Hourglass-Sheet (" .. tostring(h._texSet) .. ")")
   ok(not h.sandTop and not h.frame, "une seule texture, pas de pièces de sable empilées")
   ok(tot.icon and (tot.icon.alpha or 1) < 0.05, "goutte d'origine estompée (alpha " .. tostring(tot.icon and tot.icon.alpha) .. ")")
-  -- même taille que la goutte (aucun débordement)
+  -- Fiole et sablier validés à ~70 % de la case (même taille).
+  local tileHg = (ns.Icons and ns.Icons.TILE) or 40
+  local vialSz = (ns.Wide and ns.Wide.IconSize and ns.Wide.IconSize(tileHg))
+    or math.floor(tileHg * 0.70 + 0.5)
   local hw = h.GetWidth and h:GetWidth()
   local hh = h.GetHeight and h:GetHeight()
-  ok(iconW and hw and math.abs(hw - iconW) < 0.5, "largeur = goutte (" .. tostring(hw) .. " / " .. tostring(iconW) .. ")")
-  ok(hh and iconW and math.abs(hh - iconW) < 0.5 or (tot.icon.GetHeight and math.abs((hh or 0) - tot.icon:GetHeight()) < 0.5),
-    "hauteur = goutte (" .. tostring(hh) .. ")")
+  ok(iconW and math.abs((iconW or 0) - vialSz) < 0.5,
+    "fiole au repos = 70 % (" .. tostring(iconW) .. " / " .. tostring(vialSz) .. ")")
+  ok(iconW and hw and math.abs(hw - iconW) < 0.5,
+    "sablier = taille de la fiole (" .. tostring(hw) .. " / " .. tostring(iconW) .. ")")
+  ok(hh and iconW and math.abs(hh - iconW) < 0.5,
+    "hauteur sablier = fiole (" .. tostring(hh) .. ")")
   -- drainage : l'indice avance
   F._cycle0 = gtime - 1.3
   F.TickVisual(F._visFrame, 0.05)
@@ -2626,7 +2632,7 @@ do
     assertInside("icône combat grille", tot._stIcon, iw, ih)
   end
 
-  -- Barre large : glyphe ~70 % de la case, sans cadre, pas un pavé 100×50.
+  -- Barre large : fiole / combat / vol ~70 % de la case, sans cadre, pas un pavé 100×50.
   local bar = CreateFrame("Button", "DropamineTestBarTotal", UIParent)
   bar.data = { kind = "total" }
   bar._wideOn = true
@@ -2646,7 +2652,7 @@ do
   ok(okBar, "repas en barre : no-op (état retiré)")
   local bw, bh = S.IconInnerSize(bar)
   ok(bw == iconSz and bh == iconSz,
-    "barre : goutte = 70 % de la case (" .. tostring(bw) .. "×" .. tostring(bh) .. ", attendu " .. tostring(iconSz) .. ")")
+    "barre : fiole / combat = 70 % de la case (" .. tostring(bw) .. "×" .. tostring(bh) .. ", attendu " .. tostring(iconSz) .. ")")
   -- Combat en barre : icône de jeu à la place de la goutte, pas de bandes.
   S.ClearSim()
   S.SetCombatStyle("bubbles")
@@ -3046,11 +3052,7 @@ do
   local slim = (ns.Wide.RowHeight and ns.Wide.RowHeight(tile)) or math.max((ns.Wide.MIN_H or 28), math.floor(tile * (ns.Wide.SLIM or 0.5) + 0.5))
   local expectH = 3 * tile + 2 * vg + vg + slim
   local expectGw = gw
-  if ns.Wide.MinRowWidth and ns.Wide.Metrics then
-    local need = ns.Wide.MinRowWidth(ns.Wide.Metrics(tile))
-    if need and expectGw < need then expectGw = need end
-  end
-  ok(gwB == expectGw, "avec total en barre : largeur >= fiole + texte + barre (" .. tostring(gwB) .. " / " .. tostring(expectGw) .. ")")
+  ok(gwB == expectGw, "avec total en barre : largeur = grille de cases (" .. tostring(gwB) .. " / " .. tostring(expectGw) .. ")")
   ok(ghB == expectH, "avec total en barre : 3 rangées + barre fine (" .. tostring(ghB) .. " attendu " .. expectH .. ")")
   ok(fhB == ghB + 2 * padB, "barre : cadre = contenu + 2×marge")
   if ns.Wide then ns.Wide.forceShown = nil end
@@ -3077,11 +3079,6 @@ do
     local tile, hg, vg, M = I.TILE, I.HGAP, I.VGAP, L.MARGIN
     ok(c == cols, label .. " : colonnes " .. tostring(c) .. " (attendu " .. cols .. ")")
     local expectGw = cols * tile + math.max(0, cols - 1) * hg
-    if withTotal and ns.Wide and ns.Wide.ShouldWiden and ns.Wide.ShouldWiden(cols, skills + 1)
-      and ns.Wide.MinRowWidth and ns.Wide.Metrics then
-      local need = ns.Wide.MinRowWidth(ns.Wide.Metrics(tile))
-      if need and expectGw < need then expectGw = need end
-    end
     ok(gw == expectGw,
       label .. " : largeur grille " .. tostring(gw) .. " (attendu " .. tostring(expectGw) .. ")")
     ok(fw == gw + 2 * M, label .. " : cadre = grille + 2×12 (pas de largeur 262 périmée)")
@@ -3588,14 +3585,15 @@ do
     local lo, mid, hi = at(90), at(100), at(200)
     local nlo = I.NumberSizes and I.NumberSizes(lo.tile)
     local wantLo = (Wd.IconSize and Wd.IconSize(lo.tile)) or math.floor((lo.tile or 36) * 0.70 + 0.5)
-    ok(lo.h >= 36 and lo.isz == wantLo and lo.bh >= 12 and lo.font == (nlo and nlo.total)
+    ok(lo.h == wantLo and lo.isz == wantLo and lo.bh >= 12 and lo.font == (nlo and nlo.total)
       and lo.minBarW >= 100 and lo.pad >= (Wd.MIN_PAD or 3)
       and math.abs((lo.isz or 0) - (lo.tile or 0) * 0.70) <= 1.5,
-      "rangée total 90 % : plancher 36 px, fiole 70 % de la case, barre>=100")
-    ok((Wd.MIN_H or 0) >= 36 and (Wd.MIN_BAR_H or 0) >= 12
+      "rangée total 90 % : hauteur = fiole 70 % de la case (h=" .. tostring(lo.h) .. ")")
+    ok((Wd.MIN_BAR_H or 0) >= 12
       and (Wd.MIN_BAR_W or 0) >= 100 and math.abs((Wd.ICON_K or 0) - 0.70) < 0.01
+      and math.abs((Wd.STATE_ICON_K or 0) - 0.55) < 0.01
       and (I.TILE_MIN or 0) >= 36 and (L.SCALE_MIN or 0) >= 90,
-      "planchers : case 36 px, barre 100, fiole 70 %, échelle 90 %")
+      "planchers : case 36 px, fiole 70 %, états 55 %, échelle 90 %")
     ok(nlo and nlo.rank > nlo.total and nlo.total > nlo.max,
       "90 % : rang > total > /max")
     -- En dessous de la taille medium, l'épaisseur reste au plancher 12 px (ratio plus élevé).
@@ -3772,19 +3770,22 @@ do
       local m = Wd.Metrics(I.TILE)
       local tileGw = cols * I.TILE + math.max(0, cols - 1) * I.HGAP
       local minW = Wd.MinRowWidth(m, twOf(m.font))
-      local gw = math.max(tileGw, minW)
+      local gw = tileGw
       local plan = Wd.PlanTotalRow(gw, m, twOf)
       local nsizes = I.NumberSizes and I.NumberSizes(I.TILE)
-      ok(m.h >= (Wd.MIN_H or 28) and m.bh >= (Wd.MIN_BAR_H or 12)
-        and m.isz == ((Wd.IconSize and Wd.IconSize(m.tile or I.TILE)) or m.isz)
+      local wantH = (Wd.IconSize and Wd.IconSize(m.tile or I.TILE)) or m.isz
+      ok(m.h == wantH and m.bh >= (Wd.MIN_BAR_H or 12)
+        and m.isz == wantH
         and m.font == (nsizes and nsizes.total),
         string.format("métriques %d col. %d %% : h=%d bh=%d font=%d isz=%d (total=%s)",
           cols, pct, m.h, m.bh, m.font, m.isz, tostring(nsizes and nsizes.total)))
       ok(plan.overlay ~= true, string.format("%d col. %d %% : pas de texte superposé à la barre", cols, pct))
       ok(plan.font == m.font,
         string.format("%d col. %d %% : police pleine %d (pas réduite)", cols, pct, plan.font))
-      ok(plan.inner + 0.01 >= (Wd.MIN_BAR_W or 100),
-        string.format("barre %d col. %d %% : inner=%d >= 100", cols, pct, plan.inner))
+      if gw + 0.01 >= minW then
+        ok(plan.inner + 0.01 >= (Wd.MIN_BAR_W or 100),
+          string.format("barre %d col. %d %% : inner=%d >= 100", cols, pct, plan.inner))
+      end
       ok(plan.left + plan.inner <= plan.w + 0.01,
         string.format("rangée %d col. %d %% : barre dans le cadre (%d+%d <= %d)", cols, pct, plan.left, plan.inner, plan.w))
       return plan, gw, m, tileGw, minW
@@ -3804,17 +3805,20 @@ do
       ok(I.TILE <= 36, "5 col. 90 % : cases = 36 px au plancher (tile=" .. tostring(I.TILE) .. ")")
       local n90 = I.NumberSizes and I.NumberSizes(I.TILE)
       local wantI = (Wd.IconSize and Wd.IconSize(I.TILE)) or math.floor(I.TILE * 0.70 + 0.5)
-      ok(m.bh >= 12 and m.isz == wantI and m.h >= 36 and m.font == (n90 and n90.total),
-        string.format("5 col. 90 %% : fiole 70 %% (bh=%d font=%d isz=%d h=%d tile=%d)", m.bh, m.font, m.isz, m.h, I.TILE))
+      ok(m.bh >= 12 and m.isz == wantI and m.h == wantI and m.font == (n90 and n90.total),
+        string.format("5 col. 90 %% : rangée = fiole 70 %% (bh=%d font=%d isz=%d h=%d tile=%d)", m.bh, m.font, m.isz, m.h, I.TILE))
       ok(n90 and n90.rank >= 11 and n90.rank > n90.total and n90.total > n90.max,
         "5 col. 90 % : rang / max lisibles, rang > total > /max")
       local fw, fh, pad, gw = L.ContentSize(5)
-      local minW = Wd.MinRowWidth(m)
-      ok(gw + 0.01 >= minW, "5 col. 90 % : largeur de grille >= minimum rangée (" .. tostring(gw) .. " / " .. tostring(minW) .. ")")
+      local nat = (L.TileGridWidth and L.TileGridWidth(5)) or gw
+      ok(gw == nat, "5 col. 90 % : largeur utile = grille de cases (" .. tostring(gw) .. " / " .. tostring(nat) .. ")")
+      ok(pad == (L.MARGIN or 12) and fw == gw + 2 * pad,
+        "5 col. 90 % : cadre = grille + même marge des 4 côtés")
       local plan = Wd.PlanTotalRow(gw, m, twOf)
       ok(plan.overlay ~= true and plan.font == m.font,
         "5 col. 90 % : texte à côté de la barre, police du total non réduite")
-      ok(plan.inner >= 100, "5 col. 90 % : barre longue d'au moins 100 px (" .. tostring(plan.inner) .. ")")
+      ok(plan.left + plan.inner <= plan.w + 0.01,
+        "5 col. 90 % : barre dans la largeur utile (" .. tostring(plan.inner) .. ")")
       local midBar = math.floor(((plan.h or m.h) - (plan.bh or m.bh)) / 2 + 0.5)
       ok(math.abs((plan.by or 0) - midBar) <= 1,
         "5 col. 90 % : barre centrée verticalement (by=" .. tostring(plan.by) .. ", milieu=" .. tostring(midBar) .. ")")
@@ -3855,7 +3859,8 @@ do
       do
         local tile = I.TILE or 36
         local want = (Wd.IconSize and Wd.IconSize(tile)) or math.floor(tile * 0.70 + 0.5)
-        local cx = (Wd.ColCenter and Wd.ColCenter(tile)) or math.floor(tile / 2 + 0.5)
+        local cx = (Wd.FirstColCenter and Wd.FirstColCenter(tile))
+          or (Wd.ColCenter and Wd.ColCenter(tile)) or math.floor(tile / 2 + 0.5)
         ok(want == math.floor(tile * 0.70 + 0.5), "taille fiole = 70 % de la case (" .. tostring(want) .. ")")
         local dummy = { _wideOn = true, icon = { shown = true, w = 0, h = 0, pts = {} },
           slotBg = { shown = true }, slotBorder = { shown = true }, bg333 = { shown = true },
@@ -4398,6 +4403,91 @@ do
     local ox100 = L.GridOriginX(5, gw100)
     local l100, r100 = (pad100 or 12) + ox100, (pad100 or 12) + (gw100 - nat100 - ox100)
     ok(math.abs(l100 - r100) <= 1, "58 : marges égales à 100 % (" .. tostring(l100) .. " / " .. tostring(r100) .. ")")
+
+    -- 59 : au plancher, G = D = H = B ; rangée = fiole 70 % ; états 55 % ; icône sur 1re colonne.
+    if ns.db and ns.db.ui then ns.db.ui.scale = 90 ns.db.ui.cols = nil ns.db.ui.showTotal = true end
+    if Wd then Wd.forceShown = true end
+    if L.SyncMetrics then L.SyncMetrics() end
+    local UI = ns.UI
+    if UI then
+      UI.snapshot = UI.snapshot or {}
+      local snap = {}
+      for i = 1, 9 do snap[i] = { id = i } end
+      UI.snapshot.tiles = snap
+    end
+    local tile = I.TILE or 36
+    local vg = I.VGAP or 12
+    local fw59, fh59, pad59, gw59, gh59 = L.ContentSize(5)
+    local nat59 = L.TileGridWidth(5)
+    local ox59 = L.GridOriginX(5, gw59)
+    local left59 = (pad59 or 12) + ox59
+    local right59 = (pad59 or 12) + (gw59 - nat59 - ox59)
+    ok(gw59 == nat59 and ox59 == 0, "59 : largeur min = grille (pas d'élargissement barre)")
+    ok(left59 == (pad59 or 12) and right59 == (pad59 or 12) and left59 == pad59,
+      "59 : au plancher, marges G/D = H/B (" .. tostring(left59) .. " / " .. tostring(pad59) .. ")")
+    ok(fw59 == gw59 + 2 * pad59 and fh59 == gh59 + 2 * pad59,
+      "59 : cadre = contenu + même marge des 4 côtés")
+    local m59 = Wd.Metrics(tile)
+    local isz70 = (Wd.IconSize and Wd.IconSize(tile)) or math.floor(tile * 0.70 + 0.5)
+    local isz55 = (Wd.StateIconSize and Wd.StateIconSize(tile)) or math.floor(tile * 0.55 + 0.5)
+    ok(m59.h == isz70, "59 : hauteur rangée total = fiole 70 % (" .. tostring(m59.h) .. ")")
+    ok(isz55 == math.floor(tile * 0.55 + 0.5),
+      "59 : glyphe Z de repos = 55 % de la case (" .. tostring(isz55) .. ")")
+    local rows59 = 2
+    local expectGh = rows59 * tile + (rows59 - 1) * vg + vg + m59.h
+    ok(gh59 == expectGh, "59 : écart avant le total = écart entre rangées (" .. tostring(gh59) .. " / " .. tostring(expectGh) .. ")")
+    local dummy59 = { icon = { pts = {}, w = 0, h = 0 } }
+    function dummy59.icon:ClearAllPoints() self.pts = {} end
+    function dummy59.icon:SetPoint(a, b, c, x, y) self.pts = { a, b, c, x, y } end
+    function dummy59.icon:SetSize(w, h) self.w, self.h = w, h end
+    if Wd.PlaceVialIcon then Wd.PlaceVialIcon(dummy59, { tile = tile }) end
+    local cx59 = (Wd.FirstColCenter and Wd.FirstColCenter(tile)) or math.floor(tile / 2 + 0.5)
+    ok(dummy59.icon.pts and dummy59.icon.pts[4] == cx59 and dummy59.icon.w == isz70,
+      "59 : fiole 70 % centrée sur la 1re colonne (x=" .. tostring(dummy59.icon.pts and dummy59.icon.pts[4]) .. ")")
+    if ns.Slot and ns.Slot.IconInnerSize then
+      local sw = select(1, ns.Slot.IconInnerSize({ _wideOn = true }))
+      ok(sw == isz70, "59 : IconInnerSize (fiole / combat / vol) = 70 % (" .. tostring(sw) .. ")")
+    end
+    if ns.db and ns.db.ui then ns.db.ui.scale = nil end
+    if L.SyncMetrics then L.SyncMetrics() end
+  end
+
+  -- 60 : chaque +1 part juste au-dessus de SA case et retombe dessus.
+  if C and C.Gain then
+    local host = CreateFrame("Frame", "DropamineGainHost", _G.UIParent)
+    host:SetSize(300, 200)
+    host:ClearAllPoints()
+    host:SetPoint("TOPLEFT", _G.UIParent, "TOPLEFT", 0, 0)
+    local function mk(name, top)
+      local t = CreateFrame("Button", name, host)
+      t:SetSize(36, 36)
+      t:ClearAllPoints()
+      t:SetPoint("TOPLEFT", host, "TOPLEFT", 10, -top)
+      t.icon = t:CreateTexture(nil, "ARTWORK")
+      if t.icon.SetSize then t.icon:SetSize(32, 32) end
+      if t.icon.SetPoint then t.icon:SetPoint("CENTER", t, "CENTER", 0, 0) end
+      t.data = { kind = "skill", name = name }
+      return t
+    end
+    local t1 = mk("DropamineGainR1", 0)
+    local t2 = mk("DropamineGainR2", 48)
+    C.Gain(t1, "+1")
+    C.Gain(t2, "+1")
+    local g1, g2 = t1._osrsGain, t2._osrsGain
+    ok(g1 and g2 and g1 ~= g2, "60 : un +1 par case")
+    local p1 = g1.points and g1.points[#g1.points]
+    local p2 = g2.points and g2.points[#g2.points]
+    ok(p1 and p1[2] == t1, "60 : +1 rangée 1 ancré à sa propre case")
+    ok(p2 and p2[2] == t2, "60 : +1 rangée 2 ancré à sa propre case (pas au haut du bloc)")
+    local want = (C.GAIN_START_K or 0.4) * 36
+    ok(g1._y and math.abs(g1._y - want) < 2,
+      "60 : départ = haut de case + 0,4 case (" .. tostring(g1._y) .. " / " .. tostring(want) .. ")")
+    ok(g2._y and math.abs(g2._y - want) < 2,
+      "60 : le +1 de la rangée 2 part aussi de SA case (" .. tostring(g2._y) .. ")")
+    local y1, y2 = g1._y, g2._y
+    if C.GainStep then C.GainStep(g1, (C.GAIN_TIME or 1.5) * 0.5) C.GainStep(g2, (C.GAIN_TIME or 1.5) * 0.5) end
+    ok(g1._y and y1 and g1._y < y1, "60 : le +1 descend sur sa case (" .. tostring(y1) .. " → " .. tostring(g1._y) .. ")")
+    ok(g2._y and y2 and g2._y < y2, "60 : le +1 de la rangée 2 descend sur sa case")
   end
 
   -- 57 : vol d'éclat — ancrages courants, découpe, vivier, watchdog ; timing inchangé.

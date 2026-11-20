@@ -3,6 +3,8 @@
 ## 3.7.0
 This release is the 3.6.3 work shipped as 3.7.0 (the 3.6.3 tag was never created).
 
+- At the panel's minimum size, left, right, top and bottom margins are equal: the min frame width is the tile grid plus the same padding on all four sides (it no longer grows to fit the total bar). At larger sizes the grid stays horizontally centered (left == right). The total-row height is the drop-vial icon (~70 % of the tile); the gap above the total row matches the gap between skill rows, and the bottom padding matches the top. The drop vial, the flight hourglass and the combat icon stay at ~70 % of the tile; only the rest Z glyph is ~55 %. All of them are centered on the first tile column. Each “+1” starts just above its own tile (about 0.4 × tile height) and drops onto it — it no longer appears at the top of the tile block.
+
 - The toast→tile spark uses live start/end anchors from the current tile position and scale (no cached size), stays clipped inside the panel, lands on the right tile, and is released to the flyer pool. In-flight sparks are not stopped by the watchdog. Real +1 / veil timing is unchanged (they still play when the spark arrives, after the toast). Options testers play +1 / veil when the test toast shows; they still do not write fake gains to history.
 - The tile grid is centered in the panel at every size: left margin equals right margin, and leftover width is split evenly. The total row uses the same content box, so the bar no longer sticks out only on the right of the last tile column.
 

@@ -336,8 +336,9 @@ function UI:IsRightPaneVisible() return false end
 -- 3) Toasts → grille
 ------------------------------------------------------------------------------
 C.FLY = 0.55          -- vol de l'éclat (s)
-C.GAIN_TIME = 1.5     -- gain vert : montée + fondu
-C.GAIN_RISE = 14      -- px
+C.GAIN_TIME = 1.5     -- chute + fondu
+C.GAIN_RISE = 14      -- (ancien, conservé)
+C.GAIN_START_K = 0.40 -- départ : juste au-dessus de CETTE case (~0,4 × hauteur)
 C.PULSE_IN, C.PULSE_OUT = 0.08, 0.32   -- voile : pic puis fondu, 0,4 s au total
 C.PULSE_PEAK = 0.5
 C.POP_LIFT = 0.42  -- mélange vers le blanc : version plus claire de GAIN_COLORS
@@ -849,8 +850,42 @@ function C.Pulse(t, color)
 end
 
 
--- Gain coloré façon XP drop d'OSRS : au-dessus de l'icône, monte de quelques
--- pixels et s'efface en ~1,5 s ; police contournée.
+-- +1 coloré : part juste au-dessus de SA case (~0,4 × hauteur) et retombe
+-- sur elle en ~1,5 s, puis s'efface. Chaque case a son propre départ.
+function C.TileHeight(t)
+  local h = t and t.GetHeight and t:GetHeight()
+  h = N(h)
+  if not h or h < 1 then h = (I and I.TILE) or 40 end
+  return h
+end
+function C.GainEnds(t)
+  local h = C.TileHeight(t)
+  local y0 = (C.GAIN_START_K or 0.4) * h
+  local y1 = -(h * 0.5) + 4
+  return y0, y1, h
+end
+function C.GainStep(g, elapsed)
+  if not (g and g._gainOn and g._gainTile) then return end
+  local tile = g._gainTile
+  local y0, y1 = C.GainEnds(tile)
+  g._t = (g._t or 0) + (elapsed or 0)
+  local dur = C.GAIN_TIME or 1.5
+  local k = (dur > 0) and (g._t / dur) or 1
+  if k > 1 then k = 1 end
+  local u = k * k
+  local y = y0 + (y1 - y0) * u
+  if g.ClearAllPoints then g:ClearAllPoints() end
+  if g.SetPoint then g:SetPoint("CENTER", tile, "TOP", 0, y) end
+  g._y, g._k = y, k
+  if g.SetAlpha then
+    if k < 0.4 then g:SetAlpha(1) else g:SetAlpha(math.max(0, 1 - (k - 0.4) / 0.6)) end
+  end
+  if k >= 1 then
+    g._gainOn = nil
+    if g.SetScript then pcall(g.SetScript, g, "OnUpdate", nil) end
+    if g.Hide then g:Hide() end
+  end
+end
 function C.Gain(t, text, color)
   color = C.SharedGainColor and C.SharedGainColor(color) or color
   local g = t._osrsGain
@@ -886,9 +921,11 @@ function C.Gain(t, text, color)
   end
   t._osrsGain = g
   if gkey then C._gainByKey[gkey] = g end
-  if g.SetParent then pcall(g.SetParent, g, t) end
-  if g.ClearAllPoints then pcall(g.ClearAllPoints, g) end
-  if g.SetPoint then pcall(g.SetPoint, g, "CENTER", t.icon or t, "CENTER", 0, 4) end
+  -- Parenté au bloc de cases (pas à la case) pour ne pas être rogné, mais
+  -- toujours ancré à CETTE case : le +1 d'une rangée 2 ne part pas du haut du bloc.
+  local host = (t.GetParent and t:GetParent()) or t
+  if g.SetParent then pcall(g.SetParent, g, host) end
+  if g.ag and g.ag.Stop then pcall(g.ag.Stop, g.ag) end
   local base = t.GetFrameLevel and t:GetFrameLevel() or 1
   pcall(g.SetFrameLevel, g, base + 8)
   g.fs:SetText(text)
@@ -897,11 +934,18 @@ function C.Gain(t, text, color)
     g.fs._color = color
   end
   g._color = color
+  g._gainTile, g._gainOn, g._t = t, true, 0
   g:SetAlpha(1)
   g:Show()
   g._plays = (g._plays or 0) + 1
-  if g.ag then if g.ag.Stop then pcall(g.ag.Stop, g.ag) end g.ag:Play()
-  elseif not After(C.GAIN_TIME, function() g:Hide() end) then g:Hide() end
+  if g.SetScript then g:SetScript("OnUpdate", C.GainStep) end
+  C.GainStep(g, 0)
+  After((C.GAIN_TIME or 1.5) + 0.05, function()
+    if not g._gainOn then return end
+    g._gainOn = nil
+    if g.SetScript then pcall(g.SetScript, g, "OnUpdate", nil) end
+    if g.Hide then g:Hide() end
+  end)
   C.lastGain = { tile = t, text = text }
   return g
 end
