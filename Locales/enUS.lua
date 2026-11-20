@@ -1207,3 +1207,9 @@ E["Met le suivi et les toasts en pause sur un trajet aérien. Rien n'est mis en 
 E["pause pendant le vol : "] = "pause while flying: "
 E["/drop vol on|off : pause du suivi et des toasts sur un trajet aérien"] = "/drop flight on|off: pause the tracker and toasts on a flight path"
 E["En pause pendant le vol"] = "Paused while flying"
+
+E["Suivi en pause pendant le vol."] = "Tracking paused while flying."
+E["Le sablier disparaît à l'atterrissage."] = "The hourglass goes away when you land."
+E["astuces réinitialisées."] = "hints reset."
+E["/drop reset-hints : réafficher les astuces (sablier en vol, …)"] = "/drop reset-hints: show the hints again (hourglass while flying, …)"
+

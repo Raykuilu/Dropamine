@@ -2048,6 +2048,32 @@ function F.HideActiveToasts()
   ui.dropsActive = {}
 end
 
+function F.ResetHints()
+  local ch = ns.CharDB and ns.CharDB()
+  if ch then ch.flightPauseHint = nil end
+end
+
+-- Premier trajet aérien de ce personnage : un toast explicatif (force = true,
+-- seule exception à « pas de toast en vol »). Une fois par personnage.
+function F.MaybeShowHint()
+  if not F.Paused() then return nil end
+  local ch = ns.CharDB and ns.CharDB()
+  if not ch or ch.flightPauseHint then return nil end
+  local ui = ns.UI
+  if not (ui and ui.SpawnDrop) then return nil end
+  local icon = "Interface\\AddOns\\Dropamine\\Media\\Hourglass"
+  local ok, f = pcall(ui.SpawnDrop, ui, icon,
+    Tr["Suivi en pause pendant le vol."],
+    Tr["Le sablier disparaît à l'atterrissage."],
+    nil, nil, nil,
+    { force = true, kind = "flight-hint", dedupeKey = "flight-hint" })
+  if ok and f then
+    ch.flightPauseHint = true
+    return f
+  end
+  return nil
+end
+
 function F.OnBegin()
   F._silentLand = false
   F.HideActiveToasts()
@@ -2068,6 +2094,7 @@ function F.OnBegin()
     end
   end
   if ns.Target and ns.Target.Clear then pcall(ns.Target.Clear) end
+  F.MaybeShowHint()
 end
 
 function F.OnEnd()
@@ -2168,8 +2195,15 @@ end
 ns.CMD_ALIAS = ns.CMD_ALIAS or {}
 ns.CMD_ALIAS.flight = "vol"
 ns.CMD_ALIAS.fly = "vol"
+ns.SlashExt = ns.SlashExt or {}
+ns.SlashExt["reset-hints"] = function()
+  if F.ResetHints then F.ResetHints() end
+  ns.Print(Tr["astuces réinitialisées."])
+end
+
 ns.HelpExt = ns.HelpExt or {}
 ns.HelpExt[#ns.HelpExt + 1] = "/drop vol on|off : pause du suivi et des toasts sur un trajet aérien"
+ns.HelpExt[#ns.HelpExt + 1] = "/drop reset-hints : réafficher les astuces (sablier en vol, …)"
 
 ns.DebugExt = ns.DebugExt or {}
 ns.DebugExt[#ns.DebugExt + 1] = function()
@@ -2631,6 +2665,7 @@ ns.CMD_ALIAS = {
   quiet = "calme", profile = "profil", week = "semaine", achievements = "succes", progress = "progression",
   sessiongoal = "but", target = "but",
   flight = "vol", fly = "vol",
+  resethints = "reset-hints",
 }
 ns.ARG_ALIAS = {
   light = "leger", green = "vert", yellow = "jaune", tier = "palier", above = "dessus", below = "dessous",
