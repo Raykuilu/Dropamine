@@ -2279,12 +2279,14 @@ do
   ns.Test = T
   T.STATES = {
     { id = "flight",   label = "Vol",                tip = "Démarre ou arrête la pause en vol (sablier + toast d'astuce)." },
-    { id = "death",    label = "Mort",               stub = true },
-    { id = "afk",      label = "AFK",                stub = true },
-    { id = "fishing",  label = "Pêche",              stub = true },
-    { id = "swimming", label = "Nage",               stub = true },
-    { id = "trainer",  label = "Maître à proximité", stub = true },
-    { id = "combat",   label = "Combat",             stub = true },
+    { id = "death",    label = "Mort",               tip = "Simule la mort : crâne dans la fiole, barre vidée et grisée." },
+    { id = "afk",      label = "AFK",                tip = "Simule l'absence : horloge de bronze dans le puits." },
+    { id = "fishing",  label = "Pêche",              tip = "Simule la pêche : hameçon qui tangue dans le puits." },
+    { id = "swimming", label = "Nage",               tip = "Simule la nage : bulles dans le puits." },
+    { id = "rested",   label = "Repos",              tip = "Simule le repos en auberge : « z » dans le puits de la fiole." },
+    { id = "combat",   label = "Combat",             tip = "Simule le combat selon le style choisi (bulles, épée ou désactivé)." },
+    { id = "trainer",  label = "Maître à proximité", tip = "Simule un maître à proximité : éclat sur les cases de métier." },
+    { id = "rankup",   label = "Rang supérieur disponible", tip = "Affiche le toast collant « rang supérieur disponible chez le maître »." },
   }
   T.ALIASES = {
     vol = "flight", fly = "flight", flight = "flight",
@@ -2292,8 +2294,10 @@ do
     afk = "afk",
     peche = "fishing", fishing = "fishing",
     nage = "swimming", swim = "swimming", swimming = "swimming",
+    repos = "rested", rested = "rested", rest = "rested",
     maitre = "trainer", trainer = "trainer",
     combat = "combat",
+    rankup = "rankup", rang = "rankup", palier = "rankup",
     toast = "toast", drop = "toast",
     off = "off", stop = "off", tout = "off",
   }
@@ -2368,21 +2372,36 @@ do
     if id == "toast" then return T.Toast() end
     if id == "flight" then return T.StartFlight() end
     local known
-    for _, s in ipairs(T.STATES) do if s.id == id then known = s break end end
+    for _, st in ipairs(T.STATES) do if st.id == id then known = st break end end
     if not known then
       ns.Print(Tr["test : état inconnu. Usage : /drop test flight|toast|off"])
       return nil
     end
     T._on = T._on or {}
     T._on[id] = true
-    ns.Print(string.format(Tr["test : %s (pas encore simulable)."], Tr[known.label] or known.label))
-    return "stub"
+    if id == "rankup" then
+      if ns.RankToast and ns.RankToast.SetSim then pcall(ns.RankToast.SetSim, true) end
+      if ns.RankToast and ns.RankToast.Refresh then pcall(ns.RankToast.Refresh, "test") end
+      ns.Print(Tr["test : toast rang supérieur chez le maître."])
+      return true
+    end
+    if ns.Slot and ns.Slot.SetSim then pcall(ns.Slot.SetSim, id, true) end
+    if ns.Slot and ns.Slot.Refresh then pcall(ns.Slot.Refresh, "test") end
+    ns.Print(string.format(Tr["test : %s simulé."], Tr[known.label] or known.label))
+    return true
   end
 
   function T.Stop(id)
     id = Norm(id)
     if id == "flight" then return T.StopFlight() end
     if T._on then T._on[id] = nil end
+    if id == "rankup" then
+      if ns.RankToast and ns.RankToast.SetSim then pcall(ns.RankToast.SetSim, false) end
+      if ns.RankToast and ns.RankToast.Hide then pcall(ns.RankToast.Hide, "test") end
+    elseif ns.Slot and ns.Slot.SetSim then
+      pcall(ns.Slot.SetSim, id, false)
+      if ns.Slot.Refresh then pcall(ns.Slot.Refresh, "test-off") end
+    end
     return true
   end
 
@@ -2395,8 +2414,17 @@ do
 
   function T.StopAll()
     if T._on and T._on.flight then T.StopFlight() end
+    if T._on then
+      for id in pairs(T._on) do
+        if id ~= "flight" and T.Stop then T.Stop(id) end
+      end
+    end
     T._on = {}
     F._simTaxi = nil
+    if ns.Slot and ns.Slot.ClearSim then pcall(ns.Slot.ClearSim) end
+    if ns.Slot and ns.Slot.Refresh then pcall(ns.Slot.Refresh, "test-off") end
+    if ns.RankToast and ns.RankToast.SetSim then pcall(ns.RankToast.SetSim, false) end
+    if ns.RankToast and ns.RankToast.Hide then pcall(ns.RankToast.Hide, "test") end
     if T._toast and ns.UI and ns.UI.DismissDrop then pcall(ns.UI.DismissDrop, ns.UI, T._toast) end
     T._toast = nil
     ns.Print(Tr["test : tout arrêté."])

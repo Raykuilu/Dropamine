@@ -364,7 +364,12 @@ function R.Apply(t)
   local a = Anchor(t)
   local base = (t.GetFrameLevel and N(t:GetFrameLevel())) or 1
   -- z
-  if st.z > 0 then
+  if st.z > 0 and ns.Slot and ns.Slot.TakesRestedZ and ns.Slot.TakesRestedZ() then
+    if t._rzz then
+      for _, f in ipairs(t._rzz.z) do Stop(f.ag) f:Hide() end
+      t._rzz:Hide()
+    end
+  elseif st.z > 0 then
     local h = R.BuildZ(t)
     h:ClearAllPoints()
     h:SetPoint("TOPRIGHT", a, "TOPRIGHT", -R.Z_INSET[1], -R.Z_INSET[2])   -- dans le coin de l'icône

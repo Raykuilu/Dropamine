@@ -730,7 +730,7 @@ function Options.BuildDevTest(content, y, boxW)
     if col == 0 then x = 0 end
     local b = MakeBtn("DropamineDevTest_" .. info.id, info.label, info.tip, function()
       if ns.Test and ns.Test.Toggle then pcall(ns.Test.Toggle, info.id) end
-    end, (info.id == "off" or info.id == "trainer") and 160 or bw)
+    end, (info.id == "off" or info.id == "trainer" or info.id == "rankup" or info.id == "rested") and 200 or bw)
     b:SetPoint("TOPLEFT", box, "TOPLEFT", x, -by)
     local w = b:GetWidth() or bw
     x = x + w + gap

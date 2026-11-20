@@ -792,9 +792,18 @@ do
       F._cycle0 = ((type(GetTime) == "function" and GetTime()) or 0)
     end
     if not F.Paused() and (F._vis or 0) <= 0 then F._cycle0 = nil end
-    Wd.ApplyHourglass()
+    local slot = ns.Slot
+    if slot and slot.Tick then pcall(slot.Tick, dt) end
+    local act = (slot and slot.Active and slot.Active()) or "drop"
+    local flightSym = (slot and slot.Want and slot.Want("flight")) or (not slot and F.Paused())
+    if flightSym or (act == "drop" and (F._vis or 0) > 0) then
+      Wd.ApplyHourglass()
+    elseif slot and slot.ApplyTotal then
+      pcall(slot.ApplyTotal)
+    end
     if ns.Panel and ns.Panel.ApplyOpacity then pcall(ns.Panel.ApplyOpacity) end
-    if (F._vis or 0) <= 0 and not F.Paused() then F.StopVisualDriver() end
+    local need = ((F._vis or 0) > 0) or F.Paused() or (slot and slot.NeedsDriver and slot.NeedsDriver())
+    if not need then F.StopVisualDriver() end
   end
 
   function F.StopVisualDriver()
@@ -852,7 +861,8 @@ do
     if not (ok and hit) then return nil end
     if type(hit.EnableMouse) == "function" then pcall(hit.EnableMouse, hit, true) end
     hit:SetScript("OnEnter", function(self)
-      if F.ShowPauseExplanation then pcall(F.ShowPauseExplanation, self) end
+      if ns.Slot and ns.Slot.ShowExplanation then pcall(ns.Slot.ShowExplanation, self)
+      elseif F.ShowPauseExplanation then pcall(F.ShowPauseExplanation, self) end
     end)
     hit:SetScript("OnLeave", function(self)
       local tt = _G.GameTooltip
@@ -874,7 +884,11 @@ do
 
   function Wd.SyncFlaskHit(t, vis)
     if not t then return nil end
-    local want = F.Paused() or ((vis or F._vis or 0) > 0.01)
+    local slot = ns.Slot
+    local act = slot and slot.Active and slot.Active()
+    local combatTip = slot and slot.CombatLiquidOn and slot.CombatLiquidOn()
+      and ((slot.LiveCombat and slot.LiveCombat()) or (slot.fill and (slot.fill.p or 0) > 0.05))
+    local want = F.Paused() or ((vis or F._vis or 0) > 0.01) or (act and act ~= "drop") or combatTip
     local hit = t._hgHit or (want and Wd.EnsureFlaskHit(t))
     if not hit then return nil end
     if not want then
