@@ -414,6 +414,38 @@ function Q.RecapLine()
   local dur = (started and now and now > started) and ns.FormatDuration(now - started) or nil
   return Tr["Session : "] .. table.concat(parts, ", ") .. (dur and (" (" .. dur:gsub("^~", "") .. ")") or "")
 end
+
+-- Toast de déconnexion : titre court + une ligne compacte (pas la ligne de chat entière).
+function Q.RecapToastTitle(why)
+  return Tr["Session"]
+end
+function Q.RecapShort()
+  local c = ns.CharDB()
+  local snap = UI() and UI().snapshot
+  if not snap then local ok, s2 = pcall(ns.Collect) snap = ok and s2 or nil end
+  if not snap then return nil end
+  local bits = {}
+  local gain = ns.SessionGain(snap.total)
+  if gain and gain ~= 0 then
+    bits[#bits + 1] = ((gain >= 0) and "+" or "") .. tostring(gain)
+  end
+  local xp = UI() and UI()._sessionXP or 0
+  if xp and xp > 0 then bits[#bits + 1] = "+" .. tostring(xp) .. " XP" end
+  local start, n = c.session.startRanks or {}, 0
+  for _, d in ipairs(snap.tiles or {}) do
+    local s, cur = start[d.id], N(d.current)
+    if s and cur and cur > s.v then n = n + 1 end
+  end
+  if n > 0 then
+    bits[#bits + 1] = "+" .. tostring(n) .. " " .. (n > 1 and Tr["compétences"] or Tr["compétence"])
+  end
+  local started = N(c.session.started)
+  local now = (type(time) == "function" and time()) or nil
+  local dur = (started and now and now > started) and ns.FormatDuration(now - started) or nil
+  if dur then bits[#bits + 1] = dur:gsub("^~", "") end
+  if #bits == 0 then return nil end
+  return table.concat(bits, " · ")
+end
 ns.SlashExt.recap = function(rest)
   local low = (rest or ""):lower()
   if low == "on" or low == "off" then return toggleCmd("recapLogout", Tr["récap à la déconnexion"])(low) end
@@ -522,7 +554,7 @@ end
 
 -- 11. Défense : adversaire gris (une fois par session) -------------------------
 function Q.CheckDefenseTarget()
-  if not ns.Opt("defense") or Q._defenseWarned then return nil end
+  if not ns.Opt("defense") then Q._defenseTip = nil return nil end
   if not Call(UnitCanAttack, "player", "target") then return nil end
   local lvl = N(Call(UnitLevel, "target"))
   if not lvl or lvl <= 0 then return nil end
@@ -532,7 +564,7 @@ function Q.CheckDefenseTarget()
   if not isGray and type(col) == "table" and type(trivial) == "table" then
     isGray = N(col.r) == N(trivial.r) and N(col.g) == N(trivial.g) and N(col.b) == N(trivial.b)
   end
-  if not isGray then return nil end
+  if not isGray then Q._defenseTip = nil return nil end
   local snap = (ns.SkillRankSnapshotCached and ns.SkillRankSnapshotCached()) or (ns.SkillRankSnapshot and ns.SkillRankSnapshot()) or {}
   local def = snap[ns.Fold("Défense")]
   if not def then return nil end
@@ -540,8 +572,8 @@ function Q.CheckDefenseTarget()
   if maxv <= 0 then maxv = (N(ns.GetPlayerLevel()) or 0) * (ns.WEAPON_RANK_PER_LEVEL or 5) end
   if cur >= maxv then return nil end
   Q._defenseWarned = true
-  local e = ns.CatalogById("defense")
-  Drop(e and e.icon, Tr["Défense "] .. cur .. "/" .. maxv, Tr["Adversaire gris (niveau "] .. lvl .. ")", { kind = "defense", light = true })
+  -- Pas de toast : le rappel reste sur l'infobulle de la case Défense.
+  Q._defenseTip = Tr["Défense "] .. cur .. "/" .. maxv .. " — " .. Tr["Adversaire gris (niveau "] .. lvl .. ")"
   return true
 end
 
@@ -557,6 +589,18 @@ if ns.On then
   ns.On("PLAYER_EQUIPMENT_CHANGED", function() pcall(Q.CheckUnlearnedWeapon) end)
   ns.On("PLAYER_TARGET_CHANGED", function() if not InCombat() then pcall(Q.CheckDefenseTarget) end end)
   ns.On("PLAYER_REGEN_DISABLED", function() pcall(Q.CheckDefenseTarget) end)
+
+if ns.Compact and ns.Compact.TooltipModel then
+  local baseTip = ns.Compact.TooltipModel
+  function ns.Compact.TooltipModel(d)
+    local m = baseTip(d)
+    local tip = Q._defenseTip
+    if tip and m and m.lines and d and (d.kind == "defense" or d.id == "defense") then
+      m.lines[#m.lines + 1] = { tip, 0.85, 0.85, 0.85, true }
+    end
+    return m
+  end
+end
   -- 3.3.16 : le récap n'est plus écrit à PLAYER_LOGOUT (caché par l'écran de
   -- chargement) mais au DÉBUT du compte à rebours de déconnexion / sortie :
   -- toast visible pendant le décompte + ligne de chat ; annulé par LOGOUT_CANCEL.
@@ -588,11 +632,16 @@ function Q.LogoutRecap(why)
   Q._recapToast = false
   local U = UI()
   if U and U.SpawnDrop and not InCombat() then
-    local body = l:gsub("^" .. (Tr["Session : "]:gsub("%p", "%%%0")), "")
-    local okT, t = pcall(U.SpawnDrop, U, "Interface\\AddOns\\Dropamine\\Media\\SkillsTab",
-      Tr["Récap de session — "] .. tostring(why or Tr["déconnexion"]), body, nil, nil, "",
+    local title = (Q.RecapToastTitle and Q.RecapToastTitle(why)) or Tr["Session"]
+    local body = (Q.RecapShort and Q.RecapShort()) or l:gsub("^" .. (Tr["Session : "]:gsub("%p", "%%%0")), "")
+    local icon = "Interface\\AddOns\\Dropamine\\Media\\SkillsTab"
+    local okT, t = pcall(U.SpawnDrop, U, icon, title, body, nil, nil, "",
       { hold = Q.LOGOUT_SECONDS, dedupeKey = "osrs-logout-recap", kind = "recap" })
-    if okT and t then Q._recapToast = t end
+    if okT and t then
+      t._fullTitle = Tr["Récap de session — "] .. tostring(why or Tr["déconnexion"])
+      t._fullSub = l
+      Q._recapToast = t
+    end
   end
   return Q._recapToast
 end

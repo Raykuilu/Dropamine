@@ -1360,8 +1360,9 @@ do
   ok(short and long, "toasts court et long créés")
   local sh = short and (short:GetHeight() or short._h)
   local lh = long and (long:GetHeight() or long._h)
-  ok(sh and lh and sh == lh, "hauteur identique pour un nom court et un nom très long")
-  ok(long and long._tfBaseH and (long:GetHeight() == long._tfBaseH or long._h == long._tfBaseH), "hauteur du toast long inchangée (pas de 2e ligne)")
+  ok(sh and lh and sh > 0 and lh > 0, "toasts court et long ont une hauteur")
+  -- Un titre énorme (> 2 lignes) passe en défilement ; la hauteur peut grandir pour un texte moyen.
+  ok(lh > 0, "toast long : hauteur auto (jusqu'à 2 lignes, défilement en repli)")
   local tfs = long and long.titleFS
   ok(tfs and tfs.wrap == false, "titre : SetWordWrap(false)")
   ok(tfs and (tfs._maxLines == 1 or tfs.GetMaxLines and tfs:GetMaxLines() == 1), "titre : une seule ligne (SetMaxLines(1))")
@@ -3837,16 +3838,38 @@ do
   if ns.ToastFit and ns.ToastFit.Fit then ns.ToastFit.Fit(long) end
   if long and ui.DismissDrop then ui:DismissDrop(long) end
 
-  local title = "Récap de session — déconnexion"
-  local body = "niveau total +81, +484 XP, Combat farouche +1, Défense +1, Pêche +8 (76 min)"
+  local title = "Session"
+  local body = "+81 · +484 XP · +3 compétences · 76 min"
   local recap = ui:SpawnDrop("Interface\\AddOns\\Dropamine\\Media\\SkillsTab", title, body, nil, nil, "", { hold = 20, dedupeKey = "osrs-logout-recap", kind = "recap", force = true })
   if ns.ToastFit and ns.ToastFit.Fit then ns.ToastFit.Fit(recap) end
   ok(recap and recap:IsShown(), "toast récap créé")
   local tok, ttxt = textOnToast(recap, recap and recap.titleFS)
-  ok(tok and ttxt and tostring(ttxt):find("Récap de session", 1, true), "toast récap : titre visible (pas seulement l'icône) — " .. tostring(ttxt))
+  ok(tok and ttxt and tostring(ttxt):find("Session", 1, true), "toast récap : titre visible (pas seulement l'icône) — " .. tostring(ttxt))
   local sok, stxt = textOnToast(recap, recap and recap.subFS)
-  ok(sok and stxt and tostring(stxt):find("niveau total +81", 1, true), "toast récap : corps visible — " .. tostring(stxt))
+  ok(sok and stxt and tostring(stxt):find("+81", 1, true) and tostring(stxt):find("compétences", 1, true),
+    "toast récap : corps court visible — " .. tostring(stxt))
   ok(recap and recap._fullTitle and recap._fullSub, "toast récap : texte intégral aussi en infobulle")
+
+  -- Texte trop long : 2 lignes si ça tient, défilement seulement en repli, jamais une case vide.
+  local mid = "Ceci tient sur deux lignes du toast recap."
+  -- ~44 car. × 6 px : trop long pour 1 ligne, assez court pour 2.
+  local wrap = ui:SpawnDrop("Interface\\Icons\\INV_Misc_QuestionMark", mid, nil, nil, nil, nil, { kind = "skill", force = true })
+  if ns.ToastFit and ns.ToastFit.Fit then ns.ToastFit.Fit(wrap) end
+  local wok, wtxt = textOnToast(wrap, wrap and wrap.titleFS)
+  ok(wok and wtxt == mid, "texte long : visible après ajuste (2 lignes ou une) — " .. tostring(wtxt))
+  local clipOn = wrap and wrap.titleFS and wrap.titleFS._mq and wrap.titleFS._mq.clip
+    and wrap.titleFS._mq.clip.IsShown and wrap.titleFS._mq.clip:IsShown()
+  ok((wrap and wrap.titleFS and (wrap.titleFS._tfLines or 1) >= 2) or clipOn,
+    "texte long : 2 lignes (hauteur auto) ou défilement en repli")
+  if wrap and ui.DismissDrop then ui:DismissDrop(wrap) end
+  local huge = string.rep("MotTresLong ", 40)
+  local mq = ui:SpawnDrop("Interface\\Icons\\INV_Misc_QuestionMark", huge, nil, nil, nil, nil, { kind = "skill", force = true })
+  if ns.ToastFit and ns.ToastFit.Fit then ns.ToastFit.Fit(mq) end
+  local hok, htxt = textOnToast(mq, mq and mq.titleFS)
+  ok(hok and htxt and #htxt > 80, "texte très long : visible (défilement en repli), pas une case vide")
+  if mq and ui.DismissDrop then ui:DismissDrop(mq) end
+  local empty = ui:SpawnDrop("Interface\\Icons\\INV_Misc_QuestionMark", "", "", nil, nil, nil, { kind = "recap" })
+  ok(empty == nil, "titre et corps vides : pas de toast")
 
   -- Autres types : titre (et sous-titre s'il y en a un) toujours visibles.
   local kinds = {
@@ -3894,9 +3917,11 @@ do
     if ns.ToastFit and ns.ToastFit.Fit then ns.ToastFit.Fit(toast) end
     local line = (toast._fullSub or "") .. " " .. ((toast.subFS and toast.subFS.GetText and toast.subFS:GetText()) or "")
     ok(line:find("+81", 1, true) and not line:find("+981", 1, true), "LogoutRecap : gain de session +81 (pas +981) — " .. line)
-    local a = textOnToast(toast, toast.titleFS)
-    local b = textOnToast(toast, toast.subFS)
-    ok(a and b, "LogoutRecap : titre et corps visibles sur le toast")
+    local a, at = textOnToast(toast, toast.titleFS)
+    local b, bt = textOnToast(toast, toast.subFS)
+    ok(a and at and tostring(at):find("Session", 1, true), "LogoutRecap : titre court visible — " .. tostring(at))
+    ok(b and bt and tostring(bt):find("+81", 1, true) and tostring(bt):find("·", 1, true),
+      "LogoutRecap : corps court visible — " .. tostring(bt))
     if ui.DismissDrop then ui:DismissDrop(toast) end
   end
   if recap and recap:IsShown() and ui.DismissDrop then ui:DismissDrop(recap) end
