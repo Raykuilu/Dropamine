@@ -1319,7 +1319,7 @@ do
   local cols0, theme0 = ns.db.ui.cols, ns.Theme.Mode()
   resting, restXP = true, 4000
   for _, th in ipairs({ "flare", "leger", "classic" }) do
-    for _, cols in ipairs({ 1, 5, 10 }) do
+    for _, cols in ipairs({ 2, 5, 10 }) do
       for _, lang in ipairs({ "fr", "en" }) do
         setLang(lang) ns.Theme.Set(th) ns.db.ui.cols = cols
         UI:Refresh(true)

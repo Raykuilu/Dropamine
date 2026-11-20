@@ -4,8 +4,10 @@
 --   3) toasts et grille unifiés : quand un toast s'efface, un petit éclat
 --      (son icône) vole jusqu'à la case concernée ; à l'arrivée la case
 --      pulse aux couleurs des toasts, son nombre passe à la vraie valeur et
---      un petit gain vert (« +178 », « +1 ») monte et s'efface, façon XP drop
---      d'OSRS.
+--      un petit « +1 » coloré monte et s'efface, façon XP drop d'OSRS
+--      (bleu : armes et défense, vert : métiers, rouge : XP).
+--      Une étincelle de la même couleur parcourt la barre de total.
+--      La fiole officielle reste un logo statique (jamais de goutte ni de vague).
 -- Uniquement NOS cadres, textures, FontStrings et AnimationGroups
 -- (Translation / Alpha / Scale). Aucun cadre natif touché. Le report des
 -- toasts en fin de combat est inchangé (on n'agit qu'à leur disparition).
@@ -25,8 +27,50 @@ ns.Compact = C
 
 local GOLD = { 1, 0.82, 0 }
 local TOAST_YELLOW = { 1.00, 0.82, 0.20 }   -- titre des toasts (UI.lua)
-local GAIN_GREEN = { 0.25, 1.00, 0.25 }     -- ligne verte des toasts (UI.lua)
-local WHITE8 = "Interface\\Buttons\\WHITE8X8"
+local GAIN_GREEN = { 0.25, 1.00, 0.25 }     -- repli si ColorForGain absent
+local WHITE8 = "Interface\Buttons\WHITE8X8"
+
+function C.GainColor(opts, data)
+  local S = ns.Slot
+  opts, data = opts or {}, data or {}
+  if S and S.ColorForGain then
+    return S.ColorForGain(
+      opts.kind or data.kind,
+      opts.skillId or opts.id or data.id,
+      opts.skillName or opts.name or data.skillName or data.name,
+      opts.header or data.headerName or data.header)
+  end
+  return GAIN_GREEN
+end
+
+-- +1 coloré sur la case + étincelle de même couleur sur la barre de total.
+-- La fiole elle-même n'est pas animée.
+function C.Announce(opts, targets)
+  opts = opts or {}
+  local color = C.GainColor(opts)
+  local sparked
+  for _, tg in ipairs(targets or {}) do
+    if tg.key == "total" then
+      if not sparked and ns.Slot and ns.Slot.PlayBarSpark then
+        pcall(ns.Slot.PlayBarSpark, color)
+        sparked = true
+      end
+    else
+      local tile = C.TileByKey and C.TileByKey(tg.key)
+      if tile then
+        if C.Pulse then C.Pulse(tile, color) end
+        if tg.gain and tg.gain > 0 and C.Gain then
+          C.Gain(tile, "+" .. tostring(math.floor(tg.gain + 0.5)), color)
+        end
+      end
+    end
+  end
+  local kind = opts.kind
+  if not sparked and (kind == "xp" or kind == "skill" or kind == "levelup") then
+    if ns.Slot and ns.Slot.PlayBarSpark then pcall(ns.Slot.PlayBarSpark, color) end
+  end
+  return color
+end
 
 ------------------------------------------------------------------------------
 -- 1) Infobulle : tout le contenu de l'ancien volet de détail
@@ -371,9 +415,13 @@ function C.Register(drop, iconPath, opts)
   local targets = C.TargetsFor(opts, drop)
   if #targets == 0 then return nil end
   if P.Wake then P.Wake("gain") end   -- 3.3.6 : opacité pleine à chaque gain
-  if not ns.Opt("flyAnim") then return nil end   -- 3.3.8 : /drop animation off (case mise à jour tout de suite)
+  if not ns.Opt("flyAnim") then
+    -- pas de vol d'éclat, mais le +1 coloré et l'étincelle restent
+    if C.Announce then C.Announce(opts, targets) end
+    return nil
+  end
   if not e then
-    e = { drop = drop, icon = iconPath, kind = opts.kind, targets = targets, born = Now() }
+    e = { drop = drop, icon = iconPath, kind = opts.kind, targets = targets, born = Now(), opts = opts }
     drop._osrsFly = e
     if drop.HookScript and not drop._osrsFlyHooked then
       drop._osrsFlyHooked = true
@@ -492,23 +540,7 @@ function C.Launch(e)
   local main, mainTg
   for _, tg in ipairs(e.targets or {}) do
     if tg.key == "total" then
-      if e.kind ~= "levelup" and ns.Slot and ns.Slot.PlayTotalAdd then
-        local color = "green"
-        if e.kind == "xp" then
-          color = "red"
-        else
-          for _, tg0 in ipairs(e.targets or {}) do
-            if tg0.key and tg0.key ~= "total" then
-              local tile = C.TileByKey and C.TileByKey(tg0.key)
-              local d = tile and tile.data
-              if d and (d.combatTile or d.kind == "melee" or d.kind == "ranged" or d.kind == "defense") then
-                color = "blue"
-              end
-            end
-          end
-        end
-        pcall(ns.Slot.PlayTotalAdd, tg.gain, color)
-      end
+      -- la fiole reste statique ; étincelle + +1 à l'arrivée (C.Land)
     elseif not main then
       main, mainTg = C.TileByKey(tg.key), tg
     end
@@ -550,20 +582,22 @@ function C.Land(e, quiet)
   if quiet or not W.IsShown() then return end
   C.landed = C.landed + 1
   if P.Wake then P.Wake("éclat") end
-  for _, tg in ipairs(e.targets) do
-    if tg.key == "total" then
-      -- remplacé par S.PlayTotalAdd (goutte dans la fiole)
-    else
-      local t = C.TileByKey(tg.key)
-      if t then
-        C.Pulse(t)
-        if tg.gain and tg.gain > 0 then C.Gain(t, "+" .. tostring(math.floor(tg.gain + 0.5))) end
+  if C.Announce then
+    C.Announce(e.opts or { kind = e.kind }, e.targets)
+  else
+    for _, tg in ipairs(e.targets) do
+      if tg.key ~= "total" then
+        local tile = C.TileByKey(tg.key)
+        if tile then
+          C.Pulse(tile)
+          if tg.gain and tg.gain > 0 then C.Gain(tile, "+" .. tostring(math.floor(tg.gain + 0.5))) end
+        end
       end
     end
   end
 end
 
-function C.Pulse(t)
+function C.Pulse(t, color)
   local p = t._osrsPulse
   if not p then
     p = CreateFrame("Frame", nil, t)
@@ -574,7 +608,8 @@ function C.Pulse(t)
     p.tex:SetAllPoints(p)
     pcall(p.tex.SetTexture, p.tex, WHITE8)
     if p.tex.SetBlendMode then pcall(p.tex.SetBlendMode, p.tex, "ADD") end
-    if p.tex.SetVertexColor then pcall(p.tex.SetVertexColor, p.tex, TOAST_YELLOW[1], TOAST_YELLOW[2], TOAST_YELLOW[3], 0.55) end
+    local pc = color or TOAST_YELLOW
+    if p.tex.SetVertexColor then pcall(p.tex.SetVertexColor, p.tex, pc[1], pc[2], pc[3], 0.55) end
     if p.CreateAnimationGroup then
       local ok, ag = pcall(p.CreateAnimationGroup, p)
       if ok and ag then
@@ -589,6 +624,9 @@ function C.Pulse(t)
   end
   local base = t.GetFrameLevel and t:GetFrameLevel() or 1
   pcall(p.SetFrameLevel, p, base + 6)
+  if color and p.tex and p.tex.SetVertexColor then
+    pcall(p.tex.SetVertexColor, p.tex, color[1], color[2], color[3], 0.55)
+  end
   p:Show()
   p._plays = (p._plays or 0) + 1
   if p.ag then if p.ag.Stop then pcall(p.ag.Stop, p.ag) end p.ag:Play()
@@ -596,9 +634,9 @@ function C.Pulse(t)
   return p
 end
 
--- Gain vert façon XP drop d'OSRS : au-dessus de l'icône, monte de quelques
+-- Gain coloré façon XP drop d'OSRS : au-dessus de l'icône, monte de quelques
 -- pixels et s'efface en ~1,5 s ; police contournée.
-function C.Gain(t, text)
+function C.Gain(t, text, color)
   local g = t._osrsGain
   if not g then
     g = CreateFrame("Frame", nil, t)
@@ -612,7 +650,8 @@ function C.Gain(t, text)
     if I.CleanText then I.CleanText(fs) elseif fs.SetShadowOffset then pcall(fs.SetShadowOffset, fs, 1, -1) end
     fs:SetPoint("CENTER", g, "CENTER", 0, 0)
     if fs.SetWordWrap then pcall(fs.SetWordWrap, fs, false) end
-    fs:SetTextColor(GAIN_GREEN[1], GAIN_GREEN[2], GAIN_GREEN[3])
+    local gc = color or GAIN_GREEN
+    fs:SetTextColor(gc[1], gc[2], gc[3])
     g.fs = fs
     if g.CreateAnimationGroup then
       local ok2, ag = pcall(g.CreateAnimationGroup, g)
@@ -629,6 +668,9 @@ function C.Gain(t, text)
   local base = t.GetFrameLevel and t:GetFrameLevel() or 1
   pcall(g.SetFrameLevel, g, base + 8)
   g.fs:SetText(text)
+  if color and g.fs and g.fs.SetTextColor then
+    g.fs:SetTextColor(color[1], color[2], color[3])
+  end
   g:SetAlpha(1)
   g:Show()
   g._plays = (g._plays or 0) + 1

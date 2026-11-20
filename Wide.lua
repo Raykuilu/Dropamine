@@ -12,10 +12,10 @@ local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local UI, I = ns.UI, ns.Icons
 local Wd = {}
 ns.Wide = Wd
-Wd.BAR_H = 3
+Wd.BAR_H = 4
 Wd.PAD = 5
-Wd.SLIM = 0.45      -- hauteur de la barre = 45 % d'une case (min 14 px)
-Wd.MIN_H = 14
+Wd.SLIM = 0.50      -- hauteur de la barre = 50 % d'une case (min 16 px)
+Wd.MIN_H = 16
 Wd.FILL = ns.STYLE.BORDER   -- #A67D45 (palette FlareUI, voir STYLE.md) — filet de la jauge
 Wd.TRACK = { 0, 0, 0, 0.55 }
 Wd.TEX = "Interface\\TargetingFrame\\UI-StatusBar"
@@ -421,6 +421,17 @@ function Wd.Paint(t)
   p.text:ClearAllPoints()
   p.text:SetPoint("LEFT", t, "LEFT", h + Wd.PAD - 2, 0)
   p.text:SetText(string.format("%d / %d", cur, max))
+  -- Légère hausse de police, plafonnée pour rester dans la rangée (pixel-aligned).
+  if p.text.GetFont and p.text.SetFont then
+    local okF, path, size, flags = pcall(p.text.GetFont, p.text)
+    if okF and path then
+      local want = math.max(10, math.min((h or 16) - 4, math.floor((size or 10) * 1.12 + 0.5)))
+      if p._fontH ~= want then
+        pcall(p.text.SetFont, p.text, path, want, flags or "")
+        p._fontH = want
+      end
+    end
+  end
   local okW, tw = pcall(p.text.GetStringWidth, p.text)
   tw = (okW and N(tw)) or 56
   local left = h + Wd.PAD - 2 + tw + Wd.PAD

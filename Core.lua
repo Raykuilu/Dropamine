@@ -1454,7 +1454,7 @@ function ns.Collect()
   local total, totalMax, breakdown, realSum, counted = ns.ComputeTotals(shown)
   local segments = ns.ComputeTotalSegments(shown)
 
-  return {
+  local result = {
     tiles = shown,
     allTiles = tiles,
     bySection = nil,
@@ -1482,6 +1482,8 @@ function ns.Collect()
     liveCount = #live,
     xp = { ns.GetPlayerXP() },
   }
+  if ns.CaptureCharSheet then pcall(ns.CaptureCharSheet, result) end
+  return result
 end
 
 -- SavedVariables -------------------------------------------------------------
@@ -1719,31 +1721,121 @@ function ns.CharDB()
   return c
 end
 
--- Instantané du personnage (onglet Progression › Personnages). Pas de %
--- de complétion (3.6.4). Mis à jour hors cadence (logout, tick 2 min, refresh).
-function ns.CaptureCharSheet()
+-- Instantané du personnage (onglet Progression › Personnages), compte entier
+-- (DropamineDB.chars[key].sheet). Mis à jour à la connexion, à chaque Collect,
+-- au tick 2 min, et à la déconnexion. Pas de % de complétion.
+local function SheetRec(name, rank, maxv, id, kind)
+  return {
+    name = name or "?",
+    rank = ns.N(rank) or 0,
+    max = ns.N(maxv) or 0,
+    id = id,
+    kind = kind,
+  }
+end
+
+local function ClassifySkill(name, id, kind, header, rank, maxv)
+  if not name or name == "" then return nil end
+  local e = (id and ns.CatalogById and ns.CatalogById(id)) or (ns.LookupCatalog and ns.LookupCatalog(name))
+  kind = kind or (e and e.kind)
+  if (ns.IsLanguageOrArmorJunk and ns.IsLanguageOrArmorJunk(name, header, maxv)) then return nil end
+  if kind == "stat" or kind == "level" then return nil end
+  if kind == "profession" or kind == "secondary" then
+    return "profession", SheetRec(name, rank, maxv, id or (e and e.id), kind)
+  end
+  if kind == "defense" or (e and e.kind == "defense") then
+    return "defense", SheetRec(name, rank, maxv, id or (e and e.id), "defense")
+  end
+  if ns.IsWeaponSkill and ns.IsWeaponSkill(id or (e and e.id), kind, name) then
+    return "weapon", SheetRec(name, rank, maxv, id or (e and e.id), kind or (e and e.kind))
+  end
+  return nil
+end
+
+function ns.SkillsForCharSheet(snap)
+  local profs, weapons, defense = {}, {}, nil
+  local function add(bucket, rec)
+    if not rec then return end
+    bucket[#bucket + 1] = rec
+  end
+  local function take(kind, rec)
+    if kind == "profession" then add(profs, rec)
+    elseif kind == "weapon" then add(weapons, rec)
+    elseif kind == "defense" and rec then defense = rec end
+  end
+  -- 1) Collect() / snapshot de cases (le plus riche : kind déjà résolu)
+  local tiles
+  if type(snap) == "table" then
+    tiles = snap.allTiles or snap.tiles
+  end
+  if not tiles then
+    local ui = ns.UI and ns.UI.snapshot
+    tiles = ui and (ui.allTiles or ui.tiles)
+  end
+  if type(tiles) == "table" then
+    for i = 1, #tiles do
+      local d = tiles[i]
+      if d and not d.placeholder then
+        local k, rec = ClassifySkill(
+          d.skillName or d.catName or d.name, d.id or d.skillID, d.kind, d.header or d.headerName,
+          d.current or d.rank, d.apiMax or d.max)
+        take(k, rec)
+      end
+    end
+  end
+  -- 2) Compétences live (indépendant de la grille, au login avant le snapshot)
+  if #profs == 0 or #weapons == 0 or not defense then
+    local live = ns.CollectLiveSkills and select(1, ns.CollectLiveSkills())
+    if type(live) == "table" then
+      local seenP, seenW = {}, {}
+      for i = 1, #profs do seenP[profs[i].name] = true end
+      for i = 1, #weapons do seenW[weapons[i].name] = true end
+      for i = 1, #live do
+        local s = live[i]
+        if s and not s.header then
+          local k, rec = ClassifySkill(s.name, s.skillID or s.id, s.kind, s.headerName, s.rank, s.max)
+          if k == "profession" and rec and not seenP[rec.name] then
+            add(profs, rec) seenP[rec.name] = true
+          elseif k == "weapon" and rec and not seenW[rec.name] then
+            add(weapons, rec) seenW[rec.name] = true
+          elseif k == "defense" and rec and not defense then
+            defense = rec
+          end
+        end
+      end
+    end
+  end
+  return profs, weapons, defense
+end
+
+function ns.CaptureCharSheet(snap)
   local c = ns.CharDB and ns.CharDB()
   if not c then return nil end
+  local key = ns.CharKey and ns.CharKey() or "?"
   local name = (ns.GetPlayerName and ns.GetPlayerName()) or Call(UnitName, "player") or "?"
+  -- Personnage pas encore connu (écran de chargement) : on ne vide pas la fiche.
+  if (not name or name == "?" or name == "") and key:sub(1, 2) == "?-" then
+    return c.sheet
+  end
   local realm = Call(GetRealmName) or ""
   local level = (ns.GetPlayerLevel and ns.GetPlayerLevel()) or Call(UnitLevel, "player")
   local xp, xpMax
-  if ns.GetPlayerXPSafe then xp, xpMax = ns.GetPlayerXPSafe() end
+  if ns.GetPlayerXPSafe then xp, xpMax = ns.GetPlayerXPSafe()
+  elseif ns.GetPlayerXP then xp, xpMax = ns.GetPlayerXP() end
   xp, xpMax = ns.N(xp), ns.N(xpMax)
   local gold = ns.N(Call(GetMoney)) or 0
-  local class = Call(UnitClass, "player")
-  local profs, weapons = {}, {}
-  local snap = ns.UI and ns.UI.snapshot
-  local tiles = (snap and (snap.allTiles or snap.tiles)) or {}
-  for _, d in ipairs(tiles) do
-    if d and not d.placeholder then
-      local rec = { name = d.skillName or d.catName or d.name, rank = ns.N(d.current) or 0, max = ns.N(d.apiMax) or 0, id = d.id }
-      if d.kind == "profession" or d.kind == "secondary" then
-        profs[#profs + 1] = rec
-      elseif ns.IsWeaponSkill and ns.IsWeaponSkill(d.id or d.skillID, d.kind, rec.name) then
-        weapons[#weapons + 1] = rec
-      end
+  local className, classFile = Call(UnitClass, "player")
+  local profs, weapons, defense = ns.SkillsForCharSheet(snap)
+  local prev = c.sheet
+  -- Liste vide au chargement : conserver la dernière fiche connue.
+  if type(prev) == "table" then
+    if #profs == 0 and type(prev.professions) == "table" and #prev.professions > 0 then
+      profs = prev.professions
     end
+    if #weapons == 0 and type(prev.weapons) == "table" and #prev.weapons > 0 then
+      weapons = prev.weapons
+    end
+    if not defense and type(prev.defense) == "table" then defense = prev.defense end
   end
   local playtime = 0
   if c.progress and c.progress.records then playtime = ns.N(c.progress.records.playtime) or 0 end
@@ -1751,14 +1843,29 @@ function ns.CaptureCharSheet()
     playtime = ns.N(ns.Progress.Records().playtime) or 0
   end
   c.sheet = {
-    key = ns.CharKey and ns.CharKey() or (name .. "-" .. realm),
-    name = name, realm = realm, class = class,
+    key = (key:sub(1, 2) ~= "?-") and key or ((name or "?") .. "-" .. realm),
+    name = name, realm = realm, class = className, classFile = classFile,
     level = ns.N(level) or 0, xp = xp or 0, xpMax = xpMax or 0,
-    gold = gold, professions = profs, weapons = weapons,
+    gold = gold, professions = profs, weapons = weapons, defense = defense,
     playtime = playtime, updated = (type(time) == "function" and time()) or 0,
   }
   c.level = c.sheet.level
+  c.gold = c.sheet.gold
+  c.xp, c.xpMax = c.sheet.xp, c.sheet.xpMax
   return c.sheet
+end
+
+function ns.CharSheetFor(key)
+  local db = (ns.EnsureDB and ns.EnsureDB()) or ns.db or _G.DropamineDB
+  if not (db and type(db.chars) == "table") then return nil end
+  key = key or (ns.CharKey and ns.CharKey())
+  local c = key and db.chars[key]
+  if type(c) ~= "table" then return nil end
+  if type(c.sheet) == "table" then
+    c.sheet.key = c.sheet.key or key
+    return c.sheet
+  end
+  return nil
 end
 
 function ns.AllCharSheets()
@@ -1772,8 +1879,9 @@ function ns.AllCharSheets()
         local name, realm = tostring(key):match("^(.*)%-(.*)$")
         s = {
           key = key, name = name or key, realm = realm or "",
-          level = ns.N(c.level) or 0, xp = 0, xpMax = 0, gold = 0,
-          professions = {}, weapons = {},
+          level = ns.N(c.level) or 0, xp = ns.N(c.xp) or 0, xpMax = ns.N(c.xpMax) or 0,
+          gold = ns.N(c.gold) or 0,
+          professions = {}, weapons = {}, defense = nil,
           playtime = (c.progress and c.progress.records and ns.N(c.progress.records.playtime)) or 0,
         }
       end
@@ -1781,6 +1889,11 @@ function ns.AllCharSheets()
       out[#out + 1] = s
     end
   end
+  table.sort(out, function(a, b)
+    local na, nb = string.lower(tostring(a.name or a.key or "")), string.lower(tostring(b.name or b.key or ""))
+    if na == nb then return tostring(a.key or "") < tostring(b.key or "") end
+    return na < nb
+  end)
   return out
 end
 
@@ -2942,9 +3055,9 @@ do
     if extra == "vert" or extra == "metier" or extra == "métier" or extra == "skill" then extra = "green" end
     T._on = T._on or {}
     T._on.totaladd = true
-    if ns.Slot and ns.Slot.PlayTotalAdd then pcall(ns.Slot.PlayTotalAdd, 1, extra) end
+    if ns.Slot and ns.Slot.PlayBarSpark then pcall(ns.Slot.PlayBarSpark, extra) end
     DriveFlask()
-    ns.Print(Tr["test : goutte dans la fiole (ajout au total)."] .. " (" .. extra .. ")")
+    ns.Print(Tr["test : étincelle de la barre de total."] .. " (" .. extra .. ")")
     return true
   end
 
@@ -3220,8 +3333,18 @@ ns.On("PLAYER_ENTERING_WORLD", function(_, isLogin, isReload)
   end
   requestRefresh()
   if ns.UI and ns.UI.HookSkillFrame then ns.UI:HookSkillFrame() end
+  -- Fiche personnage : tout de suite, puis un peu plus tard (compétences prêtes).
+  if ns.CaptureCharSheet then
+    pcall(ns.CaptureCharSheet)
+    local after = (type(_G.C_Timer) == "table" and _G.C_Timer.After) or (ns.After)
+    if type(after) == "function" then
+      pcall(after, 2, function() if ns.CaptureCharSheet then pcall(ns.CaptureCharSheet) end end)
+      pcall(after, 8, function() if ns.CaptureCharSheet then pcall(ns.CaptureCharSheet) end end)
+    end
+  end
 end)
 ns.On("PLAYER_LOGOUT", function()
+  if ns.CaptureCharSheet then pcall(ns.CaptureCharSheet) end
   local c = ns.CharDB()
   c.session.lastSeen = (type(time) == "function" and time()) or nil
   -- 3.6.0 : réglages du compte remis en place avant l'écriture du fichier
@@ -3246,7 +3369,29 @@ ns.On("PLAYER_LEVEL_UP", function(_, newLevel)
   if ns.UI and ns.UI.OnXPUpdate then ns.UI:OnXPUpdate() end
   if ns.UI and ns.UI.CheckMilestones then ns.UI:CheckMilestones() end
   requestRefresh()
+  if ns.CaptureCharSheet then pcall(ns.CaptureCharSheet) end
 end)
+local function TouchCharSheetEconomy()
+  local c = ns.CharDB and ns.CharDB()
+  if not (c and type(c.sheet) == "table") then
+    if ns.CaptureCharSheet then return ns.CaptureCharSheet() end
+    return nil
+  end
+  local gold = ns.N(Call(GetMoney))
+  if gold then c.sheet.gold, c.gold = gold, gold end
+  local xp, xpMax
+  if ns.GetPlayerXPSafe then xp, xpMax = ns.GetPlayerXPSafe()
+  elseif ns.GetPlayerXP then xp, xpMax = ns.GetPlayerXP() end
+  xp, xpMax = ns.N(xp), ns.N(xpMax)
+  if xp then c.sheet.xp, c.xp = xp, xp end
+  if xpMax then c.sheet.xpMax, c.xpMax = xpMax, xpMax end
+  local level = (ns.GetPlayerLevel and ns.GetPlayerLevel()) or Call(UnitLevel, "player")
+  if level then c.sheet.level, c.level = ns.N(level) or c.sheet.level, ns.N(level) or c.level end
+  return c.sheet
+end
+ns.TouchCharSheetEconomy = TouchCharSheetEconomy
+ns.On("PLAYER_MONEY", function() pcall(TouchCharSheetEconomy) end)
+ns.On("PLAYER_XP_UPDATE", function() pcall(TouchCharSheetEconomy) end)
 ns.On("CHARACTER_POINTS_CHANGED", function() requestRefresh() end)
 ns.On("UNIT_STATS", function(_, unit)
   if unit and unit ~= "player" then return end
@@ -3587,7 +3732,7 @@ end
 ns.HELP_SHORT = {
   "|cffffd100Dropamine|r — /drop (ou /dropamine) ou le bouton de minicarte ouvre / ferme le panneau",
   "  Réglages : /drop options · /drop edit (déplacer / redimensionner) · /drop reset · /drop minimap",
-  "  Affichage : /drop theme flare|leger|classic · colonnes 1|2|3|5|10 · taille 50-200 · total on|off · verrou on|off · vol on|off",
+  "  Affichage : /drop theme flare|leger|classic · colonnes 2|3|5|10 · taille 50-200 · total on|off · verrou on|off · vol on|off",
   "  Métiers : /drop alertes on|off · activite on|off · liens on|off · recettes on|off",
   "  Objectifs : clic droit sur une case · /drop objectif <compétence> <rang> · objectif clear",
   "  JcJ : /drop pvp on|off · pvp marques on|off",

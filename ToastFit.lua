@@ -281,7 +281,11 @@ function TF.ShowTooltip(f)
   local info = f._toastData
   local item = ToastItemId(info)
   local usedItem = false
-  if item then
+  -- Recette / scanner : pas de SetItemByID ni SetHyperlink (un clic lierait
+  -- l'objet au chat). Clic = ouvrir la recette ; Maj+clic = lier.
+  local recipeTip = (info and (info.kind == "craft" or info.kind == "scanner" or info.kind == "recipe"))
+    or (f._craft and true) or false
+  if item and not recipeTip then
     if HasFn(tt, "SetItemByID") then
       local ok = pcall(tt.SetItemByID, tt, item)
       usedItem = ok and true or false

@@ -1657,43 +1657,137 @@ function PU.SetCharSort(id)
   PU.Refresh()
 end
 
+function PU.CharGrid(w)
+  w = w or PU.CONTENT_W
+  local inner = math.max(160, (w or 656) - 16)
+  local cols = (inner >= 420) and 2 or 1
+  local gap = 8
+  local cw = math.floor((inner - (cols - 1) * gap) / cols)
+  local ch = 112
+  return cols, cw, ch, gap, inner
+end
+
+function PU.SetClipped(fs, text, width)
+  if not fs then return end
+  text = tostring(text or "")
+  fs._fullText = text
+  if fs.SetWordWrap then pcall(fs.SetWordWrap, fs, false) end
+  if width and fs.SetWidth then pcall(fs.SetWidth, fs, width) end
+  fs:SetText(text)
+  if not (width and width > 8 and fs.GetStringWidth) then return text end
+  local ok, sw = pcall(fs.GetStringWidth, fs)
+  if not (ok and sw and sw > width) then return text end
+  local lo, hi, best = 1, #text, "…"
+  while lo <= hi do
+    local mid = math.floor((lo + hi) / 2)
+    local cand = string.sub(text, 1, mid) .. "…"
+    fs:SetText(cand)
+    ok, sw = pcall(fs.GetStringWidth, fs)
+    if ok and sw and sw <= width then best = cand lo = mid + 1 else hi = mid - 1 end
+  end
+  fs:SetText(best)
+  return best
+end
+
+function PU.CharTip(s)
+  s = s or {}
+  local money = ns.Efficiency and ns.Efficiency.FormatMoney
+  local gold = (money and money(s.gold or 0, false)) or tostring(s.gold or 0)
+  local xp
+  if (N(s.xpMax) or 0) > 0 then
+    xp = tostring(s.xp or 0) .. " / " .. tostring(s.xpMax)
+  else
+    xp = (s.xp and s.xp > 0) and tostring(s.xp) or "—"
+  end
+  local lines = {}
+  lines[#lines + 1] = (s.class and (s.class .. " · ") or "") .. Tr["Niveau "] .. tostring(s.level or 0)
+  lines[#lines + 1] = "XP : " .. xp
+  lines[#lines + 1] = Tr["Or"] .. " : " .. gold
+  lines[#lines + 1] = Tr["Métiers"] .. " : " .. PU.ListJoin(s.professions, 12)
+  local arms = PU.ListJoin(s.weapons, 12)
+  if s.defense and (s.defense.name or s.defense.rank) then
+    local d = s.defense
+    local dtxt = (d.name or Tr["Défense"]) .. " " .. tostring(d.rank or 0)
+    arms = (arms ~= "—" and (arms .. ", " .. dtxt)) or dtxt
+  end
+  lines[#lines + 1] = Tr["Armes"] .. " : " .. arms
+  lines[#lines + 1] = Tr["Temps de jeu"] .. " : " .. Dur(s.playtime or 0)
+  return table.concat(lines, "\n")
+end
+
+function PU.SelectChar(key)
+  PU.charSel = key
+  if PU.RefreshChars then PU.RefreshChars() end
+end
+
 function PU.BuildChars(f)
   local p = Page(f, "chars")
   local card = PU.Card(p, 0, 0, PU.CONTENT_W, PU.CONTENT_H, Tr["Personnages"])
   p.card = card
+  -- Sous-titre SOUS le titre de carte (plus de chevauchement).
   card.hint = FS(card, "GameFontHighlightSmall", "sub")
-  card.hint:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -6)
+  card.hint:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -22)
   if card.hint.SetWidth then card.hint:SetWidth(PU.CONTENT_W - 20) end
-  local y, x = 24, 8
-  p.headers = {}
-  for _, col in ipairs(PU.CHAR_COLS) do
-    local btn = PU.Button(card, col.w, 16, Tr[col.label] or col.label, "small", function() PU.SetCharSort(col.id) end)
-    btn:ClearAllPoints()
-    btn:SetPoint("TOPLEFT", card, "TOPLEFT", x, -y)
-    btn.colId = col.id
-    p.headers[#p.headers + 1] = btn
-    x = x + col.w + 2
-  end
-  p.rows = {}
-  local rowY = y + 20
+  if card.title and card.title.SetWidth then card.title:SetWidth(PU.CONTENT_W - 20) end
+  local headerH = 40
+  local sf = CreateFrame("ScrollFrame", nil, card)
+  Place(sf, card, 8, headerH, PU.CONTENT_W - 16, PU.CONTENT_H - headerH - 8)
+  if sf.SetClipsChildren then pcall(sf.SetClipsChildren, sf, true) end
+  local child = CreateFrame("Frame", nil, sf)
+  child:SetSize(PU.CONTENT_W - 16, 10)
+  if sf.SetScrollChild then sf:SetScrollChild(child) end
+  if sf.EnableMouseWheel then sf:EnableMouseWheel(true) end
+  sf:SetScript("OnMouseWheel", function(_, delta)
+    local cur = (sf.GetVerticalScroll and sf:GetVerticalScroll()) or 0
+    local maxs = (sf.GetVerticalScrollRange and sf:GetVerticalScrollRange()) or 0
+    local nxt = math.max(0, math.min(maxs, cur - (N(delta) or 0) * 40))
+    if sf.SetVerticalScroll then sf:SetVerticalScroll(nxt) end
+  end)
+  p.scroll, p.child = sf, child
+  p.cards = {}
+  local cols, cw, ch, gap = PU.CharGrid(PU.CONTENT_W)
   for i = 1, PU.CHAR_MAX do
-    local row = CreateFrame("Frame", nil, card)
-    Place(row, card, 6, rowY, PU.CONTENT_W - 12, 16)
-    row.bg = Tex(row, "BACKGROUND", 1)
-    row.bg:SetAllPoints(row)
-    row.cells = {}
-    local cx = 2
-    for _, col in ipairs(PU.CHAR_COLS) do
-      local fs = FS(row, "GameFontHighlightSmall", "text")
-      fs:SetPoint("LEFT", row, "LEFT", cx, 0)
-      if fs.SetWidth then fs:SetWidth(col.w - 2) end
-      if fs.SetJustifyH then fs:SetJustifyH((col.id == "level" or col.id == "xp" or col.id == "gold" or col.id == "playtime") and "RIGHT" or "LEFT") end
-      row.cells[col.id] = fs
-      cx = cx + col.w + 2
-    end
-    row:Hide()
-    p.rows[i] = row
-    rowY = rowY + 17
+    local col, row = (i - 1) % cols, math.floor((i - 1) / cols)
+    local c = PU.Card(child, col * (cw + gap), row * (ch + gap), cw, ch, "")
+    c.name = c.title or FS(c, "GameFontNormalSmall", "label")
+    if c.name.ClearAllPoints then c.name:ClearAllPoints() end
+    c.name:SetPoint("TOPLEFT", c, "TOPLEFT", 8, -6)
+    c.sub = FS(c, "GameFontHighlightSmall", "sub")
+    c.sub:SetPoint("TOPLEFT", c, "TOPLEFT", 8, -22)
+    c.xp = FS(c, "GameFontHighlightSmall", "text")
+    c.xp:SetPoint("TOPLEFT", c, "TOPLEFT", 8, -38)
+    c.gold = FS(c, "GameFontHighlightSmall", "text")
+    c.gold:SetPoint("TOPRIGHT", c, "TOPRIGHT", -8, -38)
+    if c.gold.SetJustifyH then c.gold:SetJustifyH("RIGHT") end
+    c.profs = FS(c, "GameFontHighlightSmall", "sub")
+    c.profs:SetPoint("TOPLEFT", c, "TOPLEFT", 8, -54)
+    c.arms = FS(c, "GameFontHighlightSmall", "sub")
+    c.arms:SetPoint("TOPLEFT", c, "TOPLEFT", 8, -70)
+    c.time = FS(c, "GameFontDisableSmall", "sub")
+    c.time:SetPoint("TOPLEFT", c, "TOPLEFT", 8, -86)
+    if c.EnableMouse then c:EnableMouse(true) end
+    c:SetScript("OnMouseUp", function(self)
+      if self._key and PU.SelectChar then PU.SelectChar(self._key) end
+    end)
+    c:SetScript("OnEnter", function(self)
+      local tt = _G.GameTooltip
+      if not (tt and self._tipTitle) then return end
+      if tt.SetOwner then pcall(tt.SetOwner, tt, self, "ANCHOR_RIGHT") end
+      if tt.ClearLines then pcall(tt.ClearLines, tt) end
+      if tt.AddLine then
+        tt:AddLine(self._tipTitle, 1, 0.82, 0)
+        for line in string.gmatch((self._tipBody or "") .. "\n", "(.-)\n") do
+          if line ~= "" then tt:AddLine(line, 1, 1, 1, true) end
+        end
+      end
+      if tt.Show then tt:Show() end
+    end)
+    c:SetScript("OnLeave", function()
+      local tt = _G.GameTooltip
+      if tt and tt.Hide then tt:Hide() end
+    end)
+    c:Hide()
+    p.cards[i] = c
   end
   p.more = FS(card, "GameFontDisableSmall", "sub")
   p.more:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 10, 6)
@@ -1705,61 +1799,66 @@ function PU.RefreshChars(p)
   if not p then return end
   if ns.CaptureCharSheet then pcall(ns.CaptureCharSheet) end
   local rows = ns.AllCharSheets and ns.AllCharSheets() or {}
-  local sort = PU.charSort or { key = "name", asc = true }
-  table.sort(rows, function(a, b)
-    local va, vb = PU.CharSortValue(a, sort.key), PU.CharSortValue(b, sort.key)
-    if va == vb then
-      va, vb = PU.CharSortValue(a, "name"), PU.CharSortValue(b, "name")
-    end
-    if sort.asc then return va < vb end
-    return va > vb
-  end)
+  local n = #rows
   if p.card and p.card.hint then
-    local n = #rows
-    p.card.hint:SetText(string.format(Tr["%d personnage(s) sur ce compte — clique une colonne pour trier."], n))
+    p.card.hint:SetText(string.format(Tr["%d personnage(s) sur ce compte."], n))
   end
   local me = ns.CharKey and ns.CharKey()
+  local sel = PU.charSel or me
   local money = ns.Efficiency and ns.Efficiency.FormatMoney
+  local cols, cw, ch, gap, inner = PU.CharGrid(PU.CONTENT_W)
+  local textW = math.max(40, cw - 16)
   local shown = 0
   for i = 1, PU.CHAR_MAX do
-    local row, s = p.rows[i], rows[i]
+    local c, s = p.cards[i], rows[i]
+    if not c then break end
     if not s then
-      if row then row:Hide() end
+      c:Hide()
+      c._key, c._sheet = nil, nil
     else
       shown = shown + 1
+      local col, row = (shown - 1) % cols, math.floor((shown - 1) / cols)
+      Place(c, p.child, col * (cw + gap), row * (ch + gap), cw, ch)
       local xp
       if (N(s.xpMax) or 0) > 0 then
-        xp = tostring(s.xp or 0) .. " / " .. tostring(s.xpMax)
+        xp = "XP " .. tostring(s.xp or 0) .. " / " .. tostring(s.xpMax)
       else
-        xp = (s.xp and s.xp > 0) and tostring(s.xp) or "—"
+        xp = (s.xp and s.xp > 0) and ("XP " .. tostring(s.xp)) or "XP —"
       end
       local gold = (money and money(s.gold or 0, false)) or tostring(s.gold or 0)
-      local cells = {
-        name = s.name or s.key or "?",
-        level = tostring(s.level or 0),
-        xp = xp,
-        gold = gold,
-        profs = PU.ListJoin(s.professions, 3),
-        weapons = PU.ListJoin(s.weapons, 3),
-        playtime = Dur(s.playtime or 0),
-      }
-      for id, fs in pairs(row.cells) do
-        local txt = cells[id] or "—"
-        fs:SetText(txt)
-        fs._fullText = txt
+      local sub = ((s.class and (s.class .. " · ")) or "") .. Tr["Niveau "] .. tostring(s.level or 0)
+      if s.realm and s.realm ~= "" then sub = sub .. " · " .. s.realm end
+      local profs = Tr["Métiers"] .. " : " .. PU.ListJoin(s.professions, 3)
+      local arms = PU.ListJoin(s.weapons, 3)
+      if s.defense and (s.defense.name or s.defense.rank) then
+        local d = s.defense
+        local dtxt = (d.name or Tr["Défense"]) .. " " .. tostring(d.rank or 0)
+        arms = (arms ~= "—" and (arms .. ", " .. dtxt)) or dtxt
       end
+      arms = Tr["Armes"] .. " : " .. arms
+      local who = s.name or s.key or "?"
+      PU.SetClipped(c.name, who, textW)
+      PU.SetClipped(c.sub, sub, textW)
+      PU.SetClipped(c.xp, xp, math.floor(textW * 0.58))
+      PU.SetClipped(c.gold, gold, math.floor(textW * 0.40))
+      PU.SetClipped(c.profs, profs, textW)
+      PU.SetClipped(c.arms, arms, textW)
+      PU.SetClipped(c.time, Tr["Temps de jeu"] .. " : " .. Dur(s.playtime or 0), textW)
+      c._key, c._sheet = s.key, s
+      c._tipTitle, c._tipBody = who, PU.CharTip(s)
       local mine = me and s.key == me
-      if row.bg then
-        if mine then Paint(row.bg, { 0.42, 0.32, 0.16 }, 0.35)
-        elseif i % 2 == 0 then Paint(row.bg, { 0.12, 0.10, 0.08 }, 0.25)
-        else Paint(row.bg, { 0, 0, 0 }, 0) end
-      end
-      row:Show()
+      local selected = sel and s.key == sel
+      if PU.PaintCard then PU.PaintCard(c, mine or selected) end
+      c:Show()
     end
   end
+  local rowsN = math.max(1, math.ceil(shown / cols))
+  if p.child and p.child.SetHeight then
+    p.child:SetHeight(math.max(10, rowsN * (ch + gap) - gap))
+  end
   if p.more then
-    if #rows > PU.CHAR_MAX then
-      p.more:SetText(string.format(Tr["… et %d de plus"], #rows - PU.CHAR_MAX))
+    if n > PU.CHAR_MAX then
+      p.more:SetText(string.format(Tr["… et %d de plus"], n - PU.CHAR_MAX))
       p.more:Show()
     else
       p.more:SetText("")
