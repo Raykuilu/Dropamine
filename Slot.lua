@@ -898,6 +898,7 @@ local CAMP_NAMES = {
   ["feu de camp de specialiste"] = true, ["feu de camp de spécialiste"] = true,
   ["feu de joie"] = true, brasero = true, ["feu douillet"] = true,
   ["cozy fire"] = true, ["cozy-fire"] = true,
+  ["feu de camp accueillant"] = true, accueillant = true, ["welcoming fire"] = true,
 }
 
 local function FoldName(v)
@@ -913,15 +914,36 @@ function S.IsCampfireName(name)
   if CAMP_NAMES[fold] then return true end
   if fold:find("campfire", 1, true) or fold:find("feu de camp", 1, true) then return true end
   if fold:find("cozy fire", 1, true) or fold:find("feu douillet", 1, true) then return true end
+  if fold:find("accueillant", 1, true) or fold:find("welcoming fire", 1, true) then return true end
   return false
 end
 
 function S.CozyFireAura()
-  if S._simCamp then return S._simCamp == "burst" or S._simCamp == "charge" end
+  if S._simCamp then return S._simCamp == "burst" or S._simCamp == "charge" or S._simCamp == "buff" end
   local C = _G.C_UnitAuras
   if type(C) == "table" and type(C.GetPlayerAuraBySpellID) == "function" then
-    local ok, data = pcall(C.GetPlayerAuraBySpellID, S.COZY_FIRE or 7353)
-    if ok and type(data) == "table" then return true end
+    local ids = { S.COZY_FIRE or 7353 }
+    for id in pairs(S.CAMPFIRE_SPELLS or {}) do ids[#ids + 1] = id end
+    for _, id in ipairs(ids) do
+      local ok, data = pcall(C.GetPlayerAuraBySpellID, id)
+      if ok and type(data) == "table" then return true end
+    end
+  end
+  -- AuraUtil par nom FR/EN (Forever : « Feu de camp accueillant »).
+  local A = _G.AuraUtil
+  if type(A) == "table" and type(A.FindAuraByName) == "function" then
+    local names = {
+      "Feu de camp accueillant", "Feu douillet", "Cozy Fire", "Welcoming Fire",
+      "Feu de camp", "Campfire",
+    }
+    if type(_G.GetSpellInfo) == "function" then
+      local ok, nm = pcall(_G.GetSpellInfo, S.COZY_FIRE or 7353)
+      if ok and type(nm) == "string" and nm ~= "" then names[#names + 1] = nm end
+    end
+    for i = 1, #names do
+      local ok, hit = pcall(A.FindAuraByName, names[i], "player", "HELPFUL")
+      if ok and hit then return true end
+    end
   end
   local holes = 0
   for i = 1, 40 do
@@ -931,12 +953,11 @@ function S.CozyFireAura()
       if holes >= 3 then break end
     else
       holes = 0
-      if (spellId and (spellId == (S.COZY_FIRE or 7353))) or S.IsCampfireName(name) then
-        -- « Feu douillet » / Cozy Fire seulement, pas le nom d'un objet proche.
-        if spellId == (S.COZY_FIRE or 7353) or FoldName(name):find("cozy", 1, true)
-          or FoldName(name):find("douillet", 1, true) then
-          return true
-        end
+      -- Aura du JOUEUR : un nom de feu de camp / cozy / accueillant compte,
+      -- même si l'ID Forever n'est pas 7353.
+      if (spellId and (spellId == (S.COZY_FIRE or 7353) or (S.CAMPFIRE_SPELLS and S.CAMPFIRE_SPELLS[spellId])))
+        or S.IsCampfireName(name) then
+        return true
       end
     end
   end
@@ -986,18 +1007,12 @@ function S.CampfireState()
   local near = S.NearCampfire()
   local cozy = S._cozyFire or S.CozyFireAura()
   S._cozyFire = cozy and true or false
-  -- Buff déjà là depuis un moment (login) : pas d'ember, on reste sur la goutte.
-  if cozy and not S._campSawBuff then
-    -- première détection : étincelles, puis goutte
+  -- Tant que l'aura est là, l'icône feu de camp reste sur la fiole.
+  if cozy then
     S._campSawBuff = true
-    S._campBurstUntil = now + 0.45
     S._campChargeAt = nil
-    return "burst"
-  end
-  if cozy and S._campSawBuff then
-    -- buff déjà pris : on revient à la goutte (pas d'ember tant que le buff tient).
-    S._campChargeAt = nil
-    return nil
+    if (S._campBurstUntil or 0) > now then return "burst" end
+    return "buff"
   end
   if not cozy then S._campSawBuff = nil end
   if not near then
@@ -1022,7 +1037,7 @@ function S.LiveCampfire()
   if S._sim.campfire or S._simCamp then return true end
   if S.Opt and not S.Opt("slotCampfire") then return false end
   local st = S.CampfireState()
-  return st == "near" or st == "charge" or st == "burst"
+  return st == "near" or st == "charge" or st == "burst" or st == "buff"
 end
 
 function S.LiveSleepingBag()
@@ -1280,12 +1295,13 @@ function S.ApplyFlaskFill(t)
     return
   end
   if t._gFill and t._gFill.Hide then t._gFill:Hide() end
-  -- La barre large n'est jamais touchée par un état (combat, repos, pêche, …) :
-  -- remplissage statique déjà posé par Wd.Paint. On ne transforme plus les
-  -- segments et on ne les cache pas.
-  if S.ReplacesFlaskIcon and S.ReplacesFlaskIcon(t) then
-    return
-  end
+  -- La barre officielle est un remplissage statique posé par Wd.Paint.
+  -- Aucune animation, dégradé ou teinte d'état : seule l'étincelle colorée
+  -- (PlayBarSpark) a le droit d'y passer, puis alpha 0 sans résidu.
+  return
+end
+function S._ApplyFlaskFill_UNUSED_TRANSFORM(t)
+  local Wd = ns.Wide
   local last = Wd.last
   if not last or not last.widths or not last.track then return end
   local pseg = Wd.EnsureSegs(t)
@@ -1504,8 +1520,10 @@ function S.ApplyStateIcon(t, key, mode)
   w, h = iw or w or 16, ih or h or 16
   parent = content or clip or parent
   if not parent then return nil end
-  -- Taille : toute la zone icône (comme le sablier), jamais la case entière.
+  -- Glyphe seul (pas de disque) : remplit le puits comme la fiole officielle,
+  -- 1 px de marge pour que le filet bronze de contour ne soit pas rogné.
   local side = math.min(w, h)
+  side = math.max(6, side - 1)
   local x, y = (w - side) * 0.5, (h - side) * 0.5
   local alpha = 1
   local phase = S._phase or 0
@@ -1559,8 +1577,15 @@ function S.ApplyStateIcon(t, key, mode)
   if tex.Show then tex:Show() end
   tex._kind = key
   if t.icon and t.icon.Hide then t.icon:Hide() end
-  local mask = S.IconMaskFor and S.IconMaskFor(t)
-  if mask and tex.AddMaskTexture then pcall(tex.AddMaskTexture, tex, mask) end
+  -- Art maison déjà cadré dans un disque : un masque circulaire de case
+  -- rognait le liseré (surtout en petit). Les icônes Blizzard gardent le mask.
+  if not (S.IsCustomIcon and S.IsCustomIcon(path)) then
+    local mask = S.IconMaskFor and S.IconMaskFor(t)
+    if mask and tex.AddMaskTexture then pcall(tex.AddMaskTexture, tex, mask) end
+  elseif tex.RemoveMaskTexture then
+    local mask = t._flareMask or (t.icon and t.icon._thMask)
+    if mask then pcall(tex.RemoveMaskTexture, tex, mask) end
+  end
   return tex
 end
 
@@ -2308,7 +2333,7 @@ end
 function S.RestedOnly()
   -- z + vague de repos : pas besoin de repeindre tout le puits à 20 i/s.
   if S.Want("trainer") or S.Want("campfire") or S.FillBusy() then return false end
-  if (S._jolt or 0) > 0 or S._addT or S._lvlT or S._sparkT then return false end
+  if (S._jolt or 0) > 0 or S._lvlT or S._sparkT then return false end
   local F = ns.Flight
   if F and (F.Paused and F.Paused() or (F._vis or 0) > 0) then return false end
   return S.Active() == "rested"
@@ -2325,7 +2350,7 @@ function S.NeedsDriver()
   if S.CombatStateOn and S.CombatStateOn() then return true end
   if S.FillBusy() then return true end
   if (S._jolt or 0) > 0 then return true end
-  if S._addT or S._lvlT or S._sparkT then return true end
+  if S._lvlT or S._sparkT then return true end
   local F = ns.Flight
   if F and (F.Paused and F.Paused() or (F._vis or 0) > 0) then return true end
   return false
@@ -2370,7 +2395,6 @@ function S.Tick(dt)
   S._jolt = math.max(0, (S._jolt or 0) - dt * 4)
   S._phase = (S._phase or 0) + dt * 0.7
   if S._phase > 1 then S._phase = S._phase - math.floor(S._phase) end
-  if S._addT ~= nil then S.TickTotalAdd(dt) end
   if S._sparkT ~= nil then S.TickBarSpark(dt) end
   if S._lvlT ~= nil then S.TickLevelUp(dt) end
   if S.Active and S.Active() == "campfire" then
@@ -2680,11 +2704,6 @@ function S.HideCombatLiq(t)
   if t and t._cLiq then HideOverlay(t._cLiq) end
 end
 
-function S.HideTotalAdd(t)
-  t = t or (S.FlaskTile and S.FlaskTile())
-  if t and t._add then HideOverlay(t._add) end
-  S._addT = nil
-end
 
 -- Icônes de jeu (nourriture / boisson). Un état, deux rendus (grille / barre).
 S.EAT_ICON = {
@@ -2858,7 +2877,7 @@ function S.ApplyRegenWave(dt)
 end
 
 ------------------------------------------------------------------------------
--- Feu de camp (un seul glyphe) + goutte qui tombe + débordement de niveau
+-- Feu de camp (un seul glyphe) + débordement de niveau
 ------------------------------------------------------------------------------
 function S.EnsureCampfire(t)
   if not t then return nil end
@@ -2978,87 +2997,128 @@ function S.ApplyCampfire(t)
   if f.Show then f:Show() end
 end
 
--- Goutte qui tombe dans la fiole officielle, puis vague + bulles.
-function S.EnsureTotalAdd(t)
-  if not t then return nil end
-  local _, content = S.PlaceIconClip(t)
-  local parent = content or t
-  if t._add then
-    if t._add.SetParent and parent then pcall(t._add.SetParent, t._add, parent) end
-    local d, w = t._add.drop, t._add.wave
-    if d and d.SetTexture then pcall(d.SetTexture, d, MEDIA .. "RoundMask") end
-    if w and w.SetDesaturated then pcall(w.SetDesaturated, w, true) end
-    return t._add
-  end
-  local ok, f = pcall(CreateFrame, "Frame", nil, parent)
-  if not (ok and f) then return nil end
-  S.SetSizeIf(f, 1, 1)
-  if f.EnableMouse then pcall(f.EnableMouse, f, false) end
-  local function tex(layer)
-    if type(f.CreateTexture) ~= "function" then return nil end
-    return f:CreateTexture(nil, layer or "OVERLAY")
-  end
-  f.drop = tex("OVERLAY")
-  if f.drop and f.drop.SetTexture then
-    -- Texture blanche teintable : le XP-Icon rouge faisait toutes les gouttes rouges.
-    pcall(f.drop.SetTexture, f.drop, MEDIA .. "RoundMask")
-  end
-  f.wave = tex("ARTWORK")
-  if f.wave and f.wave.SetTexture then
-    pcall(f.wave.SetTexture, f.wave, (ns.Rested and ns.Rested.WAVE_TEX) or (MEDIA .. "Dropamine-Wave"))
-  end
-  if f.wave and f.wave.SetDesaturated then pcall(f.wave.SetDesaturated, f.wave, true) end
-  f.bubbles = { tex("OVERLAY"), tex("OVERLAY"), tex("OVERLAY") }
-  t._add = f
-  return f
-end
-
 S.ADD_COLORS = {
   red   = { 0.616, 0.278, 0.227 },
   blue  = { 0.329, 0.408, 0.604 },
   green = { 0.310, 0.498, 0.243 },
 }
-function S.AddColor(key)
-  if type(key) == "table" and key[1] then return key end
-  key = tostring(key or "red"):lower()
-  if key == "blue" or key == "bleu" or key == "combat" or key == "armes" then return S.ADD_COLORS.blue end
-  if key == "green" or key == "vert" or key == "skill" or key == "metier" or key == "métier" then return S.ADD_COLORS.green end
-  return S.ADD_COLORS.red
+-- Rejette un RVB quasi noir (teinte de fond de toast ~0,07) : ça se voyait
+-- comme une étincelle ou un +1 noirs si on passait TOAST_TINT au lieu d'ADD_COLORS.
+function S.UsableColor(c)
+  if type(c) ~= "table" then return nil end
+  local r = N(c[1]) or N(c.r)
+  local g = N(c[2]) or N(c.g)
+  local b = N(c[3]) or N(c.b)
+  if not (r and g and b) then return nil end
+  if (r + g + b) < 0.35 then return nil end
+  return { r, g, b, N(c[4]) or N(c.a) or 1 }
 end
-function S.PlayTotalAdd(gain, color)
-  local t = S.FlaskTile and S.FlaskTile()
-  if not t then return end
-  S._addT = 0
-  S._addGain = N(gain) or 1
-  S._addColor = S.AddColor(color)
-  S.EnsureTotalAdd(t)
-  local f = t._add
-  local col = S._addColor
-  if f and f.drop and f.drop.SetVertexColor and col then
-    pcall(f.drop.SetVertexColor, f.drop, col[1], col[2], col[3], 1)
+local function FoldGain(s)
+  if type(s) ~= "string" or s == "" then return "" end
+  local ok, f = pcall(function()
+    return (ns.Fold and ns.Fold(s)) or s:lower()
+  end)
+  if not (ok and type(f) == "string") then f = s:lower() end
+  f = f:gsub("é", "e"):gsub("è", "e"):gsub("ê", "e"):gsub("à", "a"):gsub("â", "a")
+  f = f:gsub("î", "i"):gsub("ô", "o"):gsub("ù", "u"):gsub("û", "u"):gsub("ç", "c")
+  return f
+end
+-- Armes (mêlée + distance) + Défense → bleu ; métiers → vert ; XP → rouge.
+-- Jamais nil ni noir : on résout par kind / id / nom / en-tête / catalogue.
+S.WEAPON_GAIN_TOKENS = {
+  melee = true, ranged = true, defense = true, defence = true, feral = true,
+  weapon = true, weapons = true, arme = true, armes = true, combat = true,
+  daggers = true, dague = true, dagues = true, dagger = true,
+  bows = true, bow = true, arc = true, arcs = true,
+  guns = true, gun = true, ["armes a feu"] = true, fusil = true, fusils = true,
+  crossbows = true, crossbow = true, arbalete = true, arbaletes = true,
+  thrown = true, ["armes de jet"] = true, jet = true,
+  wands = true, wand = true, baguette = true, baguettes = true,
+  staves = true, staff = true, baton = true, batons = true,
+  fist = true, ["fist weapons"] = true, pugilat = true, ["armes de pugilat"] = true,
+  polearms = true, polearm = true, hast = true, ["armes d hast"] = true, ["armes d'hast"] = true,
+  unarmed = true, ["mains nues"] = true, ["combat a mains nues"] = true,
+  swords = true, sword = true, epee = true, epees = true, ["epees a deux mains"] = true, swords2h = true,
+  axes = true, axe = true, hache = true, haches = true, axes2h = true, ["haches a deux mains"] = true,
+  maces = true, mace = true, masse = true, masses = true, maces2h = true, ["masses a deux mains"] = true,
+  ["two handed axes"] = true, ["two-handed axes"] = true,
+  ["two handed swords"] = true, ["two-handed swords"] = true,
+  ["two handed maces"] = true, ["two-handed maces"] = true,
+  ["combat farouche"] = true, ["feral combat"] = true,
+}
+function S.ColorForGain(kind, id, name, header)
+  local k, i, n, h = FoldGain(kind), FoldGain(id), FoldGain(name), FoldGain(header)
+  if k == "xp" or k == "level" or k == "levelup" or k == "jalon" or k == "level-up"
+    or i == "level" or k == "xp-milestone" then
+    return S.ADD_COLORS.red, "red"
   end
-  if S.PlayBarSpark then S.PlayBarSpark(col) end
-  S.StartDriver()
+  local e
+  if id and ns.CatalogById then e = ns.CatalogById(id) end
+  if not e and name and ns.LookupCatalog then e = ns.LookupCatalog(name) end
+  if e then
+    if e.kind == "level" then return S.ADD_COLORS.red, "red" end
+    if e.capKind == "weapon" or e.kind == "melee" or e.kind == "ranged"
+      or e.kind == "defense" or e.kind == "feral" then
+      return S.ADD_COLORS.blue, "blue"
+    end
+    if e.kind == "profession" or e.kind == "secondary" or e.kind == "class" then
+      return S.ADD_COLORS.green, "green"
+    end
+  end
+  if ns.IsWeaponSkill and ns.IsWeaponSkill(id, kind, name) then
+    return S.ADD_COLORS.blue, "blue"
+  end
+  if k == "melee" or k == "ranged" or k == "defense" or k == "defence" or k == "feral" then
+    return S.ADD_COLORS.blue, "blue"
+  end
+  if S.WEAPON_GAIN_TOKENS[k] or S.WEAPON_GAIN_TOKENS[i] or S.WEAPON_GAIN_TOKENS[n] then
+    return S.ADD_COLORS.blue, "blue"
+  end
+  if h:find("arme", 1, true) or h:find("weapon", 1, true) or h == "defense" or h == "defence" then
+    return S.ADD_COLORS.blue, "blue"
+  end
+  if n:find("defense", 1, true) or n:find("defence", 1, true) or i == "defense" then
+    return S.ADD_COLORS.blue, "blue"
+  end
+  if k == "profession" or k == "secondary" or k == "class" or k == "craft" or k == "skill"
+    or k == "metier" or k == "metiers" then
+    return S.ADD_COLORS.green, "green"
+  end
+  return S.ADD_COLORS.green, "green"
 end
-
--- Étincelle colorée sur la barre : après l'impact de la goutte, elle glisse
--- jusqu'au bout du remplissage, petit flash, une texture poolée, ~0,6 s,
--- alpha à 0, jamais de cache / resize de la barre, zéro allocation au tick.
-S.SPARK_DELAY, S.SPARK_DUR, S.FLASH_DUR = 0.40, 0.55, 0.15
+function S.AddColor(key)
+  local usable = S.UsableColor(key)
+  if usable then return usable end
+  if type(key) == "table" then
+    -- Table trop sombre ou mal formée : ne jamais peindre en noir.
+    return S.ADD_COLORS.red
+  end
+  key = tostring(key or "red"):lower()
+  if key == "red" or key == "rouge" or key == "xp" or key == "level" then return S.ADD_COLORS.red end
+  if key == "blue" or key == "bleu" or key == "combat" or key == "armes" or key == "weapon"
+    or key == "defense" or key == "defence" or key == "melee" or key == "ranged" then
+    return S.ADD_COLORS.blue
+  end
+  if key == "green" or key == "vert" or key == "skill" or key == "metier" or key == "métier" then
+    return S.ADD_COLORS.green
+  end
+  local col = S.ColorForGain(key, key, key)
+  return col or S.ADD_COLORS.red
+end
 function S.EnsureBarSpark(t)
   if not t then return nil end
   if t._barSpark and t._barFlash then return t._barSpark, t._barFlash end
   if type(t.CreateTexture) ~= "function" then return t._barSpark, t._barFlash end
   if not t._barSpark then
     local spark = t:CreateTexture(nil, "OVERLAY", nil, 7)
-    if spark and spark.SetTexture then pcall(spark.SetTexture, spark, "Interface\\Buttons\\WHITE8X8") end
+    if spark and spark.SetTexture then pcall(spark.SetTexture, spark, "Interface\Buttons\WHITE8X8") end
     if spark and spark.SetBlendMode then pcall(spark.SetBlendMode, spark, "ADD") end
     if spark and spark.Hide then spark:Hide() end
     t._barSpark = spark
   end
   if not t._barFlash then
     local flash = t:CreateTexture(nil, "OVERLAY", nil, 8)
-    if flash and flash.SetTexture then pcall(flash.SetTexture, flash, "Interface\\Buttons\\WHITE8X8") end
+    if flash and flash.SetTexture then pcall(flash.SetTexture, flash, "Interface\Buttons\WHITE8X8") end
     if flash and flash.SetBlendMode then pcall(flash.SetBlendMode, flash, "ADD") end
     if flash and flash.Hide then flash:Hide() end
     t._barFlash = flash
@@ -3067,22 +3127,23 @@ function S.EnsureBarSpark(t)
 end
 function S.HideBarSpark(t)
   t = t or (S.FlaskTile and S.FlaskTile())
+  local function wipe(tex)
+    if not tex then return end
+    if tex.SetAlpha then pcall(tex.SetAlpha, tex, 0) end
+    if tex.SetVertexColor then pcall(tex.SetVertexColor, tex, 1, 1, 1, 0) end
+    if tex.SetSize then pcall(tex.SetSize, tex, 1, 1) end
+    if tex.Hide then tex:Hide() end
+  end
   if t then
-    if t._barSpark then
-      if t._barSpark.SetAlpha then pcall(t._barSpark.SetAlpha, t._barSpark, 0) end
-      if t._barSpark.Hide then t._barSpark:Hide() end
-    end
-    if t._barFlash then
-      if t._barFlash.SetAlpha then pcall(t._barFlash.SetAlpha, t._barFlash, 0) end
-      if t._barFlash.Hide then t._barFlash:Hide() end
-    end
+    wipe(t._barSpark)
+    wipe(t._barFlash)
   end
   S._sparkT = nil
 end
 function S.PlayBarSpark(color)
+  S._sparkColor = S.AddColor(color)
   local t = S.FlaskTile and S.FlaskTile()
   if not t then return end
-  S._sparkColor = S.AddColor(color or S._addColor)
   S._sparkT = 0
   S.EnsureBarSpark(t)
   S.StartDriver()
@@ -3151,80 +3212,6 @@ function S.TickBarSpark(dt)
     end
   else
     S.HideBarSpark(t)
-  end
-end
-
-function S.TickTotalAdd(dt)
-  local t = S.FlaskTile and S.FlaskTile()
-  if not t then S._addT = nil return end
-  if S._addT == nil then
-    if S.HideTotalAdd then S.HideTotalAdd(t) elseif t._add and t._add.Hide then t._add:Hide() end
-    return
-  end
-  S._addT = (S._addT or 0) + (N(dt) or 0)
-  local u = S._addT
-  local f = S.EnsureTotalAdd(t)
-  if not f then S._addT = nil return end
-  local clip, content, w, h = S.PlaceIconClip(t)
-  w, h = w or 16, h or 16
-  if f.SetParent and content then pcall(f.SetParent, f, content) end
-  if S.SetSizeIf(f, w, h) or f._clipParent ~= (content or clip) then
-    if f.ClearAllPoints then pcall(f.ClearAllPoints, f) end
-    if f.SetPoint then pcall(f.SetPoint, f, "BOTTOMLEFT", content or clip, "BOTTOMLEFT", 0, 0) end
-    f._clipParent = content or clip
-  end
-  if f.SetAlpha then pcall(f.SetAlpha, f, 1) end
-  if f.Show then f:Show() end
-  -- 0–0.40 s : la goutte tombe dans le puits. 0.40–0.95 s : vague + bulles.
-  local fall, rest = 0.40, 0.55
-  if u < fall then
-    local k = u / fall
-    k = 1 - (1 - k) * (1 - k)
-    local dw = math.max(4, w * 0.42)
-    local x = (w - dw) / 2
-    local y = h + 2 - k * (h * 0.78 + 2)
-    if f.drop then
-      local col = S._addColor or S.ADD_COLORS.red
-      if f.drop.SetVertexColor then pcall(f.drop.SetVertexColor, f.drop, col[1], col[2], col[3], 1) end
-      S.PlaceClippedTex(f.drop, f, dw, dw, x, y)
-      if f.drop.SetAlpha then pcall(f.drop.SetAlpha, f.drop, 1) end
-      if f.drop.Show then f.drop:Show() end
-    end
-    if f.wave and f.wave.Hide then f.wave:Hide() end
-    for _, b in ipairs(f.bubbles or {}) do if b and b.Hide then b:Hide() end end
-  elseif u < fall + rest then
-    local k = (u - fall) / rest
-    if f.drop and f.drop.Hide then f.drop:Hide() end
-    local surf = S.FillSurfaceY and S.FillSurfaceY(t, h) or (h * 0.55)
-    local wh = math.max(2, h * 0.12)
-    if f.wave then
-      S.PlaceClippedTex(f.wave, f, w, wh, 0, math.max(0, surf - wh * 0.4 + math.sin(k * 6.28) * 1.2))
-      local col = S._addColor or S.ADD_COLORS.red
-      if f.wave.SetVertexColor then pcall(f.wave.SetVertexColor, f.wave, col[1], col[2], col[3], 0.85 * (1 - k)) end
-      if f.wave.SetTexCoord then
-        local span = 0.5
-        local uu = k * span
-        pcall(f.wave.SetTexCoord, f.wave, uu, 0, uu + span, 1)
-      end
-      if f.wave.Show then f.wave:Show() end
-    end
-    for i, b in ipairs(f.bubbles or {}) do
-      if b then
-        local bx = w * (0.28 + (i - 1) * 0.18)
-        local by = (h * 0.18) + k * (h * 0.45)
-        local bs = math.max(1, 2.2 * (1 - k * 0.5))
-        S.PlaceClippedTex(b, f, bs, bs, bx, by)
-        if b.SetTexture then pcall(b.SetTexture, b, "Interface\\Buttons\\WHITE8X8") end
-        local col = S._addColor or S.ADD_COLORS.red
-        if b.SetVertexColor then pcall(b.SetVertexColor, b, col[1], col[2], col[3], 0.8 * (1 - k)) end
-        if b.Show then b:Show() end
-      end
-    end
-  else
-    if S.HideTotalAdd then S.HideTotalAdd(t) else
-      if f.Hide then f:Hide() end
-      S._addT = nil
-    end
   end
 end
 

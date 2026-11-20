@@ -1,6 +1,6 @@
 -- Dropamine 3.3.7 — mise en page redimensionnable du panneau compact.
---   * /drop colonnes <1|2|5|10> : 10 cases (9 compétences + Niveau total) en
---     1 × 10, 2 × 5, 5 × 2 (défaut) ou 10 × 1 ; ordre des cases inchangé,
+--   * /drop colonnes <2|3|5|10> : 10 cases (9 compétences + Niveau total) en
+--     2 × 5, 3 × 4, 5 × 2 (défaut) ou 10 × 1 ; ordre des cases inchangé,
 --     Niveau total toujours la DERNIÈRE ;
 --   * poignée de redimensionnement (coin bas-droit, NOTRE cadre) : en la
 --     glissant, le panneau saute à la disposition valide la plus proche ;
@@ -19,14 +19,37 @@ local L = {}
 ns.Layout = L
 
 L.stats = { checks = 0, restored = 0, pinned = 0 }
-L.VALID = { 1, 2, 3, 5, 10 }   -- 3.3.13 : 3 colonnes (carré 3 × 3 + barre Niveau total)
+L.VALID = { 2, 3, 5, 10 }   -- 3.6.3 : plus de mode 1 colonne
 L.BASE_COLS, L.BASE_W = 5, 262          -- largeur de liste historique (5 colonnes)
 L.SCALE_MIN, L.SCALE_MAX = 50, 200   -- 3.3.12 : plage élargie, pas de 1 %
 local function DB() ns.db.ui = ns.db.ui or {} return ns.db.ui end
 local function say(m) print(Tr["|cffffd100Dropamine|r : "] .. m) end
 local function IsValid(n) for _, v in ipairs(L.VALID) do if v == n then return true end end return false end
 
-function L.Cols() local c = N(DB().cols) return (c and IsValid(c)) and c or L.BASE_COLS end
+function L.NearestCols(n)
+  n = N(n)
+  if not n then return L.BASE_COLS end
+  if IsValid(n) then return n end
+  local best, bd = L.BASE_COLS, 1e9
+  for _, v in ipairs(L.VALID) do
+    local d = math.abs(v - n)
+    if d < bd or (d == bd and v < best) then best, bd = v, d end
+  end
+  return best
+end
+
+function L.Cols()
+  local c = N(DB().cols)
+  -- Seule l'ancienne valeur 1 est migrée (option retirée) et réécrite.
+  if c == 1 then
+    local n = (L.NearestCols and L.NearestCols(1)) or 2
+    DB().cols = (n ~= L.BASE_COLS) and n or nil
+    if ns.SaveActiveProfile then pcall(ns.SaveActiveProfile) end
+    return n
+  end
+  if c and IsValid(c) then return c end
+  return L.BASE_COLS
+end
 function L.Scale() local s = N(DB().scale) if not s then return 100 end return math.max(L.SCALE_MIN, math.min(L.SCALE_MAX, math.floor(s + 0.5))) end
 -- Largeur / hauteur de la GRILLE seule : colonnes×case + (n-1)×écarts.
 -- Pas de marge historique (22 px issus de la grille 5 col.) ni d'écart fantôme
@@ -154,7 +177,9 @@ end
 
 function L.SetCols(n)
   n = N(n)
-  if not (n and IsValid(n)) then return nil end
+  if not n then return nil end
+  n = L.NearestCols and L.NearestCols(n) or n
+  if not IsValid(n) then return nil end
   if n == L.Cols() and L.applied and L.applied.cols == n then return n end
   DB().cols = (n ~= L.BASE_COLS) and n or nil
   if ns.SaveActiveProfile then pcall(ns.SaveActiveProfile) end
@@ -413,14 +438,14 @@ end
 ns.SlashExt.colonnes = function(rest)
   local n = L.SetCols((rest or ""):match("^%s*(%d+)"))
   if n then say(Tr["disposition : "] .. n .. Tr[" colonne"] .. (n > 1 and "s" or "") .. " × " .. L.Rows(n) .. Tr[" rangée"] .. (L.Rows(n) > 1 and "s" or ""))
-  else say(Tr["colonnes : "] .. L.Cols() .. Tr[" (usage : /drop colonnes 1|2|3|5|10)"]) end
+  else say(Tr["colonnes : "] .. L.Cols() .. Tr[" (usage : /drop colonnes 2|3|5|10)"]) end
 end
 ns.SlashExt.taille = function(rest)
   local v = L.SetScale((rest or ""):match("^%s*(%d+)"))
   if v then say(Tr["taille du panneau : "] .. v .. " %") else say(Tr["taille : "] .. L.Scale() .. Tr[" % (usage : /drop taille 50-200)"]) end
 end
 ns.HelpExt = ns.HelpExt or {}
-ns.HelpExt[#ns.HelpExt + 1] = "/drop colonnes 1|2|3|5|10 : disposition (poignée du coin bas-droit) · /drop taille 50-200 : échelle (%) ; poignée = taille (Alt+glisser = colonnes)"
+ns.HelpExt[#ns.HelpExt + 1] = "/drop colonnes 2|3|5|10 : disposition (poignée du coin bas-droit) · /drop taille 50-200 : échelle (%) ; poignée = taille (Alt+glisser = colonnes)"
 local baseDebug = W.DebugLines
 W.DebugLines = function()
   local out = baseDebug()

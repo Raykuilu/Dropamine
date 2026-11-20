@@ -4674,6 +4674,57 @@ UI.TOAST_SLIDE = 7  -- px : glissement court à l'apparition / à la disparition
 local TOAST_BG_A = 0.35   -- v2.7.1 : un peu plus translucide, comme le chat
 local TOAST_LIGHT_H = 26
 
+function UI.ToastScaleK()
+  local pct = (ns.Layout and ns.Layout.Scale and ns.Layout.Scale()) or 100
+  local k = (ns.N and ns.N(pct) or tonumber(pct) or 100) / 100
+  if k < 0.5 then k = 0.5 end
+  if k > 2 then k = 2 end
+  return k
+end
+function UI.ToastPx(base, minv)
+  local v = math.floor((base or 0) * UI.ToastScaleK() + 0.5)
+  if minv and v < minv then v = minv end
+  return v
+end
+function UI.ToastMetrics(opts)
+  opts = opts or {}
+  local light, hint, maxv, big = opts.light, opts.hint, opts.maxv, opts.big
+  local icon = UI.ToastPx(light and 20 or (big and 40 or 32), light and 16 or 22)
+  local titleSize = UI.ToastPx(light and 11 or (big and 16 or 13), 10)
+  local subSize = UI.ToastPx(11, 9)
+  local barH = UI.ToastPx(4, 3)
+  local pad = UI.ToastPx(7, 5)
+  local fh
+  if light then
+    fh = UI.ToastPx(TOAST_LIGHT_H, 22)
+  else
+    fh = pad + titleSize + 2 + subSize
+    if hint and hint ~= "" then fh = fh + 1 + subSize end
+    if maxv and maxv > 0 then fh = fh + barH + 8 end
+    fh = fh + pad
+    if fh < UI.ToastPx(46, 40) then fh = UI.ToastPx(46, 40) end
+    if big then fh = math.max(fh, UI.ToastPx(UI.LEVELUP_H or TOAST_H, 56)) end
+  end
+  return { icon = icon, titleSize = titleSize, subSize = subSize, barH = barH, pad = pad, fh = math.floor(fh + 0.5) }
+end
+local function ApplyToastFont(fs, size, fallback)
+  if not (fs and size) then return end
+  local path, flags
+  if fs.GetFont then
+    local ok, pth, _, fl = pcall(fs.GetFont, fs)
+    if ok then path, flags = pth, fl end
+  end
+  if (not path or path == "") and fallback then
+    local fo = type(fallback) == "string" and _G[fallback] or fallback
+    if fo and fo.GetFont then
+      local ok, pth, _, fl = pcall(fo.GetFont, fo)
+      if ok then path, flags = pth, fl end
+    end
+  end
+  if path and fs.SetFont then pcall(fs.SetFont, fs, path, size, flags or "") end
+end
+
+
 -- Durée d'affichage (options) et opacité du fond, bornées.
 function UI:DropHold()
   local v = ns.db and ns.db.ui and ns.N(ns.db.ui.dropDuration)
@@ -5233,6 +5284,9 @@ end
 
 function UI:DropFirstHeight()
   local light = ns.db and ns.db.ui and ns.db.ui.dropStyle == "leger"
+  if UI.ToastMetrics then
+    return UI.ToastMetrics({ light = light }).fh
+  end
   return light and TOAST_LIGHT_H or TOAST_H
 end
 
@@ -5599,6 +5653,7 @@ function UI.ApplyToastTint(frame, opts)
   local a = UI.ToastBgAlpha(frame)
   if fill and frame._tintR == c[1] and frame._tintG == c[2] and frame._tintB == c[3]
     and frame._tintA == a and frame._tintFamily == fam and fill._bgAlpha == a then
+    if fill.Show then fill:Show() end
     return fam
   end
   if fill then
@@ -5657,7 +5712,30 @@ function UI:WireDropMouse(f)
     elseif self._kind == "recap" or self._dedupeKey == "osrs-logout-recap" then
       if ns.ProgressUI and ns.ProgressUI.OpenRecap then pcall(ns.ProgressUI.OpenRecap, "current") end
       UI:DismissDrop(self)
-    else UI:OpenFromDrop(self._target, self) end
+    else
+      local shift = (type(_G.IsShiftKeyDown) == "function" and _G.IsShiftKeyDown())
+        or (type(_G.IsModifiedClick) == "function" and _G.IsModifiedClick("CHATLINK"))
+      if shift and self._craft and self._craft.item then
+        local link
+        if type(_G.GetItemInfo) == "function" then
+          local ok, results = pcall(function()
+            local n, lk = _G.GetItemInfo(self._craft.item)
+            return { n, lk }
+          end)
+          if ok and results then link = results[2] end
+        end
+        if not link and self._craft.item then
+          link = "item:" .. tostring(self._craft.item)
+        end
+        if link and type(_G.ChatEdit_InsertLink) == "function" then
+          pcall(_G.ChatEdit_InsertLink, link)
+        elseif link and _G.ChatFrame1EditBox and _G.ChatFrame1EditBox.Insert then
+          pcall(_G.ChatFrame1EditBox.Insert, _G.ChatFrame1EditBox, link)
+        end
+      else
+        UI:OpenFromDrop(self._target, self)
+      end
+    end
   end)
   -- 3.0.0 : le glisser sur un drop déplace le SUPPORT (mode édition ou
   -- /drop drops move) — le drop ne vole plus le glisser au support.
@@ -5822,6 +5900,7 @@ function UI:AcquireToast(parent)
       f._inPool = nil
       if f.SetParent and parent then pcall(f.SetParent, f, parent) end
       f._tfBaseH, f._h, f.font = nil, nil, nil
+      f._tintR, f._tintG, f._tintB, f._tintA, f._tintFamily = nil, nil, nil, nil, nil
       if ns.ToastFit and ns.ToastFit.Reset then pcall(ns.ToastFit.Reset, f) end
       return f, true
     end
@@ -5841,6 +5920,7 @@ function UI:ReleaseToast(f)
   f._dedupeKey, f._acc, f._kills, f._quest = nil, nil, nil, nil
   f._sticky, f._hover, f._toastAge, f._editPreview = nil, nil, 0, nil
   f._toastData, f._target, f._kind, f._tintOpts = nil, nil, nil, nil
+  f._tintR, f._tintG, f._tintB, f._tintA, f._tintFamily = nil, nil, nil, nil, nil
   f._fullTitle, f._fullSub, f._hold, f._light = nil, nil, nil, nil
   f._tfBaseH = nil
   if ns.ToastFit and ns.ToastFit.Reset then pcall(ns.ToastFit.Reset, f) end
@@ -5948,7 +6028,7 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
         if o.subFS and subtitle then o.subFS:SetText(subtitle) end
         if o.hintFS and opts.hint then o.hintFS:SetText(opts.hint) end
         if o.barHold and o.bar and ns.N(barMax) and ns.N(barMax) > 0 then
-          pcall(SetSkillBarProgress, o.barHold, o.bar, barCur, ns.N(barMax), o._bw, 4)
+          pcall(SetSkillBarProgress, o.barHold, o.bar, barCur, ns.N(barMax), o._bw, (UI.ToastMetrics and UI.ToastMetrics({}).barH) or 4)
         end
         o._restart()
         o._updates = (o._updates or 0) + 1
@@ -5983,14 +6063,22 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   local light = opts.light or (ns.db and ns.db.ui and ns.db.ui.dropStyle == "leger")
   -- Complet : boîte compacte façon toast — icône 32 px à gauche, 3 lignes
   -- (titre or, ligne blanche, astuce verte) et fine barre en bas.
-  local fh
-  if light then fh = TOAST_LIGHT_H
+  local tm = UI.ToastMetrics and UI.ToastMetrics({
+    light = light, hint = hint, maxv = maxv, big = opts.big,
+  }) or nil
+  local fh, iconSize, barH, pad
+  if tm then
+    fh, iconSize, barH, pad = tm.fh, tm.icon, tm.barH, tm.pad
   else
-    fh = 12 + 14 + 12 + ((hint and hint ~= "") and 11 or 0) + ((maxv and maxv > 0) and 7 or 0)
-    if fh < 46 then fh = 46 end
-    if opts.big then fh = math.max(fh, UI.LEVELUP_H) end
+    if light then fh = TOAST_LIGHT_H
+    else
+      fh = 12 + 14 + 12 + ((hint and hint ~= "") and 11 or 0) + ((maxv and maxv > 0) and 7 or 0)
+      if fh < 46 then fh = 46 end
+      if opts.big then fh = math.max(fh, UI.LEVELUP_H) end
+    end
+    iconSize = light and 20 or (opts.big and 40 or 32)
+    barH, pad = 4, 7
   end
-  local iconSize = light and 20 or (opts.big and 40 or 32)
   local dw = self:DropWidth()
   local f, reused = self:AcquireToast(parent)
   if not f then return end
@@ -6016,8 +6104,8 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
     if slot.SetSize then pcall(slot.SetSize, slot, iconSize, iconSize) end
     if slot.ClearAllPoints then pcall(slot.ClearAllPoints, slot) end
   end
-  if light then slot:SetPoint("LEFT", f, "LEFT", 4, 0)
-  else slot:SetPoint("TOPLEFT", f, "TOPLEFT", 7, -7) end
+  if light then slot:SetPoint("LEFT", f, "LEFT", math.max(3, math.floor((pad or 7) * 0.6 + 0.5)), 0)
+  else slot:SetPoint("TOPLEFT", f, "TOPLEFT", pad or 7, -(pad or 7)) end
   local resolved = UI.ResolveToastIcon and UI.ResolveToastIcon(iconPath, opts) or iconPath
   SetTileIcon(slot.iconTex, resolved or ns.LEVEL_ICON or ns.FALLBACK_ICON, slot)
   f.iconSlot, f.icon = slot, slot.iconTex or f.icon
@@ -6050,6 +6138,7 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
       titleFS.font = "GameFontNormal"
     end
     if titleFS.SetFontObject then pcall(titleFS.SetFontObject, titleFS, font) end
+    if tm and ApplyToastFont then ApplyToastFont(titleFS, tm.titleSize, font) end
   end
 
   local subFS = f.subFS
@@ -6065,6 +6154,7 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   if type(subFS.SetMaxLines) == "function" then pcall(subFS.SetMaxLines, subFS, 1) end
   subFS:SetText(subtitle or "")
   subFS:SetTextColor(1, 1, 1)
+  if tm and ApplyToastFont then ApplyToastFont(subFS, tm.subSize, "GameFontHighlightSmall") end
 
   local hintFS = f.hintFS
   if not hintFS then
@@ -6078,6 +6168,7 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   if type(hintFS.SetMaxLines) == "function" then pcall(hintFS.SetMaxLines, hintFS, 1) end
   hintFS:SetText(hint or "")
   hintFS:SetTextColor(0.25, 1.00, 0.25)
+  if tm and ApplyToastFont then ApplyToastFont(hintFS, tm.subSize, "GameFontHighlightSmall") end
   if not hint or hint == "" then hintFS:Hide() end
   f.hintFS = hintFS
 
@@ -6087,6 +6178,7 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
     titleFS:SetPoint("RIGHT", f, "RIGHT", -6, 0)
     if titleFS.SetFontObject then pcall(titleFS.SetFontObject, titleFS, "GameFontNormalSmall") end
     titleFS.font = "GameFontNormalSmall"
+    if tm and ApplyToastFont then ApplyToastFont(titleFS, tm.titleSize, "GameFontNormalSmall") end
     if subtitle and subtitle ~= "" then titleFS:SetText((title or "") .. "  |cffffffff" .. subtitle .. "|r") end
     subFS:SetText("")
     subFS:Hide()
@@ -6105,12 +6197,12 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
     if hold.ClearAllPoints then hold:ClearAllPoints() end
     hold:SetPoint("LEFT", titleFS, "LEFT", 0, 0)
     hold:SetPoint("RIGHT", titleFS, "RIGHT", 0, 0)
-    hold:SetPoint("BOTTOM", f, "BOTTOM", 0, 6)
+    hold:SetPoint("BOTTOM", f, "BOTTOM", 0, math.max(4, (pad or 7) - 1))
     if hold.Show then hold:Show() end
     local textRight = 8
-    local bw = math.max(8, dw - (7 + iconSize + 7) - textRight)
+    local bw = math.max(8, dw - ((pad or 7) + iconSize + (pad or 7)) - textRight)
     hold._styleSkill = opts.skillId
-    SetSkillBarProgress(hold, sbar, barCur, maxv, bw, 4)
+    SetSkillBarProgress(hold, sbar, barCur, maxv, bw, barH or 4)
     f._bw = bw
     if hold.nbBorder then hold.nbBorder:Hide() end
     if hold.barText then hold.barText:SetText("") hold.barText:Hide() end
@@ -6205,10 +6297,11 @@ function UI:AttachFlareFx(f, strong)
   local out = { fx = fx }
   local ag = NewAnim(fx)
   if ag then
-    AddAnim(ag, "Alpha", { SetFromAlpha = 0, SetToAlpha = 1, SetDuration = 0.35, SetOrder = 1 })
-    AddAnim(ag, "Alpha", { SetFromAlpha = 1, SetToAlpha = 0.25, SetDuration = 0.45, SetOrder = 2 })
-    AddAnim(ag, "Alpha", { SetFromAlpha = 0.25, SetToAlpha = 1, SetDuration = 0.35, SetOrder = 3 })
-    AddAnim(ag, "Alpha", { SetFromAlpha = 1, SetToAlpha = 0, SetDuration = 0.8, SetOrder = 4 })
+    -- Pic à 0,55 : la lumière joue au-dessus du fond teinté, sans le masquer.
+    AddAnim(ag, "Alpha", { SetFromAlpha = 0, SetToAlpha = 0.55, SetDuration = 0.35, SetOrder = 1 })
+    AddAnim(ag, "Alpha", { SetFromAlpha = 0.55, SetToAlpha = 0.20, SetDuration = 0.45, SetOrder = 2 })
+    AddAnim(ag, "Alpha", { SetFromAlpha = 0.20, SetToAlpha = 0.55, SetDuration = 0.35, SetOrder = 3 })
+    AddAnim(ag, "Alpha", { SetFromAlpha = 0.55, SetToAlpha = 0, SetDuration = 0.8, SetOrder = 4 })
     pcall(ag.Play, ag)
     out.glowAnim = ag
   else
@@ -6244,6 +6337,7 @@ function UI:AttachFlareFx(f, strong)
     out.burst = bf
   end
   f._fx = out
+  if UI.ApplyToastTint then UI.ApplyToastTint(f, f._tintOpts or {}) end
   return out
 end
 
@@ -6485,11 +6579,16 @@ function UI:OnXPUpdate()
       if src == "quest" then
         self._pendingXPToast = nil
         self:SpawnQuestXPToast(delta, cur, maxxp, level, hint)
-        if ns.Slot and ns.Slot.PlayTotalAdd then pcall(ns.Slot.PlayTotalAdd, delta, "red") end
+        -- +1 et étincelle à l'arrivée du toast (Compact.Land)
       elseif src == "kill" or src == "other" then
-        -- Monstre (et exploration) : pas de toast, goutte rouge dans la fiole.
+        -- Monstre (et exploration) : pas de toast ; +1 rouge sur la case Niveau + étincelle.
         self._pendingXPToast = nil
-        if ns.Slot and ns.Slot.PlayTotalAdd then pcall(ns.Slot.PlayTotalAdd, delta, "red") end
+        if ns.Compact and ns.Compact.Announce then
+          pcall(ns.Compact.Announce, { kind = "xp", accumulate = { delta = delta } },
+            { { key = "level", gain = delta, suffix = "" } })
+        elseif ns.Slot and ns.Slot.PlayBarSpark then
+          pcall(ns.Slot.PlayBarSpark, "red")
+        end
       else
         -- Source encore inconnue : on attend un message de quête (2 s), sans toast monstre.
         self._pendingXPToast = {
@@ -6589,6 +6688,10 @@ function UI:FlushSkillDiff()
           dedupeKey = "skill:" .. fold, updateOnly = limited,
           accumulate = { delta = d, fmt = function(n) return nm .. " +" .. tostring(n) end } })
         if f and not limited then self._dropLast[fold] = t end
+      elseif ns.Compact and ns.Compact.Announce then
+        local opts = { kind = "skill", skillId = skillId, skillName = s.name, accumulate = { delta = d } }
+        local tg = ns.Compact.TargetsFor and ns.Compact.TargetsFor(opts) or {}
+        pcall(ns.Compact.Announce, opts, tg)
       end
       self._skillDrops = (self._skillDrops or 0) + 1
       local cat = ns.LookupCatalog and ns.LookupCatalog(s.name)

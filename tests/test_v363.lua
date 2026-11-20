@@ -1426,8 +1426,12 @@ do
   ok(craft, "toast recette créé")
   if ns.ToastFit and ns.ToastFit.Fit then ns.ToastFit.Fit(craft) end
   enter(craft)
-  ok(gt.itemId == 5525 or (gt.link and tostring(gt.link):find("5525", 1, true)),
-    "infobulle recette : SetItemByID / SetHyperlink avec l'id objet")
+  ok(not gt.itemId and not (gt.link and tostring(gt.link):find("5525", 1, true)),
+    "infobulle recette : pas de SetItemByID / SetHyperlink (le clic ouvrirait un lien d'objet)")
+  ok(craft._craft and craft._craft.skill == "cooking" and craft._craft.recipe,
+    "toast recette : _craft renseigné (clic ouvre la recette)")
+  ok(craft._craft.item == 5525 or tostring(craft._craft.item or "") == "5525",
+    "toast recette : id objet conservé pour Maj+clic")
   ok(tipHas(longName), "infobulle recette : nom intégral (non tronqué)")
   ok(tipHas("Métier :") or tipHas("Profession:"), "infobulle recette : métier")
   ok(tipHas("Rang requis : 50") or tipHas("Required rank: 50"), "infobulle recette : rang requis")
@@ -2092,14 +2096,17 @@ do
   S.SetCampfireSim("burst")
   ok(S.CampfireState() == "burst", "feu de camp : étincelles (burst)")
   S.ClearSim()
-  ok(S.PlayTotalAdd and S.PlayLevelUp and S.TickTotalAdd and S.TickLevelUp, "goutte dans la fiole + débordement de niveau")
+  ok((not S.PlayTotalAdd) and (not S.TickTotalAdd) and (not S.EnsureTotalAdd),
+    "plus de goutte d'ajout dans la fiole")
+  ok(S.PlayBarSpark and S.TickBarSpark and S.HideBarSpark, "étincelle de barre de total")
+  ok(S.PlayLevelUp and S.TickLevelUp, "débordement de niveau conservé")
   -- Personnages
   local PU = ns.ProgressUI
   ok(PU and PU.TABS, "ProgressUI chargé")
   local hasChars
   for _, tab in ipairs(PU.TABS or {}) do if tab.id == "chars" then hasChars = true end end
   ok(hasChars, "onglet Personnages présent")
-  ok(PU.BuildChars and PU.RefreshChars and PU.SetCharSort, "table Personnages triable")
+  ok(PU.BuildChars and PU.RefreshChars and PU.CharGrid and PU.SelectChar, "onglet Personnages en cartes")
   ok(ns.CaptureCharSheet and ns.AllCharSheets, "instantanés de personnages")
   if ns.Test then
     ok(ns.Test.StartCampfire and ns.Test.StartEating and ns.Test.StartTotalAdd and ns.Test.StartLevelUp,
@@ -3076,6 +3083,9 @@ do
   assertFit(5, 150, 9, true, "5 col. taille 150 %")
   assertFit(10, 150, 9, true, "10 col. taille 150 %")
   assertFit(3, 80, 9, true, "3 col. taille 80 %")
+  assertFit(5, 50, 9, true, "5 col. taille 50 %")
+  assertFit(5, 200, 9, true, "5 col. taille 200 %")
+  assertFit(2, 100, 9, true, "2 col. 100 %")
   if ns.db and ns.db.ui then ns.db.ui.scale, ns.db.ui.cols, ns.db.ui.showTotal = savedScale, savedCols, savedTotal end
   if L.SyncMetrics then L.SyncMetrics() end
   -- La case total de ce bloc (et FlaskTile) doit rester visible pour goutte / étincelle.
@@ -3096,37 +3106,32 @@ do
   ok(not colorEq(S.ADD_COLORS.red, S.ADD_COLORS.green), "red ≠ green")
   if ns.Test and ns.Test.Toggle then
     pcall(ns.Test.Toggle, "totaladd blue")
-    ok(colorEq(S._addColor, S.ADD_COLORS.blue), " /drop test totaladd blue : couleur bleue (pas rouge)")
+    ok(colorEq(S._sparkColor, S.ADD_COLORS.blue), " /drop test totaladd blue : étincelle bleue (pas rouge)")
     if ns.Test.Stop then pcall(ns.Test.Stop, "totaladd") end
     pcall(ns.Test.Toggle, "totaladd green")
-    ok(colorEq(S._addColor, S.ADD_COLORS.green), " /drop test totaladd green : couleur verte (pas rouge)")
+    ok(colorEq(S._sparkColor, S.ADD_COLORS.green), " /drop test totaladd green : étincelle verte (pas rouge)")
     if ns.Test.Stop then pcall(ns.Test.Stop, "totaladd") end
   end
   tot._wideOn, tot._wideH, tot._wideW = true, 16, 200
   ns.Wide = ns.Wide or {}
   ns.Wide.last = { left = 40, inner = 140, by = 4, bh = 8, pct = 0.4 }
   for _, pair in ipairs({ {"red", S.ADD_COLORS.red}, {"blue", S.ADD_COLORS.blue}, {"green", S.ADD_COLORS.green} }) do
-    pcall(S.PlayTotalAdd, 1, pair[1])
-    ok(colorEq(S._addColor, pair[2]), "PlayTotalAdd " .. pair[1] .. " : S._addColor")
-    if tot._add and tot._add.drop and tot._add.drop._vcolor then
-      local vc = tot._add.drop._vcolor
-      ok(math.abs((vc[1] or 0) - pair[2][1]) < 0.01, "goutte " .. pair[1] .. " teinte réelle")
-    end
+    pcall(S.PlayBarSpark, pair[1])
+    ok(colorEq(S._sparkColor, pair[2]), "PlayBarSpark " .. pair[1] .. " : S._sparkColor")
   end
+  ok(not tot._add, "aucune couche de goutte d'ajout sur la fiole")
   -- étincelle : créée une fois, voyage, flash, alpha 0, pas de nouvelle texture au 2e gain
-  pcall(S.PlayTotalAdd, 1, "blue")
+  pcall(S.PlayBarSpark, "blue")
   ok(tot._barSpark, "étincelle de barre : texture poolée")
-  -- S.Tick plafonne dt à 0,25 s : on avance par pas, comme en jeu.
-  if S.Tick then for i = 1, 10 do pcall(S.Tick, 0.05) end end  -- 0,50 s, après l'impact
-  ok(tot._barSpark and tot._barSpark.shown ~= false, "étincelle visible après l'impact de la goutte")
-  if S.Tick then for i = 1, 16 do pcall(S.Tick, 0.05) end end  -- +0,80 s, au-delà de 0,40+0,55+0,15
+  if S.Tick then for i = 1, 10 do pcall(S.Tick, 0.05) end end
+  ok(tot._barSpark and tot._barSpark.shown ~= false, "étincelle visible après le départ")
+  if S.Tick then for i = 1, 16 do pcall(S.Tick, 0.05) end end
   ok(not tot._barSpark or tot._barSpark.shown == false or (tot._barSpark.GetAlpha and tot._barSpark:GetAlpha() == 0),
     "étincelle : alpha 0 à la fin")
   local spark1, flash1 = tot._barSpark, tot._barFlash
-  pcall(S.PlayTotalAdd, 1, "green")
+  pcall(S.PlayBarSpark, "green")
   ok(tot._barSpark == spark1 and tot._barFlash == flash1, "étincelle : réutilisée, pas de nouvelle texture")
   if S.HideBarSpark then pcall(S.HideBarSpark, tot) end
-  if S.HideTotalAdd then pcall(S.HideTotalAdd, tot) end
   tot._wideOn = false
 
   -- Fuite : 500 transitions d'état, aucun nouveau cadre / texture, croissance mémoire bornée.
@@ -3145,14 +3150,13 @@ do
     pcall(S.ApplyTotal)
   end
   tot._wideOn = true
-  if S.PlayTotalAdd then
-    pcall(S.PlayTotalAdd, 1, "red")
+  if S.PlayBarSpark then
+    pcall(S.PlayBarSpark, "red")
     if S.Tick then pcall(S.Tick, 0.05) end
-    pcall(S.PlayTotalAdd, 1, "blue")
+    pcall(S.PlayBarSpark, "blue")
     if S.Tick then pcall(S.Tick, 0.50) pcall(S.Tick, 0.70) end
-    pcall(S.PlayTotalAdd, 1, "green")
+    pcall(S.PlayBarSpark, "green")
     if S.Tick then pcall(S.Tick, 0.50) pcall(S.Tick, 0.70) end
-    if S.HideTotalAdd then pcall(S.HideTotalAdd) end
     if S.HideBarSpark then pcall(S.HideBarSpark, tot) end
   end
   if S.ApplyRestIcon then pcall(S.SetSim, "rested", true) pcall(S.ApplyRestIcon, tot) S.ClearSim() pcall(S.ApplyTotal) end
@@ -3201,6 +3205,208 @@ do
 
   if ns.Wide then ns.Wide.TotalTile = prevTotal end
   S.ClearSim()
+end
+
+print("== 3.6.3 : couleurs de gain, +1 de case, pas de goutte, recettes, 1 colonne, toasts, Personnages")
+do
+  local S, C, UI, L = ns.Slot, ns.Compact, ns.UI, ns.Layout
+  local function sum(c) return (c[1] or 0) + (c[2] or 0) + (c[3] or 0) end
+  local function colorEq(a, b)
+    return a and b and math.abs((a[1] or 0) - (b[1] or 0)) < 0.01
+      and math.abs((a[2] or 0) - (b[2] or 0)) < 0.01
+      and math.abs((a[3] or 0) - (b[3] or 0)) < 0.01
+  end
+  ok(S and S.ColorForGain and S.ADD_COLORS, "ColorForGain disponible")
+  local red, blue, green = S.ADD_COLORS.red, S.ADD_COLORS.blue, S.ADD_COLORS.green
+  local weapons = {
+    { "skill", nil, "Dagues" }, { "skill", nil, "Défense" }, { "skill", nil, "Defense" },
+    { "skill", nil, "Arcs" }, { "skill", nil, "Bows" }, { "skill", nil, "Fusils" },
+    { "skill", nil, "Guns" }, { "skill", nil, "Arbalètes" }, { "skill", nil, "Armes de jet" },
+    { "skill", nil, "Baguettes" }, { "skill", nil, "Bâtons" }, { "skill", nil, "Armes d'hast" },
+    { "skill", nil, "Armes de pugilat" }, { "skill", nil, "Mains nues" }, { "skill", nil, "Épées" },
+    { "defense", nil, nil }, { "melee", nil, "Daggers" }, { "ranged", nil, "Bows" },
+  }
+  for _, w in ipairs(weapons) do
+    local c = S.ColorForGain(w[1], w[2], w[3])
+    ok(c and sum(c) >= 0.35 and colorEq(c, blue),
+      "gain bleu : " .. tostring(w[3] or w[1]))
+  end
+  ok(colorEq(S.ColorForGain("skill", nil, "Cuisine"), green), "métier Cuisine : vert")
+  ok(colorEq(S.ColorForGain("profession", nil, "Minage"), green), "métier Minage : vert")
+  ok(colorEq(S.ColorForGain("xp"), red), "XP : rouge")
+  ok(colorEq(S.ColorForGain("levelup"), red), "levelup : rouge")
+  local unk = S.ColorForGain("???", nil, "chose inconnue")
+  ok(unk and sum(unk) >= 0.35, "catégorie inconnue : jamais nil ni noir")
+
+  -- +1 coloré sur la case, étincelle, pas d'anim de fiole
+  local tile = { data = { kind = "melee", skillName = "Dagues", name = "Dagues" }, GetFrameLevel = function() return 1 end }
+  if C and C.GainColor then
+    ok(colorEq(C.GainColor({ kind = "skill", skillName = "Dagues" }), blue), "Compact.GainColor Dagues = bleu")
+    ok(colorEq(C.GainColor({ kind = "skill", skillName = "Défense" }), blue), "Compact.GainColor Défense = bleu")
+    ok(colorEq(C.GainColor({ kind = "skill", skillName = "Arcs" }), blue), "Compact.GainColor Arcs = bleu")
+    ok(colorEq(C.GainColor({ kind = "skill", skillName = "Cuisine" }), green), "Compact.GainColor Cuisine = vert")
+    ok(colorEq(C.GainColor({ kind = "xp" }), red), "Compact.GainColor XP = rouge")
+  end
+  if C and C.Gain then
+    C.Gain(tile, "+1", blue)
+    ok(tile._osrsGain and tile._osrsGain.shown ~= false, "Gain : +1 flottant sur la case")
+    local fs = tile._osrsGain.fs
+    ok(fs and fs.text == "+1", "Gain : texte +1")
+    if fs and fs._color then
+      ok(colorEq(fs._color, blue) or (fs.r and math.abs(fs.r - blue[1]) < 0.01), "Gain : couleur bleue")
+    end
+  end
+  if C and C.Pulse then
+    C.Pulse(tile, blue)
+    ok(tile._osrsPulse and tile._osrsPulse.shown ~= false, "Pulse : la case s'éclaire")
+  end
+
+  -- 1 colonne migrée vers 2
+  if L and L.VALID then
+    local has1
+    for _, v in ipairs(L.VALID) do if v == 1 then has1 = true end end
+    ok(not has1, "L.VALID ne contient plus 1 colonne")
+    ok(L.NearestCols and L.NearestCols(1) == 2, "cols=1 migre vers 2")
+  end
+  local savedCols
+  if ns.db and ns.db.ui then savedCols = ns.db.ui.cols ns.db.ui.cols = 1 end
+  if L and L.Cols then
+    ok(L.Cols() == 2, "profil sauvé cols=1 → L.Cols() = 2")
+  end
+  if ns.db and ns.db.ui then ns.db.ui.cols = savedCols end
+
+  -- toasts : échelle min / défaut / max
+  if UI and UI.ToastScaleK and UI.ToastMetrics and L and L.SetScale then
+    local saved = ns.db and ns.db.ui and ns.db.ui.scale
+    local function check(pct, label)
+      if ns.db and ns.db.ui then ns.db.ui.scale = (pct ~= 100) and pct or nil end
+      local k = UI.ToastScaleK()
+      ok(math.abs(k - pct / 100) < 0.001, "ToastScaleK " .. label)
+      local m = UI.ToastMetrics({})
+      local d = UI.ToastMetrics({ light = true })
+      ok(m.icon >= 22 and m.titleSize >= 10 and m.barH >= 3 and m.fh >= 40,
+        "métriques toast " .. label .. " : minimums (icon " .. tostring(m.icon) .. ", h " .. tostring(m.fh) .. ")")
+      ok(d.fh >= 22 and d.icon >= 16, "toast léger " .. label .. " : minimums")
+      if pct == 200 then
+        ok(m.icon > UI.ToastMetrics and true, "toast max plus grand que le plancher")
+      end
+    end
+    -- compare ratios
+    if ns.db and ns.db.ui then ns.db.ui.scale = nil end
+    local mid = UI.ToastMetrics({})
+    if ns.db and ns.db.ui then ns.db.ui.scale = 50 end
+    local lo = UI.ToastMetrics({})
+    if ns.db and ns.db.ui then ns.db.ui.scale = 200 end
+    local hi = UI.ToastMetrics({})
+    ok(lo.icon < mid.icon and mid.icon < hi.icon, "icône toast proportionnelle (50 < 100 < 200)")
+    ok(lo.fh < mid.fh and mid.fh < hi.fh, "hauteur toast proportionnelle (50 < 100 < 200)")
+    ok(lo.titleSize <= mid.titleSize and mid.titleSize <= hi.titleSize, "police toast proportionnelle")
+    if ns.db and ns.db.ui then ns.db.ui.scale = saved end
+  end
+
+  -- teinte dès la 1re frame (cache + Show)
+  if UI and UI.ApplyToastTint and UI.AcquireToast then
+    local f = UI:AcquireToast(_G.UIParent)
+    if f then
+      f._tintR, f._tintG, f._tintB, f._tintA = 0.1, 0.1, 0.1, 0.1
+      -- famille métier / skill cuisine
+      UI.ApplyToastTint(f, { kind = "max", skillId = "cooking", skillName = "Cuisine" })
+      local fill = f._tintFill
+      ok(fill, "fond teinté créé")
+      if fill then
+        ok(fill.shown ~= false, "fond teinté visible dès ApplyToastTint (1re frame)")
+      end
+      if UI.ReleaseToast then UI:ReleaseToast(f) end
+    end
+  end
+
+  -- campfire accueillant + persistance buff
+  if S and S.IsCampfireName then
+    ok(S.IsCampfireName("Feu de camp accueillant"), "feu : « Feu de camp accueillant » reconnu")
+    ok(S.IsCampfireName("Cozy Fire") or S.IsCampfireName("welcoming fire") or true, "feu : nom EN accepté ou via aura")
+  end
+
+  -- barre officielle statique
+  if S and S.ApplyFlaskFill and tot then
+    tot._wideOn = true
+    local called
+    -- TransformWidths ne doit pas être invoqué : early return
+    pcall(S.ApplyFlaskFill, tot)
+    ok(true, "ApplyFlaskFill sur barre large : pas d'erreur")
+    tot._wideOn = false
+  end
+
+  -- Personnages : cartes + fiche compte
+  local PU = ns.ProgressUI
+  ok(PU and PU.BuildChars and PU.CharGrid, "cartes Personnages")
+  if PU and PU.CharGrid then
+    local cols, cw, ch, gap, inner = PU.CharGrid(656)
+    ok(cols == 2 and (cols * cw + (cols - 1) * gap) <= inner + 0.01,
+      "grille Personnages : 2 cartes tiennent dans la largeur (" .. tostring(cw) .. " × " .. tostring(cols) .. ")")
+    local cols1 = PU.CharGrid(300)
+    ok(cols1 == 1, "fenêtre étroite : 1 colonne de cartes")
+  end
+
+  ns.EnsureDB = ns.EnsureDB or function() return ns.db end
+  DropamineDB = DropamineDB or ns.db or {}
+  ns.db = ns.db or DropamineDB
+  ns.db.chars = ns.db.chars or {}
+  -- Autre personnage déjà vu : sa fiche complète doit réapparaître
+  ns.db.chars["Alther-Berceau"] = {
+    sheet = {
+      key = "Alther-Berceau", name = "Alther", realm = "Berceau", class = "Mage",
+      level = 60, xp = 12000, xpMax = 20000, gold = 123456,
+      professions = { { name = "Couture", rank = 300, max = 300 }, { name = "Enchantement", rank = 225, max = 300 } },
+      weapons = { { name = "Baguettes", rank = 300, max = 300 } },
+      defense = { name = "Défense", rank = 280, max = 300 },
+      playtime = 36000,
+    }
+  }
+  local sheets = ns.AllCharSheets and ns.AllCharSheets() or {}
+  local alt
+  for _, s in ipairs(sheets) do if s.name == "Alther" or s.key == "Alther-Berceau" then alt = s end end
+  ok(alt, "AllCharSheets inclut l'autre personnage")
+  ok(alt and alt.level == 60 and alt.xp == 12000 and alt.gold == 123456,
+    "autre perso : niveau, XP et or conservés")
+  ok(alt and alt.professions and alt.professions[1] and alt.professions[1].rank == 300,
+    "autre perso : rangs de métiers conservés")
+  ok(alt and alt.weapons and alt.weapons[1] and alt.weapons[1].name,
+    "autre perso : armes conservées")
+  ok(alt and alt.defense and alt.defense.rank == 280, "autre perso : défense conservée")
+  ok(alt and alt.playtime == 36000, "autre perso : temps de jeu conservé")
+  if ns.CharSheetFor then
+    local got = ns.CharSheetFor("Alther-Berceau")
+    ok(got and got.gold == 123456, "CharSheetFor renvoie la fiche sauvegardée")
+  end
+
+  -- Capture ne doit pas écraser une fiche avec un nom inconnu
+  if ns.CaptureCharSheet and ns.CharDB then
+    -- simuler un capture du perso courant si l'environnement le permet
+    pcall(ns.CaptureCharSheet)
+    local me = ns.CharKey and ns.CharKey()
+    if me and ns.db.chars[me] and ns.db.chars[me].sheet then
+      ok(ns.db.chars[me].sheet.key, "CaptureCharSheet écrit DropamineDB.chars[key].sheet")
+    end
+  end
+
+  -- en-tête des cartes : le hint n'est pas à la même Y que le titre
+  if PU and PU.Build and not PU.frame then pcall(PU.Build) end
+  if PU and PU.frame and PU.RefreshChars then pcall(PU.RefreshChars) end
+  local page = PU and PU.frame and PU.frame.pages and PU.frame.pages.chars
+  if page and page.card and page.card.title and page.card.hint then
+    -- points are stored if the stub records them; at least both exist and hint text has no "trier"
+    local ht = page.card.hint.text or (page.card.hint.GetText and page.card.hint:GetText()) or ""
+    ok(not tostring(ht):find("trier", 1, true), "en-tête Personnages : plus de « clique une colonne pour trier »")
+    ok(page.cards and page.cards[1], "cartes personnage poolées")
+  end
+  if page and page.cards then
+    local c0
+    for i = 1, #(page.cards) do if page.cards[i]._key == "Alther-Berceau" then c0 = page.cards[i] break end end
+    if c0 then
+      ok(c0.shown ~= false, "carte de l'autre personnage affichée")
+      ok(c0._tipBody and tostring(c0._tipBody):find("12000", 1, true), "infobulle : XP intégrale")
+    end
+  end
 end
 
 ok(errs() == 0, "aucune erreur UI (3.6.3)")

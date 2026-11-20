@@ -864,11 +864,57 @@ if Craft and Craft.Notify then
     return f
   end
 end
+function CO.FromToastData(td)
+  if type(td) ~= "table" then return nil end
+  local skill = td.skill
+  local name, rid, item
+  local rec = td.recipe
+  if type(rec) == "table" then
+    name = rec.name
+    rid = N(rec.recipeID)
+    item = N(rec.itemID or rec.item)
+  elseif type(rec) == "string" and rec ~= "" then
+    name = rec
+  end
+  if not item then item = N(td.item) end
+  if not name then
+    local m = td.matches and td.matches[1]
+    if not m then
+      local e = td.entries and td.entries[1]
+      m = e and (e.recipe and e or e)
+    end
+    if m then
+      local r = (type(m.recipe) == "table" and m.recipe) or m
+      name = name or r.name or m.name
+      rid = rid or N(r.recipeID or m.recipeID)
+      item = item or N(m.item or r.itemID or r.item)
+      skill = skill or m.skill
+    end
+  end
+  if skill and name then
+    return { skill = skill, recipe = name, name = name, rid = rid, item = item }
+  end
+  return nil
+end
 if UI and UI.SpawnDrop then
   local baseSpawn = UI.SpawnDrop
   function UI:SpawnDrop(...)
     local f = baseSpawn(self, ...)
-    if f then f._craft = nil end            -- toast recyclé : plus de recette
+    if f then
+      f._craft = nil            -- toast recyclé : plus de recette résiduelle
+      local td = f._toastData
+      if not td then
+        local opts = select(7, ...)
+        if type(opts) == "table" then td = opts.toastData end
+      end
+      local c = CO.FromToastData and CO.FromToastData(td)
+      if c then
+        f._craft = c
+        local okR, mid = pcall(CO.ResolveToastID, f._craft)
+        if okR then f._craft.mid = mid end
+        if CO.Wire then CO.Wire(f) end
+      end
+    end
     return f
   end
 end
