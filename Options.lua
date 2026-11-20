@@ -634,8 +634,12 @@ local function PreviewTileFx(opts, drop)
       RememberTile(C.TileByKey(tg.key))
     end
   end
-  pcall(C.Announce, opts, targets)
-  if drop and C.PreviewFly then pcall(C.PreviewFly, drop, opts, targets) end
+  -- Le +1 part de l'icône du toast ; le voile joue à l'arrivée (pas de 2e +1 sur la case).
+  if drop and C.PreviewFly then
+    pcall(C.PreviewFly, drop, opts, targets)
+  elseif C.Announce then
+    pcall(C.Announce, opts, targets)
+  end
 end
 
 function Options.ResetTestState()
