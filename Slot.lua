@@ -1430,11 +1430,16 @@ end
 -- fiole (comme le sablier), restent dans la zone icône, le compteur reste
 -- lisible, et la fiole est restaurée proprement à la fin.
 S.STATE_ICON = {
-  combat   = "Interface\\Icons\\INV_Sword_04",
-  campfire = "Interface\\Icons\\Spell_Fire_Fire",
-  food     = "Interface\\Icons\\INV_Misc_Fork&Knife",
-  drink    = "Interface\\Icons\\INV_Drink_07",
+  combat   = MEDIA .. "Combat-Icon",
+  campfire = MEDIA .. "Campfire-Icon",
+  food     = MEDIA .. "Food-Icon",
+  drink    = MEDIA .. "Drink-Icon",
+  both     = MEDIA .. "Eat-Both-Icon",
+  rested   = MEDIA .. "Rest-Icon",
 }
+function S.IsCustomIcon(path)
+  return type(path) == "string" and path:find("Interface\\AddOns\\Dropamine", 1, true) and true or false
+end
 
 function S.CombatStateOn()
   if S.CombatStyle and S.CombatStyle() == "off" then return false end
@@ -1537,13 +1542,17 @@ function S.ApplyStateIcon(t, key, mode)
     if y < 0 then y = 0 end
     if x + side > w then x = math.max(0, w - side) end
     if y + side > h then y = math.max(0, h - side) end
-    alpha = 1
+    alpha = 0.78 + 0.22 * (0.5 + 0.5 * math.sin(phase * 2 * math.pi))
   else
     -- pulse (combat, défaut) : simple battement d'alpha, comme un sablier discret.
     alpha = 0.78 + 0.22 * (0.5 + 0.5 * math.sin(phase * 2 * math.pi))
   end
   if tex.SetTexture then pcall(tex.SetTexture, tex, path) end
-  if tex.SetTexCoord then pcall(tex.SetTexCoord, tex, 0.07, 0.93, 0.07, 0.93) end
+  -- Art maison : pas de crop 0.07 (réservé aux icônes Blizzard).
+  if tex.SetTexCoord then
+    if S.IsCustomIcon and S.IsCustomIcon(path) then pcall(tex.SetTexCoord, tex, 0, 1, 0, 1)
+    else pcall(tex.SetTexCoord, tex, 0.07, 0.93, 0.07, 0.93) end
+  end
   if tex.SetVertexColor then pcall(tex.SetVertexColor, tex, 1, 1, 1, 1) end
   S.PlaceClippedTex(tex, parent, side, side, x, y)
   if tex.SetAlpha then pcall(tex.SetAlpha, tex, alpha) end
@@ -1632,7 +1641,9 @@ function S.HideRestIcon(t)
     if h.disc and h.disc.Hide then h.disc:Hide() end
   end
   if t._slotZ and t._slotZ.Hide then t._slotZ:Hide() end
-  if t.icon and t.icon.Show and not (S.ReplacesFlaskIcon and S.ReplacesFlaskIcon(t)) then
+  if t._stIcon and t._stIcon._kind == "rested" and S.HideStateIcon then
+    S.HideStateIcon(t)
+  elseif t.icon and t.icon.Show and not (S.ReplacesFlaskIcon and S.ReplacesFlaskIcon(t)) then
     t.icon:Show()
     if t.icon.SetAlpha then pcall(t.icon.SetAlpha, t.icon, 1) end
   end
@@ -1641,46 +1652,13 @@ end
 function S.ApplyRestIcon(t)
   t = t or (S.FlaskTile and S.FlaskTile())
   if not t then return nil end
-  -- Un Z guideline (disque sombre + glyphe) à la place de la fiole uniquement.
+  -- Z maison (disque sombre, filet bronze, glyphe crème) : une texture poolée, comme les autres états.
   if t._slotZ and t._slotZ.Hide then t._slotZ:Hide() end
-  local holder, w, h = S.EnsureRestIcon(t)
-  if not holder then return nil end
-  local clip, content, iw, ih = S.PlaceIconClip(t)
-  w, h = iw or w or 16, ih or h or 16
-  local parent = content or clip or t
-  if holder.SetParent and parent then pcall(holder.SetParent, holder, parent) end
-  if holder.ClearAllPoints then pcall(holder.ClearAllPoints, holder) end
-  S.SetSizeIf(holder, w, h)
-  if holder.SetPoint then pcall(holder.SetPoint, holder, "BOTTOMLEFT", parent, "BOTTOMLEFT", 0, 0) end
-  if holder.disc then
-    if holder.disc.SetAllPoints then pcall(holder.disc.SetAllPoints, holder.disc, holder) end
-    if holder.disc.SetVertexColor then pcall(holder.disc.SetVertexColor, holder.disc, 0.08, 0.07, 0.05, 0.96) end
-    if holder.disc.Show then holder.disc:Show() end
-  end
-  local fs = holder.fs
-  if fs then
-    -- Taille sobre : un peu plus petite que la zone icône, lisible en barre (~14) et en grille (~32).
-    local px = math.max(8, math.floor(math.min(w, h) * 0.78 + 0.5))
-    if fs.SetFont then pcall(fs.SetFont, fs, "Fonts\\FRIZQT__.TTF", px, "OUTLINE") end
-    if fs.SetText and fs._txt ~= "Z" then fs:SetText("Z") fs._txt = "Z" end
-    local c = S.REST_Z_COLOR
-    if fs.SetTextColor then pcall(fs.SetTextColor, fs, c[1], c[2], c[3], 1) end
-    -- Même rythme que le sablier : fondu + léger flottement, phase déjà calculée.
-    local phase = S._phase or 0
-    local wave = math.sin(phase * 2 * math.pi)
-    local a = 0.78 + 0.22 * (0.5 + 0.5 * wave)
-    local bob = wave * math.max(0.6, h * 0.06)
-    if fs.ClearAllPoints then pcall(fs.ClearAllPoints, fs) end
-    if fs.SetPoint then pcall(fs.SetPoint, fs, "CENTER", holder, "CENTER", 0, bob) end
-    if fs.SetAlpha then pcall(fs.SetAlpha, fs, a) end
-    if fs.Show then fs:Show() end
-  end
-  if holder.SetAlpha then pcall(holder.SetAlpha, holder, 1) end
-  if holder.Show then holder:Show() end
-  if t.icon and t.icon.Hide then t.icon:Hide() end
+  if t._restZ and t._restZ.Hide then t._restZ:Hide() end
+  local tex = S.ApplyStateIcon(t, "rested", "bob")
   local Wd = ns.Wide
   if Wd and Wd.SyncFlaskHit then Wd.SyncFlaskHit(t) end
-  return holder
+  return tex
 end
 
 
@@ -1689,45 +1667,12 @@ function S.ApplyEatDisc(t)
   if not t then return nil end
   local kind = (S.EatKind and S.EatKind()) or "food"
   if kind == "both" then
-    -- Disque partagé : fourchette à gauche, tasse à droite, même clip, créés une fois.
-    S.ApplyStateIcon(t, "food", "pulse")
-    local tex = t and t._stIcon
-    if tex then
-      local clip, content, w, h = S.PlaceIconClip(t)
-      w, h = w or 16, h or 16
-      local parent = content or clip
-      local side = math.min(w, h)
-      local half = math.max(4, math.floor(side * 0.5))
-      local x0, y0 = (w - side) * 0.5, (h - side) * 0.5
-      if tex.SetTexCoord then pcall(tex.SetTexCoord, tex, 0.07, 0.50, 0.07, 0.93) end
-      S.PlaceClippedTex(tex, parent, half, side, x0, y0)
+    -- Une seule texture maison (disque partagé fourchette | coupe), pas un crop d'icônes de jeu.
+    if t._stIconR then
+      if t._stIconR.SetAlpha then pcall(t._stIconR.SetAlpha, t._stIconR, 0) end
+      if t._stIconR.Hide then t._stIconR:Hide() end
     end
-    if not t._stIconR then
-      local _, parent = S.EnsureStateIcon(t)
-      if parent and type(parent.CreateTexture) == "function" then
-        local right = parent:CreateTexture(nil, "ARTWORK", nil, 5)
-        t._stIconR = right
-      end
-    end
-    local right = t._stIconR
-    local path = S.STATE_ICON and S.STATE_ICON.drink
-    if right and path then
-      local clip, content, w, h = S.PlaceIconClip(t)
-      w, h = w or 16, h or 16
-      local parent = content or clip
-      local side = math.min(w, h)
-      local half = math.max(4, math.floor(side * 0.5))
-      local x0, y0 = (w - side) * 0.5, (h - side) * 0.5
-      if right.SetTexture then pcall(right.SetTexture, right, path) end
-      if right.SetTexCoord then pcall(right.SetTexCoord, right, 0.50, 0.93, 0.07, 0.93) end
-      if right.SetVertexColor then pcall(right.SetVertexColor, right, 1, 1, 1, 1) end
-      S.PlaceClippedTex(right, parent, half, side, x0 + (side - half), y0)
-      local phase = S._phase or 0
-      local a = 0.78 + 0.22 * (0.5 + 0.5 * math.sin(phase * 2 * math.pi))
-      if right.SetAlpha then pcall(right.SetAlpha, right, a) end
-      if right.Show then right:Show() end
-    end
-    return tex
+    return S.ApplyStateIcon(t, "both", "pulse")
   end
   if t._stIconR then
     if t._stIconR.SetAlpha then pcall(t._stIconR.SetAlpha, t._stIconR, 0) end
@@ -2743,8 +2688,8 @@ end
 
 -- Icônes de jeu (nourriture / boisson). Un état, deux rendus (grille / barre).
 S.EAT_ICON = {
-  food  = "Interface\\Icons\\INV_Misc_Food_15",
-  drink = "Interface\\Icons\\INV_Drink_07",
+  food  = MEDIA .. "Food-Icon",
+  drink = MEDIA .. "Drink-Icon",
 }
 
 function S.EatIconPath(kind)
