@@ -2140,13 +2140,31 @@ function F.PlayerPos()
   return nil
 end
 
+function F.IsSecret(v)
+  if v == nil then return false end
+  local fn = _G and (_G.issecretvalue or _G.IsSecretValue)
+  if type(fn) == "function" then
+    local ok, r = pcall(fn, v)
+    if ok and r then return true end
+  end
+  if type(v) == "number" then
+    local ok = pcall(function() return v < 0 end)
+    if not ok then return true end
+  end
+  return false
+end
+
 function F.DriftIsTransport()
   -- Position qui dérive alors que la vitesse unitaire est ~0 (le bateau avance, pas le joueur).
   -- Trois sondages d'affilée, pour ne pas prendre un recul ou un ascenceur pour un trajet.
   local now = (type(GetTime) == "function" and GetTime()) or 0
   local x, y, z, kind = F.PlayerPos()
   local speed = CallFn("GetUnitSpeed", "player") or 0
+  -- Forever : en combat, certaines valeurs sont « secrètes » (type number mais toute
+  -- comparaison provoque une erreur). Dans ce cas, pas de détection par dérive.
+  if F.IsSecret(speed) or F.IsSecret(x) or F.IsSecret(y) then F._drift = nil return false end
   if type(speed) ~= "number" then speed = 0 end
+  if not pcall(function() return speed < 0 end) then F._drift = nil return false end
   if CallFn("UnitOnTaxi", "player") then F._drift = nil return false end
   if CallFn("IsSwimming") or CallFn("IsFalling") then F._drift = nil return false end
   if not x then F._drift = nil return false end
