@@ -3,6 +3,9 @@
 ## 3.7.0
 This release is the 3.6.3 work shipped as 3.7.0 (the 3.6.3 tag was never created).
 
+- The toast→tile spark uses live start/end anchors from the current tile position and scale (no cached size), stays clipped inside the panel, lands on the right tile, and is released to the flyer pool. In-flight sparks are not stopped by the watchdog. Real +1 / veil timing is unchanged (they still play when the spark arrives, after the toast). Options testers play +1 / veil when the test toast shows; they still do not write fake gains to history.
+- The tile grid is centered in the panel at every size: left margin equals right margin, and leftover width is split evenly. The total row uses the same content box, so the bar no longer sticks out only on the right of the last tile column.
+
 - The total-row vial shows only the drop-vial icon itself (about 70 % of tile height, scaled with the tile, centered on the first tile column): no slot frame, backdrop, disc or rim. State icons that replace the vial (including the rest Z) follow the same rule (glyph only). Total text and bar stay vertically centered in the row.
 - Panel minimum size is locked to a 36 px tile (same width as a default action button), with 5 tiles per row as the reference: the total row is about tile height and the total bar is at least 100 px. Frame min resize bounds (`SetResizeBounds` / `SetMinResize`) equal that content size, so the frame, the tiles and the total bar stop shrinking at the same point. A saved scale or window size below the floor is raised on load. `/drop taille` and the Options slider range is 90–200 %.
 - Options « Tester » buttons are queued one at a time (~1.5 s apart), with click debounce. They never write fake gains into history, the session, SavedVariables or totals. Tile +1 / veil / spark are a reversible preview on pooled frames; at the end of the queue animations stop, tile values and veils are restored, and test toasts are released.

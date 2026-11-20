@@ -874,8 +874,12 @@ function UI:LayoutGrid(wrap, snap)
         local t = nextTile()
         local cy = cyAbs - math.floor(off)
         t:ClearAllPoints()
-        t:SetPoint("TOPLEFT", child, "TOPLEFT", col * (tw + tileHGap), -cy)
-        cells[#cells + 1] = { x = col * (tw + tileHGap), y = cy, w = tw, h = placeH }
+        local gx = col * (tw + tileHGap)
+        if compact and Lyt and Lyt.GridOriginX then
+          gx = gx + (Lyt.GridOriginX(cols) or 0)
+        end
+        t:SetPoint("TOPLEFT", child, "TOPLEFT", gx, -cy)
+        cells[#cells + 1] = { x = gx, y = cy, w = tw, h = placeH }
         self:ResizeTile(t, tw, placeH)
         self:UpdateTile(t, g.tiles[k])
         t._cell = { x = cells[#cells].x - hx, y = cy - hy, w = tw + 2 * hx, h = th + 2 * hy }

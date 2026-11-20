@@ -112,6 +112,24 @@ function L.ListW(cols)
   local gw = L.GridSize(cols, L.Rows(cols))
   return gw
 end
+-- Largeur des cases seules (sans élargir pour la barre de total).
+function L.TileGridWidth(cols)
+  L.SyncMetrics()
+  cols = cols or L.Cols()
+  local tile = I.TILE or 40
+  local hg = I.HGAP or 8
+  return cols * tile + math.max(0, cols - 1) * hg
+end
+-- Décalage horizontal pour centrer la grille dans la largeur utile
+-- (marge gauche == marge droite ; le surplus est partagé équitablement).
+function L.GridOriginX(cols, innerW)
+  local tw = L.TileGridWidth(cols)
+  if not innerW or innerW <= 0 then
+    innerW = select(1, L.GridSize(cols))
+  end
+  innerW = innerW or tw
+  return math.max(0, math.floor((innerW - tw) / 2))
+end
 -- Cadre = grille + la même marge sur les 4 côtés.
 function L.ContentSize(cols, rows)
   local pad = L.MARGIN or 12

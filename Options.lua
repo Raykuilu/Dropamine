@@ -622,6 +622,8 @@ local function RememberTile(tile)
 end
 
 local function PreviewTileFx(opts)
+  -- Testers : le +1 / voile jouent à l'affichage du toast de test (en jeu,
+  -- le vrai gain reste calé sur l'arrivée de l'éclat, après le toast).
   local C = ns.Compact
   if not (C and C.Announce and C.TargetsFor) then return end
   local targets = C.TargetsFor(opts)
