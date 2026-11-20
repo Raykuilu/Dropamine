@@ -202,7 +202,12 @@ function P.ApplyMode()
     f:SetSize(W.LIST_W + 2 * P.CPAD, P.CTOP + lh + P.CPAD)
     list:SetPoint("TOPLEFT", f, "TOPLEFT", P.CPAD, -P.CTOP)
     list:SetSize(W.LIST_W, lh)
-    pcall(f.SetFrameStrata, f, "MEDIUM")
+    -- Au-dessus du chat (MEDIUM). Niveau stable : on ne le redescend pas.
+    pcall(f.SetFrameStrata, f, "HIGH")
+    if f.SetToplevel then pcall(f.SetToplevel, f, true) end
+    if f.SetFrameLevel and (N(f:GetFrameLevel()) or 0) < 20 then
+      pcall(f.SetFrameLevel, f, 20)
+    end
   end
   setShown(detail, exp)
   setShown(W.title, exp) setShown(W.subtitle, exp) setShown(W.titleBar, exp)

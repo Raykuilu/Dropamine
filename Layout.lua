@@ -245,17 +245,10 @@ function L.Center()
     list:SetPoint("TOPLEFT", f, "TOPLEFT", ox, oy)
   end
   L._listX, L._listY = ox, oy
-  local cw, ch = N(f:GetWidth()), N(f:GetHeight())
-  if not (cw and ch and math.abs(cw - w) < 0.01 and math.abs(ch - h) < 0.01) then
-    local okA, ap, arel = pcall(f.GetPoint, f, 1)
-    f:SetSize(w, h)
-    -- ancré ailleurs qu'en TOPLEFT (ancienne position mémorisée en CENTER…) :
-    -- un changement de taille déplacerait le panneau → coin haut-gauche reposé
-    if okA and ap and (ap ~= "TOPLEFT" or arel ~= UIParent) and not f._osrsMovingNow then
-      L.stats.pinned = (L.stats.pinned or 0) + 1
-      Anchor(f, L.Px(fl, f), L.Px(ft, f))
-    end
-  end
+  -- 3.6.3 : Center ne change JAMAIS la taille ni l'échelle du panneau.
+  -- Celles-ci ne bougent que sur une action utilisateur (colonnes, /drop taille,
+  -- poignée). Recalculer w/h depuis GridRect (fiole amincie, calques d'état)
+  -- faisait rétrécir le panneau tout seul, parfois sous le chat.
   if P.handle then
     P.handle:ClearAllPoints()
     P.handle:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)

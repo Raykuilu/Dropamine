@@ -88,6 +88,8 @@ Options.SECTIONS = {
     { type = "check", key = "paliers", label = "Palier atteint", default = true, cmd = "/drop paliers on|off", help = "Prévient quand il faut aller voir ton maître." },
     { type = "check", key = "objectifs", label = "Objectif atteint", default = true, cmd = "/drop objectif on|off", help = "Prévient quand un objectif (clic droit sur une case) est atteint." },
     { type = "check", key = "levelUpAnim", label = "Animation de niveau", default = true, cmd = "/drop anim on|off", help = "Grande animation à chaque niveau." },
+    { type = "slider", key = "dropWidth", label = "Largeur des notifs", default = 0, min = 0, max = 480, step = 10, unit = "pxauto",
+      help = "Auto : suit la largeur du panneau, avec un minimum lisible (260 px à l'échelle). Une valeur fixe impose la largeur. Si le toast est plus large que le panneau, il s'aligne sur le bord du panneau du côté de l'écran, sans dépasser." },
     { type = "slider", key = "dropDuration", label = "Durée d'affichage", default = 2.6, min = 1, max = 10, step = 0.5, cmd = "/drop drops duree <1-10>", unit = "s",
       help = "Temps pendant lequel un toast reste visible." },
     { type = "slider", key = "dropBgAlpha", label = "Fond des toasts", default = 0.68, min = 0, max = 1, step = 0.05, cmd = "/drop drops opacite <0-100>", unit = "%",
@@ -169,7 +171,7 @@ Options.EXTRA_HELP = { historique = "Gains des 7 derniers jours dans l'infobulle
 -- 3.5.22 : ordre d'affichage dans chaque famille (les extras s'y insèrent).
 Options.ITEM_ORDER = {
   display = { "theme", "lang", "charProfile", "cols", "scale", "opacity", "bgAlpha", "fadeDelay", "colorMode", "showTotal", "nextBar", "smartSort", "seasonal", "locked", "pauseFlying" },
-  notif = { "dropsEnabled", "notifMode", "dropDir", "dropStyle", "xpDrops", "skillDrops", "flyAnim", "paliers", "objectifs", "levelUpAnim", "dropDuration", "dropBgAlpha", "scannerToast", "combo", "maxFx", "records", "prepalier", "jalons", "recapLogout", "quietMode", "quietToasts" },
+  notif = { "dropsEnabled", "notifMode", "dropDir", "dropStyle", "dropWidth", "xpDrops", "skillDrops", "flyAnim", "paliers", "objectifs", "levelUpAnim", "dropDuration", "dropBgAlpha", "scannerToast", "combo", "maxFx", "records", "prepalier", "jalons", "recapLogout", "quietMode", "quietToasts" },
   sounds = { "sounds", "quietSounds", "soundSkill", "soundPalier", "soundMax", "soundDaily", "soundRecord", "levelUpSound", "scannerSound" },
   progress = { "sessionGoal", "goalToast", "achievements", "weeklyRecap" },
   prof = { "gatherAlerts", "activity", "craftNotify", "links", "unlearned", "scannerIcons", "tipCompact", "styleMetiers", "openProf", "collection", "daily", "peche", "courses" },
@@ -256,7 +258,7 @@ end
 function ns.OnOptionChanged(key, value)
   local UI = ns.UI
   if key == "dropsEnabled" and UI and UI.ApplyDropsEnabled then pcall(UI.ApplyDropsEnabled, UI) end
-  if (key == "dropDir" or key == "dropStyle") and UI and UI.ApplyDropsLayout then pcall(UI.ApplyDropsLayout, UI) end
+  if (key == "dropDir" or key == "dropStyle" or key == "dropWidth") and UI and UI.ApplyDropsLayout then pcall(UI.ApplyDropsLayout, UI) end
   if key == "dropsSnapChat" and UI and UI.SetDropsSnapChat and not Options._snapping then
     Options._snapping = true
     pcall(UI.SetDropsSnapChat, UI, value and true or false)
@@ -381,6 +383,10 @@ Options.BOX_FILL = { 0, 0, 0, 0.25 }
 
 function Options.FormatValue(it, v)
   v = ns.N(v) or 0
+  if it.unit == "pxauto" then
+    if v <= 0 then return Tr["Auto"] end
+    return tostring(math.floor(v + 0.5)) .. " px"
+  end
   if it.unit == "%" then return tostring(math.floor(v * 100 + 0.5)) .. " %" end
   if it.unit == "pct" then return tostring(math.floor(v + 0.5)) .. " %" end
   if it.unit == "s" then return tostring(v) .. Tr[" s"] end
