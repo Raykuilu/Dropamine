@@ -87,6 +87,8 @@ Options.SECTIONS = {
     { type = "check", key = "xpDrops", label = "Gains d'XP", default = true, cmd = "/drop drops xp on|off",
       help = "Toasts d'XP : remise de quête, jalons discrets à 25, 50 et 75 % du niveau en cours, une fois par palier. Pas de toast à chaque monstre tué. La montée de niveau se règle à part." },
     { type = "check", key = "skillDrops", label = "Gains de compétence", default = true, cmd = "/drop drops comp on|off", help = "Toast à chaque +1 de compétence." },
+    { type = "test", key = "weaponTest", label = "Tester armes / Défense",
+      help = "Joue un gain bleu (toast, +1, voile et étincelle) sur une case d'arme ou de Défense." },
     { type = "check", key = "flyAnim", label = "Animation vers la case", default = true, cmd = "/drop animation on|off",
       help = "Un éclat vole du toast jusqu'à la case, puis « +N »." },
     { type = "check", key = "paliers", label = "Palier atteint", default = true, cmd = "/drop paliers on|off", help = "Prévient quand il faut aller voir ton maître." },
@@ -175,7 +177,7 @@ Options.EXTRA_HELP = { historique = "Gains des 7 derniers jours dans l'infobulle
 -- 3.5.22 : ordre d'affichage dans chaque famille (les extras s'y insèrent).
 Options.ITEM_ORDER = {
   display = { "theme", "lang", "charProfile", "cols", "scale", "opacity", "bgAlpha", "fadeDelay", "colorMode", "showTotal", "nextBar", "smartSort", "seasonal", "locked", "pauseFlying" },
-  notif = { "dropsEnabled", "notifMode", "dropDir", "dropStyle", "dropWidth", "xpDrops", "skillDrops", "flyAnim", "paliers", "objectifs", "levelUpAnim", "dropDuration", "dropBgAlpha", "scannerToast", "combo", "maxFx", "records", "prepalier", "jalons", "recapLogout", "quietMode", "quietToasts" },
+  notif = { "dropsEnabled", "notifMode", "dropDir", "dropStyle", "dropWidth", "xpDrops", "skillDrops", "weaponTest", "flyAnim", "paliers", "objectifs", "levelUpAnim", "dropDuration", "dropBgAlpha", "scannerToast", "combo", "maxFx", "records", "prepalier", "jalons", "recapLogout", "quietMode", "quietToasts" },
   sounds = { "sounds", "quietSounds", "soundSkill", "soundPalier", "soundMax", "soundDaily", "soundRecord", "levelUpSound", "scannerSound" },
   progress = { "sessionGoal", "goalToast", "achievements", "weeklyRecap" },
   prof = { "gatherAlerts", "activity", "craftNotify", "links", "unlearned", "scannerIcons", "tipCompact", "styleMetiers", "openProf", "collection", "daily", "peche", "courses" },
@@ -515,7 +517,7 @@ end
 
 -- Boutons « Tester » : joue le son / montre un toast d'exemple, même si la case est décochée.
 Options.TEST = {
-  dropsEnabled = "skill", xpDrops = "xp", skillDrops = "skill", flyAnim = "skill",
+  dropsEnabled = "skill", xpDrops = "xp", skillDrops = "skill", weaponTest = "weapon", flyAnim = "skill",
   paliers = "tier", objectifs = "goal", levelUpAnim = "levelup",
   scannerToast = "scanner", jalons = "milestone", recapLogout = "recap",
   maxFx = "max", records = "record", prepalier = "pretier", combo = "combo",
@@ -525,6 +527,37 @@ Options.TEST = {
   -- 3.6.0 (Progress.lua) : les tests passent outre le mode calme (force)
   goalToast = "sessiongoal", achievements = "achievement", weeklyRecap = "weekly", quietToasts = "skill",
 }
+
+local function WeaponTestSkill()
+  local name, id, icon = Tr["Défense"] or "Défense", "defense", "Interface\\Icons\\Ability_Defend"
+  local C = ns.Compact
+  if C and C.Tiles then
+    local fallback
+    for _, tile in ipairs(C.Tiles() or {}) do
+      local d = tile and tile.data
+      if d and not d.placeholder then
+        local def = d.kind == "defense" or d.id == "defense" or d.skillId == "defense"
+          or d.skillName == name or d.name == name
+        local wep = d.kind == "melee" or d.kind == "ranged" or d.kind == "feral"
+          or d.combatTile or d.kind == "weapon"
+        if def then
+          local ic = icon
+          if tile.icon and tile.icon.GetTexture then ic = tile.icon:GetTexture() or ic end
+          return d.skillName or d.name or name, d.id or d.skillId or id, ic, tile
+        elseif wep and not fallback then
+          fallback = tile
+        end
+      end
+    end
+    if fallback and fallback.data then
+      local d = fallback.data
+      local ic = icon
+      if fallback.icon and fallback.icon.GetTexture then ic = fallback.icon:GetTexture() or ic end
+      return d.skillName or d.name or name, d.id or d.skillId or id, ic, fallback
+    end
+  end
+  return name, id, icon, nil
+end
 
 local function TestToast(kind)
   local ui = ns.UI
@@ -542,6 +575,16 @@ local function TestToast(kind)
   elseif kind == "skill" then
     title, sub, cur, maxv = Tr["Dépeçage"] .. " +1", "161 / 225", 161, 225
     opts.kind, opts.skillId, opts.skillName = "skill", "skinning", Tr["Dépeçage"]
+  elseif kind == "weapon" then
+    local wname, wid, wicon, wtile = WeaponTestSkill()
+    local curV, maxV = 75, 150
+    if wtile and wtile.data then
+      curV = tonumber(wtile.data.rank or wtile.data.current) or curV
+      maxV = tonumber(wtile.data.max or wtile.data.maxRank or wtile.data.cap) or maxV
+    end
+    title, sub, cur, maxv = wname .. " +1", tostring(curV) .. " / " .. tostring(maxV), curV, maxV
+    opts.kind, opts.skillId, opts.skillName = "skill", wid, wname
+    icon = wicon or "Interface\\Icons\\Ability_Defend"
     icon = ProfIcon("skinning", "Interface\\Icons\\INV_Misc_Pelt_Wolf_01")
   elseif kind == "tier" then
     title, sub = Tr["Palier atteint"], Tr["Va voir ton maître"]
@@ -711,7 +754,10 @@ local function MakeTestButton(parent, it, x, y)
   b:SetText(Tr[Options.TEST_TEXT])
   b:SetScript("OnClick", function() Options.RunTest(it.key) end)
   local kind = Options.TEST[it.key]
-  local tip = (kind == "sound") and Tr["Joue le son"] or Tr["Affiche un toast d'exemple"]
+  local tip
+  if kind == "sound" then tip = Tr["Joue le son"]
+  elseif kind == "weapon" then tip = Tr["Joue un gain bleu (toast, +1, voile et étincelle) sur une case d'arme ou de Défense."]
+  else tip = Tr["Affiche un toast d'exemple"] end
   TipOn(b, Tr[Options.TEST_TEXT], tip)
   return b
 end
@@ -914,6 +960,20 @@ function Options.Build()
           TipOn(cb, Tr[it.label], Tr[it.cmd])
           Options.widgets[it.key] = cb
           advance(hgt, it.row)
+        elseif it.type == "test" then
+          sameKind("test")
+          if col == 1 then endRow() end
+          local cx = cell()
+          local l = Label(box, Tr[it.label], "GameFontNormal")
+          l:SetPoint("TOPLEFT", box, "TOPLEFT", cx, -by - 4)
+          if l.SetWidth then l:SetWidth(Options.COL_W - (L.TEST_W + 8)) end
+          if l.SetJustifyH then l:SetJustifyH("LEFT") end
+          local tb = MakeTestButton(box, it, cx, by + 2)
+          Options.testButtons[it.key] = tb
+          if it.help then TipOn(l, Tr[it.label], Tr[it.help]) end
+          Rect(box, cx, by, Options.COL_W - (L.TEST_W + 8), L.ROW, it.key)
+          Rect(box, cx + Options.COL_W - L.TEST_W, by + 2, L.TEST_W, 20, it.key .. ":test")
+          advance(L.ROW, true)
         elseif it.type == "radio" then
           sameKind("radio")
           local cx = cell()

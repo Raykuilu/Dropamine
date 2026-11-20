@@ -3051,14 +3051,14 @@ function S.EnsureBarSpark(t)
   if type(t.CreateTexture) ~= "function" then return t._barSpark, t._barFlash end
   if not t._barSpark then
     local spark = t:CreateTexture(nil, "OVERLAY", nil, 7)
-    if spark and spark.SetTexture then pcall(spark.SetTexture, spark, "Interface\Buttons\WHITE8X8") end
+    if spark and spark.SetTexture then pcall(spark.SetTexture, spark, "Interface\\Buttons\\WHITE8X8") end
     if spark and spark.SetBlendMode then pcall(spark.SetBlendMode, spark, "ADD") end
     if spark and spark.Hide then spark:Hide() end
     t._barSpark = spark
   end
   if not t._barFlash then
     local flash = t:CreateTexture(nil, "OVERLAY", nil, 8)
-    if flash and flash.SetTexture then pcall(flash.SetTexture, flash, "Interface\Buttons\WHITE8X8") end
+    if flash and flash.SetTexture then pcall(flash.SetTexture, flash, "Interface\\Buttons\\WHITE8X8") end
     if flash and flash.SetBlendMode then pcall(flash.SetBlendMode, flash, "ADD") end
     if flash and flash.Hide then flash:Hide() end
     t._barFlash = flash

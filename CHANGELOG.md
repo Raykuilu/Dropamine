@@ -1,6 +1,8 @@
 # Changelog
 
 ## 3.6.3
+- Tile gain pop draws a visible type-colored veil over the icon (ADD / OVERLAY, peak alpha ~0.5, 0.4 s fade; red XP, blue weapons/Defense, green professions), including on pooled tiles. The “+1” already used the type color; the veil no longer stays hidden by a missing texture, draw layer, icon mask, or an alpha-0 / Hide leftover.
+- Options Tester buttons include a blue weapons/Defense test (toast tint, tile +1, veil and total-bar spark). XP (red) and profession skill (green) tests are unchanged.
 - “Nouveaux sorts / Va voir ton maître de classe” (and any other title+body toast) is a normal full-height toast, not a ~20 px light bar that hid the text. Toast height never collapses to an empty strip.
 - Toast tint backgrounds keep the same red/blue/green hue, much darker to match the panel; only “Fond des toasts” sets alpha.
 - Session recap toast uses a short title (“Session”) and one compact line (e.g. “+81 · +484 XP · +3 compétences · 76 min”). Toast text wraps on up to 2 lines and the toast grows to fit; a marquee is only used if the text is still too long. Empty title+body toasts are not shown. The grey-mob Defense reminder is tooltip-only (no toast).

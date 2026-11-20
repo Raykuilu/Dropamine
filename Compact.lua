@@ -28,7 +28,7 @@ ns.Compact = C
 local GOLD = { 1, 0.82, 0 }
 local TOAST_YELLOW = { 1.00, 0.82, 0.20 }   -- titre des toasts (UI.lua)
 local GAIN_GREEN = { 0.25, 1.00, 0.25 }     -- repli si ColorForGain absent
-local WHITE8 = "Interface\Buttons\WHITE8X8"
+local WHITE8 = "Interface\\Buttons\\WHITE8X8"
 
 function C.GainColor(opts, data)
   local S = ns.Slot
@@ -338,7 +338,8 @@ function UI:IsRightPaneVisible() return false end
 C.FLY = 0.55          -- vol de l'éclat (s)
 C.GAIN_TIME = 1.5     -- gain vert : montée + fondu
 C.GAIN_RISE = 14      -- px
-C.PULSE_IN, C.PULSE_OUT = 0.08, 0.22   -- pop court
+C.PULSE_IN, C.PULSE_OUT = 0.08, 0.32   -- voile : pic puis fondu, 0,4 s au total
+C.PULSE_PEAK = 0.5
 C.POP_LIFT = 0.42  -- mélange vers le blanc : version plus claire de GAIN_COLORS
 C.FLY_SIZE = 22
 C.holds = {}          -- clé de case → valeur affichée tant que l'éclat vole
@@ -642,43 +643,85 @@ function C.Land(e, quiet)
 end
 
 function C.Pulse(t, color)
+  if not t then return end
+  local peak = C.PULSE_PEAK
+  if type(peak) ~= "number" then peak = 0.5 end
+  local tin, tout = C.PULSE_IN or 0.08, C.PULSE_OUT or 0.32
   local p = t._osrsPulse
   if not p then
     p = CreateFrame("Frame", nil, t)
     p._osrsOwn = true
     if p.EnableMouse then p:EnableMouse(false) end
-    p:SetAllPoints(t.icon or t)
-    p.tex = p:CreateTexture(nil, "OVERLAY")
-    p.tex:SetAllPoints(p)
-    pcall(p.tex.SetTexture, p.tex, WHITE8)
-    if p.tex.SetBlendMode then pcall(p.tex.SetBlendMode, p.tex, "ADD") end
-    local pc = C.PopColor(color, t)
-    if p.tex.SetVertexColor then pcall(p.tex.SetVertexColor, p.tex, pc[1], pc[2], pc[3], 0.85) end
-    if p.CreateAnimationGroup then
-      local ok, ag = pcall(p.CreateAnimationGroup, p)
-      if ok and ag then
-        p.ag = ag
-        local a1 = NewAnim(ag, "Alpha") if a1 then pcall(a1.SetDuration, a1, C.PULSE_IN) AlphaAnim(a1, 0, 1) if a1.SetOrder then pcall(a1.SetOrder, a1, 1) end end
-        local s1 = NewAnim(ag, "Scale") if s1 then pcall(s1.SetDuration, s1, C.PULSE_IN) ScaleAnim(s1, 1.18) if s1.SetOrder then pcall(s1.SetOrder, s1, 1) end end
-        local a2 = NewAnim(ag, "Alpha") if a2 then pcall(a2.SetDuration, a2, C.PULSE_OUT) AlphaAnim(a2, 1, 0) if a2.SetOrder then pcall(a2.SetOrder, a2, 2) end end
-        ag:SetScript("OnFinished", function() p:Hide() end)
-      end
+    p.tex = p:CreateTexture(nil, "OVERLAY", nil, 7)
+    if p.tex then
+      p.tex:SetAllPoints(p)
+      local okTex = p.tex.SetColorTexture and pcall(p.tex.SetColorTexture, p.tex, 1, 1, 1, 1)
+      if not okTex and p.tex.SetTexture then pcall(p.tex.SetTexture, p.tex, WHITE8) end
+      if p.tex.SetBlendMode then pcall(p.tex.SetBlendMode, p.tex, "ADD") end
     end
     t._osrsPulse = p
   end
+  -- case poolée : rattacher le voile, au-dessus de l'icône, sans masque ni alpha 0.
+  if p.SetParent then pcall(p.SetParent, p, t) end
+  if p.ClearAllPoints then pcall(p.ClearAllPoints, p) end
+  if p.SetAllPoints then p:SetAllPoints(t.icon or t) end
+  local tex = p.tex
+  if tex then
+    if tex.ClearAllPoints then pcall(tex.ClearAllPoints, tex) end
+    if tex.SetAllPoints then tex:SetAllPoints(p) end
+    local okTex = tex.SetColorTexture and pcall(tex.SetColorTexture, tex, 1, 1, 1, 1)
+    if not okTex and tex.SetTexture then pcall(tex.SetTexture, tex, WHITE8) end
+    if tex.SetBlendMode then pcall(tex.SetBlendMode, tex, "ADD") end
+    if tex.SetDrawLayer then pcall(tex.SetDrawLayer, tex, "OVERLAY", 7) end
+    if tex.RemoveMaskTexture and tex._thMask then pcall(tex.RemoveMaskTexture, tex, tex._thMask) end
+    if tex.SetAlpha then pcall(tex.SetAlpha, tex, 1) end
+    if tex.Show then tex:Show() end
+  end
   local base = t.GetFrameLevel and t:GetFrameLevel() or 1
-  pcall(p.SetFrameLevel, p, base + 6)
+  pcall(p.SetFrameLevel, p, base + 8)
   color = C.PopColor(color, t)
-  if p.tex and p.tex.SetVertexColor then
-    pcall(p.tex.SetVertexColor, p.tex, color[1], color[2], color[3], 0.85)
+  if tex and tex.SetVertexColor then
+    pcall(tex.SetVertexColor, tex, color[1], color[2], color[3], 1)
   end
   p._color = color
+  p._peak = peak
+  p._pulseT, p._pulseOn = 0, true
+  -- Pic visible tout de suite (pas un AnimationGroup qui part d'alpha 0, ni un Hide restant).
+  if p.SetAlpha then p:SetAlpha(peak) end
+  if p.ag and p.ag.Stop then pcall(p.ag.Stop, p.ag) end
+  if p.SetScript then
+    p:SetScript("OnUpdate", function(self, elapsed)
+      if not self._pulseOn then return end
+      local e = (self._pulseT or 0) + (elapsed or 0)
+      self._pulseT = e
+      local a
+      if e < tin then
+        a = peak * (tin > 0 and (e / tin) or 1)
+        if a < peak * 0.35 then a = peak end  -- première image jamais invisible
+      elseif e < tin + tout then
+        a = peak * (1 - (e - tin) / (tout > 0 and tout or 1))
+      else
+        self._pulseOn = nil
+        if self.SetAlpha then self:SetAlpha(0) end
+        if self.Hide then self:Hide() end
+        return
+      end
+      if self.SetAlpha then self:SetAlpha(a) end
+    end)
+  end
   p:Show()
   p._plays = (p._plays or 0) + 1
-  if p.ag then if p.ag.Stop then pcall(p.ag.Stop, p.ag) end p.ag:Play()
-  elseif not After(C.PULSE_IN + C.PULSE_OUT, function() p:Hide() end) then p:Hide() end
+  After(tin + tout + 0.05, function()
+    if not p._pulseOn then return end
+    if (p._pulseT or 0) >= (tin + tout - 0.02) then
+      p._pulseOn = nil
+      if p.SetAlpha then p:SetAlpha(0) end
+      if p.Hide then p:Hide() end
+    end
+  end)
   return p
 end
+
 
 -- Gain coloré façon XP drop d'OSRS : au-dessus de l'icône, monte de quelques
 -- pixels et s'efface en ~1,5 s ; police contournée.

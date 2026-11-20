@@ -4034,6 +4034,117 @@ do
   end
 end
 
+do
+  local S, C, UI = ns.Slot, ns.Compact, ns.UI
+  local function colorEq(a, b)
+    return a and b and math.abs((a[1] or 0) - (b[1] or 0)) < 0.01
+      and math.abs((a[2] or 0) - (b[2] or 0)) < 0.01
+      and math.abs((a[3] or 0) - (b[3] or 0)) < 0.01
+  end
+  local red = S and S.ADD_COLORS and S.ADD_COLORS.red
+  local blue = S and S.ADD_COLORS and S.ADD_COLORS.blue
+-- 48) voile coloré du pop : texture valide, calque OVERLAY / ADD, pic ~0,5, rejoue après Hide/alpha 0
+if C and C.Pulse then
+  ok(type(C.PULSE_PEAK) == "number" and C.PULSE_PEAK >= 0.4 and C.PULSE_PEAK <= 0.6,
+    "Pulse : pic d'alpha ~0,5")
+  ok(((C.PULSE_IN or 0) + (C.PULSE_OUT or 0)) >= 0.35 and ((C.PULSE_IN or 0) + (C.PULSE_OUT or 0)) <= 0.5,
+    "Pulse : fondu ~0,4 s")
+  local vt = { data = { kind = "melee", skillName = "Dagues", name = "Dagues" }, GetFrameLevel = function() return 2 end }
+  local veil = C.Pulse(vt, blue or (S and S.ADD_COLORS and S.ADD_COLORS.blue))
+  ok(veil and veil.shown ~= false, "voile : cadre visible au pop")
+  ok(veil and (veil.alpha or 0) >= 0.35, "voile : alpha immédiat au pic (pas 0)")
+  local tex = veil and veil.tex
+  ok(tex, "voile : texture créée")
+  if tex then
+    local path = tex._texSet or tex._tex
+    local solid = tex._colorTex
+    ok(solid or (type(path) == "string" and path:find("Buttons", 1, true) and path:find("WHITE8X8", 1, true)),
+      "voile : WHITE8X8 ou couleur pleine, pas un chemin cassé")
+    ok(not (type(path) == "string" and path:find("InterfaceButtons", 1, true)),
+      "voile : le chemin d'icône n'avale pas les anti-slash")
+    ok(tex.blend == "ADD" or tex.blend == "add", "voile : mélange ADD")
+    ok(tex.layer == "OVERLAY" or tex.layer == "OVERLAY", "voile : calque OVERLAY")
+  end
+  if veil then
+    veil:Hide()
+    if veil.SetAlpha then veil:SetAlpha(0) end
+    veil._pulseOn = nil
+  end
+  local veil2 = C.Pulse(vt, blue or (S and S.ADD_COLORS and S.ADD_COLORS.blue))
+  ok(veil2 and veil2.shown ~= false and (veil2.alpha or 0) >= 0.35,
+    "voile : rejoue après Hide() / alpha 0 (case poolée)")
+  -- rattachement sur une autre case (vivier)
+  local vt2 = { data = { kind = "level", skillName = "Niveau", name = "Niveau" }, GetFrameLevel = function() return 3 end }
+  vt2._osrsPulse = vt._osrsPulse
+  local veil3 = C.Pulse(vt2, red or (S and S.ADD_COLORS and S.ADD_COLORS.red))
+  ok(veil3 and (veil3.GetParent and veil3:GetParent() == vt2 or veil3.parent == vt2),
+    "voile : rattaché à la case poolée")
+end
+
+-- 49) bouton Tester : gain bleu (arme / Défense) — toast, +1, voile, étincelle
+do
+  local O = ns.Options
+  ok(O and O.TEST and O.TEST.weaponTest == "weapon", "Options.TEST : entrée armes / Défense")
+  ok(O and O.Find and O.Find("weaponTest") and O.Find("weaponTest").type == "test",
+    "Options : ligne Tester armes / Défense")
+  local prevTiles, prevEmbed
+  if ns.UI then
+    prevEmbed = ns.UI.embed
+    ns.UI.embed = ns.UI.embed or {}
+    prevTiles = ns.UI.embed.tiles
+  end
+  local defTile = {
+    data = { kind = "defense", id = "defense", skillId = "defense", skillName = "Défense", name = "Défense",
+      rank = 80, max = 150, combatTile = true, inTotal = true },
+    GetFrameLevel = function() return 4 end,
+    IsShown = function() return true end,
+  }
+  if ns.UI then ns.UI.embed.tiles = { defTile } end
+  local W = ns.Window
+  local restoreShown
+  if W then
+    restoreShown = W.IsShown
+    W.IsShown = function() return true end
+  end
+  local f = O and O.RunTest and O.RunTest("weaponTest")
+  ok(f, "Tester armes / Défense : toast affiché")
+  if f then
+    local tn = (f.titleFS and f.titleFS.GetText and f.titleFS:GetText()) or f._title or ""
+    ok(type(tn) == "string" and (tn:find("Défense", 1, true) or tn:find("Defense", 1, true) or tn:find("Dagues", 1, true)),
+      "Tester armes : titre d'arme ou de Défense — " .. tostring(tn))
+    local opts = { kind = f._kind or "skill", skillId = f._target and f._target.skillId or "defense",
+      skillName = f._target and f._target.skillName or "Défense" }
+    local tint = UI and UI.ToastTintColor and UI.ToastTintColor(opts)
+    local expect = S and S.ADD_COLORS and S.ADD_COLORS.blue
+    if tint and expect and expect[1] > 0.05 then
+      local k = tint[1] / expect[1]
+      ok(k < 0.95 and k > 0.2 and math.abs(tint[2] - expect[2] * k) < 0.03,
+        "Tester armes : teinte de toast bleue assombrie")
+    else
+      ok(tint and expect, "Tester armes : teinte de toast bleue")
+    end
+  end
+  -- +1, voile et étincelle sur la case Défense (même si le vol d'éclat n'est pas lancé)
+  if C and C.Announce then
+    C.Announce({ kind = "skill", skillId = "defense", skillName = "Défense" },
+      { { key = C.HoldKey and C.HoldKey(defTile.data) or "defense", gain = 1 }, { key = "total", gain = 1 } })
+  end
+  local popB = C and C.PopColor and C.PopColor((S and S.ADD_COLORS and S.ADD_COLORS.blue) or { 0.329, 0.408, 0.604 }, defTile)
+  ok(defTile._osrsGain and defTile._osrsGain.shown ~= false, "Tester armes : +1 sur la case Défense")
+  ok(defTile._osrsPulse and defTile._osrsPulse.shown ~= false and (defTile._osrsPulse.alpha or 0) >= 0.35,
+    "Tester armes : voile visible sur la case Défense")
+  ok(defTile._osrsPulse and popB and colorEq(defTile._osrsPulse._color, popB),
+    "Tester armes : voile bleu (couleur de type)")
+  if S and S._sparkColor and S.ADD_COLORS then
+    ok(colorEq(S._sparkColor, S.ADD_COLORS.blue), "Tester armes : étincelle de barre bleue")
+  else
+    ok(S and (S._sparkColor or S._sparkPlayColor), "Tester armes : étincelle de barre lancée")
+  end
+  if W and restoreShown ~= nil then W.IsShown = restoreShown end
+  if ns.UI then ns.UI.embed.tiles = prevTiles; if prevEmbed == nil then ns.UI.embed = prevEmbed end end
+end
+end
+
 ok(errs() == 0, "aucune erreur UI (3.6.3)")
 print(failures == 0 and "\n3.6.3 : TOUS LES TESTS PASSENT" or ("\n3.6.3 : " .. failures .. " ÉCHEC(S)"))
 os.exit(failures == 0 and 0 or 1)
