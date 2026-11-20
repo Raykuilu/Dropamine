@@ -244,28 +244,23 @@ if Wd then
       t.icon:SetPoint("CENTER", t, "LEFT", math.floor(slotW / 2 + 0.5), 0)
       t.icon:SetSize(isz, isz)
     end
-    -- police posée en px (zoom de la référence), même ombre que les chiffres
-    pcall(p.text.SetFont, p.text, (m.fontPath or I.COUNT_PATH or "Fonts\ARIALN.TTF"), m.font or Wd.TEXT_SIZE or 11, m.fontFlags or I.TEXT_FLAGS or "")
+    -- police et placement : Wd.PlaceTotalRow (déjà appelé par la peinture de base).
+    -- On ne recalcule pas left/inner ici, pour ne pas écraser le plancher 40 % / overlay.
     I.CleanText(p.text)
     p.text:SetTextColor(1, 0.93, 0.80)
-    p.text:ClearAllPoints()
-    local pad = m.pad or Wd.PAD or 5
-    p.text:SetPoint("LEFT", t, "LEFT", slotW + pad, 0)
-    local tw = Width(p.text)
-    if tw <= 0 then tw = 56 end
-    local w = N(t._wideW) or 0
-    local edge = m.edgeOut or Wd.EDGE_OUT or 3
-    local left = slotW + pad + tw + pad + edge
-    local inner = w - left - pad - edge
-    if inner < (m.minBarW or 24) then inner = math.max(8, inner) end
-    local bh = m.bh or Wd.BAR_H
-    local by = math.floor((h - bh) / 2 + 0.5)
-        local pct = (Wd.last and Wd.last.pct) or 0
-    p.track:ClearAllPoints()
-    p.track:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", left, by)
-    p.track:SetSize(inner, bh)
-    local cur = (Wd.last and Wd.last.cur) or 0
-    local max = (Wd.last and Wd.last.max) or 0
+    local plan = Wd.last
+    local left = (plan and plan.left) or 0
+    local inner = (plan and plan.inner) or 0
+    local bh = (plan and plan.bh) or m.bh or Wd.BAR_H
+    local by = (plan and plan.by) or 0
+    local pct = (plan and plan.pct) or 0
+    local cur = (plan and plan.cur) or 0
+    local max = (plan and plan.max) or 0
+    if p.track and p.track.ClearAllPoints then
+      p.track:ClearAllPoints()
+      p.track:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", left, by)
+      p.track:SetSize(inner, bh)
+    end
     Wd.LayoutSegments(t, left, by, inner, bh, cur, max)
     -- textures unies (jeton de couleur) sur chaque segment
     local texFile = Wd.FILL_TEX or Wd.TEX

@@ -89,6 +89,114 @@ function Wd.RowHeight(tile)
   return Wd.Metrics(tile).h
 end
 
+-- Après la fiole : barre >= max(MIN_BAR_W, 40 % de la bande utile).
+-- Si le texte ne rentre pas, on réduit la police jusqu'à MIN_FONT, sinon
+-- on le pose sur la barre (overlay) pour ne jamais écraser la jauge.
+-- twOf(font) : largeur mesurée du libellé à cette taille (optionnel).
+function Wd.PlanTotalRow(w, m, twOf)
+  m = m or (Wd.Metrics and Wd.Metrics()) or {}
+  w = math.max(0, math.floor((w or 0) + 0.5))
+  local isz = math.max(m.isz or 14, Wd.MIN_ISZ or 14)
+  local slotW = isz + 2
+  local pad = m.pad or Wd.MIN_PAD or 3
+  local edge = m.edgeOut or 0
+  local font = m.font or Wd.MIN_FONT or 10
+  local minFont = Wd.MIN_FONT or 10
+  local bh = m.bh or Wd.MIN_BAR_H or 4
+  local h = m.h or (Wd.MIN_H or 16)
+  local after = w - slotW - 2 * pad - edge
+  if after < 0 then after = 0 end
+  local minBar = math.max(Wd.MIN_BAR_W or 24, math.floor(0.40 * after + 0.5))
+  if minBar > after then minBar = after end
+  local gap = pad + edge
+  local function width(sz)
+    if type(twOf) == "function" then
+      local tw = N(twOf(sz)) or 0
+      if tw < 0 then tw = 0 end
+      return tw
+    end
+    return 56
+  end
+  local tw = width(font)
+  local function fits(twv)
+    return (after - twv - gap) + 0.01 >= minBar
+  end
+  if not fits(tw) and font > minFont then
+    for sz = font - 1, minFont, -1 do
+      local tw2 = width(sz)
+      if fits(tw2) then
+        font, tw = sz, tw2
+        break
+      end
+      font, tw = sz, tw2
+    end
+  end
+  local overlay, left, inner
+  if not fits(tw) then
+    overlay = true
+    left = slotW + pad
+    inner = after
+  else
+    overlay = false
+    left = slotW + pad + tw + gap
+    inner = after - tw - gap
+  end
+  if inner < 0 then inner = 0 end
+  left = math.floor(left + 0.5)
+  inner = math.floor(inner + 0.5)
+  local by = math.floor((h - bh) / 2 + 0.5)
+  local textX
+  if overlay then
+    textX = math.floor(left + inner * 0.5 + 0.5)
+  else
+    textX = slotW + pad
+  end
+  return {
+    isz = isz, slotW = slotW, pad = pad, edge = edge, font = font, tw = tw,
+    left = left, inner = inner, overlay = overlay, minBar = minBar, after = after,
+    bh = bh, by = by, h = h, w = w, textX = textX,
+  }
+end
+
+function Wd.PlaceTotalRow(t, p, m, w, h, cur, max)
+  if not (t and p and p.text and p.track) then return nil end
+  m = m or Wd.Metrics((ns.Icons and ns.Icons.TILE) or h)
+  local path, flags = m.fontPath, m.fontFlags
+  if p.text.GetFont then
+    local okF, gp, _, gf = pcall(p.text.GetFont, p.text)
+    if okF and gp and gp ~= "" then path, flags = gp, gf or flags end
+  end
+  local label = string.format("%d / %d", N(cur) or 0, N(max) or 0)
+  if p.text.SetText then p.text:SetText(label) end
+  local function twOf(sz)
+    if p.text.SetFont and path then
+      pcall(p.text.SetFont, p.text, path, sz, flags or "")
+    end
+    local okW, tw = pcall(p.text.GetStringWidth, p.text)
+    tw = (okW and N(tw)) or 56
+    if tw < 0 then tw = 0 end
+    return tw
+  end
+  local plan = Wd.PlanTotalRow(w, m, twOf)
+  -- Repose la police retenue (Plan a déjà mesuré via twOf, donc SetFont est à jour
+  -- sauf si la 1re taille convenait : on la remet pour être sûr).
+  if p.text.SetFont and path then
+    pcall(p.text.SetFont, p.text, path, plan.font, flags or "")
+  end
+  p._fontH = plan.font
+  if p.text.ClearAllPoints then p.text:ClearAllPoints() end
+  if plan.overlay then
+    p.text:SetPoint("CENTER", t, "LEFT", plan.textX, 0)
+  else
+    p.text:SetPoint("LEFT", t, "LEFT", plan.textX, 0)
+  end
+  if p.track.ClearAllPoints then p.track:ClearAllPoints() end
+  p.track:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", plan.left, plan.by)
+  p.track:SetSize(plan.inner, plan.bh)
+  plan.path, plan.flags, plan.label = path, flags, label
+  return plan
+end
+
 -- Réduit les marges si la piste est trop étroite pour les appliquer telles quelles.
 local function ClampInsets(il, ir, it, ib, inner, bh)
   il, ir = math.max(0, il or 0), math.max(0, ir or 0)
@@ -476,39 +584,22 @@ function Wd.Paint(t)
   if t.countFS then t.countFS:Hide() end
   if t.countFS2 then t.countFS2:Hide() end
   local pct = (max > 0) and math.max(0, math.min(1, cur / max)) or 0
-  p.text:ClearAllPoints()
-  p.text:SetPoint("LEFT", t, "LEFT", slotW + m.pad, 0)
-  p.text:SetText(string.format("%d / %d", cur, max))
-  local path, flags = m.fontPath, m.fontFlags
-  if p.text.GetFont then
-    local okF, gp, _, gf = pcall(p.text.GetFont, p.text)
-    if okF and gp and gp ~= "" then path, flags = gp, gf or flags end
+  local plan = Wd.PlaceTotalRow(t, p, m, w, h, cur, max)
+  local pad = (plan and plan.pad) or m.pad
+  local edge = (plan and plan.edge) or m.edgeOut or 0
+  local left = (plan and plan.left) or 0
+  local inner = (plan and plan.inner) or 0
+  local bh = (plan and plan.bh) or m.bh
+  local by = (plan and plan.by) or 0
+  isz = (plan and plan.isz) or isz
+  if p.track.SetVertexColor then
+    p.track:SetVertexColor(Wd.TRACK[1], Wd.TRACK[2], Wd.TRACK[3], Wd.TRACK[4])
   end
-  if p.text.SetFont and path then
-    local want = m.font
-    if p._fontH ~= want then
-      pcall(p.text.SetFont, p.text, path, want, flags or "")
-      p._fontH = want
-    end
-  end
-  local okW, tw = pcall(p.text.GetStringWidth, p.text)
-  tw = (okW and N(tw)) or 56
-  local pad = m.pad
-  local edge = m.edgeOut or 0
-  local left = slotW + pad + tw + pad + edge
-  local inner = w - left - pad - edge
-  if inner < (m.minBarW or 24) then
-    inner = math.max(8, inner)
-  end
-  local bh = m.bh
-  local by = math.floor((h - bh) / 2 + 0.5)
-  p.track:ClearAllPoints()
-  p.track:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", left, by)
-  p.track:SetSize(inner, bh)
-  p.track:SetVertexColor(Wd.TRACK[1], Wd.TRACK[2], Wd.TRACK[3], Wd.TRACK[4])
   p.track:Show() p.text:Show()
   Wd.last = { w = w, h = h, cur = cur, max = max, pct = pct, inner = inner,
-    left = left, by = by, bh = bh, isz = isz, pad = pad, font = m.font, edgeOut = edge }
+    left = left, by = by, bh = bh, isz = isz, pad = pad, font = plan and plan.font or m.font,
+    edgeOut = edge, overlay = plan and plan.overlay, minBar = plan and plan.minBar,
+    after = plan and plan.after, textX = plan and plan.textX }
   Wd.LayoutSegments(t, left, by, inner, bh, cur, max)
   Wd.MuteBarHighlight(t)
 end
