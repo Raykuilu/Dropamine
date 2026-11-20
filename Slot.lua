@@ -1280,9 +1280,10 @@ function S.ApplyFlaskFill(t)
     return
   end
   if t._gFill and t._gFill.Hide then t._gFill:Hide() end
-  -- Aucune bande (rouge/bleu/vert) tant qu'un état remplace la fiole (repos, combat, …).
+  -- La barre large n'est jamais touchée par un état (combat, repos, pêche, …) :
+  -- remplissage statique déjà posé par Wd.Paint. On ne transforme plus les
+  -- segments et on ne les cache pas.
   if S.ReplacesFlaskIcon and S.ReplacesFlaskIcon(t) then
-    S.HideBarBands(t)
     return
   end
   local last = Wd.last
@@ -1429,7 +1430,7 @@ end
 -- fiole (comme le sablier), restent dans la zone icône, le compteur reste
 -- lisible, et la fiole est restaurée proprement à la fin.
 S.STATE_ICON = {
-  combat   = "Interface\\Icons\\Ability_DualWield",
+  combat   = "Interface\\Icons\\INV_Sword_04",
   campfire = "Interface\\Icons\\Spell_Fire_Fire",
   food     = "Interface\\Icons\\INV_Misc_Fork&Knife",
   drink    = "Interface\\Icons\\INV_Drink_07",
@@ -1557,27 +1558,14 @@ end
 
 -- Cache les bandes rouge/bleu/vert de la jauge (barre large) et le remplissage grille.
 function S.HideBarBands(t)
+  -- Ne plus cacher la barre ni le texte « 85/2460 » : les états ne remplacent
+  -- que l'icône de la fiole. On range seulement les calques d'icône hérités.
   t = t or (S.FlaskTile and S.FlaskTile())
   if not t then return end
-  local pseg = t._pseg or t._wideParts
-  if pseg then
-    local segs = pseg.segs
-    if segs then
-      local i, tex = 1, segs[1]
-      while tex do
-        if tex.Hide then tex:Hide() end
-        i = i + 1
-        tex = segs[i]
-      end
-    end
-    if pseg.track and pseg.track.Hide then pseg.track:Hide() end
-    if pseg.fill and pseg.fill.Hide then pseg.fill:Hide() end
-    if pseg.sheen and pseg.sheen.Hide then pseg.sheen:Hide() end
-    if pseg.edge and pseg.edge.Hide then pseg.edge:Hide() end
-  end
   if t._gFill then
     if S.HideFlaskOverlay then S.HideFlaskOverlay(t._gFill) elseif t._gFill.Hide then t._gFill:Hide() end
   end
+  if t._cLiq and t._cLiq.Hide then t._cLiq:Hide() end
 end
 
 -- Z de repos : un glyphe unique, créé une fois, animé comme le sablier
@@ -1587,10 +1575,35 @@ function S.EnsureRestIcon(t)
   if not t then return nil end
   local _, content, w, h = S.PlaceIconClip(t)
   local parent = content or t
+  local function style_fs(fs)
+    if not fs then return end
+    if fs.SetFont then pcall(fs.SetFont, fs, "Fonts\\FRIZQT__.TTF", 16, "OUTLINE") end
+    if fs.SetText then fs:SetText("Z") end
+    fs._txt = "Z"
+    local c = S.REST_Z_COLOR
+    if fs.SetTextColor then pcall(fs.SetTextColor, fs, c[1], c[2], c[3], c[4] or 1) end
+    -- Contour bronze (guideline), pas un Z nu dans une case.
+    if fs.SetShadowColor then pcall(fs.SetShadowColor, fs, 0.65, 0.49, 0.27, 1) end
+    if fs.SetShadowOffset then pcall(fs.SetShadowOffset, fs, 1, -1) end
+    if fs.SetJustifyH then fs:SetJustifyH("CENTER") end
+    if fs.SetJustifyV then fs:SetJustifyV("MIDDLE") end
+  end
+  local function ensure_disc(holder)
+    if not holder or holder.disc then return holder and holder.disc end
+    if type(holder.CreateTexture) ~= "function" then return nil end
+    local disc = holder:CreateTexture(nil, "ARTWORK", nil, 1)
+    if not disc then return nil end
+    if disc.SetTexture then pcall(disc.SetTexture, disc, MEDIA .. "RoundMask") end
+    if disc.SetVertexColor then pcall(disc.SetVertexColor, disc, 0.08, 0.07, 0.05, 0.96) end
+    if disc.SetAllPoints then pcall(disc.SetAllPoints, disc, holder) end
+    holder.disc = disc
+    return disc
+  end
   if t._restZ and t._restZ.fs then
     if t._restZ.SetParent and parent and t._restZ.GetParent and t._restZ:GetParent() ~= parent then
       pcall(t._restZ.SetParent, t._restZ, parent)
     end
+    ensure_disc(t._restZ)
     return t._restZ, w, h
   end
   if type(parent.CreateFontString) ~= "function" and type(parent.CreateFrame) ~= "function" then
@@ -1601,17 +1614,9 @@ function S.EnsureRestIcon(t)
   S.SetSizeIf(holder, 1, 1)
   if holder.EnableMouse then pcall(holder.EnableMouse, holder, false) end
   if holder.Hide then holder:Hide() end
+  ensure_disc(holder)
   local fs = holder.CreateFontString and holder:CreateFontString(nil, "OVERLAY")
-  if fs then
-    if fs.SetFont then pcall(fs.SetFont, fs, "Fonts\\FRIZQT__.TTF", 16, "OUTLINE") end
-    if fs.SetText then fs:SetText("Z") end
-    local c = S.REST_Z_COLOR
-    if fs.SetTextColor then pcall(fs.SetTextColor, fs, c[1], c[2], c[3], c[4] or 1) end
-    if fs.SetShadowColor then pcall(fs.SetShadowColor, fs, 0, 0, 0, 0.85) end
-    if fs.SetShadowOffset then pcall(fs.SetShadowOffset, fs, 1, -1) end
-    if fs.SetJustifyH then fs:SetJustifyH("CENTER") end
-    if fs.SetJustifyV then fs:SetJustifyV("MIDDLE") end
-  end
+  style_fs(fs)
   holder.fs = fs
   t._restZ = holder
   return holder, w, h
@@ -1624,6 +1629,7 @@ function S.HideRestIcon(t)
   if h then
     if h.Hide then h:Hide() end
     if h.fs and h.fs.Hide then h.fs:Hide() end
+    if h.disc and h.disc.Hide then h.disc:Hide() end
   end
   if t._slotZ and t._slotZ.Hide then t._slotZ:Hide() end
   if t.icon and t.icon.Show and not (S.ReplacesFlaskIcon and S.ReplacesFlaskIcon(t)) then
@@ -1635,9 +1641,8 @@ end
 function S.ApplyRestIcon(t)
   t = t or (S.FlaskTile and S.FlaskTile())
   if not t then return nil end
-  -- Pas de z animés superposés, pas de bandes : un Z unique à la place de la fiole.
+  -- Un Z guideline (disque sombre + glyphe) à la place de la fiole uniquement.
   if t._slotZ and t._slotZ.Hide then t._slotZ:Hide() end
-  S.HideBarBands(t)
   local holder, w, h = S.EnsureRestIcon(t)
   if not holder then return nil end
   local clip, content, iw, ih = S.PlaceIconClip(t)
@@ -1647,6 +1652,11 @@ function S.ApplyRestIcon(t)
   if holder.ClearAllPoints then pcall(holder.ClearAllPoints, holder) end
   S.SetSizeIf(holder, w, h)
   if holder.SetPoint then pcall(holder.SetPoint, holder, "BOTTOMLEFT", parent, "BOTTOMLEFT", 0, 0) end
+  if holder.disc then
+    if holder.disc.SetAllPoints then pcall(holder.disc.SetAllPoints, holder.disc, holder) end
+    if holder.disc.SetVertexColor then pcall(holder.disc.SetVertexColor, holder.disc, 0.08, 0.07, 0.05, 0.96) end
+    if holder.disc.Show then holder.disc:Show() end
+  end
   local fs = holder.fs
   if fs then
     -- Taille sobre : un peu plus petite que la zone icône, lisible en barre (~14) et en grille (~32).
@@ -1678,7 +1688,6 @@ function S.ApplyEatDisc(t)
   t = t or (S.FlaskTile and S.FlaskTile())
   if not t then return nil end
   local kind = (S.EatKind and S.EatKind()) or "food"
-  S.HideBarBands(t)
   if kind == "both" then
     -- Disque partagé : fourchette à gauche, tasse à droite, même clip, créés une fois.
     S.ApplyStateIcon(t, "food", "pulse")
@@ -2354,7 +2363,7 @@ end
 function S.RestedOnly()
   -- z + vague de repos : pas besoin de repeindre tout le puits à 20 i/s.
   if S.Want("trainer") or S.Want("campfire") or S.FillBusy() then return false end
-  if (S._jolt or 0) > 0 or S._addT or S._lvlT then return false end
+  if (S._jolt or 0) > 0 or S._addT or S._lvlT or S._sparkT then return false end
   local F = ns.Flight
   if F and (F.Paused and F.Paused() or (F._vis or 0) > 0) then return false end
   return S.Active() == "rested"
@@ -2371,7 +2380,7 @@ function S.NeedsDriver()
   if S.CombatStateOn and S.CombatStateOn() then return true end
   if S.FillBusy() then return true end
   if (S._jolt or 0) > 0 then return true end
-  if S._addT or S._lvlT then return true end
+  if S._addT or S._lvlT or S._sparkT then return true end
   local F = ns.Flight
   if F and (F.Paused and F.Paused() or (F._vis or 0) > 0) then return true end
   return false
@@ -2417,6 +2426,7 @@ function S.Tick(dt)
   S._phase = (S._phase or 0) + dt * 0.7
   if S._phase > 1 then S._phase = S._phase - math.floor(S._phase) end
   if S._addT ~= nil then S.TickTotalAdd(dt) end
+  if S._sparkT ~= nil then S.TickBarSpark(dt) end
   if S._lvlT ~= nil then S.TickLevelUp(dt) end
   if S.Active and S.Active() == "campfire" then
     S.ApplyCampfire()
@@ -3030,6 +3040,9 @@ function S.EnsureTotalAdd(t)
   local parent = content or t
   if t._add then
     if t._add.SetParent and parent then pcall(t._add.SetParent, t._add, parent) end
+    local d, w = t._add.drop, t._add.wave
+    if d and d.SetTexture then pcall(d.SetTexture, d, MEDIA .. "RoundMask") end
+    if w and w.SetDesaturated then pcall(w.SetDesaturated, w, true) end
     return t._add
   end
   local ok, f = pcall(CreateFrame, "Frame", nil, parent)
@@ -3042,12 +3055,14 @@ function S.EnsureTotalAdd(t)
   end
   f.drop = tex("OVERLAY")
   if f.drop and f.drop.SetTexture then
-    pcall(f.drop.SetTexture, f.drop, ns.LEVEL_ICON or (MEDIA .. "XP-Icon"))
+    -- Texture blanche teintable : le XP-Icon rouge faisait toutes les gouttes rouges.
+    pcall(f.drop.SetTexture, f.drop, MEDIA .. "RoundMask")
   end
   f.wave = tex("ARTWORK")
   if f.wave and f.wave.SetTexture then
     pcall(f.wave.SetTexture, f.wave, (ns.Rested and ns.Rested.WAVE_TEX) or (MEDIA .. "Dropamine-Wave"))
   end
+  if f.wave and f.wave.SetDesaturated then pcall(f.wave.SetDesaturated, f.wave, true) end
   f.bubbles = { tex("OVERLAY"), tex("OVERLAY"), tex("OVERLAY") }
   t._add = f
   return f
@@ -3071,8 +3086,127 @@ function S.PlayTotalAdd(gain, color)
   S._addT = 0
   S._addGain = N(gain) or 1
   S._addColor = S.AddColor(color)
-  S.StartDriver()
   S.EnsureTotalAdd(t)
+  local f = t._add
+  local col = S._addColor
+  if f and f.drop and f.drop.SetVertexColor and col then
+    pcall(f.drop.SetVertexColor, f.drop, col[1], col[2], col[3], 1)
+  end
+  if S.PlayBarSpark then S.PlayBarSpark(col) end
+  S.StartDriver()
+end
+
+-- Étincelle colorée sur la barre : après l'impact de la goutte, elle glisse
+-- jusqu'au bout du remplissage, petit flash, une texture poolée, ~0,6 s,
+-- alpha à 0, jamais de cache / resize de la barre, zéro allocation au tick.
+S.SPARK_DELAY, S.SPARK_DUR, S.FLASH_DUR = 0.40, 0.55, 0.15
+function S.EnsureBarSpark(t)
+  if not t then return nil end
+  if t._barSpark and t._barFlash then return t._barSpark, t._barFlash end
+  if type(t.CreateTexture) ~= "function" then return t._barSpark, t._barFlash end
+  if not t._barSpark then
+    local spark = t:CreateTexture(nil, "OVERLAY", nil, 7)
+    if spark and spark.SetTexture then pcall(spark.SetTexture, spark, "Interface\\Buttons\\WHITE8X8") end
+    if spark and spark.SetBlendMode then pcall(spark.SetBlendMode, spark, "ADD") end
+    if spark and spark.Hide then spark:Hide() end
+    t._barSpark = spark
+  end
+  if not t._barFlash then
+    local flash = t:CreateTexture(nil, "OVERLAY", nil, 8)
+    if flash and flash.SetTexture then pcall(flash.SetTexture, flash, "Interface\\Buttons\\WHITE8X8") end
+    if flash and flash.SetBlendMode then pcall(flash.SetBlendMode, flash, "ADD") end
+    if flash and flash.Hide then flash:Hide() end
+    t._barFlash = flash
+  end
+  return t._barSpark, t._barFlash
+end
+function S.HideBarSpark(t)
+  t = t or (S.FlaskTile and S.FlaskTile())
+  if t then
+    if t._barSpark then
+      if t._barSpark.SetAlpha then pcall(t._barSpark.SetAlpha, t._barSpark, 0) end
+      if t._barSpark.Hide then t._barSpark:Hide() end
+    end
+    if t._barFlash then
+      if t._barFlash.SetAlpha then pcall(t._barFlash.SetAlpha, t._barFlash, 0) end
+      if t._barFlash.Hide then t._barFlash:Hide() end
+    end
+  end
+  S._sparkT = nil
+end
+function S.PlayBarSpark(color)
+  local t = S.FlaskTile and S.FlaskTile()
+  if not t then return end
+  S._sparkColor = S.AddColor(color or S._addColor)
+  S._sparkT = 0
+  S.EnsureBarSpark(t)
+  S.StartDriver()
+end
+function S.TickBarSpark(dt)
+  local t = S.FlaskTile and S.FlaskTile()
+  if not t or S._sparkT == nil then
+    if t and S.HideBarSpark then S.HideBarSpark(t) else S._sparkT = nil end
+    return
+  end
+  if not t._wideOn then
+    S.HideBarSpark(t)
+    return
+  end
+  local spark, flash = S.EnsureBarSpark(t)
+  if not spark then S._sparkT = nil return end
+  S._sparkT = (S._sparkT or 0) + (N(dt) or 0)
+  local u = S._sparkT
+  local delay, dur, flD = S.SPARK_DELAY or 0.40, S.SPARK_DUR or 0.55, S.FLASH_DUR or 0.15
+  local Wd = ns.Wide
+  local last = Wd and Wd.last
+  local left = (last and last.left) or 0
+  local inner = (last and last.inner) or 10
+  local by = (last and last.by) or 0
+  local bh = (last and last.bh) or (Wd and Wd.BAR_H) or 6
+  local pct = (last and last.pct) or 1
+  if pct < 0 then pct = 0 elseif pct > 1 then pct = 1 end
+  local tip = left + inner * pct
+  local col = S._sparkColor or S.ADD_COLORS.red
+  if u < delay then
+    if spark.Hide then spark:Hide() end
+    if flash and flash.Hide then flash:Hide() end
+    return
+  end
+  local v = u - delay
+  if v <= dur then
+    local k = v / dur
+    local sw = math.max(4, bh * 0.85)
+    local span = math.max(0, tip - left - sw)
+    local x = left + k * span
+    if spark.ClearAllPoints then pcall(spark.ClearAllPoints, spark) end
+    if spark.SetPoint then pcall(spark.SetPoint, spark, "BOTTOMLEFT", t, "BOTTOMLEFT", x, by) end
+    if spark.SetSize then pcall(spark.SetSize, spark, sw, math.max(1, bh)) end
+    local a = 0.30 + 0.60 * math.sin(k * math.pi)
+    if spark.SetVertexColor then pcall(spark.SetVertexColor, spark, col[1], col[2], col[3], 1) end
+    if spark.SetAlpha then pcall(spark.SetAlpha, spark, a) end
+    if spark.Show then spark:Show() end
+    if flash and flash.Hide then flash:Hide() end
+  elseif v <= dur + flD then
+    local k = (v - dur) / flD
+    if spark.SetAlpha then pcall(spark.SetAlpha, spark, 0) end
+    if spark.Hide then spark:Hide() end
+    if flash then
+      local fw = math.max(6, bh * (1.15 + 0.7 * (1 - k)))
+      local fh = math.max(bh, bh * (1.05 + 0.45 * (1 - k)))
+      local fx, fy = tip - fw * 0.5, by + (bh - fh) * 0.5
+      if flash.ClearAllPoints then pcall(flash.ClearAllPoints, flash) end
+      if flash.SetPoint then pcall(flash.SetPoint, flash, "BOTTOMLEFT", t, "BOTTOMLEFT", fx, fy) end
+      if flash.SetSize then pcall(flash.SetSize, flash, fw, fh) end
+      local r = col[1] + (1 - col[1]) * 0.35
+      local g = col[2] + (1 - col[2]) * 0.35
+      local b = col[3] + (1 - col[3]) * 0.35
+      if flash.SetVertexColor then pcall(flash.SetVertexColor, flash, r, g, b, 1) end
+      if flash.SetAlpha then pcall(flash.SetAlpha, flash, 0.85 * (1 - k)) end
+      if flash.Show then flash:Show() end
+    end
+  else
+    S.HideBarSpark(t)
+  end
 end
 
 function S.TickTotalAdd(dt)
@@ -3405,7 +3539,7 @@ if ns.On then
   end
 end
 
--- Dernier mot après Polish/ClassicTheme : aucune bande si la fiole est remplacée.
+-- Dernier mot après Polish/ClassicTheme : un état ne remplace que l'icône.
 do
   local Wd = ns.Wide
   if Wd and Wd.Paint then
@@ -3413,7 +3547,6 @@ do
     function Wd.Paint(t, ...)
       local r = { basePaint(t, ...) }
       if t and S.ReplacesFlaskIcon and S.ReplacesFlaskIcon(t) then
-        if S.HideBarBands then S.HideBarBands(t) end
         if t.icon and t.icon.Hide then t.icon:Hide() end
         if S.Active and S.Active() == "rested" and S.ApplyRestIcon then
           S.ApplyRestIcon(t)

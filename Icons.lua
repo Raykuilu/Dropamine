@@ -59,6 +59,23 @@ V.ROW_PITCH = I.STEP
 function V.MinPitch() return I.STEP end
 
 function UI:FitGrid(wrap, n)
+  local compact = ns.Panel and ns.Panel.IsExpanded and not ns.Panel.IsExpanded()
+  local Lyt = ns.Layout
+  -- En compact : les colonnes choisies (L.Cols), la case courante (I.TILE après
+  -- SetMetrics). On ne déduit plus les colonnes d'une largeur de liste périmée
+  -- (262 px / 5 col. à 40 px), qui décalait cadre et grille quand la taille change.
+  if compact and Lyt and Lyt.Cols then
+    if Lyt.SyncMetrics then Lyt.SyncMetrics() end
+    local cols = Lyt.Cols()
+    local groups = wrap and wrap._snap and self:GroupTiles(wrap._snap.tiles) or nil
+    local rowsAll = 0
+    if groups and #groups > 0 then
+      for gi = 1, #groups do rowsAll = rowsAll + math.ceil(#groups[gi].tiles / cols) end
+    else
+      rowsAll = math.ceil((n or 1) / cols)
+    end
+    return cols, I.TILE, I.TILE, I.STEP, math.max(1, rowsAll)
+  end
   local w = (wrap and wrap._innerW) or self:GetGridInnerWidth(wrap)
   local cols = math.max(1, math.floor((w + I.HGAP) / (I.TILE + I.HGAP)))
   local groups = wrap and wrap._snap and self:GroupTiles(wrap._snap.tiles) or nil

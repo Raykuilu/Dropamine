@@ -40,7 +40,12 @@ function L.Rows(cols)
   local n = L.TileCount()
   return math.max(1, math.ceil(n / (cols or L.Cols())))
 end
+-- Mesures courantes (curseur « Taille » / /drop taille) : jamais les 40×8 par défaut.
+function L.SyncMetrics()
+  if I.SetMetrics then I.SetMetrics(L.Scale() / 100) end
+end
 function L.GridSize(cols, rows)
+  L.SyncMetrics()
   cols = cols or L.Cols()
   local tile = I.TILE or 40
   local hg = I.HGAP or 8
@@ -161,17 +166,18 @@ function L.SetScale(v)
   if not v then return nil end
   v = math.max(L.SCALE_MIN, math.min(L.SCALE_MAX, math.floor(v + 0.5)))
   local same = (v == L.Scale()) and L.applied and L.applied.scale == v
+  local k = v / 100
+  if same and I.metricsK and math.abs((I.metricsK or 1) - k) < 0.001 then return v end
   DB().scale = (v ~= 100) and v or nil
   if ns.SaveActiveProfile then pcall(ns.SaveActiveProfile) end
-  if same then return v end
   -- taille dynamique : mesures de la grille recalculées, panneau remis en page,
   -- coin haut-gauche conservé (L.Apply), bord / coins à épaisseur native
+  if I.SetMetrics then I.SetMetrics(v / 100) end
   if W.frame then
     L.Apply()
     if UI.Refresh then pcall(UI.Refresh, UI, true) end
     pcall(L.Center)
-  elseif I.SetMetrics then
-    I.SetMetrics(v / 100)
+    if L.SnapToContent then pcall(L.SnapToContent) end
   end
   return v
 end

@@ -3119,13 +3119,10 @@ do
     local head, extra = raw:match("^(%S+)%s*(.-)%s*$")
     head = Norm(head)
     extra = extra or ""
-    if head == "sleepingbag" then
-      if extra == "off" or extra == "stop" then return T.Stop("sleepingbag") end
-      if extra ~= "" then return T.Start(raw) end
-      if T.IsOn("sleepingbag") then return T.Stop("sleepingbag") end
-      return T.Start(raw)
-    end
     id = head
+    if extra == "off" or extra == "stop" then return T.Stop(id) end
+    -- Conserver l'argument (totaladd blue, eating food, campfire near, …).
+    if extra ~= "" then return T.Start(raw) end
     if id == "toast" or id == "off" then return T.Start(id) end
     if T.IsOn(id) then return T.Stop(id) end
     return T.Start(id)

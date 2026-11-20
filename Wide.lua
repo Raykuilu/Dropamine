@@ -148,7 +148,10 @@ end
 -- la dernière rangée n'aurait que le total ?
 function Wd.ShouldWiden(cols, n)
   cols, n = N(cols) or 1, N(n) or 0
-  return cols > 1 and n > 1 and ((n - 1) % cols) == 0
+  -- Barre fine sur toute la largeur dès que le total est affiché en plus d'une
+  -- colonne (le total est isolé sur sa propre rangée par GroupTiles).
+  if not Wd.Shown() then return false end
+  return cols > 1 and n > 1
 end
 
 local function Parts(t)
@@ -434,13 +437,12 @@ function Wd.Paint(t)
   Wd.MuteBarHighlight(t)
 end
 
--- Quand un état remplace la fiole, pas de bandes rouge/bleu/vert sur la barre.
+-- Un état ne remplace que l'icône de la fiole : la barre et le texte restent.
 local _paintBar = Wd.Paint
 function Wd.Paint(t)
   _paintBar(t)
   local S = ns.Slot
   if not (t and S and S.ReplacesFlaskIcon and S.ReplacesFlaskIcon(t)) then return end
-  if S.HideBarBands then S.HideBarBands(t) end
   if t.icon and t.icon.Hide then t.icon:Hide() end
   if S.Active and S.Active() == "rested" and S.ApplyRestIcon then
     S.ApplyRestIcon(t)
@@ -487,7 +489,14 @@ function Wd.Apply(wrap)
   for _, t in ipairs(wrap.tiles) do if t ~= total then Unwide(t) end end
   if not total then wrap._wide = nil return nil end
   if not Wd.ShouldWiden(cols, n) then Unwide(total) wrap._wide = nil return false end
-  local gw = stepX and ((cols - 1) * stepX + tw) or maxR or tw
+  local gw
+  local Lyt = ns.Layout
+  if Lyt and Lyt.GridSize then
+    gw = Lyt.GridSize(cols)
+  end
+  if not gw or gw <= 0 then
+    gw = stepX and ((cols - 1) * stepX + tw) or maxR or tw
+  end
   local ok, _, _, _, _, y = pcall(total.GetPoint, total, 1)
   y = (ok and N(y)) or 0
   total:ClearAllPoints()
@@ -552,13 +561,30 @@ end
 local baseGroup = UI.GroupTiles
 function UI:GroupTiles(tiles)
   local groups = baseGroup(self, tiles)
-  if Wd.Shown() then return groups end
+  local function without_total(gs)
+    local out = {}
+    for _, g in ipairs(gs) do
+      local copy = {}
+      for _, d in ipairs(g.tiles) do if d.kind ~= "total" then copy[#copy + 1] = d end end
+      if #copy > 0 then out[#out + 1] = { title = g.title, tiles = copy, flat = g.flat } end
+    end
+    return out
+  end
+  if not Wd.Shown() then return without_total(groups) end
+  -- Isoler le total sur sa propre rangée pour l'étirer en barre fine.
+  local cols = (ns.Layout and ns.Layout.Cols and ns.Layout.Cols()) or 1
+  if cols <= 1 then return groups end
+  local skills, total
   local out = {}
   for _, g in ipairs(groups) do
-    local copy = {}
-    for _, d in ipairs(g.tiles) do if d.kind ~= "total" then copy[#copy + 1] = d end end
+    local copy, found = {}, nil
+    for _, d in ipairs(g.tiles) do
+      if d.kind == "total" then found = d else copy[#copy + 1] = d end
+    end
+    if found then total = found end
     if #copy > 0 then out[#out + 1] = { title = g.title, tiles = copy, flat = g.flat } end
   end
+  if total then out[#out + 1] = { title = "", tiles = { total }, flat = true } end
   return out
 end
 local function NTiles()
@@ -569,14 +595,16 @@ local P, L, W = ns.Panel, ns.Layout, ns.Window
 if L then
   function L.Rows(cols) return math.max(1, math.ceil(NTiles() / (cols or L.Cols()))) end
 end
-if P and P.CompactListHeight then
+if P then
   function P.CompactListHeight()
+    if L and L.ContentSize then
+      local _, _, _, _, gh, cols, rows = L.ContentSize()
+      return gh, cols, rows
+    end
     local n = NTiles()
-    local ins = UI:ListInsets()
-    local inner = W.LIST_W - ins.left - ins.right
-    local cols = math.max(1, math.floor((inner + I.HGAP) / (I.TILE + I.HGAP)))
+    local cols = (L and L.Cols and L.Cols()) or 1
     local rows = math.max(1, math.ceil(n / cols))
-    return ins.top + rows * I.STEP + 4, cols, rows
+    return rows * I.STEP, cols, rows
   end
 end
 ns.SlashExt = ns.SlashExt or {}
