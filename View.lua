@@ -783,9 +783,16 @@ function UI:LayoutGrid(wrap, snap)
   local tiles = snap.tiles or {}
   local child = wrap.child
   child:ClearAllPoints()
+  local compact = ns.Panel and ns.Panel.IsExpanded and not ns.Panel.IsExpanded()
   local ins = (wrap == self.embed) and self:ListInsets() or nil
+  -- Le cadre compact a déjà la même marge des 4 côtés : plus d'inset interne
+  -- (20 px à droite pour une barre de défilement cachée, 6+2 en haut/bas)
+  -- qui masquait la dernière rangée (case total) une fois le cadre calé.
+  if compact then
+    ins = { left = 0, right = 0, top = 0, source = "cadre exact" }
+  end
   local pad = 8
-  local footSpace = UI.NO_FOOT and 2 or (pad + 26 + 4)   -- 3.3.4 : plus de ligne du bas (le total est une case)
+  local footSpace = compact and 0 or (UI.NO_FOOT and 2 or (pad + 26 + 4))
   if ins then
     child:SetPoint("TOPLEFT", wrap, "TOPLEFT", ins.left, -ins.top)
     child:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -ins.right, footSpace)
@@ -842,7 +849,10 @@ function UI:LayoutGrid(wrap, snap)
     y = y + UI.HEADER_H + UI.HEADER_GAP
     for k = 1, (collapsed and 0 or #g.tiles) do
       local col, row = (k - 1) % cols, math.floor((k - 1) / cols)
-      local cyAbs = math.floor(y + row * step + (step - th) / 2)
+      -- En compact, le cadre est calé sur rows×case + (rows-1)×écart : on
+      -- n'ajoute pas (step-th)/2, qui poussait la dernière rangée hors vue.
+      local compact = ns.Panel and ns.Panel.IsExpanded and not ns.Panel.IsExpanded()
+      local cyAbs = math.floor(y + row * step + (compact and 0 or (step - th) / 2))
       if inView(cyAbs, th) then
         local t = nextTile()
         local cy = cyAbs - math.floor(off)

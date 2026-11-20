@@ -493,7 +493,21 @@ function C.Launch(e)
   for _, tg in ipairs(e.targets or {}) do
     if tg.key == "total" then
       if e.kind ~= "levelup" and ns.Slot and ns.Slot.PlayTotalAdd then
-        pcall(ns.Slot.PlayTotalAdd, tg.gain)
+        local color = "green"
+        if e.kind == "xp" then
+          color = "red"
+        else
+          for _, tg0 in ipairs(e.targets or {}) do
+            if tg0.key and tg0.key ~= "total" then
+              local tile = C.TileByKey and C.TileByKey(tg0.key)
+              local d = tile and tile.data
+              if d and (d.combatTile or d.kind == "melee" or d.kind == "ranged" or d.kind == "defense") then
+                color = "blue"
+              end
+            end
+          end
+        end
+        pcall(ns.Slot.PlayTotalAdd, tg.gain, color)
       end
     elseif not main then
       main, mainTg = C.TileByKey(tg.key), tg

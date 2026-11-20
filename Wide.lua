@@ -434,6 +434,19 @@ function Wd.Paint(t)
   Wd.MuteBarHighlight(t)
 end
 
+-- Quand un état remplace la fiole, pas de bandes rouge/bleu/vert sur la barre.
+local _paintBar = Wd.Paint
+function Wd.Paint(t)
+  _paintBar(t)
+  local S = ns.Slot
+  if not (t and S and S.ReplacesFlaskIcon and S.ReplacesFlaskIcon(t)) then return end
+  if S.HideBarBands then S.HideBarBands(t) end
+  if t.icon and t.icon.Hide then t.icon:Hide() end
+  if S.Active and S.Active() == "rested" and S.ApplyRestIcon then
+    S.ApplyRestIcon(t)
+  end
+end
+
 local function Unwide(t)
   if not t._wideOn then return end
   t._wideOn, t._wideW, t._wideH = nil, nil, nil
@@ -813,6 +826,8 @@ do
       if f.Hide then f:Hide() end
     end
     F._visDriving = false
+    local Lyt = ns.Layout
+    if Lyt and Lyt.SnapToContent then pcall(Lyt.SnapToContent) end
   end
 
   function F.StartVisualDriver()

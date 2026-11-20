@@ -2744,24 +2744,24 @@ do
     { id = "flight",   label = "Vol",                tip = "Démarre ou arrête la pause en vol (sablier + toast d'astuce)." },
     { id = "death",    label = "Mort",               tip = "Simule la mort : crâne dans la fiole, barre vidée et grisée." },
     { id = "afk",      label = "AFK",                tip = "Simule l'absence : horloge de bronze dans le puits." },
-    { id = "fishing",  label = "Pêche",              tip = "Simule la pêche : hameçon qui tangue dans le puits." },
+    { id = "fishing",  label = "Pêche",              tip = "Simule la pêche : l'icône de jeu (pêche) remplace la fiole et tangue doucement, comme le sablier. /drop test fishing." },
     { id = "swimming", label = "Nage",               tip = "Simule la nage : bulles dans le puits." },
     { id = "rested",   label = "Repos",              tip = "Simule le repos en auberge : « z » dans le puits de la fiole, dans tous les modes (barre et grilles 1/2/3/5 col.). En barre, les z quittent le portrait Niveau ; en grille, ils restent aussi sur Niveau." },
     { id = "sleepingbag", label = "Sac de couchage", tip = "Simule le sac de couchage style A (1, 2 ou 3 bandes) dans le puits. /drop test sleepingbag 1|2|3|miss : miss affiche le toast « palier manqué » (teinte XP)." },
-    { id = "combat",   label = "Combat",             tip = "Simule le combat selon le style choisi (bulles, épée ou désactivé). Vérifie barre, 1, 2, 3 et 5 colonnes : le liquide rouge + bleu (proportionnel) avec bulles ambre reste dans l'icône de la case total." },
+    { id = "combat",   label = "Combat",             tip = "Simule le combat : l'icône de jeu (armes) remplace la fiole, avec une animation simple comme le sablier. Le compteur reste lisible. /drop test combat." },
     { id = "trainer",  label = "Maître à proximité", tip = "Simule un maître à proximité : éclat sur les cases de métier." },
     { id = "rankup",   label = "Rang supérieur disponible", tip = "Affiche le toast collant « rang supérieur disponible chez le maître »." },
     { id = "bags",     label = "Sacs pleins",               tip = "Simule les sacs pleins : signal dans la fiole et un toast." },
     { id = "transport",label = "Bateau / zeppelin",         tip = "Simule un trajet en bateau ou zeppelin : sablier et pause, comme en vol." },
     { id = "loading",  label = "Chargement",                tip = "Simule un écran de chargement : pause silencieuse, sans sablier ni file de toasts." },
-    { id = "eating",   label = "Repas",                     tip = "Simule un repas ou une boisson : vague colorée à la surface (ambre nourriture, bleu boisson, les deux = deux vagues), le niveau de remplissage reste le vrai. /drop test eating food|drink|both." },
-    { id = "campfire", label = "Feu de camp",               tip = "Simule le feu de camp (un glyphe, pas de fumée). /drop test campfire near|charge|burst (1|2|3) : braise, flamme qui grandit, gerbe d'étincelles puis retour à la goutte." },
+    { id = "eating",   label = "Repas",                     tip = "Remplace la fiole par un disque (fourchette, tasse, ou les deux). /drop test eating food|drink|both." },
+    { id = "campfire", label = "Feu de camp",               tip = "Simule le feu de camp : l'icône de jeu (feu) remplace la fiole. /drop test campfire near|charge|burst : petite flamme, flamme qui grandit, flash puis retour à la fiole." },
     { id = "totaladd", label = "Ajout au total",            tip = "Une goutte tombe dans la fiole officielle, puis vague et bulles." },
     { id = "levelup",  label = "Montée de niveau",          tip = "La fiole déborde, l'anneau bronze pulse, puis se remet avec une vague. Le toast de niveau reste." },
     { id = "dungeon",  label = "Donjon",                    tip = "Simule l'entrée en donjon : le mode calme instance s'active tout seul." },
     { id = "durability", label = "Équipement usé",          tip = "Simule un équipement sous 20 % : signal dans la fiole et un toast." },
     { id = "efficiency", label = "Efficacité",              tip = "Charge un jeu de mesures d'efficacité (temps actif, morts, sacs, spots) pour l'onglet Progression." },
-    { id = "recap",      label = "Récap session",           tip = "Ouvre le récap de session avec des données d'exemple. Vérifie aussi chaque disposition : barre, 1, 2, 3 et 5 colonnes (liquide de combat, z de repos, vague de repas dans la case total)." },
+    { id = "recap",      label = "Récap session",           tip = "Ouvre le récap de session avec des données d'exemple. Vérifie aussi chaque disposition : barre, 1, 2, 3 et 5 colonnes." },
   }
   T.ALIASES = {
     vol = "flight", fly = "flight", flight = "flight",
@@ -2867,6 +2867,8 @@ do
       S._suppressTip = nil
       if tt and tt.Hide then pcall(tt.Hide, tt) end
     end
+    local Lyt = ns.Layout
+    if Lyt and Lyt.SnapToContent then pcall(Lyt.SnapToContent) end
   end
 
   function T.StartSleepingBag(extra)
@@ -2932,13 +2934,17 @@ do
     return true
   end
 
-  function T.StartTotalAdd()
+  function T.StartTotalAdd(extra)
     if not T.Enabled() then return nil end
+    extra = tostring(extra or "red"):lower():gsub("^%s+", ""):gsub("%s+$", "")
+    if extra == "" or extra == "xp" or extra == "rouge" then extra = "red" end
+    if extra == "bleu" or extra == "armes" or extra == "combat" then extra = "blue" end
+    if extra == "vert" or extra == "metier" or extra == "métier" or extra == "skill" then extra = "green" end
     T._on = T._on or {}
     T._on.totaladd = true
-    if ns.Slot and ns.Slot.PlayTotalAdd then pcall(ns.Slot.PlayTotalAdd, 1) end
+    if ns.Slot and ns.Slot.PlayTotalAdd then pcall(ns.Slot.PlayTotalAdd, 1, extra) end
     DriveFlask()
-    ns.Print(Tr["test : goutte dans la fiole (ajout au total)."])
+    ns.Print(Tr["test : goutte dans la fiole (ajout au total)."] .. " (" .. extra .. ")")
     return true
   end
 
@@ -2966,7 +2972,7 @@ do
     if id == "sleepingbag" then return T.StartSleepingBag(extra) end
     if id == "eating" then return T.StartEating(extra) end
     if id == "campfire" then return T.StartCampfire(extra) end
-    if id == "totaladd" then return T.StartTotalAdd() end
+    if id == "totaladd" then return T.StartTotalAdd(extra) end
     if id == "levelup" then return T.StartLevelUp() end
     if id == "flight" then return T.StartFlight() end
     if id == "transport" then return T.StartTransport() end
