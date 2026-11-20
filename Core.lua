@@ -2140,49 +2140,102 @@ function F.Sync(why)
     -- option coupée en vol : on reprend tout de suite, sans file
     F.SetTaxi(false, why or "option")
   end
-  F.WantPoll(F.OptionOn() and (taxi or F._taxi))
+  -- Le sondage reste toujours actif : à l'envol, UnitOnTaxi n'est souvent
+  -- pas encore vrai au moment de PLAYER_CONTROL_LOST.
+  F.EnsurePoll()
   return F.Paused()
 end
 
-function F.WantPoll(on)
-  if on then
-    F._pollOn = true
-    if F._pollFrame and F._pollFrame.SetScript then
-      pcall(F._pollFrame.SetScript, F._pollFrame, "OnUpdate", F._onUpdate)
-    end
-  else
-    F._pollOn = false
-    if F._pollFrame and F._pollFrame.SetScript then
-      pcall(F._pollFrame.SetScript, F._pollFrame, "OnUpdate", nil)
-    end
+F.RECHECK = { 0.1, 0.5, 1.5 }
+
+function F.ScheduleRecheck(why)
+  F._burst = F._burst or {}
+  -- UNIT_FLAGS peut se répéter : on plafonne la file
+  while #F._burst > 9 do table.remove(F._burst, 1) end
+  why = why or "recheck"
+  for _, d in ipairs(F.RECHECK) do
+    F._burst[#F._burst + 1] = { t = d, why = why .. ":+" .. tostring(d) }
   end
+  F.EnsurePoll()
+end
+
+-- Conservé pour compatibilité : n'arrête plus le sondage (il doit tourner au sol).
+function F.WantPoll(on)
+  if on == false then return F._pollFrame end
+  F._pollOn = true
+  return F.EnsurePoll()
 end
 
 function F.EnsurePoll()
-  if F._pollFrame or type(CreateFrame) ~= "function" then return F._pollFrame end
-  local f = CreateFrame("Frame")
+  if type(CreateFrame) ~= "function" then return F._pollFrame end
+  if F._pollFrame then
+    -- Un cadre caché ne reçoit pas OnUpdate : on le garde visible.
+    if F._pollFrame.Show then pcall(F._pollFrame.Show, F._pollFrame) end
+    if F._pollFrame.SetScript and F._onUpdate then
+      pcall(F._pollFrame.SetScript, F._pollFrame, "OnUpdate", F._onUpdate)
+    end
+    F._pollOn = true
+    return F._pollFrame
+  end
+  local ok, f = pcall(CreateFrame, "Frame", "DropamineFlightPoll")
+  if not (ok and f) then return nil end
   F._elapsed = 0
+  F._burst = F._burst or {}
   function F._onUpdate(_, dt)
-    if not F._pollOn then return end
-    F._elapsed = (F._elapsed or 0) + (tonumber(dt) or 0)
+    dt = tonumber(dt) or 0
+    local burst = F._burst
+    if burst and #burst > 0 then
+      local i = 1
+      while i <= #burst do
+        burst[i].t = (burst[i].t or 0) - dt
+        if burst[i].t <= 0 then
+          local why = burst[i].why
+          table.remove(burst, i)
+          F.Sync(why)
+        else
+          i = i + 1
+        end
+      end
+    end
+    F._elapsed = (F._elapsed or 0) + dt
     if F._elapsed < F.POLL then return end
     F._elapsed = 0
     F.Sync("poll")
   end
-  f:SetScript("OnUpdate", F._onUpdate)
+  if f.SetScript then pcall(f.SetScript, f, "OnUpdate", F._onUpdate) end
+  if f.Show then pcall(f.Show, f) end
   F._pollFrame = f
+  F._pollOn = true
   return f
 end
 
 if ns.On then
-  for _, ev in ipairs({ "PLAYER_CONTROL_LOST", "PLAYER_CONTROL_GAINED", "PLAYER_ENTERING_WORLD", "PLAYER_LOGIN" }) do
-    ns.On(ev, function()
-      HookItemInfoEvent()
-      F.EnsurePoll()
-      F.Sync(ev)
+  local function onFlightEvent(ev)
+    HookItemInfoEvent()
+    F.EnsurePoll()
+    F.Sync(ev)
+  end
+  for _, ev in ipairs({
+    "PLAYER_CONTROL_LOST", "PLAYER_CONTROL_GAINED",
+    "PLAYER_ENTERING_WORLD", "PLAYER_LOGIN",
+    "TAXIMAP_CLOSED",
+  }) do
+    ns.On(ev, function(event)
+      onFlightEvent(event or ev)
+      if ev == "PLAYER_CONTROL_LOST" or ev == "TAXIMAP_CLOSED" then
+        F.ScheduleRecheck(event or ev)
+      end
     end)
   end
+  ns.On("UNIT_FLAGS", function(event, unit)
+    if unit ~= "player" then return end
+    onFlightEvent("UNIT_FLAGS")
+    F.ScheduleRecheck("UNIT_FLAGS")
+  end)
 end
+
+-- Démarrer tout de suite, sans attendre LOGIN (et le cadre est affiché).
+F.EnsurePoll()
 
 ns.SlashExt = ns.SlashExt or {}
 ns.SlashExt.vol = function(rest)
