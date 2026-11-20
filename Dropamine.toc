@@ -3,7 +3,7 @@
 ## Notes: An OSRS-style Skills tab: all your skills at a glance, every +1 as it drops, and what levels up on your target.
 ## Notes-frFR: Le Skills tab façon OSRS : tes compétences d'un coup d'œil, chaque +1 qui tombe, et ce qui monte sur ta cible.
 ## Author: Raykuilu
-## Version: 3.6.0
+## Version: 3.6.1
 ## X-License: MIT
 ## IconTexture: Interface\AddOns\Dropamine\Media\Dropamine-Icon
 ## X-Curse-Project-ID: 1812422

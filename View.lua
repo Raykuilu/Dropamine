@@ -517,7 +517,9 @@ function V.PaintTile(t)
   if not t or not t.hlTex then return end
   local d = t.data
   local selected = d and UI:IsSelectedData(d)
-  local a = selected and UI.HL_SELECTED or (t._hover and UI.HL_HOVER) or nil
+  -- 3.6.1 : en barre (format allongé), pas d'aplat blanc sur la rangée
+  -- (fiole, « 1146 / 2460 », jauge). La case carrée est inchangée.
+  local a = (not t._wideOn) and (selected and UI.HL_SELECTED or (t._hover and UI.HL_HOVER) or nil) or nil
   local L = ns.NativeLook and ns.NativeLook.ProbeList and ns.NativeLook.ProbeList()
   local nh = L and L.highlight
   if nh and not t._hlNative then

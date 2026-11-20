@@ -177,6 +177,10 @@ local function newObj(class, name, parent)
   function f:SetTexelSnappingBias(v) self._texelBias = v end
   function f:GetFont() if self._font then return self._font[1], self._font[2], self._font[3] end end
   function f:SetButtonState(st, lock) self._bstate, self._block = st, lock end
+  function f:GetButtonState() return self._bstate or "NORMAL" end
+  function f:SetDrawLayer(layer, sub) self.layer, self.sublayer = layer, sub end
+  function f:LockHighlight() self._hlLocked = true end
+  function f:UnlockHighlight() self._hlLocked = nil end
   function f:SetVertexColor(r, g, b, a) self._vc = { r, g, b, a } end
   function f:GetVertexColor() local c = self._vc if c then return c[1], c[2], c[3], c[4] end return 1, 1, 1, 1 end
   function f:SetTexture(p) self._texSet = p if _G.__missingTex and type(p) == "string" and p:find(_G.__missingTex, 1, true) then return false end return true end
@@ -1142,7 +1146,7 @@ do
   local function popTimers() local n = #timers while #timers > 0 do local t = table.remove(timers, 1) t() end return n end
   local toc = io.open(addonDir .. "/Dropamine.toc"):read("*a")
   ok(toc:find("Progress.lua\nProgressUI.lua", 1, true), ".toc : ProgressUI.lua juste après Progress.lua")
-  ok(toc:find("## Version: 3.6.0", 1, true), ".toc : ## Version: 3.6.0")
+  ok(toc:find("## Version: 3.6.1", 1, true), ".toc : ## Version: 3.6.1")
   ok(type(PU) == "table" and type(PU.Toggle) == "function", "ns.ProgressUI.Toggle disponible")
   ok(PU.frame == nil, "fenêtre pas créée au chargement (construite au premier clic)")
   ok(PU.mini ~= nil, "mini-graphe préparé à PLAYER_LOGIN (hors combat)")
@@ -1347,15 +1351,32 @@ do
   for _, b in ipairs(ov.left.chart.bars) do if b:IsShown() then nBars = nBars + 1 end end
   ok(nBars == 30 and ov.left.title.text:find("30", 1, true), "pastille 30 j : 30 barres")
   PU.SetPeriod("session")
-  ok(PU.State().period == "session" and ov.left.title.text == L["Progression de la session"], "pastille Session")
+  ok(PU.State().period == "session", "pastille Session sélectionnée")
+  ok(ov.left.title.text == L["Progression de la session"] or ov.left.title.text == L["Session"],
+    "titre session entier (raccourci s'il chevauche les pastilles) : " .. tostring(ov.left.title.text))
   PU.SetMetric("xph") PU.SetMetric("total") PU.SetMetric("cat")
   ok(PU.lastError == nil, "pastilles Total / XP/h / Catégories sans erreur")
   PU.SetPeriod("d7")
+  -- 3.6.0 : le titre ne passe plus sous [Session] [7 j] [30 j]
+  local titleW = ov.left.title:GetStringWidth() or 0
+  local pillsLeft = (ov.left.period and ov.left.period.left or 0) + 3
+  ok(8 + titleW <= pillsLeft - 2, "titre d'histogramme sans chevauchement des pastilles (« " .. tostring(ov.left.title.text) .. " », " .. tostring(8 + titleW) .. " ≤ " .. tostring(pillsLeft - 2) .. ")")
+  ok(ov.left.title.text == L["Progression sur 7 jours"] or ov.left.title.text == L["7 jours"],
+    "titre 7 jours entier : " .. tostring(ov.left.title.text))
+  local recW = (ov.kpi[3]._w or 0) - 16
+  ok(ov.kpi[3].sub:GetStringWidth() <= recW, "records : libellé horaire entier dans la carte (« " .. tostring(ov.kpi[3].sub.text) .. " », " .. tostring(ov.kpi[3].sub:GetStringWidth()) .. " ≤ " .. tostring(recW) .. ")")
+  ok(not tostring(ov.kpi[3].sub.text):find("%.%.%.", 1), "records : pas de « … » de troncature")
   -- infobulle d'une barre
   local bar1 = ov.left.chart.bars[7]
   if bar1.scripts.OnEnter then bar1.scripts.OnEnter(bar1) ok(true, "survol d'une barre : infobulle") end
   if bar1.scripts.OnLeave then bar1.scripts.OnLeave(bar1) end
   ok(ov.right.curve ~= nil and PU.lastError == nil, "courbe de session (textures seules)")
+  PU.RenderCurve(ov.right.curve, { { t = 0, a = 0, b = 0 }, { t = 11 * 60, a = 9000, b = 6 } })
+  local xlab = ov.right.curve.xlab[3]
+  ok(xlab and tostring(xlab.text):find("11", 1, true), "courbe : dernière étiquette « 11 min » (" .. tostring(xlab and xlab.text) .. ")")
+  local xp = xlab and xlab.points and xlab.points[1]
+  ok(xp and xp[1] == "TOPRIGHT" and (xp[4] or 0) <= ov.right.curve.w, "« 11 min » ancré à droite, dans le cadre (x=" .. tostring(xp and xp[4]) .. " ≤ " .. tostring(ov.right.curve.w) .. ")")
+  ok(ov.right.curve.xlab[1] and ov.right.curve.xlab[1].points[1] and ov.right.curve.xlab[1].points[1][1] == "TOPLEFT", "« 0 min » ancré à gauche")
   ok(ov.bottom[1].head.text:find(L["Dernier succès"], 1, true) and ov.bottom[2].head.text:find(L["Meilleur spot actuel"], 1, true), "bas : dernier succès, meilleur spot")
   -- objectif : +5 / +10 / Éditer
   local g = ov.kpi[4]
@@ -1521,6 +1542,172 @@ do
   ok(#missing == 0, "enUS : toutes les chaînes traduites (" .. #missing .. " manquante(s)) " .. table.concat(missing, " | "):sub(1, 400))
   ok(PU.lastError == nil and PU.stats.errors == 0, "aucune erreur dans la fenêtre Progression (" .. tostring(PU.lastError) .. ")")
   ok(errs() == 0, "aucune erreur UI après la phase 2")
+end
+
+-- ===========================================================================
+print("== 3.6.0 : panneau principal — rafraîchissement regroupé (rang final)")
+do
+  -- L'animation « éclat » retient volontairement l'ancien chiffre jusqu'à
+  -- l'atterrissage : on la coupe ici pour isoler le throttle de peinture.
+  local wasFly = ns.Opt("flyAnim")
+  local wasDrops = ns.Opt("skillDrops")
+  if ns.SetOpt then ns.SetOpt("flyAnim", false) ns.SetOpt("skillDrops", false) end
+  if ns.Compact then ns.Compact.holds = {} end
+  if not (ns.Window and ns.Window.IsShown()) then slash("") end
+  UI:Refresh(true)
+  UI.pending = nil
+  if UI.timers and UI.timers.refresh then UI.timers.refresh:SetScript("OnUpdate", nil) end
+  local st = skill("Dépeçage")
+  local start = st.rank
+  local function tile()
+    for _, t in ipairs(UI.embed and UI.embed.tiles or {}) do
+      if t.data and t:IsShown() and (t.data.name == "Dépeçage" or t.data.skillName == "Dépeçage" or t.data.id == "skinning") then return t end
+    end
+  end
+  ok(tile() ~= nil and tile().countFS, "case Dépeçage visible")
+  -- Trois hausses dans la fenêtre de regroupement, aucun événement ensuite.
+  st.rank = start + 1
+  fire("SKILL_LINES_CHANGED")
+  fire("CHAT_MSG_SKILL")
+  st.rank = start + 2
+  fire("SKILL_LINES_CHANGED")
+  fire("CHAT_MSG_SKILL")
+  st.rank = start + 3
+  fire("SKILL_LINES_CHANGED")
+  fire("CHAT_MSG_SKILL")
+  local final = st.rank
+  local holder = UI.timers and UI.timers.refresh
+  ok(UI.pending == true and holder and holder.scripts.OnUpdate, "rafales dans la fenêtre : un seul rafraîchissement en attente")
+  holder.scripts.OnUpdate(holder, (UI.REFRESH_WAIT and UI.REFRESH_WAIT.idle or 0.10) * 0.4)
+  ok(UI.pending == true, "avant la fin de la fenêtre : pas encore peint")
+  holder.scripts.OnUpdate(holder, (UI.REFRESH_WAIT and UI.REFRESH_WAIT.idle or 0.10) + 0.05)
+  local t = tile()
+  ok(UI.pending ~= true, "après la fenêtre : file vidée")
+  ok(t and t.data and t.data.current == final, "données : rang final " .. tostring(final) .. " (affiché " .. tostring(t and t.data and t.data.current) .. ")")
+  ok(t and t.countFS and t.countFS.text == tostring(final), "case : rang final peint sans /reload (« " .. tostring(t and t.countFS and t.countFS.text) .. " »)")
+  -- En combat : même garantie avec la fenêtre 0,5 s.
+  UI.pending = nil
+  if holder then holder:SetScript("OnUpdate", nil) end
+  local combat = true
+  local prevCombat = _G.InCombatLockdown
+  _G.InCombatLockdown = function() return combat end
+  st.rank = final + 2
+  fire("SKILL_LINES_CHANGED")
+  fire("CHAT_MSG_SKILL")
+  local combatFinal = st.rank
+  holder = UI.timers and UI.timers.refresh
+  ok(UI.pending == true, "en combat : rafraîchissement regroupé")
+  holder.scripts.OnUpdate(holder, 0.20)
+  ok(UI.pending == true, "en combat : 0,2 s < 0,5 s, pas encore peint")
+  holder.scripts.OnUpdate(holder, 0.40)
+  t = tile()
+  ok(t and t.data and t.data.current == combatFinal and t.countFS and t.countFS.text == tostring(combatFinal),
+    "en combat : rang final peint après 0,5 s sans nouvel événement (« " .. tostring(t and t.countFS and t.countFS.text) .. " »)")
+  combat = false
+  _G.InCombatLockdown = prevCombat
+  -- remise en état
+  st.rank = start
+  UI._skillDiffPending = nil
+  if UI.timers and UI.timers.skilldiff then UI.timers.skilldiff:SetScript("OnUpdate", nil) end
+  UI:Refresh(true)
+  if ns.SetOpt then ns.SetOpt("flyAnim", wasFly) ns.SetOpt("skillDrops", wasDrops) end
+end
+
+-- ===========================================================================
+print("== 3.6.1 : barre Niveau total sans lavis blanc ==")
+do
+  local V, Wd = ns.View, ns.Wide
+  local function findTotal()
+    for _, t in ipairs(UI.embed and UI.embed.tiles or {}) do
+      if t.data and t.data.kind == "total" and t:IsShown() then return t end
+    end
+  end
+  local function findSquare()
+    for _, t in ipairs(UI.embed and UI.embed.tiles or {}) do
+      if t.data and t.data.kind ~= "total" and t:IsShown() and not t._wideOn and t.hoverTex then return t end
+    end
+  end
+  if not (ns.Window and ns.Window.IsShown()) then slash("") end
+  UI:Refresh(true)
+
+  -- Case isolée : même pièces qu'une tuile compacte, forcée en barre.
+  local t = V.NewTile(_G.UIParent)
+  UI:ResizeTile(t, 40, 40)
+  t.data = { kind = "total", current = 1146, apiMax = 2460, name = "Niveau total" }
+  t._wideOn, t._wideW, t._wideH = true, 200, 18
+  t:SetSize(200, 18)
+  Wd.Paint(t)
+  ok(t.hlTex and not t.hlTex:IsShown(), "Paint barre : pas d'aplat blanc (hlTex)")
+  ok(t.hoverTex and not t.hoverTex:IsShown(), "Paint barre : hoverTex caché")
+  ok(t.hoverTex.layer ~= "HIGHLIGHT", "Paint barre : hoverTex retiré de la strate HIGHLIGHT (auto-survol client)")
+  ok((t.hoverTex.alpha or 1) == 0, "Paint barre : hoverTex alpha 0")
+
+  t._hover = true
+  V.PaintTile(t)
+  ok(not t.hlTex:IsShown(), "survol barre : pas d'aplat blanc sur le texte / la jauge")
+  ok(not t.hoverTex:IsShown() and (t.hoverTex.alpha or 1) == 0, "survol barre : fiole pas blanche")
+  ok(t.hoverTex.layer ~= "HIGHLIGHT", "survol barre : strate HIGHLIGHT toujours désarmée")
+
+  -- Clic (état enfoncé + survol coincé, comme après ouverture de la fenêtre)
+  t:SetButtonState("PUSHED")
+  if t.LockHighlight then t:LockHighlight() end
+  t._hover = true
+  V.PaintTile(t)
+  ok(not t.hlTex:IsShown() and not t.hoverTex:IsShown(), "clic barre : rien ne reste blanc")
+  ok((t._bstate or "NORMAL") == "NORMAL", "clic barre : bouton remis à NORMAL")
+  ok(not t._hlLocked, "clic barre : LockHighlight levé")
+  t._hover = false
+  V.PaintTile(t)
+  ok(not t.hlTex:IsShown() and not t.hoverTex:IsShown(), "après le clic, souris partie : toujours pas de blanc")
+
+  -- Infobulle toujours disponible
+  local tipOk = pcall(Wd.ShowBarTip, t, true)
+  ok(tipOk, "barre : infobulle au survol toujours disponible")
+
+  -- Retour en case : le survol blanc reprend
+  Wd.Unwide(t)
+  ok(not t._wideOn, "Unwide : plus en barre")
+  ok(t.hoverTex.layer == "HIGHLIGHT", "retour case : hoverTex de nouveau en HIGHLIGHT")
+  ok((t.hoverTex.alpha or 1) == 1, "retour case : alpha hover restauré")
+  t._hover = true
+  V.PaintTile(t)
+  ok(t.hoverTex:IsShown(), "retour case : le survol éclaire à nouveau la case")
+  t._hover = false
+  V.PaintTile(t)
+  ok(not t.hoverTex:IsShown(), "retour case : fin du survol, plus d'éclairage")
+
+  -- Grille réelle : si le total est en barre, même garantie ; la case carrée reste éclairée.
+  local live = findTotal()
+  if live and live._wideOn then
+    live._hover = true
+    V.PaintTile(live)
+    ok(not (live.hlTex and live.hlTex:IsShown()) and not (live.hoverTex and live.hoverTex:IsShown()),
+      "grille : survol de la barre réelle sans lavis blanc")
+    if live.scripts and live.scripts.OnClick then
+      live.scripts.OnClick(live, "LeftButton")
+      ok(not (live.hlTex and live.hlTex:IsShown()) and not (live.hoverTex and live.hoverTex:IsShown()),
+        "grille : clic sur la barre réelle sans lavis blanc")
+      if ns.ProgressUI and ns.ProgressUI.IsShown and ns.ProgressUI.IsShown() then ns.ProgressUI.Close() end
+    end
+    live._hover = false
+    V.PaintTile(live)
+  else
+    ok(true, "grille : total pas en barre ici (cas isolé déjà testé)")
+  end
+  local sq = findSquare()
+  if sq then
+    local was = sq._hover
+    sq._hover = true
+    V.PaintTile(sq)
+    ok(sq.hoverTex and sq.hoverTex:IsShown(), "case carrée : le survol éclaire toujours la case")
+    sq._hover = false
+    V.PaintTile(sq)
+    ok(not sq.hoverTex:IsShown(), "case carrée : fin du survol, plus d'éclairage")
+    sq._hover = was
+    V.PaintTile(sq)
+  else
+    ok(false, "case carrée introuvable pour le témoin de survol")
+  end
 end
 
 print(failures == 0 and "\n3.6.0 : TOUS LES TESTS PASSENT" or ("\n3.6.0 : " .. failures .. " ÉCHEC(S)"))

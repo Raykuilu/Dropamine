@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.6.1
+- Wide (bar) layout: the total row (flask, "total / max" text and bar) no longer turns white on hover or click. The square tile keeps its usual hover highlight.
+- Progress window: the chart title ("7-day progress" / "30-day progress") is fitted to the space and no longer clipped; the records line ("Best session +X · Best hour +X") no longer gets cut off and switches to a short form ("Sess. +X · Hour +X") when space is tight.
+- Progress window: chart labels stay inside the frame (right margin, first and last day labels aligned with the edges).
+
+---
+
+- Format allongé (barre) : la rangée du total (fiole, texte « total / max » et barre) ne blanchit plus au survol ni au clic. La case carrée garde sa surbrillance habituelle au survol.
+- Fenêtre Progression : le titre du graphe (« Progression sur 7 jours » / « sur 30 jours ») s'ajuste à la place et n'est plus coupé ; la ligne des records (« Max session +X · Max heure +X ») n'est plus rognée et passe en version courte (« Sess. +X · Heure +X ») quand la place manque.
+- Fenêtre Progression : les libellés du graphe restent dans le cadre (marge à droite, premier et dernier jour alignés sur les bords).
+
 ## 3.6.0
 - New **Progress window** (ProgressUI.lua): left-click the flask / total tile (Compact and UI views), the total-level bar (Wide view) or the total banner, or type /drop progress (also /drop progression). The window can be dragged, stays on screen, and closes with the X or Escape. It follows the Flare, Light and Classic themes.
 - Header with the flask, your name, class and level, and a **Share** button. Share puts your session recap in the chat input box; nothing is sent until you press Enter. Under it, a total banner (total / max) with the same 3-segment bar as the Wide view (level, weapons & defense, professions, with the same minimum widths) and one badge per category.
