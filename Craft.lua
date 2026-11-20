@@ -477,14 +477,19 @@ function Craft.Notify(gains)
     lines[i] = Craft.Paint(e.diff, Craft.RecipeToastTitle(e.n, e.recipe and e.recipe.name))
   end
   local g1 = gains[1]
-  local f = ns.UI:SpawnDrop(g1.recipe.icon, lines[1], lines[2], nil, nil, nil, {
+  -- Icône du métier (pas l'icône d'objet de la recette : sac, cuir, composant).
+  local opts = {
     kind = "craft", hint = lines[3],
+    skillId = g1.skill,
     toastData = {
       kind = "craft", skill = g1.skill, entries = gains,
       recipe = g1.recipe, n = g1.n, diff = g1.diff,
       item = g1.recipe and (g1.recipe.itemID or g1.recipe.item),
     },
-  })
+  }
+  local icon = (ns.UI and ns.UI.ResolveToastIcon and ns.UI.ResolveToastIcon(nil, opts))
+    or (ns.CATALOG_BY_ID and ns.CATALOG_BY_ID[g1.skill] and ns.CATALOG_BY_ID[g1.skill].icon)
+  local f = ns.UI:SpawnDrop(icon, lines[1], lines[2], nil, nil, nil, opts)
   Craft.lastNotify = lines
   return f
 end

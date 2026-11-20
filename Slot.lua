@@ -10,8 +10,8 @@ local Tr = ns.L
 local S = {}
 ns.Slot = S
 
-S.ORDER_SWORD   = { "death", "flight", "combat", "afk", "bags", "fishing", "swimming", "durability", "rested" }
-S.ORDER_DEFAULT = { "death", "flight", "afk", "bags", "fishing", "swimming", "durability", "rested" }
+S.ORDER_SWORD   = { "death", "flight", "combat", "afk", "bags", "fishing", "swimming", "durability", "sleepingbag", "rested" }
+S.ORDER_DEFAULT = { "death", "flight", "afk", "bags", "fishing", "swimming", "durability", "sleepingbag", "rested" }
 
 local MEDIA = "Interface\\AddOns\\Dropamine\\Media\\"
 S.SHEETS = {
@@ -25,10 +25,17 @@ S.SHEETS = {
 }
 S.TRAINER_SHEET = MEDIA .. "Trainer-Sheet"
 S.COMBAT_A_SHEET = MEDIA .. "Combat-A-Sheet"
+S.WELL_RESTED_SPELL = 429959
+S.BAG_ICONS = {
+  [1] = MEDIA .. "SleepingBag-A-1",
+  [2] = MEDIA .. "SleepingBag-A-2",
+  [3] = MEDIA .. "SleepingBag-A-3",
+}
 S.OPT_KEYS = {
   death = "slotDeath", flight = "slotFlight",
   afk = "slotAfk", bags = "slotBags", fishing = "slotFishing", swimming = "slotSwimming",
   durability = "slotDurability",
+  sleepingbag = "slotSleepingBag",
   rested = "slotRested", trainer = "slotTrainer", eating = "slotEating",
 }
 
@@ -122,12 +129,30 @@ end
 
 function S.SetSim(id, on)
   if on then S._sim[id] = true else S._sim[id] = nil end
+  if id == "sleepingbag" and not on then
+    S._simBagStacks = nil
+    S._bagBuilding, S._bagPeak = false, 0
+  end
+end
+
+function S.SetSleepingBagSim(stacks)
+  stacks = N(stacks)
+  if not stacks or stacks < 1 then
+    S.SetSim("sleepingbag", false)
+    return
+  end
+  S._simBagStacks = math.max(1, math.min(3, math.floor(stacks + 0.5)))
+  S._bagBuilding = true
+  S._bagPeak = S._simBagStacks
+  S.SetSim("sleepingbag", true)
 end
 
 function S.ClearSim()
   S._sim = {}
   S._jolt = 0
   S._fishUntil = 0
+  S._simBagStacks = nil
+  S._bagBuilding, S._bagPeak = false, 0
 end
 
 function S.IsSim(id)
@@ -180,13 +205,18 @@ local function LooksLikeFishing(name, icon)
   return false
 end
 
-function S.LiveFishing()
-  if S._sim.fishing then return true end
+function S.RawFishing()
   if type(UnitChannelInfo) == "function" then
     local name, rank, display, icon = Call(UnitChannelInfo, "player")
     if LooksLikeFishing(name, icon) or LooksLikeFishing(display, icon) then return true end
   end
   return false
+end
+
+function S.LiveFishing()
+  if S._sim.fishing then return true end
+  if not S._auraFresh then S.ScanPlayerAuras(true) end
+  return S._fishOn and true or false
 end
 
 function S.LiveSwimming()
@@ -287,7 +317,8 @@ end
 
 function S.LiveBags()
   if S._sim.bags then return true end
-  local free = S.FreeBagSlots()
+  -- Compte mis en cache par CheckBags (BAG_UPDATE_DELAYED), pas à chaque Tick.
+  local free = S._bagsLastFree
   if free == nil then return false end
   return free == 0
 end
@@ -491,10 +522,279 @@ function S.FoodDrinkAura()
   return nil
 end
 
+-- Cache d'auras / canal : on ne rescane que sur UNIT_AURA (joueur) ou
+-- début/fin de canal, après un court regroupement. Live* lit le cache.
+S.AURA_COALESCE = 0.15
+
+function S.ScanPlayerAuras(force)
+  if not force and S._auraFresh then return S._eatName, S._eatSpell end
+  S._auraFresh = true
+  S._auraAt = Now()
+  S._auraScans = (S._auraScans or 0) + 1
+  local ok, name, spell = pcall(function()
+    local n, s = S.FoodDrinkAura()
+    return n, s
+  end)
+  if ok then
+    S._eatName, S._eatSpell = name, spell
+  else
+    S._eatName, S._eatSpell = nil, nil
+  end
+  local okR, stacks = pcall(S.WellRestedAura)
+  S._restedStacks = (okR and stacks) or 0
+  local okF, fish = pcall(S.RawFishing)
+  S._fishOn = okF and fish and true or false
+  local okB, using = pcall(S.SleepingBagUsing)
+  S._bagUsing = okB and using and true or false
+  return S._eatName, S._eatSpell
+end
+
+function S.InvalidateAuras()
+  S._auraFresh = false
+end
+
+function S.FlushAuras(reason)
+  S._auraPending = false
+  S._auraFresh = false
+  S.ScanPlayerAuras(true)
+  pcall(S.Refresh, reason or "UNIT_AURA")
+end
+
+function S.OnPlayerAura(reason)
+  -- Unité déjà filtrée (player). Regroupe les salves d'UNIT_AURA.
+  S._auraPending = true
+  local wait = S.AURA_COALESCE or 0.15
+  local C = _G.C_Timer
+  if type(C) == "table" and type(C.After) == "function" then
+    if S._auraTimer then return end
+    S._auraTimer = true
+    pcall(C.After, wait, function()
+      S._auraTimer = nil
+      if S._auraPending then S.FlushAuras(reason or "UNIT_AURA") end
+    end)
+    return
+  end
+  -- Harnais / pas de C_Timer : un seul scan par fenêtre de regroupement.
+  local now = Now()
+  if S._auraAt and (now - S._auraAt) < wait and S._auraFresh then
+    return
+  end
+  S.FlushAuras(reason or "UNIT_AURA")
+end
+
+
 function S.LiveEating()
   if S._sim.eating or S._sim.eat or S._sim.repas then return true end
-  local ok, found = pcall(S.FoodDrinkAura)
-  return ok and found and true or false
+  if not S._auraFresh then S.ScanPlayerAuras(true) end
+  return S._eatName and true or false
+end
+
+-- Aura « Bien reposé » / Well-Rested (sort 429959), 1 à 3 charges.
+-- +1 % d'XP gagnée par charge, une charge par minute dans le sac.
+local WELL_RESTED_NAMES = {
+  ["bien repose"] = true, ["bien reposé"] = true, ["bien reposée"] = true,
+  ["well-rested"] = true, ["well rested"] = true, wellrested = true,
+}
+
+local function AuraStacks(data)
+  if type(data) ~= "table" then return nil end
+  for _, k in ipairs({ "applications", "stacks", "stackCount", "charges", "count", "Applications" }) do
+    local n = N(data[k])
+    if n and n > 0 then return n end
+  end
+  return nil
+end
+
+local function IsWellRestedName(name)
+  local fold = SafeFold(name)
+  if fold == "" then return false end
+  if WELL_RESTED_NAMES[fold] then return true end
+  if fold:find("bien repos", 1, true) then return true end
+  if fold:find("well%-rested") or fold:find("well rested", 1, true) then return true end
+  return false
+end
+
+function S.WellRestedAura()
+  -- 1) Par identifiant de sort (même si le nom est secret).
+  local C = _G.C_UnitAuras
+  if type(C) == "table" and type(C.GetPlayerAuraBySpellID) == "function" then
+    local ok, data = pcall(C.GetPlayerAuraBySpellID, S.WELL_RESTED_SPELL)
+    if ok and type(data) == "table" then
+      local stacks = AuraStacks(data) or 1
+      return math.max(1, math.min(3, stacks))
+    end
+  end
+  -- 2) AuraUtil par nom FR/EN.
+  local A = _G.AuraUtil
+  if type(A) == "table" and type(A.FindAuraByName) == "function" then
+    local names = { "Bien reposé", "Bien repose", "Well-Rested", "Well Rested" }
+    if type(_G.GetSpellInfo) == "function" then
+      local ok, nm = pcall(_G.GetSpellInfo, S.WELL_RESTED_SPELL)
+      if ok and SafeStr(nm) then names[#names + 1] = nm end
+    end
+    for i = 1, #names do
+      local ok, hit = pcall(A.FindAuraByName, names[i], "player", "HELPFUL")
+      if ok and hit then
+        local stacks = 1
+        if type(hit) == "table" then stacks = AuraStacks(hit) or 1 end
+        return math.max(1, math.min(3, stacks))
+      end
+    end
+  end
+  -- 3) Scan des auras (charges dans le 3e / 4e retour de UnitAura).
+  local holes = 0
+  for i = 1, 40 do
+    local name, spellId, present = AuraAt(i)
+    if not present then
+      holes = holes + 1
+      if holes >= 3 then break end
+    else
+      holes = 0
+      local id = N(spellId)
+      if (id and id == S.WELL_RESTED_SPELL) or IsWellRestedName(name) then
+        local stacks = 1
+        local fn = _G.UnitAura or _G.UnitBuff
+        if type(fn) == "function" then
+          local ok, r = pcall(function() return { fn("player", i, "HELPFUL") } end)
+          if ok and type(r) == "table" then
+            for _, idx in ipairs({ 3, 4, 2 }) do
+              local n = N(r[idx])
+              if n and n >= 1 and n <= 20 then stacks = n break end
+            end
+          end
+        end
+        local C = _G.C_UnitAuras
+        if type(C) == "table" and type(C.GetAuraDataByIndex) == "function" then
+          local ok, data = pcall(C.GetAuraDataByIndex, "player", i, "HELPFUL")
+          if ok then stacks = AuraStacks(data) or stacks end
+        end
+        return math.max(1, math.min(3, stacks))
+      end
+    end
+  end
+  return 0
+end
+
+function S.SleepingBagUsing()
+  -- Canal ou assis / immobile pendant la construction du buff.
+  local ch = _G.UnitChannelInfo
+  if type(ch) == "function" then
+    local ok, r = pcall(function() return { ch("player") } end)
+    if ok and type(r) == "table" then
+      local nm = SafeStr(r[1]) or SafeStr(r[4])
+      local fold = SafeFold(nm)
+      if fold ~= "" and (fold:find("sac de couchage", 1, true) or fold:find("sleeping bag", 1, true)
+        or fold:find("well%-rested") or fold:find("bien repos", 1, true)) then
+        return true
+      end
+    end
+  end
+  if type(_G.IsSitting) == "function" and Call(_G.IsSitting) and (S._bagBuilding or (S._restedStacks or 0) > 0) then
+    return true
+  end
+  return false
+end
+
+function S.SleepingBagStacks()
+  if S._sim.sleepingbag or S._simBagStacks then
+    local n = N(S._simBagStacks) or 1
+    return math.max(1, math.min(3, math.floor(n + 0.5)))
+  end
+  if not S._auraFresh then S.ScanPlayerAuras(true) end
+  local stacks = N(S._restedStacks) or 0
+  if stacks >= 1 then return math.min(3, stacks) end
+  return 0
+end
+
+function S.NotifySleepingBagMiss(peak)
+  peak = math.max(1, math.min(2, math.floor((N(peak) or 1) + 0.5)))
+  if not (ns.UI and ns.UI.SpawnDrop) then return nil end
+  local title = string.format(Tr["Sac de couchage : %d/3 %%"], peak)
+  local sub = string.format(Tr["%d %% manqué"], 3 - peak)
+  local icon = S.BAG_ICONS[peak] or S.BAG_ICONS[1]
+  local ok, f = pcall(ns.UI.SpawnDrop, ns.UI, icon, title, sub, nil, nil, nil, {
+    kind = "sleepingbag", hint = Tr["Bien reposé"], dedupeKey = "sleepingbag-miss",
+  })
+  return ok and f or nil
+end
+
+function S.EndSleepingBag(why)
+  if not S._bagBuilding then
+    S._bagPeak = 0
+    return
+  end
+  local peak = N(S._bagPeak) or 0
+  S._bagBuilding = false
+  if peak >= 1 and peak < 3 and not S._sim.sleepingbag then
+    pcall(S.NotifySleepingBagMiss, peak)
+  end
+  -- En simulation, le toast « miss » est déclenché par /drop test sleepingbag miss.
+  if not S._sim.sleepingbag then S._bagPeak = 0 end
+end
+
+function S.SyncSleepingBag()
+  if S._sim.sleepingbag then return end
+  local combat = (ns.InCombat and ns.InCombat()) or (type(_G.UnitAffectingCombat) == "function" and Call(_G.UnitAffectingCombat, "player"))
+  if combat then
+    if S._bagBuilding then S.EndSleepingBag("combat") end
+    return
+  end
+  local stacks = 0
+  if S._auraFresh then
+    stacks = N(S._restedStacks) or 0
+  else
+    -- pas de rescan ici : OnPlayerAura / le premier Live* s'en charge
+    stacks = N(S._restedStacks) or 0
+  end
+  if stacks > 3 then stacks = 3 end
+  local using = S._bagUsing
+  if not S._auraFresh then
+    -- au besoin, un scan unique (login)
+    S.ScanPlayerAuras(true)
+    stacks = N(S._restedStacks) or 0
+    using = S._bagUsing
+  end
+  -- Mouvement : on quitte le sac.
+  if S._bagBuilding then
+    local speed
+    if type(_G.GetUnitSpeed) == "function" then speed = Call(_G.GetUnitSpeed, "player") end
+    if N(speed) and speed > 0 then
+      S.EndSleepingBag("move")
+      return
+    end
+    if type(_G.IsSitting) == "function" then
+      local sit = Call(_G.IsSitting)
+      if sit == false and not using then
+        S.EndSleepingBag("stand")
+        return
+      end
+    end
+  end
+  if stacks > (S._bagPeak or 0) then
+    S._bagBuilding = true
+    S._bagPeak = stacks
+  elseif using and stacks >= 1 then
+    S._bagBuilding = true
+    S._bagPeak = math.max(S._bagPeak or 0, stacks)
+  end
+  if S._bagBuilding and not using and stacks < (S._bagPeak or 0) then
+    S.EndSleepingBag("leave")
+    return
+  end
+  if S._bagBuilding and not using and stacks == 0 then
+    S.EndSleepingBag("leave")
+  end
+end
+
+function S.LiveSleepingBag()
+  if S._sim.sleepingbag then return true end
+  if S.Opt and not S.Opt("slotSleepingBag") then return false end
+  local combat = (ns.InCombat and ns.InCombat()) or (type(_G.UnitAffectingCombat) == "function" and Call(_G.UnitAffectingCombat, "player"))
+  if combat then return false end
+  local stacks = S.SleepingBagStacks()
+  if S._bagBuilding and stacks >= 1 then return true end
+  if stacks >= 1 and (S._bagUsing or S._bagBuilding) then return true end
+  return false
 end
 
 function S.Want(id)
@@ -511,6 +811,7 @@ function S.Want(id)
   if id == "rested" then return S.LiveRested() end
   if id == "trainer" then return S.LiveTrainer() end
   if id == "eating" then return S.LiveEating() end
+  if id == "sleepingbag" then return S.LiveSleepingBag() end
   return false
 end
 
@@ -622,16 +923,168 @@ function S.TransformWidths(widths, track, fill)
       end
     end
   end
-  return { outR, outB, outG }, p, grey, drain
+  local out = S._widthOut
+  if not out then out = { outR, outB, outG } S._widthOut = out
+  else out[1], out[2], out[3] = outR, outB, outG end
+  return out, p, grey, drain
+end
+
+function S.FillRatios(t)
+  local Wd = ns.Wide
+  local last = Wd and Wd.last
+  local widths, track
+  if last and last.widths and last.track and last.track > 0 then
+    widths, track = last.widths, last.track
+  else
+    local snap = ns.UI and ns.UI.snapshot
+    local segs = (snap and snap.segments)
+      or (ns.ComputeTotalSegments and ns.ComputeTotalSegments(snap and snap.tiles))
+      or {}
+    local d = t and t.data
+    local cur = (d and (N(d.current) or N(d.total)))
+      or (snap and (N(snap.total) or N(snap.ficTotal))) or 0
+    local mx = (d and (N(d.apiMax) or N(d.max) or N(d.totalMax)))
+      or (snap and (N(snap.totalMax) or N(snap.ficMax))) or N(ns.TOTAL_MAX) or 2460
+    if Wd and Wd.SegmentWidths then
+      widths = Wd.SegmentWidths(segs, 100, cur, mx)
+      track = 100
+    else
+      local p = (mx > 0) and math.max(0, math.min(1, cur / mx)) or 0
+      widths, track = { 0, 0, p * 100 }, 100
+    end
+  end
+  return S.TransformWidths(widths, track, S.fill)
+end
+
+function S.EnsureGridFill(t)
+  if not t then return nil end
+  local _, content = S.PlaceIconClip(t)
+  local parent = content or t.icon or t
+  if t._gFill then
+    if t._gFill.SetParent and parent and t._gFill.GetParent and t._gFill:GetParent() ~= parent then
+      pcall(t._gFill.SetParent, t._gFill, parent)
+    end
+    return t._gFill
+  end
+  local ok, f = pcall(CreateFrame, "Frame", nil, parent)
+  if not (ok and f) then return nil end
+  if f.EnableMouse then pcall(f.EnableMouse, f, false) end
+  local function tex(layer)
+    if type(f.CreateTexture) ~= "function" then return nil end
+    return f:CreateTexture(nil, layer or "ARTWORK")
+  end
+  f.red, f.blue, f.green, f.wave = tex("ARTWORK"), tex("ARTWORK"), tex("ARTWORK"), tex("OVERLAY")
+  local waveTex = (ns.Rested and ns.Rested.WAVE_TEX) or "Interface\AddOns\Dropamine\Media\Dropamine-Wave"
+  if f.wave and f.wave.SetTexture then pcall(f.wave.SetTexture, f.wave, waveTex) end
+  t._gFill = f
+  return f
+end
+
+function S.TickFlaskWave(dt)
+  local t = S.FlaskTile and S.FlaskTile() or (ns.Wide and ns.Wide.TotalTile and ns.Wide.TotalTile())
+  local e = t and t._gFill
+  if not (e and e.wave) then return end
+  if e.wave.IsShown and not e.wave:IsShown() then return end
+  e.u = (e.u or 0) + (N(dt) or 0) / 2.4
+  if e.u > 1 then e.u = e.u - math.floor(e.u) end
+  if e.wave.SetTexCoord then
+    local span = (ns.Rested and ns.Rested.WAVE_U) or 0.5
+    local u = e.u * span
+    pcall(e.wave.SetTexCoord, e.wave, u, 0, u + span, 1)
+  end
+end
+
+function S.ApplyGridFill(t)
+  t = t or S.FlaskTile()
+  if not t then return end
+  -- En combat le liquide rouge/bleu prend le relais.
+  local fill = S.fill or {}
+  local combatP = math.max(0, math.min(1, (N(fill.p) or 0) * (N(fill.drain) or 1)))
+  if combatP > 0.01 and S.CombatLiquidOn and S.CombatLiquidOn() then
+    if t._gFill and t._gFill.Hide then t._gFill:Hide() end
+    return
+  end
+  local gf = S.EnsureGridFill(t)
+  if not gf then return end
+  local clip, content, w, h = S.PlaceIconClip(t)
+  w, h = w or 16, h or 16
+  if gf.SetParent and content and gf._clipParent ~= content then pcall(gf.SetParent, gf, content) end
+  if S.SetSizeIf(gf, w, h) or gf._clipParent ~= (content or clip) then
+    if gf.ClearAllPoints then pcall(gf.ClearAllPoints, gf) end
+    if gf.SetPoint then pcall(gf.SetPoint, gf, "BOTTOMLEFT", content or clip, "BOTTOMLEFT", 0, 0) end
+    gf._clipParent = content or clip
+  end
+  local out, p, grey, drain = S.FillRatios(t)
+  local track = 0
+  for i = 1, 3 do track = track + (out[i] or 0) end
+  -- Si TransformWidths a renvoyé les largeurs déjà en px, on se cale sur la somme.
+  local last = ns.Wide and ns.Wide.last
+  local denom = (last and last.track and last.track > 0 and last.track) or 100
+  local frac = math.max(0, math.min(1, (track / denom) * (N(drain) or 1)))
+  local inset = math.max(1, w * 0.18)
+  local baseY = math.max(0, h * 0.10)
+  local bodyH = math.max(1, (h * 0.72) * math.max(frac, 0.02))
+  if S.Active() == "rested" then
+    bodyH = bodyH + 0.03 * h * math.sin((S._phase or 0) * 2 * math.pi)
+  end
+  bodyH = math.max(1, math.min(h * 0.82, bodyH))
+  if baseY + bodyH > h then bodyH = math.max(1, h - baseY) end
+  local colors = (ns.Wide and ns.Wide.SEG_COLORS) or {
+    { 0.616, 0.278, 0.227, 1 }, { 0.329, 0.408, 0.604, 1 }, { 0.310, 0.498, 0.243, 1 }
+  }
+  local GREY = S.GREY or { 0.42, 0.42, 0.40 }
+  local layers = { gf.red, gf.blue, gf.green }
+  local y = baseY
+  local sum = math.max(0.0001, track)
+  for i = 1, 3 do
+    local tex = layers[i]
+    local share = (out[i] or 0) / sum
+    local hh = bodyH * share
+    local c = colors[i] or { 1, 1, 1, 1 }
+    local r = (c[1] or 1) + (GREY[1] - (c[1] or 1)) * (grey or 0)
+    local g = (c[2] or 1) + (GREY[2] - (c[2] or 1)) * (grey or 0)
+    local b = (c[3] or 1) + (GREY[3] - (c[3] or 1)) * (grey or 0)
+    local a = (c[4] or 1) * 0.82
+    if not tex or hh < 0.5 then
+      if tex and tex.Hide then tex:Hide() end
+    else
+      local tw = math.max(1, w - inset * 2)
+      S.PlaceClippedTex(tex, gf, tw, hh, inset, y)
+      if tex.SetTexture then pcall(tex.SetTexture, tex, "Interface\Buttons\WHITE8X8") end
+      if tex.SetVertexColor then pcall(tex.SetVertexColor, tex, r, g, b, a) end
+      if tex.Show then tex:Show() end
+      y = y + hh
+    end
+  end
+  if gf.wave then
+    local wy = math.max(0, y - math.max(1, h * 0.08))
+    local wh = math.max(1, h * 0.10)
+    if wy + wh > h then wy = math.max(0, h - wh) end
+    S.PlaceClippedTex(gf.wave, gf, math.max(1, w - inset * 2), wh, inset, wy)
+    S.TickFlaskWave(0)
+    if gf.wave.Show then gf.wave:Show() end
+  end
+  local mask = S.IconMaskFor(t)
+  if mask then
+    local function maskTex(tex)
+      if tex and tex.AddMaskTexture then pcall(tex.AddMaskTexture, tex, mask) end
+    end
+    maskTex(gf.red) maskTex(gf.blue) maskTex(gf.green) maskTex(gf.wave)
+  end
+  if t.icon and t.icon.Show then t.icon:Show() end
+  if gf.Show then gf:Show() end
 end
 
 function S.ApplyFlaskFill(t)
   local Wd = ns.Wide
-  if not (Wd and Wd.EnsureSegs) then return end
+  if not (Wd and Wd.EnsureSegs) then
+    t = t or S.FlaskTile()
+    if t and not t._wideOn then S.ApplyGridFill(t) end
+    return
+  end
   t = t or S.FlaskTile() or (Wd.TotalTile and Wd.TotalTile())
   if not t then return end
-  -- Hors barre large : pas de segments horizontaux (le liquide combat / la vague
-  -- se peignent dans l'icône). On cache d'éventuels reliquats.
+  -- Hors barre large : liquide + vague dans l'icône officielle (jamais un puits vide).
   if not t._wideOn then
     local pseg = t._pseg or (Wd.EnsureSegs and Wd.EnsureSegs(t))
     if pseg and pseg.segs then
@@ -639,8 +1092,10 @@ function S.ApplyFlaskFill(t)
         if pseg.segs[i] and pseg.segs[i].Hide then pseg.segs[i]:Hide() end
       end
     end
+    S.ApplyGridFill(t)
     return
   end
+  if t._gFill and t._gFill.Hide then t._gFill:Hide() end
   local last = Wd.last
   if not last or not last.widths or not last.track then return end
   local pseg = Wd.EnsureSegs(t)
@@ -686,11 +1141,16 @@ local function TexCoord(i, frames, cols, rows)
 end
 S.TexCoord = TexCoord
 
+local function HideBagIcon(t)
+  if t and t._bagIcon and t._bagIcon.Hide then t._bagIcon:Hide() end
+end
+
 local function HideSymbol(t)
   if t and t._hg then
     if t._hg.ClearAllPoints and t.icon then pcall(t._hg.ClearAllPoints, t._hg) pcall(t._hg.SetAllPoints, t._hg, t.icon) end
     if t._hg.Hide then t._hg:Hide() end
   end
+  HideBagIcon(t)
   if t and t.icon and (not ns.Flight or (ns.Flight._vis or 0) <= 0) then
     if t.icon.Show then t.icon:Show() end
     if t.icon.SetAlpha then t.icon:SetAlpha(1) end
@@ -724,6 +1184,41 @@ function S.ApplySheet(t, id)
   if h.Show then h:Show() end
   if t.icon and t.icon.Hide then t.icon:Hide() end
   return h
+end
+
+function S.EnsureBagIcon(t, parent)
+  if t._bagIcon then
+    if parent and t._bagIcon.SetParent then pcall(t._bagIcon.SetParent, t._bagIcon, parent) end
+    return t._bagIcon
+  end
+  parent = parent or t
+  if not (parent and type(parent.CreateTexture) == "function") then return nil end
+  local tex = parent:CreateTexture(nil, "ARTWORK", nil, 5)
+  if not tex then return nil end
+  t._bagIcon = tex
+  return tex
+end
+
+-- Pictogramme style A (1 / 2 / 3 bandes), cadré dans l'icône (barre et grille).
+function S.ApplySleepingBag(t)
+  if not t then return nil end
+  local step = S.SleepingBagStacks()
+  if step < 1 then step = 1 end
+  if step > 3 then step = 3 end
+  local path = S.BAG_ICONS[step] or S.BAG_ICONS[1]
+  t._bagStep = step
+  local clip, content, w, h = S.PlaceIconClip(t)
+  local parent = content or clip or t.icon or t
+  local tex = S.EnsureBagIcon(t, parent)
+  if not tex then return nil end
+  S.PlaceClippedTex(tex, parent, w or 16, h or 16, 0, 0)
+  if tex.SetTexture then pcall(tex.SetTexture, tex, path) end
+  if tex.SetTexCoord then pcall(tex.SetTexCoord, tex, 0, 1, 0, 1) end
+  if tex.SetAlpha then pcall(tex.SetAlpha, tex, 1) end
+  if tex.Show then tex:Show() end
+  if t.icon and t.icon.Hide then t.icon:Hide() end
+  if t._hg and t._hg.Hide then t._hg:Hide() end
+  return tex
 end
 
 -- Cadre de rognage (ScrollFrame) calé dans l'icône, en retrait du cadre bronze /
@@ -793,31 +1288,48 @@ function S.EnsureIconClip(t)
   return clip, clip._content
 end
 
+-- SetSize seulement si la taille a changé (évite le coût chaque image).
+function S.SetSizeIf(obj, w, h)
+  if not obj then return false end
+  w, h = N(w), N(h)
+  if not w or not h then return false end
+  if obj._szW and obj._szH and math.abs(obj._szW - w) < 0.5 and math.abs(obj._szH - h) < 0.5 then
+    return false
+  end
+  if obj.SetSize then pcall(obj.SetSize, obj, w, h) end
+  if obj.SetWidth then pcall(obj.SetWidth, obj, w) end
+  if obj.SetHeight then pcall(obj.SetHeight, obj, h) end
+  obj._szW, obj._szH = w, h
+  return true
+end
+
 function S.PlaceIconClip(t)
   if not t then return nil end
   local clip, content = S.EnsureIconClip(t)
   if not clip then return nil end
   local w, h, anchor, inset = S.IconInnerSize(t)
-  if clip.ClearAllPoints then pcall(clip.ClearAllPoints, clip) end
-  -- Taille posée explicitement : on ne laisse pas un défaut 100×50 recouvrir la fiole.
-  if clip.SetSize then pcall(clip.SetSize, clip, w, h) end
-  if clip.SetWidth then pcall(clip.SetWidth, clip, w) end
-  if clip.SetHeight then pcall(clip.SetHeight, clip, h) end
-  if clip.SetPoint and anchor then
-    pcall(clip.SetPoint, clip, "CENTER", anchor, "CENTER", 0, 0)
-  elseif clip.SetAllPoints and anchor then
-    pcall(clip.SetAllPoints, clip, anchor)
-  end
-  if content then
-    if content.ClearAllPoints then pcall(content.ClearAllPoints, content) end
-    if content.SetSize then pcall(content.SetSize, content, w, h) end
-    if content.SetWidth then pcall(content.SetWidth, content, w) end
-    if content.SetHeight then pcall(content.SetHeight, content, h) end
-    -- pas de SetAllPoints : le contenu doit rester à w×h, pas à une taille héritée.
+  local same = clip._innerW and clip._innerH
+    and math.abs((clip._innerW or 0) - w) < 0.5 and math.abs((clip._innerH or 0) - h) < 0.5
+    and clip._clipAnchor == anchor
+  if not same then
+    if clip.ClearAllPoints then pcall(clip.ClearAllPoints, clip) end
+    -- Taille posée explicitement : on ne laisse pas un défaut 100×50 recouvrir la fiole.
+    S.SetSizeIf(clip, w, h)
+    if clip.SetPoint and anchor then
+      pcall(clip.SetPoint, clip, "CENTER", anchor, "CENTER", 0, 0)
+    elseif clip.SetAllPoints and anchor then
+      pcall(clip.SetAllPoints, clip, anchor)
+    end
+    if content then
+      if content.ClearAllPoints then pcall(content.ClearAllPoints, content) end
+      S.SetSizeIf(content, w, h)
+      -- pas de SetAllPoints : le contenu doit rester à w×h, pas à une taille héritée.
+    end
+    clip._innerW, clip._innerH = w, h
+    clip._clipAnchor = anchor
   end
   if clip.SetHorizontalScroll then pcall(clip.SetHorizontalScroll, clip, 0) end
   if clip.SetVerticalScroll then pcall(clip.SetVerticalScroll, clip, 0) end
-  clip._innerW, clip._innerH = w, h
   if clip.Show then clip:Show() end
   if t.SetClipsChildren then pcall(t.SetClipsChildren, t, true) end
   if t.icon and t.icon.SetClipsChildren then pcall(t.icon.SetClipsChildren, t.icon, true) end
@@ -828,15 +1340,20 @@ end
 -- un étirement LEFT/RIGHT, qui laisse la taille par défaut et déborde).
 function S.PlaceClippedTex(tex, parent, w, h, x, y)
   if not tex then return end
+  w, h = math.max(1, N(w) or 1), math.max(1, N(h) or 1)
+  x, y = N(x) or 0, N(y) or 0
+  if tex._clipParent == parent and tex._szW and tex._szH
+    and math.abs(tex._szW - w) < 0.5 and math.abs(tex._szH - h) < 0.5
+    and math.abs((tex._clipX or 0) - x) < 0.5 and math.abs((tex._clipY or 0) - y) < 0.5 then
+    return
+  end
   if tex.SetParent and parent then pcall(tex.SetParent, tex, parent) end
   if tex.ClearAllPoints then pcall(tex.ClearAllPoints, tex) end
-  w, h = math.max(1, N(w) or 1), math.max(1, N(h) or 1)
-  if tex.SetSize then pcall(tex.SetSize, tex, w, h) end
-  if tex.SetWidth then pcall(tex.SetWidth, tex, w) end
-  if tex.SetHeight then pcall(tex.SetHeight, tex, h) end
+  S.SetSizeIf(tex, w, h)
   if tex.SetPoint and parent then
-    pcall(tex.SetPoint, tex, "BOTTOMLEFT", parent, "BOTTOMLEFT", x or 0, y or 0)
+    pcall(tex.SetPoint, tex, "BOTTOMLEFT", parent, "BOTTOMLEFT", x, y)
   end
+  tex._clipParent, tex._clipX, tex._clipY = parent, x, y
 end
 
 function S.EnsureSlotZ(t)
@@ -877,28 +1394,29 @@ function S.ApplySlotZ(t, on)
   local clip = S.EnsureSlotZ(t)
   if not clip then return end
   local w, h, anchor, inset = S.IconInnerSize(t)
-  if clip.ClearAllPoints then pcall(clip.ClearAllPoints, clip) end
-  if clip.SetSize then pcall(clip.SetSize, clip, w, h) end
-  if clip.SetWidth then pcall(clip.SetWidth, clip, w) end
-  if clip.SetHeight then pcall(clip.SetHeight, clip, h) end
-  if clip.SetPoint and anchor then
-    pcall(clip.SetPoint, clip, "CENTER", anchor, "CENTER", 0, 0)
-  elseif clip.SetAllPoints and anchor then
-    pcall(clip.SetAllPoints, clip, anchor)
+  local same = clip._innerW and clip._innerH
+    and math.abs((clip._innerW or 0) - w) < 0.5 and math.abs((clip._innerH or 0) - h) < 0.5
+    and clip._clipAnchor == anchor
+  if not same then
+    if clip.ClearAllPoints then pcall(clip.ClearAllPoints, clip) end
+    S.SetSizeIf(clip, w, h)
+    if clip.SetPoint and anchor then
+      pcall(clip.SetPoint, clip, "CENTER", anchor, "CENTER", 0, 0)
+    elseif clip.SetAllPoints and anchor then
+      pcall(clip.SetAllPoints, clip, anchor)
+    end
+    if clip._content then
+      if clip._content.ClearAllPoints then pcall(clip._content.ClearAllPoints, clip._content) end
+      S.SetSizeIf(clip._content, w, h)
+    end
+    clip._innerW, clip._innerH = w, h
+    clip._clipAnchor = anchor
   end
-  if clip._content then
-    if clip._content.ClearAllPoints then pcall(clip._content.ClearAllPoints, clip._content) end
-    if clip._content.SetSize then pcall(clip._content.SetSize, clip._content, w, h) end
-    if clip._content.SetWidth then pcall(clip._content.SetWidth, clip._content, w) end
-    if clip._content.SetHeight then pcall(clip._content.SetHeight, clip._content, h) end
-  end
-  clip._innerW, clip._innerH = w, h
   if clip.Show then clip:Show() end
-  -- barre large : la goutte du puits cède la place aux z ; en grille, l'icône
-  -- de la case total reste visible, les z se dessinent par-dessus (clipés).
-  if t._wideOn then
-    if t.icon and t.icon.Hide then t.icon:Hide() end
-  end
+  -- Jamais cacher la fiole officielle (sinon le puits est noir en barre).
+  -- Les z et la vague se dessinent dedans (clip), icône toujours visible.
+  if t.icon and t.icon.Show then t.icon:Show() end
+  if t.icon and t.icon.SetAlpha then t.icon:SetAlpha(1) end
   if t._hg and t._hg.Hide then t._hg:Hide() end
 end
 
@@ -921,9 +1439,13 @@ function S.TickSlotZ(dt)
       elseif u > life - 0.35 then a = math.max(0, (life - u) / 0.35) end
       local fs = z.fs
       if fs then
-        if fs.ClearAllPoints then pcall(fs.ClearAllPoints, fs) end
         local x = 2 + ((i - 1) % 3) * math.max(3, (w - 8) / 3)
-        if fs.SetPoint then pcall(fs.SetPoint, fs, "BOTTOMLEFT", clip._content or clip, "BOTTOMLEFT", x, y) end
+        if not (fs._zx and fs._zy
+            and math.abs((fs._zx or 0) - x) < 0.5 and math.abs((fs._zy or 0) - y) < 0.5) then
+          if fs.ClearAllPoints then pcall(fs.ClearAllPoints, fs) end
+          if fs.SetPoint then pcall(fs.SetPoint, fs, "BOTTOMLEFT", clip._content or clip, "BOTTOMLEFT", x, y) end
+          fs._zx, fs._zy = x, y
+        end
         if fs.SetAlpha then pcall(fs.SetAlpha, fs, a) end
         if fs.Show then fs:Show() end
       end
@@ -1021,13 +1543,13 @@ function S.ApplyCombatLiq(t)
   if not liq then return end
   local clip, content, w, h = S.PlaceIconClip(t)
   w, h = w or 16, h or 16
-  if liq.ClearAllPoints then pcall(liq.ClearAllPoints, liq) end
-  if liq.SetParent and content then pcall(liq.SetParent, liq, content) end
+  if liq.SetParent and content and liq._clipParent ~= content then pcall(liq.SetParent, liq, content) end
   -- SetSize explicite, pas SetAllPoints (évite d'hériter d'une taille 100×50).
-  if liq.SetSize then pcall(liq.SetSize, liq, w, h) end
-  if liq.SetWidth then pcall(liq.SetWidth, liq, w) end
-  if liq.SetHeight then pcall(liq.SetHeight, liq, h) end
-  if liq.SetPoint then pcall(liq.SetPoint, liq, "BOTTOMLEFT", content or clip, "BOTTOMLEFT", 0, 0) end
+  if S.SetSizeIf(liq, w, h) or liq._clipParent ~= (content or clip) then
+    if liq.ClearAllPoints then pcall(liq.ClearAllPoints, liq) end
+    if liq.SetPoint then pcall(liq.SetPoint, liq, "BOTTOMLEFT", content or clip, "BOTTOMLEFT", 0, 0) end
+    liq._clipParent = content or clip
+  end
   -- Remplissage depuis le bas, strictement dans le clip (jamais au-dessus de h).
   local inset = math.max(1, w * 0.18)
   local bodyH = math.max(1, (h * 0.72) * p)
@@ -1048,9 +1570,12 @@ function S.ApplyCombatLiq(t)
       if tex.Hide then tex:Hide() end
       return
     end
-    if tex.ClearAllPoints then pcall(tex.ClearAllPoints, tex) end
-    if tex.SetPoint then pcall(tex.SetPoint, tex, "BOTTOMLEFT", liq, "BOTTOMLEFT", inset, y) end
-    if tex.SetSize then pcall(tex.SetSize, tex, math.max(1, w - inset * 2), height) end
+    local tw = math.max(1, w - inset * 2)
+    if S.SetSizeIf(tex, tw, height) or tex._clipY ~= y then
+      if tex.ClearAllPoints then pcall(tex.ClearAllPoints, tex) end
+      if tex.SetPoint then pcall(tex.SetPoint, tex, "BOTTOMLEFT", liq, "BOTTOMLEFT", inset, y) end
+      tex._clipY = y
+    end
     if tex.SetTexture then pcall(tex.SetTexture, tex, "Interface\\Buttons\\WHITE8X8") end
     if tex.SetVertexColor then pcall(tex.SetVertexColor, tex, r, g, b, a) end
     if tex.Show then tex:Show() end
@@ -1114,11 +1639,16 @@ function S.ApplyTotal(t)
     if Wd and Wd.SyncFlaskHit then Wd.SyncFlaskHit(t, F and F._vis or 0) end
     return
   end
-  if act == "rested" then
+  if act == "sleepingbag" then
+    S.ApplySlotZ(t, false)
+    HideSymbol(t)
+    S.ApplySleepingBag(t)
+  elseif act == "rested" then
     HideSymbol(t)
     S.ApplySlotZ(t, true)
   elseif act ~= "drop" and S.SHEETS[act] then
     S.ApplySlotZ(t, false)
+    HideBagIcon(t)
     S.ApplySheet(t, act)
   else
     S.ApplySlotZ(t, false)
@@ -1246,9 +1776,19 @@ end
 ------------------------------------------------------------------------------
 -- Cadence
 ------------------------------------------------------------------------------
+function S.RestedOnly()
+  -- z + vague de repos : pas besoin de repeindre tout le puits à 20 i/s.
+  if S.Want("trainer") or S.Want("eating") or S.FillBusy() then return false end
+  if (S._jolt or 0) > 0 or S._eatOn then return false end
+  local F = ns.Flight
+  if F and (F.Paused and F.Paused() or (F._vis or 0) > 0) then return false end
+  return S.Active() == "rested"
+end
+
 function S.NeedsDriver()
   local act = S.Active()
-  if act ~= "drop" then return true end
+  -- sac de couchage : pictogramme statique, pas d'OnUpdate.
+  if act and act ~= "drop" and act ~= "sleepingbag" then return true end
   if S.Want("trainer") then return true end
   if S.Want("eating") then return true end
   if S.FillBusy() then return true end
@@ -1298,6 +1838,11 @@ function S.Tick(dt)
   S._jolt = math.max(0, (S._jolt or 0) - dt * 4)
   S._phase = (S._phase or 0) + dt * 0.7
   if S._phase > 1 then S._phase = S._phase - math.floor(S._phase) end
+  if S.RestedOnly and S.RestedOnly() then
+    S.TickSlotZ(dt)
+    S.TickFlaskWave(dt)
+    return
+  end
   S.SyncFillTargets()
   local rate = S.FILL_RATE
   local f = S.fill
@@ -1313,7 +1858,31 @@ function S.Tick(dt)
   S.TickSlotZ(dt)
 end
 
+function S.QuietSkills(sec)
+  local ui = ns.UI
+  if not ui then return end
+  local now = Now()
+  ui._skillQuietUntil = math.max(ui._skillQuietUntil or 0, now + (sec or 2))
+end
+
+-- Changement de zone / repos : visuel + toast maître, pas de Collect ni de rescan complet.
+function S.OnRestOrZone(reason)
+  S.QuietSkills(2)
+  pcall(S.SyncSleepingBag)
+  S.SyncFillTargets()
+  if S.NeedsDriver() then S.StartDriver() end
+  S.ApplyTotal()
+  S.ApplyFlaskFill()
+  S.ApplyCombatLiq()
+  S.ApplyRegenWave(0)
+  S.TickSlotZ(0)
+  local RT = ns.RankToast
+  if RT and RT.Refresh then pcall(RT.Refresh, reason or "") end
+end
+
 function S.Refresh(reason)
+  reason = reason or ""
+  pcall(S.SyncSleepingBag)
   S.SyncFillTargets()
   if S.LiveFishing() then S._fishUntil = Now() + 2 end
   if S.NeedsDriver() then S.StartDriver() end
@@ -1322,8 +1891,17 @@ function S.Refresh(reason)
   S.ApplyCombatLiq()
   S.ApplyRegenWave(0)
   S.ApplyTrainerGlints()
-  S.CheckBags()
-  S.CheckDurability()
+  -- Comptage des sacs : pas à chaque Refresh (UNIT_AURA, etc.).
+  if reason == "BAG_UPDATE_DELAYED" or reason == "LOOT_CLOSED"
+    or reason == "PLAYER_ENTERING_WORLD" or reason == "option"
+    or reason == "test" or reason == "test-off" or reason == "UI_ERROR_MESSAGE" then
+    S.CheckBags()
+  end
+  if reason == "UPDATE_INVENTORY_DURABILITY" or reason == "PLAYER_EQUIPMENT_CHANGED"
+    or reason == "PLAYER_ENTERING_WORLD" or reason == "option"
+    or reason == "test" or reason == "test-off" then
+    S.CheckDurability()
+  end
   if not (ns.PausedForFlight and ns.PausedForFlight()) then pcall(S.FlushPendingToasts) end
   local RT = ns.RankToast
   if RT and RT.Refresh then pcall(RT.Refresh, reason) end
@@ -1567,6 +2145,8 @@ S.OPTIONS = {
     help = "Un bouclier fendu dans le puits et un toast quand une pièce équipée passe sous 20 % de durabilité. Coupé par défaut." },
   { type = "check", key = "slotEating", label = "Vague au repas", default = true,
     help = "Une vague douce dans la fiole pendant que tu manges ou bois (régénération)." },
+  { type = "check", key = "slotSleepingBag", label = "Sac de couchage", default = true,
+    help = "Dans le puits de la fiole, le sac de couchage (style A) à 1, 2 ou 3 bandes pendant que l'aura Bien reposé (429959) se construit. Priorité juste avant les z de repos. Si tu pars avant 3 charges, un toast XP indique le palier manqué." },
   { type = "check", key = "slotRested", label = "« z » de repos sur la fiole", default = true,
     help = "Les « z » de repos montent dans le puits de la fiole à l'auberge ou en capitale, s'il n'y a pas d'autre symbole." },
   { type = "check", key = "slotTrainer", label = "Éclat maître à proximité", default = true,
@@ -1629,7 +2209,7 @@ if ns.On then
     "BAG_UPDATE", "BAG_UPDATE_DELAYED", "CHAT_MSG_LOOT", "LOOT_CLOSED",
     "UPDATE_INVENTORY_DURABILITY", "PLAYER_EQUIPMENT_CHANGED",
     "UNIT_AURA", "UI_ERROR_MESSAGE",
-    "PLAYER_ENTERING_WORLD", "PLAYER_UPDATE_RESTING",
+    "PLAYER_ENTERING_WORLD", "PLAYER_UPDATE_RESTING", "PLAYER_STARTED_MOVING",
     "TRAINER_SHOW", "TRAINER_CLOSED", "GOSSIP_SHOW", "GOSSIP_CLOSED",
     "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT",
     "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA",
@@ -1638,9 +2218,28 @@ if ns.On then
   for i = 1, #evs do
     local ev = evs[i]
     ns.On(ev, function(...)
-      if ev == "BAG_UPDATE" or ev == "BAG_UPDATE_DELAYED" or ev == "CHAT_MSG_LOOT" or ev == "LOOT_CLOSED" then
+      -- BAG_UPDATE est trop bavard (souvent un événement par case) : on attend DELAYED.
+      if ev == "BAG_UPDATE" then
+        return
+      end
+      if ev == "BAG_UPDATE_DELAYED" or ev == "LOOT_CLOSED" then
         pcall(S.OnCatch)
         pcall(S.CheckBags)
+        pcall(S.Refresh, ev)
+        return
+      end
+      if ev == "CHAT_MSG_LOOT" then
+        pcall(S.OnCatch)
+        pcall(S.Refresh, ev)
+        return
+      end
+      if ev == "UNIT_AURA" or ev == "UNIT_SPELLCAST_CHANNEL_START"
+        or ev == "UNIT_SPELLCAST_CHANNEL_STOP" or ev == "UNIT_SPELLCAST_CHANNEL_UPDATE" then
+        local unit = select(2, ...)
+        if type(unit) ~= "string" then unit = select(1, ...) end
+        if type(unit) == "string" and unit ~= "player" then return end
+        pcall(S.OnPlayerAura, ev)
+        return
       end
       if ev == "UPDATE_INVENTORY_DURABILITY" or ev == "PLAYER_EQUIPMENT_CHANGED" then
         pcall(S.CheckDurability)
@@ -1648,10 +2247,10 @@ if ns.On then
       if ev == "UI_ERROR_MESSAGE" then
         pcall(S.OnInvFullError, ...)
       end
-      if ev == "UNIT_AURA" then
-        local unit = select(2, ...)
-        if type(unit) ~= "string" then unit = select(1, ...) end
-        if type(unit) == "string" and unit ~= "player" then return end
+      if ev == "PLAYER_UPDATE_RESTING" or ev == "ZONE_CHANGED"
+        or ev == "ZONE_CHANGED_INDOORS" or ev == "ZONE_CHANGED_NEW_AREA" then
+        pcall(S.OnRestOrZone, ev)
+        return
       end
       pcall(S.Refresh, ev)
     end)

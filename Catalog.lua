@@ -151,9 +151,9 @@ local CATALOG = {
   { id = "daggers", name = "Dagues", aliases = { "daggers" }, section = "Armes",
     kind = "melee", capKind = "weapon", countsInTotal = false,
     icon = "Interface\\Icons\\INV_Weapon_ShortBlade_05" },
-  { id = "unarmed", name = "Mains nues", aliases = { "unarmed" }, section = "Armes",
+  { id = "unarmed", name = "Mains nues", aliases = { "unarmed", "unarmed combat", "combat a mains nues", "combat à mains nues" }, section = "Armes",
     kind = "melee", capKind = "weapon", countsInTotal = false,
-    icon = "Interface\\Icons\\Ability_MeleeDamage" },
+    icon = "Interface\\Icons\\INV_Gauntlets_04" },
   -- Compétence vue en jeu sur Forever (druide, onglet Comp.) : sous Compétences d'armes.
   { id = "feral", name = "Combat farouche", aliases = { "feral combat" }, section = "Armes",
     kind = "melee", capKind = "weapon", countsInTotal = false,
@@ -301,6 +301,20 @@ end
 
 function ns.IsWeaponKind(kind)
   return kind == "melee" or kind == "ranged"
+end
+
+-- Armes, défense, farouche : chance dégressive jusqu'au plafond (capKind weapon).
+function ns.IsWeaponSkill(id, kind, name)
+  if kind == "melee" or kind == "ranged" or kind == "defense" or kind == "feral" then
+    return true
+  end
+  local e
+  if id and ns.CatalogById then e = ns.CatalogById(id) end
+  if not e and name and ns.LookupCatalog then e = ns.LookupCatalog(name) end
+  if e and (e.capKind == "weapon" or e.kind == "melee" or e.kind == "ranged" or e.kind == "defense") then
+    return true
+  end
+  return false
 end
 
 -- En-têtes natifs → section d'accueil pour une compétence hors catalogue.

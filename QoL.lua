@@ -248,9 +248,12 @@ function Q.ETALine(d)
   local g = ns.GetGoal(d.id)
   local target = (g and g.rank > cur and g.rank) or N(d.apiMax)
   if not target or target <= cur then return nil end
-  local eta = ns.Rate.ETA("skill:" .. tostring(d.id), cur, target)
+  local weapon = ns.IsWeaponSkill and ns.IsWeaponSkill(d.id or d.skillID, d.kind, d.skillName or d.name)
+  local cap = N(d.apiMax)
+  local eta = ns.Rate.ETA("skill:" .. tostring(d.id), cur, target, weapon and cap or nil)
   if not eta then return nil end
-  return tostring(target) .. Tr[" dans "] .. ns.FormatDuration(eta) .. Tr[" (rythme mesuré)"]
+  local tag = weapon and Tr[" (~ estimation)"] or Tr[" (rythme mesuré)"]
+  return tostring(target) .. Tr[" dans "] .. ns.FormatDuration(eta) .. tag
 end
 
 -- 4. Liste de courses de l'objectif (recettes connues, composants en sac) ----

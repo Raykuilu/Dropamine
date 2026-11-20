@@ -475,6 +475,22 @@ function R.RefreshAll()
   R.SyncTicker(need)
 end
 
+-- Ne relance Apply que si le repos ou l'XP de repos a vraiment changé
+-- (un ZONE_CHANGED d'auberge ne doit pas tout reconstruire).
+function R.RequestRefresh(reason)
+  reason = reason or ""
+  local nowR = Call(_G.IsResting) and true or false
+  local exh = N(Call(_G.GetXPExhaustion)) or 0
+  local force = reason == "option" or reason == "PLAYER_ENTERING_WORLD"
+    or reason == "PLAYER_LEVEL_UP" or reason == "test"
+    or reason == "PLAYER_REGEN_ENABLED" or reason == "PLAYER_REGEN_DISABLED"
+  if not force and R._lastResting == nowR and R._lastExh == exh then
+    return
+  end
+  R._lastResting, R._lastExh = nowR, exh
+  R.RefreshAll()
+end
+
 -- Info-bulle de la case Niveau : « XP de repos : 12 345 (45 % d'un niveau) »
 function R.Num(n)
   local s = tostring(math.floor((N(n) or 0) + 0.5))
@@ -529,7 +545,7 @@ if ns.On then
   for _, ev in ipairs({ "PLAYER_UPDATE_RESTING", "UPDATE_EXHAUSTION", "PLAYER_XP_UPDATE", "PLAYER_LEVEL_UP",
     "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED", "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA",
     "GROUP_ROSTER_UPDATE", "PLAYER_ENTERING_WORLD" }) do
-    ns.On(ev, function() R.RefreshAll() end)
+    ns.On(ev, function() R.RequestRefresh(ev) end)
   end
 end
 
