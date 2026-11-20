@@ -5285,47 +5285,150 @@ UI.TOAST_TINT = {
   prof   = { 16/255, 22/255, 12/255 },  -- #10160C  famille #4F7F3E
 }
 
+local function IsVialIcon(path)
+  if type(path) ~= "string" or path == "" then return true end
+  if ns.IconMissing and ns.IconMissing(path) then return true end
+  if path == ns.FALLBACK_ICON or path == ns.LEVEL_ICON then return true end
+  local l = path:lower():gsub("/", "\\")
+  if l:find("fallback%-icon", 1, true) or l:find("xp%-icon", 1, true) then return true end
+  return false
+end
+
+function UI.CatalogEntry(opts)
+  opts = opts or {}
+  local id, name = opts.skillId, opts.skillName
+  local td = opts.toastData
+  if type(td) == "table" then
+    id = id or td.skill or td.skillId
+    name = name or td.skillName
+    if type(td.recipe) == "table" then
+      id = id or td.recipe.skill or td.recipe.skillId
+      name = name or td.recipe.skillName or td.recipe.profession
+    end
+    if type(td.matches) == "table" and td.matches[1] and td.matches[1].recipe then
+      local r = td.matches[1].recipe
+      id = id or r.skill or r.skillId
+      name = name or r.skillName or r.profession
+    end
+  end
+  local e
+  if id and ns.CATALOG_BY_ID then e = ns.CATALOG_BY_ID[id] end
+  if not e and name and ns.LookupCatalog then e = ns.LookupCatalog(name) end
+  return e, id, name
+end
+
+local function KindOf(opts, e)
+  if opts and opts.skillKind then return opts.skillKind end
+  if e and e.kind then return e.kind end
+  local id = opts and opts.skillId
+  if id and ns.CATALOG_BY_ID and ns.CATALOG_BY_ID[id] then return ns.CATALOG_BY_ID[id].kind end
+  if id or (opts and opts.skillName) then
+    local snap = UI.snapshot
+    for _, d in ipairs((snap and (snap.allTiles or snap.tiles)) or {}) do
+      if d and (d.id == id or d.name == (opts and opts.skillName)) then return d.kind end
+    end
+  end
+end
+
+local function FamilyFromKind(dkind)
+  if dkind == "level" then return "level" end
+  if dkind == "melee" or dkind == "ranged" or dkind == "defense" or dkind == "feral" or dkind == "class" then
+    return "weapon"
+  end
+  if dkind == "profession" or dkind == "secondary" then return "prof" end
+end
+
 function UI.ToastFamily(opts)
   opts = opts or {}
   local kind = opts.kind or (opts.toastData and opts.toastData.kind)
   if kind == "xp" or kind == "levelup" or kind == "level" or kind == "jalon" or kind == "spells" then
     return "level"
   end
-  if kind == "rank-trainer" or kind == "rankup" or kind == "craft" or kind == "pretier" or kind == "recipe" then
-    return "prof"
-  end
   if kind == "flight-hint" or kind == "bags-full" or kind == "durability" or kind == "pvp" or kind == "weekly"
-    or kind == "achievement" or kind == "progress" or kind == "recap" or kind == "test" then
-    return nil
-  end
-  local id = opts.skillId
-  local dkind = opts.skillKind
-  if not dkind and id and ns.CATALOG_BY_ID and ns.CATALOG_BY_ID[id] then
-    dkind = ns.CATALOG_BY_ID[id].kind
-  end
-  if not dkind and id then
-    local snap = UI.snapshot
-    for _, d in ipairs((snap and (snap.allTiles or snap.tiles)) or {}) do
-      if d and (d.id == id or d.name == opts.skillName) then dkind = d.kind break end
+    or kind == "achievement" or kind == "progress" or kind == "recap" or kind == "test"
+    or kind == "milestone" or kind == "record" or kind == "max" or kind == "combo" then
+    -- jalons / records / max peuvent encore être typés par la compétence plus bas
+    if kind == "flight-hint" or kind == "bags-full" or kind == "durability" or kind == "pvp"
+      or kind == "weekly" or kind == "achievement" or kind == "progress" or kind == "recap"
+      or kind == "test" then
+      return nil
     end
   end
-  if dkind == "level" then return "level" end
-  if dkind == "melee" or dkind == "ranged" or dkind == "defense" or dkind == "feral" or dkind == "class" then
-    return "weapon"
+  local e = UI.CatalogEntry(opts)
+  local fromSkill = FamilyFromKind(KindOf(opts, e))
+  -- Objectif, palier, recette, rang maître : famille métier, sauf si la compétence
+  -- est clairement une arme ou le niveau.
+  if kind == "rank-trainer" or kind == "rankup" or kind == "craft" or kind == "pretier"
+    or kind == "prepalier" or kind == "recipe" or kind == "scanner" or kind == "palier"
+    or kind == "tier" or kind == "goal" or kind == "objectif" then
+    if fromSkill == "level" or fromSkill == "weapon" then return fromSkill end
+    return "prof"
   end
-  if dkind == "profession" or dkind == "secondary" then return "prof" end
-  if kind == "palier" then return "prof" end
+  if fromSkill then return fromSkill end
+  if kind == "skill" and e then return FamilyFromKind(e.kind) or "prof" end
   return nil
 end
 
+function UI.ResolveToastIcon(path, opts)
+  opts = opts or {}
+  if not IsVialIcon(path) then return path end
+  local e, id, name = UI.CatalogEntry(opts)
+  if e and e.icon and not IsVialIcon(e.icon) then return e.icon end
+  if name and UI.SkillDropIcon then
+    local ic = UI.SkillDropIcon(UI, name, opts.header, opts.skillLine)
+    if ic and not IsVialIcon(ic) then return ic end
+  end
+  if (name or id) and ns.ResolveSkillIcon then
+    local ic = ns.ResolveSkillIcon(name or id, opts.header, opts.skillLine)
+    if ic and not IsVialIcon(ic) then return ic end
+  end
+  return ns.FALLBACK_ICON
+end
+
+function UI.EnsureToastFill(frame)
+  if not frame then return nil end
+  local host = frame._skinHost or frame
+  if frame._tintFill then return frame._tintFill end
+  if not (host and host.CreateTexture) then return frame._toastBg end
+  local ok, fill = pcall(host.CreateTexture, host, nil, "BACKGROUND")
+  if not (ok and fill) then return frame._toastBg end
+  if fill.SetDrawLayer then pcall(fill.SetDrawLayer, fill, "BACKGROUND", 1) end
+  local inset = (ns.Skin and ns.Skin.INSET) or 3
+  if fill.ClearAllPoints then fill:ClearAllPoints() end
+  if fill.SetPoint then
+    fill:SetPoint("TOPLEFT", host, "TOPLEFT", inset, -inset)
+    fill:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -inset, inset)
+  end
+  frame._tintFill = fill
+  return fill
+end
+
 function UI.ApplyToastTint(frame, opts)
-  if not (frame and frame._toastBg) then return nil end
+  if not frame then return nil end
+  if opts then frame._tintOpts = opts end
+  opts = opts or frame._tintOpts or {}
   local fam = UI.ToastFamily(opts)
   frame._tintFamily = fam
   local c = fam and UI.TOAST_TINT[fam]
-  if not c then return fam end
-  FillTexture(frame._toastBg, c[1], c[2], c[3], 1)
-  if frame._toastBg.SetAlpha then pcall(frame._toastBg.SetAlpha, frame._toastBg, 1) end
+  local fill = UI.EnsureToastFill(frame)
+  if not c then
+    if frame._tintFill and frame._tintFill.Hide then frame._tintFill:Hide() end
+    return fam
+  end
+  if fill then
+    FillTexture(fill, c[1], c[2], c[3], 1)
+    if fill.SetAlpha then pcall(fill.SetAlpha, fill, 1) end
+    if fill.Show then fill:Show() end
+  end
+  -- L'habillage Skin recouvre _toastBg : le calque _tintFill est sur le host.
+  if frame._toastBg and frame._toastBg ~= fill then
+    if frame._skinHost then
+      if frame._toastBg.Hide then frame._toastBg:Hide() end
+    else
+      FillTexture(frame._toastBg, c[1], c[2], c[3], 1)
+      if frame._toastBg.Show then frame._toastBg:Show() end
+    end
+  end
   return fam
 end
 
@@ -5537,6 +5640,9 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
         end
         o._restart()
         o._updates = (o._updates or 0) + 1
+        o._tintOpts = opts
+        o._kind = opts.kind or o._kind
+        if UI.ApplyToastTint then UI.ApplyToastTint(o, opts) end
         return o
       end
     end
@@ -5582,13 +5688,16 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   f._kind = opts.kind
   if f.SetFrameStrata then pcall(f.SetFrameStrata, f, "HIGH") end
   ApplyRestToastChrome(f, variant and variant.border or nil)
+  f._tintOpts = opts
   UI.ApplyToastTint(f, opts)
 
   -- Icône dans l'anneau rond : masque circulaire + retrait, jamais hors du cercle.
+  -- Métiers : icône d'origine du jeu (pas la fiole de repli), sans cadre d'emplacement.
   local slot = CreateSlotButton(f, iconSize, true)
   if light then slot:SetPoint("LEFT", f, "LEFT", 4, 0)
   else slot:SetPoint("TOPLEFT", f, "TOPLEFT", 7, -7) end
-  SetTileIcon(slot.iconTex, iconPath or ns.LEVEL_ICON or ns.FALLBACK_ICON, slot)
+  local resolved = UI.ResolveToastIcon and UI.ResolveToastIcon(iconPath, opts) or iconPath
+  SetTileIcon(slot.iconTex, resolved or ns.LEVEL_ICON or ns.FALLBACK_ICON, slot)
   f.iconSlot, f.icon = slot, slot.iconTex
 
   local titleFS = Text(f, "GameFontNormal", "LEFT")

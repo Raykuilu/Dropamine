@@ -215,11 +215,12 @@ if Ch then
     if f.SetBackdropColor then pcall(f.SetBackdropColor, f, 0, 0, 0, 0) end
     local fl = f._flare and f._flare.border
     if fl then for _, t in pairs(fl) do if type(t) == "table" and t.Hide then t:Hide() end end end
-    if f._toastBg then f._toastBg:Hide() end          -- le fond est celui de l'habillage
+    if f._toastBg then f._toastBg:Hide() end          -- le fond plat est recouvert par l'habillage
     local a = (P and P.tip and P.tip.bgAlpha) or ns.N(f._bgAlpha) or ((P and P.BgAlpha and P.BgAlpha() or 85) / 100)
     Sk.Paint(c.host, a)
     c.host:Show()
     f._osrsNativeBorder = c.mode
+    if ns.UI and ns.UI.ApplyToastTint then pcall(ns.UI.ApplyToastTint, f, f._tintOpts) end
     return c
   end
   -- bord à épaisseur native : l'habillage n'est jamais compensé ni agrandi

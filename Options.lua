@@ -512,6 +512,10 @@ Options.TEST = {
 local function TestToast(kind)
   local ui = ns.UI
   if not (ui and ui.SpawnDrop) then return end
+  local function ProfIcon(id, fallback)
+    local e = ns.CATALOG_BY_ID and ns.CATALOG_BY_ID[id]
+    return (e and e.icon) or fallback
+  end
   local icon = ns.LEVEL_ICON or "Interface\\Icons\\INV_Misc_QuestionMark"
   local title, sub, cur, maxv, opts = Tr["Toast d'exemple"], "", nil, nil, { force = true, kind = "test" }
   if kind == "xp" then
@@ -520,17 +524,22 @@ local function TestToast(kind)
     icon = "Interface\\Icons\\INV_Misc_QuestionMark"
   elseif kind == "skill" then
     title, sub, cur, maxv = Tr["Dépeçage"] .. " +1", "161 / 225", 161, 225
-    opts.kind = "skill"
-    icon = "Interface\\Icons\\INV_Misc_Pelt_Wolf_01"
+    opts.kind, opts.skillId, opts.skillName = "skill", "skinning", Tr["Dépeçage"]
+    icon = ProfIcon("skinning", "Interface\\Icons\\INV_Misc_Pelt_Wolf_01")
   elseif kind == "tier" then
     title, sub = Tr["Palier atteint"], Tr["Va voir ton maître"]
-    opts.kind, opts.variant = "tier", "gold"
+    opts.kind, opts.variant, opts.skillId, opts.skillName = "palier", "gold", "skinning", Tr["Dépeçage"]
+    icon = ProfIcon("skinning", "Interface\\Icons\\INV_Misc_Pelt_Wolf_01")
   elseif kind == "goal" then
     title, sub = Tr["Objectif atteint"], Tr["Dépeçage"] .. " 150"
-    opts.kind, opts.variant = "goal", "gold"
+    opts.kind, opts.variant, opts.skillId, opts.skillName = "goal", "gold", "skinning", Tr["Dépeçage"]
+    icon = ProfIcon("skinning", "Interface\\Icons\\INV_Misc_Pelt_Wolf_01")
   elseif kind == "scanner" then
     title, sub = Tr["Recette possible"], Tr["Cuir léger"]
     opts.kind, opts.hint = "scanner", Tr["Toast d'exemple"]
+    opts.skillId = "leatherworking"
+    opts.toastData = { kind = "scanner", skill = "leatherworking" }
+    icon = ProfIcon("leatherworking", "Interface\\Icons\\Trade_LeatherWorking")
   elseif kind == "milestone" then
     title, sub = Tr["Jalons personnels"], Tr["Premier 150"]
     opts.kind, opts.variant = "milestone", "gold"
@@ -545,7 +554,8 @@ local function TestToast(kind)
     opts.kind, opts.variant = "record", "gold"
   elseif kind == "pretier" then
     title, sub = Tr["Rappel avant le palier"], Tr["Encore 5 points"]
-    opts.kind = "pretier"
+    opts.kind, opts.skillId, opts.skillName = "pretier", "skinning", Tr["Dépeçage"]
+    icon = ProfIcon("skinning", "Interface\\Icons\\INV_Misc_Pelt_Wolf_01")
   elseif kind == "combo" then
     title, sub = Tr["Combo x"] .. "3", ""
     opts.kind, opts.variant = "combo", "gold"
