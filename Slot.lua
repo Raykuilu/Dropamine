@@ -2371,9 +2371,12 @@ function S.EnsureRegenWave(t)
       if t._eat.body and t._eat.body.SetParent then pcall(t._eat.body.SetParent, t._eat.body, parent) end
       if t._eat.wave and t._eat.wave.SetParent then pcall(t._eat.wave.SetParent, t._eat.wave, parent) end
       if t._eat.wave2 and t._eat.wave2.SetParent then pcall(t._eat.wave2.SetParent, t._eat.wave2, parent) end
+      if t._eat.food and t._eat.food.SetParent then pcall(t._eat.food.SetParent, t._eat.food, parent) end
+      if t._eat.drink and t._eat.drink.SetParent then pcall(t._eat.drink.SetParent, t._eat.drink, parent) end
     end
     -- le corps n'est plus peint (le vrai remplissage reste) ; on le garde caché
     if t._eat.body and t._eat.body.Hide then t._eat.body:Hide() end
+    S.EnsureEatIcons(t._eat, parent, w, h)
     return t._eat
   end
   if not (parent and type(parent.CreateTexture) == "function") then return nil end
@@ -2395,6 +2398,7 @@ function S.EnsureRegenWave(t)
   local wave, wave2 = mk("ARTWORK"), mk("OVERLAY")
   if not wave then return nil end
   t._eat = { body = body, wave = wave, wave2 = wave2, u = 0 }
+  S.EnsureEatIcons(t._eat, parent, w, h)
   return t._eat
 end
 
@@ -2457,6 +2461,88 @@ function S.HideTotalAdd(t)
   S._addT = nil
 end
 
+-- Icônes de jeu (nourriture / boisson). Un état, deux rendus (grille / barre).
+S.EAT_ICON = {
+  food  = "Interface\\Icons\\INV_Misc_Food_15",
+  drink = "Interface\\Icons\\INV_Drink_07",
+}
+
+function S.EatIconPath(kind)
+  if kind == "drink" then return S.EAT_ICON.drink end
+  return S.EAT_ICON.food
+end
+
+function S.EnsureEatIcons(e, parent, w, h)
+  if not (e and parent and type(parent.CreateTexture) == "function") then return e end
+  if not e.food then
+    e.food = parent:CreateTexture(nil, "OVERLAY", nil, 6)
+    if e.food then
+      S.PlaceClippedTex(e.food, parent, w or 8, 1, 0, 0)
+      if e.food.Hide then e.food:Hide() end
+    end
+  end
+  if not e.drink then
+    e.drink = parent:CreateTexture(nil, "OVERLAY", nil, 7)
+    if e.drink then
+      S.PlaceClippedTex(e.drink, parent, w or 8, 1, 0, 0)
+      if e.drink.Hide then e.drink:Hide() end
+    end
+  end
+  return e
+end
+
+local function PlaceGameIcon(tex, path, parent, side, x, y)
+  if not (tex and path and parent) then return end
+  side = math.max(1, N(side) or 1)
+  if tex.SetTexture then pcall(tex.SetTexture, tex, path) end
+  if tex.SetTexCoord then pcall(tex.SetTexCoord, tex, 0.07, 0.93, 0.07, 0.93) end
+  if tex.SetVertexColor then pcall(tex.SetVertexColor, tex, 1, 1, 1, 1) end
+  if tex.SetAlpha then pcall(tex.SetAlpha, tex, 1) end
+  S.PlaceClippedTex(tex, parent, side, side, x or 0, y or 0)
+  if tex.Show then tex:Show() end
+end
+
+-- Grille : grande icône de jeu dans la zone de la fiole (le compteur reste lisible).
+-- Barre : petite icône en coin + vague colorée.
+function S.PlaceEatIcons(t, e, kind, parent, w, H, bar)
+  if not (e and parent) then return end
+  w, H = w or 16, H or 16
+  kind = kind or "food"
+  local foodPath, drinkPath = S.EAT_ICON.food, S.EAT_ICON.drink
+  if bar then
+    local side = math.max(5, math.min(8, math.floor(math.min(w, H) * 0.55 + 0.5)))
+    if side > w then side = w end
+    if side > H then side = H end
+    if kind == "drink" then
+      PlaceGameIcon(e.drink, drinkPath, parent, side, w - side, H - side)
+      if e.food then HideTex(e.food) end
+    elseif kind == "both" then
+      if side * 2 + 1 > w then side = math.max(4, math.floor((w - 1) / 2)) end
+      PlaceGameIcon(e.food, foodPath, parent, side, w - side, H - side)
+      PlaceGameIcon(e.drink, drinkPath, parent, side, 0, H - side)
+    else
+      PlaceGameIcon(e.food, foodPath, parent, side, w - side, H - side)
+      if e.drink then HideTex(e.drink) end
+    end
+  else
+    local side = math.min(w, H)
+    local x, y = (w - side) * 0.5, (H - side) * 0.5
+    if kind == "drink" then
+      PlaceGameIcon(e.drink, drinkPath, parent, side, x, y)
+      if e.food then HideTex(e.food) end
+    elseif kind == "both" then
+      PlaceGameIcon(e.food, foodPath, parent, side, x, y)
+      local badge = math.max(8, math.floor(side * 0.42 + 0.5))
+      if badge > w then badge = w end
+      if badge > H then badge = H end
+      PlaceGameIcon(e.drink, drinkPath, parent, badge, w - badge, 0)
+    else
+      PlaceGameIcon(e.food, foodPath, parent, side, x, y)
+      if e.drink then HideTex(e.drink) end
+    end
+  end
+end
+
 S.EAT_WAVE = {
   food  = { 0.98, 0.62, 0.16, 1.00 },
   drink = { 0.32, 0.62, 1.00, 1.00 },
@@ -2483,27 +2569,36 @@ function S.ApplyRegenWave(dt)
   if not t then return end
   local inCombatFill = S.CombatLiquidOn() and ((S.fill and S.fill.p) or 0) > 0.05
   local show = S.Want("eating") and not inCombatFill and not (S.Opt("slotDeath") and S.LiveDeath())
-  -- Pas de vague ni de glyphe par-dessus un état qui remplace la fiole (sac de couchage).
-  if show and S.ReplacesFlaskIcon and S.ReplacesFlaskIcon(t) then show = false end
+  -- Pas par-dessus un état qui remplace déjà la fiole (sac de couchage, feuilles).
+  local act = S.Active and S.Active()
+  if show and act == "sleepingbag" then show = false end
+  if show and act and act ~= "drop" and S.SHEETS and S.SHEETS[act] then show = false end
   if not show then
     S.HideRegenWave(t)
     return
   end
   local e = S.EnsureRegenWave(t)
   if not e then return end
-  -- Aucun glyphe nourriture/boisson devant la fiole ou le compteur :
-  -- seulement la vague colorée, à l'intérieur de la silhouette.
-  if e.icon then HideTex(e.icon) end
-  if e.glyph then HideTex(e.glyph) end
-  if e.food then HideTex(e.food) end
-  if e.drink then HideTex(e.drink) end
   if e.body then HideTex(e.body) end
-  if t.icon and t.icon.Show then t.icon:Show() end
   local clip, content, w, H = S.PlaceIconClip(t)
   w, H = w or 16, H or 16
   -- Jamais sur la case entière (ça passerait devant « 85/2460 »).
   local a = content or clip
   if not a then return end
+  local kind = S.EatKind and S.EatKind() or "food"
+  local bar = t._wideOn and true or false
+  S.EnsureEatIcons(e, a, w, H)
+  S.PlaceEatIcons(t, e, kind, a, w, H, bar)
+  if bar then
+    if t.icon and t.icon.Show then t.icon:Show() end
+  else
+    -- Grille : l'icône de jeu occupe la zone de la fiole ; le compteur reste à côté.
+    if t.icon and t.icon.Hide then t.icon:Hide() end
+    if e.wave then HideTex(e.wave) end
+    if e.wave2 then HideTex(e.wave2) end
+    S._eatOn = true
+    return
+  end
   local R = ns.Rested
   e.u = (e.u or 0) + dt / ((R and R.LIQ and R.LIQ.charge and R.LIQ.charge.period) or 2.4)
   if e.u > 1 then e.u = e.u - math.floor(e.u) end
@@ -2513,7 +2608,6 @@ function S.ApplyRegenWave(dt)
   local wh = math.max(3, math.min(8, math.max(H * 0.28, 3)))
   local wy = math.max(0, surf - wh * 0.65)
   if wy + wh > H then wy = math.max(0, H - wh) end
-  local kind = S.EatKind and S.EatKind() or "food"
   local foodCol, drinkCol = S.EAT_WAVE.food, S.EAT_WAVE.drink
   local function paint(tex, col, phase, yoff)
     if not tex or not col then
