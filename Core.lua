@@ -2868,7 +2868,6 @@ do
     { id = "transport",label = "Bateau / zeppelin",         tip = "Simule un trajet en bateau ou zeppelin : sablier et pause, comme en vol." },
     { id = "loading",  label = "Chargement",                tip = "Simule un écran de chargement : pause silencieuse, sans sablier ni file de toasts." },
     { id = "eating",   label = "Repas",                     tip = "Remplace la fiole par un disque (fourchette, tasse, ou les deux). /drop test eating food|drink|both." },
-    { id = "campfire", label = "Feu de camp",               tip = "Simule le feu de camp : l'icône de jeu (feu) remplace la fiole. /drop test campfire near|charge|burst : petite flamme, flamme qui grandit, flash puis retour à la fiole." },
     { id = "totaladd", label = "Ajout au total",            tip = "Une goutte tombe dans la fiole officielle, puis vague et bulles." },
     { id = "levelup",  label = "Montée de niveau",          tip = "La fiole déborde, l'anneau bronze pulse, puis se remet avec une vague. Le toast de niveau reste." },
     { id = "dungeon",  label = "Donjon",                    tip = "Simule l'entrée en donjon : le mode calme instance s'active tout seul." },
@@ -2894,7 +2893,6 @@ do
     loading = "loading", chargement = "loading", cinema = "loading", cinematic = "loading",
     eating = "eating", eat = "eating", repas = "eating", boire = "eating", drink = "eating",
     food = "eating", nourriture = "eating",
-    campfire = "campfire", feu = "campfire", camp = "campfire", braise = "campfire",
     totaladd = "totaladd", add = "totaladd", ajout = "totaladd", goutte = "totaladd",
     levelup = "levelup", niveau = "levelup", ding = "levelup",
     dungeon = "dungeon", donjon = "dungeon", instance = "dungeon",
@@ -3026,27 +3024,6 @@ do
     return true
   end
 
-  function T.StartCampfire(extra)
-    if not T.Enabled() then return nil end
-    extra = tostring(extra or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
-    if extra == "" then extra = "near" end
-    local S = ns.Slot
-    if not (S and S.SetCampfireSim) then
-      ns.Print(Tr["test : feu de camp indisponible."])
-      return nil
-    end
-    local st = S.SetCampfireSim(extra)
-    if not st then
-      ns.Print(Tr["test : usage /drop test campfire near|charge|burst"])
-      return nil
-    end
-    T._on = T._on or {}
-    T._on.campfire = true
-    DriveFlask()
-    ns.Print(string.format(Tr["test : feu de camp (%s)."], st))
-    return true
-  end
-
   function T.StartTotalAdd(extra)
     if not T.Enabled() then return nil end
     extra = tostring(extra or "red"):lower():gsub("^%s+", ""):gsub("%s+$", "")
@@ -3084,7 +3061,6 @@ do
     if id == "toast" then return T.Toast() end
     if id == "sleepingbag" then return T.StartSleepingBag(extra) end
     if id == "eating" then return T.StartEating(extra) end
-    if id == "campfire" then return T.StartCampfire(extra) end
     if id == "totaladd" then return T.StartTotalAdd(extra) end
     if id == "levelup" then return T.StartLevelUp() end
     if id == "flight" then return T.StartFlight() end
@@ -3234,7 +3210,7 @@ do
     extra = extra or ""
     id = head
     if extra == "off" or extra == "stop" then return T.Stop(id) end
-    -- Conserver l'argument (totaladd blue, eating food, campfire near, …).
+    -- Conserver l'argument (totaladd blue, eating food, …).
     if extra ~= "" then return T.Start(raw) end
     if id == "toast" or id == "off" then return T.Start(id) end
     if T.IsOn(id) then return T.Stop(id) end

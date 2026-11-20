@@ -2086,16 +2086,6 @@ do
   ok(S.ClassifyEat and S.EatKind and S.EAT_WAVE, "repas : ClassifyEat / EatKind / couleurs")
   ok(S.ClassifyEat("Nourriture") == "food" and S.ClassifyEat("Boisson") == "drink", "repas : nourriture ambre, boisson bleue")
   ok(S.ClassifyEat("Nourriture et Boisson") == "both", "repas : les deux = two waves")
-  -- feu de camp 3 états
-  ok(S.SetCampfireSim and S.CampfireState and S.LiveCampfire, "feu de camp : API")
-  S.ClearSim()
-  S.SetCampfireSim("near")
-  ok(S.CampfireState() == "near", "feu de camp : braise (near)")
-  S.SetCampfireSim("charge")
-  ok(S.CampfireState() == "charge", "feu de camp : flamme (charge)")
-  S.SetCampfireSim("burst")
-  ok(S.CampfireState() == "burst", "feu de camp : étincelles (burst)")
-  S.ClearSim()
   ok((not S.PlayTotalAdd) and (not S.TickTotalAdd) and (not S.EnsureTotalAdd),
     "plus de goutte d'ajout dans la fiole")
   ok(S.PlayBarSpark and S.TickBarSpark and S.HideBarSpark, "étincelle de barre de total")
@@ -2109,8 +2099,8 @@ do
   ok(PU.BuildChars and PU.RefreshChars and PU.CharGrid and PU.SelectChar, "onglet Personnages en cartes")
   ok(ns.CaptureCharSheet and ns.AllCharSheets, "instantanés de personnages")
   if ns.Test then
-    ok(ns.Test.StartCampfire and ns.Test.StartEating and ns.Test.StartTotalAdd and ns.Test.StartLevelUp,
-      "/drop test campfire|eating|totaladd|levelup")
+    ok(ns.Test.StartEating and ns.Test.StartTotalAdd and ns.Test.StartLevelUp,
+      "/drop test eating|totaladd|levelup")
   end
 
   if ns.Compact and ns.Compact.ShouldHold then
@@ -2899,22 +2889,18 @@ do
   pcall(S.ApplyTotal)
   ok(tot.icon and tot.icon.shown ~= false, "pêche : fiole restaurée")
 
-  -- Combat / feu : icônes de jeu
+  -- Combat : icône de jeu (remplace entièrement la fiole, rien en fond)
   local function after(key, path, label)
     S.ClearSim()
-    if S.SetCampfireSim then S.SetCampfireSim(nil) end
-    if key == "campfire" then S.SetCampfireSim("near") else S.SetSim(key, true) end
+    S.SetSim(key, true)
     pcall(S.ApplyTotal)
     if key == "combat" then pcall(S.ApplyCombatLiq, tot) end
-    if key == "campfire" then pcall(S.ApplyCampfire, tot) end
     ok(tot._stIcon and tot._stIcon.shown ~= false, label .. " : icône de jeu visible")
     local pth = texOf(tot._stIcon)
     ok(type(pth) == "string" and pth:find(path, 1, true), label .. " : " .. path .. " (" .. tostring(pth) .. ")")
-    if tot.icon then ok(tot.icon.shown == false, label .. " : fiole officielle remplacée") end
+    if tot.icon then ok(tot.icon.shown == false, label .. " : fiole officielle remplacée (rien en fond)") end
     ok(not tot._cLiq or tot._cLiq.shown == false, label .. " : pas de bandes")
     S.ClearSim()
-    if S.SetCampfireSim then S.SetCampfireSim(nil) end
-    pcall(S.ApplyCampfire, tot)
     pcall(S.ApplyCombatLiq, tot)
     pcall(S.ApplyTotal)
     ok(not tot._stIcon or tot._stIcon.shown == false, label .. " : icône d'état rangée après la fin")
@@ -2922,7 +2908,6 @@ do
   end
   S.SetCombatStyle("bubbles")
   after("combat", "Combat-Icon", "combat")
-  after("campfire", "Campfire-Near-Icon", "feu de camp")
 
   -- Repas : disque fourchette / tasse remplace la fiole
   S.ClearSim()
@@ -2991,14 +2976,12 @@ do
   -- mêmes états : la barre ne disparaît jamais
   local stateBar = {
     { "combat", function() S.SetSim("combat", true) pcall(S.ApplyCombatLiq, tot) end },
-    { "campfire", function() if S.SetCampfireSim then S.SetCampfireSim("near") end pcall(S.ApplyCampfire, tot) end },
     { "fishing", function() S.SetSim("fishing", true) pcall(S.ApplySheet, tot, "fishing") end },
     { "eating", function() if S.SetEatSim then S.SetEatSim("food") end pcall(S.ApplyEatDisc, tot) end },
     { "flight", function() S.SetSim("flight", true) pcall(S.ApplyTotal) end },
   }
   for _, st in ipairs(stateBar) do
     S.ClearSim()
-    if S.SetCampfireSim then S.SetCampfireSim(nil) end
     for i = 1, 3 do if segs[i].Show then segs[i]:Show() end end
     if tot._wideParts.track.Show then tot._wideParts.track:Show() end
     if tot._wideParts.text.Show then tot._wideParts.text:Show() end
@@ -3037,9 +3020,14 @@ do
   if ns.Wide then ns.Wide.forceShown = true end
   if ns.db and ns.db.ui then ns.db.ui.showTotal = true end
   local fwB, fhB, padB, gwB, ghB, cB, rB = L.ContentSize()
-  local slim = math.max((ns.Wide.MIN_H or 14), math.floor(tile * (ns.Wide.SLIM or 0.45) + 0.5))
+  local slim = (ns.Wide.RowHeight and ns.Wide.RowHeight(tile)) or math.max((ns.Wide.MIN_H or 28), math.floor(tile * (ns.Wide.SLIM or 0.5) + 0.5))
   local expectH = 3 * tile + 2 * vg + vg + slim
-  ok(gwB == gw, "avec total en barre : même largeur de grille")
+  local expectGw = gw
+  if ns.Wide.MinRowWidth and ns.Wide.Metrics then
+    local need = ns.Wide.MinRowWidth(ns.Wide.Metrics(tile))
+    if need and expectGw < need then expectGw = need end
+  end
+  ok(gwB == expectGw, "avec total en barre : largeur >= fiole + texte + barre (" .. tostring(gwB) .. " / " .. tostring(expectGw) .. ")")
   ok(ghB == expectH, "avec total en barre : 3 rangées + barre fine (" .. tostring(ghB) .. " attendu " .. expectH .. ")")
   ok(fhB == ghB + 2 * padB, "barre : cadre = contenu + 2×marge")
   if ns.Wide then ns.Wide.forceShown = nil end
@@ -3065,8 +3053,14 @@ do
     local fw, fh, pad, gw, gh, c, r = L.ContentSize(cols)
     local tile, hg, vg, M = I.TILE, I.HGAP, I.VGAP, L.MARGIN
     ok(c == cols, label .. " : colonnes " .. tostring(c) .. " (attendu " .. cols .. ")")
-    ok(gw == cols * tile + math.max(0, cols - 1) * hg,
-      label .. " : largeur grille " .. tostring(gw) .. " = " .. cols .. "×" .. tile .. "+" .. (cols-1) .. "×" .. hg)
+    local expectGw = cols * tile + math.max(0, cols - 1) * hg
+    if withTotal and ns.Wide and ns.Wide.ShouldWiden and ns.Wide.ShouldWiden(cols, skills + 1)
+      and ns.Wide.MinRowWidth and ns.Wide.Metrics then
+      local need = ns.Wide.MinRowWidth(ns.Wide.Metrics(tile))
+      if need and expectGw < need then expectGw = need end
+    end
+    ok(gw == expectGw,
+      label .. " : largeur grille " .. tostring(gw) .. " (attendu " .. tostring(expectGw) .. ")")
     ok(fw == gw + 2 * M, label .. " : cadre = grille + 2×12 (pas de largeur 262 périmée)")
     local rightPad = fw - gw - M
     ok(rightPad == M, label .. " : dernière case ne dépasse pas le bord (marge droite " .. tostring(rightPad) .. ")")
@@ -3143,16 +3137,14 @@ do
   -- Fuite : 500 transitions d'état, aucun nouveau cadre / texture, croissance mémoire bornée.
   S.ClearSim()
   pcall(S.ApplyTotal)
-  local states = { "fishing", "combat", "rested", "eating", "campfire", "swimming", "death", "afk" }
+  local states = { "fishing", "combat", "rested", "eating", "swimming", "death", "afk" }
   -- échauffement : crée les calques une fois
   for _, id in ipairs(states) do
-    if id == "campfire" and S.SetCampfireSim then S.SetCampfireSim("near")
-    elseif id == "eating" and S.SetEatSim then S.SetEatSim("food")
+    if id == "eating" and S.SetEatSim then S.SetEatSim("food")
     else S.SetSim(id, true) end
     pcall(S.ApplyTotal)
     if S.Tick then pcall(S.Tick, 0.05) end
     S.ClearSim()
-    if S.SetCampfireSim then S.SetCampfireSim(nil) end
     pcall(S.ApplyTotal)
   end
   tot._wideOn = true
@@ -3203,13 +3195,11 @@ do
   local beforeMem = collectgarbage("count")
   for i = 1, 500 do
     local id = states[((i - 1) % #states) + 1]
-    if id == "campfire" and S.SetCampfireSim then S.SetCampfireSim((i % 3 == 0) and "burst" or (i % 3 == 1) and "near" or "charge")
-    elseif id == "eating" and S.SetEatSim then S.SetEatSim((i % 3 == 0) and "both" or (i % 3 == 1) and "food" or "drink")
+    if id == "eating" and S.SetEatSim then S.SetEatSim((i % 3 == 0) and "both" or (i % 3 == 1) and "food" or "drink")
     else S.SetSim(id, true) end
     pcall(S.ApplyTotal)
     if S.Tick then pcall(S.Tick, 0.05) end
     S.ClearSim()
-    if S.SetCampfireSim then S.SetCampfireSim(nil) end
     pcall(S.ApplyTotal)
   end
   collectgarbage("collect")
@@ -3443,12 +3433,6 @@ do
     end
   end
 
-  -- campfire accueillant + persistance buff
-  if S and S.IsCampfireName then
-    ok(S.IsCampfireName("Feu de camp accueillant"), "feu : « Feu de camp accueillant » reconnu")
-    ok(S.IsCampfireName("Cozy Fire") or S.IsCampfireName("welcoming fire") or true, "feu : nom EN accepté ou via aura")
-  end
-
   -- barre officielle statique
   if S and S.ApplyFlaskFill and tot then
     tot._wideOn = true
@@ -3545,16 +3529,22 @@ do
   end
   if Wd and Wd.Metrics then
     local lo, mid, hi = at(50), at(100), at(200)
-    ok(lo.h >= (Wd.MIN_H or 16) and lo.isz >= (Wd.MIN_ISZ or 14)
-      and lo.bh >= (Wd.MIN_BAR_H or 4) and lo.font >= (Wd.MIN_FONT or 10)
-      and lo.minBarW >= (Wd.MIN_BAR_W or 24) and lo.pad >= (Wd.MIN_PAD or 3),
-      "rangée total 50 % : planchers fiole / police / barre / longueur / marge")
+    ok(lo.h >= 28 and lo.isz >= 24 and lo.bh >= 12 and lo.font >= 13
+      and lo.minBarW >= 60 and lo.pad >= (Wd.MIN_PAD or 3),
+      "rangée total 50 % : planchers medium (h>=28 isz>=24 bh>=12 font>=13 barre>=60)")
+    ok((Wd.MIN_H or 0) >= 28 and (Wd.MIN_BAR_H or 0) >= 12
+      and (Wd.MIN_FONT or 0) >= 13 and (Wd.MIN_ISZ or 0) >= 24 and (Wd.MIN_BAR_W or 0) >= 60,
+      "planchers absolus définis (indépendants de l'échelle)")
+    -- En dessous de la taille medium, l'épaisseur reste au plancher 12 px (ratio plus élevé).
+    -- Au-dessus, le zoom uniforme reprend : 150 % et 200 % ont le même rapport.
+    ok(mid.bh >= 12 and mid.font >= 13, "100 % : planchers medium encore actifs (bh=" .. tostring(mid.bh) .. ", font=" .. tostring(mid.font) .. ")")
     ok(hi.bh > mid.bh and hi.font > mid.font and hi.isz > mid.isz and hi.pad > mid.pad,
       "rangée total : fiole, texte, barre et marges plus grands à 200 % qu'à 100 %")
-    local r100, r200 = mid.bh / mid.tile, hi.bh / hi.tile
-    ok(math.abs(r100 - r200) < 0.03, "épaisseur barre : même ratio à 100 % et 200 % (" .. string.format("%.3f/%.3f", r100, r200) .. ")")
+    local midHi = at(150)
+    local r150, r200 = midHi.bh / midHi.tile, hi.bh / hi.tile
+    ok(math.abs(r150 - r200) < 0.03, "épaisseur barre : même ratio à 150 % et 200 % (" .. string.format("%.3f/%.3f", r150, r200) .. ")")
     ok(mid.font == mid.font and hi.font >= mid.font, "police total posée en px, pas étirée")
-    ok((Wd.MIN_ISZ or 14) >= 14, "fiole : taille minimale définie")
+    ok((Wd.MIN_ISZ or 24) >= 24, "fiole : taille minimale 24 px")
   end
   if ns.db and ns.db.ui then ns.db.ui.scale = savedScale end
   if L and L.SyncMetrics then L.SyncMetrics() end
@@ -3668,14 +3658,7 @@ do
     S.NotifySleepingBagMiss = prevNotify
   end
 
-  if S and S.IsCampfireName then
-    ok(not S.IsCampfireName("Chaleur du feu"), "« Chaleur du feu » n'est pas un feu de camp")
-    ok(not S.IsCampfireName("Warmth of the Fire"), "Warmth of the Fire n'est pas un feu de camp")
-    ok(S.IsCampfireName("Feu de camp accueillant"), "Feu de camp accueillant reste reconnu")
-    ok(S.IsCampfireName("Cozy Fire"), "Cozy Fire reste reconnu")
-  end
-
-  -- Tooltip repos + feu (valeurs réelles seulement)
+  -- Tooltip repos (valeurs réelles seulement)
   if S and S.FillStateTip then
     local prevRest, prevXPMax, prevIsRest = _G.GetXPExhaustion, _G.UnitXPMax, _G.IsResting
     _G.GetXPExhaustion = function() return 4000 end
@@ -3695,32 +3678,14 @@ do
     ok(blob:find("50") or blob:find("%%"), "tooltip repos : pourcentage du niveau")
     S.ClearSim()
     _G.GetXPExhaustion, _G.UnitXPMax, _G.IsResting = prevRest, prevXPMax, prevIsRest
-
-    -- proximité : pas de minuteur (l'aura n'en a pas)
-    S.ClearSim()
-    S.SetCampfireSim("near")
-    S._campStartedAt = (GetTime and GetTime() or 0) - 40
-    tt = { lines = {} }
-    function tt:AddLine(text) self.lines[#self.lines + 1] = tostring(text or "") end
-    function tt:SetText(text) self.lines[#self.lines + 1] = tostring(text or "") end
-    local k = S.FillStateTip(tt)
-    ok(k == "campfire", "tooltip feu proximité : bloc d'état")
-    blob = table.concat(tt.lines, " | ")
-    ok(not blob:find("Temps restant") and not blob:find("Time remaining")
-        and not blob:find("Allumé depuis") and not blob:find("Lit for"),
-      "tooltip proximité : pas de durée inventée ni « Allumé depuis »")
-    ok(blob:find("proximit") or blob:find("Near the campfire") or blob:find("proche"),
-      "tooltip proximité : libellé d'étage")
-    S.ClearSim()
   end
 
-  -- Rangée total : plancher de barre 40 % / 24 px, texte réduit puis overlay.
+  -- Rangée total : planchers absolus (référence medium), texte à part, cadre qui grandit.
   if Wd and Wd.PlanTotalRow and Wd.Metrics and L and I then
     local savedScale, savedCols, savedTotal
     if ns.db and ns.db.ui then savedScale, savedCols, savedTotal = ns.db.ui.scale, ns.db.ui.cols, ns.db.ui.showTotal end
     local function twOf(sz)
-      -- « 1169 / 2460 » ≈ 12 glyphes, largeur proportionnelle à la police
-      return math.floor(12 * (sz or 10) * 0.62 + 0.5)
+      return math.floor(12 * (sz or 13) * 0.62 + 0.5)
     end
     local function planAt(cols, pct)
       if ns.db and ns.db.ui then
@@ -3731,178 +3696,47 @@ do
       if ns.Wide then ns.Wide.forceShown = true end
       if L.SyncMetrics then L.SyncMetrics() end
       local m = Wd.Metrics(I.TILE)
-      local gw = cols * I.TILE + math.max(0, cols - 1) * I.HGAP
+      local tileGw = cols * I.TILE + math.max(0, cols - 1) * I.HGAP
+      local minW = Wd.MinRowWidth(m, twOf(m.font))
+      local gw = math.max(tileGw, minW)
       local plan = Wd.PlanTotalRow(gw, m, twOf)
-      local minWant = math.min(plan.after, math.max(Wd.MIN_BAR_W or 24, math.floor(0.40 * plan.after + 0.5)))
-      ok(plan.isz >= (Wd.MIN_ISZ or 14),
-        string.format("fiole %d col. %d %% : >= %d px (isz=%d)", cols, pct, Wd.MIN_ISZ or 14, plan.isz))
-      ok(plan.inner + 0.01 >= minWant,
-        string.format("barre %d col. %d %% : inner=%d >= plancher %d (after=%d overlay=%s font=%d)",
-          cols, pct, plan.inner, minWant, plan.after, tostring(plan.overlay), plan.font))
-      ok(plan.left + plan.inner <= gw + 0.01,
-        string.format("rangée %d col. %d %% : barre dans le cadre (%d+%d <= %d)", cols, pct, plan.left, plan.inner, gw))
-      return plan
+      ok(m.h >= (Wd.MIN_H or 28) and m.bh >= (Wd.MIN_BAR_H or 12)
+        and m.font >= (Wd.MIN_FONT or 13) and m.isz >= (Wd.MIN_ISZ or 24),
+        string.format("métriques %d col. %d %% : h=%d bh=%d font=%d isz=%d (planchers 28/12/13/24)",
+          cols, pct, m.h, m.bh, m.font, m.isz))
+      ok(plan.overlay ~= true, string.format("%d col. %d %% : pas de texte superposé à la barre", cols, pct))
+      ok(plan.font >= (Wd.MIN_FONT or 13) and plan.font == m.font,
+        string.format("%d col. %d %% : police pleine %d (pas réduite)", cols, pct, plan.font))
+      ok(plan.inner + 0.01 >= (Wd.MIN_BAR_W or 60),
+        string.format("barre %d col. %d %% : inner=%d >= 60", cols, pct, plan.inner))
+      ok(plan.left + plan.inner <= plan.w + 0.01,
+        string.format("rangée %d col. %d %% : barre dans le cadre (%d+%d <= %d)", cols, pct, plan.left, plan.inner, plan.w))
+      return plan, gw, m, tileGw, minW
     end
     for _, cols in ipairs({ 2, 3, 5, 10 }) do
       for _, pct in ipairs({ 50, 100, 200 }) do
         planAt(cols, pct)
       end
     end
-    -- 5 col. 50 % : le texte long ne doit plus réduire la barre à un stub
+    -- 5 col. ~20 px : le cadre s'élargit pour fiole + « 1169 / 2460 » 13 px + barre 60 px
     do
       if ns.db and ns.db.ui then ns.db.ui.scale = 50 ns.db.ui.cols = nil ns.db.ui.showTotal = true end
+      if ns.Wide then ns.Wide.forceShown = true end
       if L.SyncMetrics then L.SyncMetrics() end
       local m = Wd.Metrics(I.TILE)
-      local gw = 5 * I.TILE + 4 * I.HGAP
+      ok(I.TILE <= 22, "5 col. 50 % : cases ~20 px (tile=" .. tostring(I.TILE) .. ")")
+      ok(m.bh >= 12 and m.font >= 13 and m.isz >= 24 and m.h >= 28,
+        string.format("5 col. 50 %% : planchers medium (bh=%d font=%d isz=%d h=%d)", m.bh, m.font, m.isz, m.h))
+      local fw, fh, pad, gw = L.ContentSize(5)
+      local minW = Wd.MinRowWidth(m)
+      ok(gw + 0.01 >= minW, "5 col. 50 % : largeur de grille >= minimum rangée (" .. tostring(gw) .. " / " .. tostring(minW) .. ")")
       local plan = Wd.PlanTotalRow(gw, m, twOf)
-      ok(plan.overlay or plan.font <= m.font,
-        "5 col. 50 % : police réduite ou texte superposé (pas de barre écrasée)")
-      ok(plan.inner >= math.min(plan.after, 24),
-        "5 col. 50 % : barre au moins 24 px ou toute la bande utile")
+      ok(plan.overlay ~= true and plan.font >= 13,
+        "5 col. 50 % : texte à côté de la barre, police >= 13")
+      ok(plan.inner >= 60, "5 col. 50 % : barre longue d'au moins 60 px (" .. tostring(plan.inner) .. ")")
     end
     if ns.db and ns.db.ui then ns.db.ui.scale, ns.db.ui.cols, ns.db.ui.showTotal = savedScale, savedCols, savedTotal end
     if L.SyncMetrics then L.SyncMetrics() end
-  end
-
-  -- Feu de camp : les 3 auras Forever, auberge sans feu, pas d'icône 2 h.
-  if S and S.CampfireState then
-    local function clearAuras()
-      _G.C_UnitAuras, _G.UnitAura, _G.UnitBuff, _G.AuraUtil = nil, nil, nil, nil
-    end
-    local function setAuras(list)
-      -- list : { {name=, spellId=, expirationTime=, duration=, description=?}, ... }
-      _G.C_UnitAuras = {
-        GetPlayerAuraBySpellID = function(id)
-          for _, a in ipairs(list) do
-            if a.spellId == id then return a end
-          end
-        end,
-        GetAuraDataByIndex = function(_, i)
-          return list[i]
-        end,
-      }
-      _G.UnitAura = function(_, i)
-        local a = list[i]
-        if not a then return nil end
-        return a.name, nil, nil, 1, nil, a.duration, a.expirationTime, nil, nil, nil, a.spellId
-      end
-    end
-    local now = (GetTime and GetTime()) or 0
-    local prevRest, prevSit, prevXP = _G.IsResting, _G.IsSitting, _G.GetXPExhaustion
-    local prevUA, prevUB, prevC, prevAU = _G.UnitAura, _G.UnitBuff, _G.C_UnitAuras, _G.AuraUtil
-
-    -- Noms / IDs exacts
-    ok(S.IsCampNearName and S.IsCampNearName("Feu de camp proche"), "nom : Feu de camp proche")
-    ok(S.IsCampNearName("Campfire Nearby") and S.IsCampNearName("Nearby Campfire"), "nom EN : Campfire Nearby")
-    ok(S.IsCampNearSpell and S.IsCampNearSpell(1283391), "id proximité : 1283391")
-    ok(S.IsCampChargeName("Feu de camp accueillant") and S.IsCampChargeName("Welcoming Campfire")
-      and S.IsCampChargeName("Cozy Fire"), "nom charge : accueillant / Welcoming / Cozy Fire")
-    ok(S.IsCampChargeSpell(1229739) and S.IsCampChargeSpell(1289723), "id charge : 1229739 et 1289723")
-    ok(S.IsCampBenefitName("Avantages du camp") and S.IsCampBenefitName("Camp Benefits")
-      and S.IsCampBenefitName("Camp Advantages"), "nom avantages : FR + EN")
-    ok(S.IsCampBenefitSpell(1229741), "id avantages : 1229741")
-    ok(not S.IsCampNearName("Chaleur du feu") and not S.IsCampChargeName("Chaleur du feu")
-      and not S.IsCampBenefitName("Chaleur du feu"), "Chaleur du feu : aucune étape feu")
-    ok(not S.IsCampChargeSpell(7353), "Classic Cozy Fire 7353 n'est pas la charge Forever")
-
-    -- Étages via auras réelles (pas de sim)
-    S.ClearSim()
-    clearAuras()
-    setAuras({ { name = "Feu de camp proche", spellId = 1283391 } })
-    ok(S.CampfireState() == "near" and S.LiveCampfire(), "aura proche : étage proximité")
-    S.ClearSim()
-    setAuras({ { name = "Feu de camp accueillant", spellId = 1229739,
-      duration = 60, expirationTime = now + 55 } })
-    ok(S.CampfireState() == "charge" and S.LiveCampfire(), "aura accueillant 1229739 : étage charge")
-    local info = S.CampfireChargeAura()
-    ok(info and info.remaining and math.abs((info.remaining or 0) - 55) < 1.5,
-      "charge : remaining depuis expirationTime (~55 s)")
-    ok(info and info.progress and math.abs((info.progress or 0) - (1 - 55/60)) < 0.05,
-      "charge : progress = 1 - remaining/duration")
-    S.ClearSim()
-    setAuras({ { name = "Welcoming Campfire", spellId = 1289723,
-      duration = 60, expirationTime = now + 40 } })
-    ok(S.CampfireState() == "charge", "aura Welcoming Campfire 1289723 : charge")
-
-    -- Avantages + encore près du feu : icône « pris »
-    S.ClearSim()
-    S._campBenefitSeenAt = now - 60
-    setAuras({
-      { name = "Feu de camp proche", spellId = 1283391 },
-      { name = "Avantages du camp", spellId = 1229741, duration = 7200, expirationTime = now + 7200,
-        description = "Magnétite : puissance d'attaque en mêlée augmentée de 49." },
-    })
-    ok(S.CampfireState() == "buff" and S.LiveCampfire(), "avantages + proche : icône prise")
-
-    -- Avantages seuls, juste obtenus : icône 10 s
-    S.ClearSim()
-    setAuras({ { name = "Avantages du camp", spellId = 1229741, duration = 7200, expirationTime = now + 7200 } })
-    S._campBenefitSeenAt = nil
-    ok(S.CampfireState() == "buff" and S.LiveCampfire(), "avantages seuls < 10 s : icône prise (annonce)")
-
-    -- Avantages seuls, loin du feu, après 10 s : PAS d'icône (la fiole n'est pas bloquée 2 h)
-    S.ClearSim()
-    setAuras({ { name = "Avantages du camp", spellId = 1229741, duration = 7200, expirationTime = now + 7200 } })
-    S._campBenefitSeenAt = now - 11
-    ok(S.CampfireState() == nil and not S.LiveCampfire(), "avantages seuls après 10 s : pas d'icône")
-    local tt = { lines = {} }
-    function tt:AddLine(text) self.lines[#self.lines + 1] = tostring(text or "") end
-    function tt:SetText(text) self.lines[#self.lines + 1] = tostring(text or "") end
-    local k = S.FillStateTip(tt)
-    ok(k == "camp-benefits", "survol sans icône : temps restant des avantages")
-    local blob = table.concat(tt.lines, " | ")
-    ok(blob:find("Temps restant") or blob:find("Time remaining"),
-      "survol sans icône : Temps restant (2 h)")
-
-    -- Auberge + repos + pas de feu : pas d'icône (même avec un minuteur interne périmé)
-    S.ClearSim()
-    clearAuras()
-    _G.UnitAura = function() return nil end
-    _G.IsResting = function() return true end
-    _G.IsSitting = function() return true end
-    _G.GetXPExhaustion = function() return 4000 end
-    S._fireUntil = now + 300
-    S._campStartedAt = now - 115
-    S._cozyFire = true
-    S._campChargeAt = now - 60
-    setAuras({ { name = "Chaleur du feu", spellId = 1289378 } })
-    ok(S.CampfireState() == nil and not S.LiveCampfire(),
-      "auberge + Bien reposé / Chaleur du feu, sans feu : pas d'icône camp")
-    -- sim off, stale flags only
-    S.ClearSim()
-    clearAuras()
-    _G.UnitAura = function() return nil end
-    S._fireUntil = now + 300
-    S._campStartedAt = now - 115
-    ok(S.CampfireState() == nil and not S.LiveCampfire(),
-      "minuteur interne _fireUntil seul : pas d'icône")
-
-    -- Tooltip charge : secondes restantes
-    S.ClearSim()
-    S.SetCampfireSim("charge")
-    tt = { lines = {} }
-    function tt:AddLine(text) self.lines[#self.lines + 1] = tostring(text or "") end
-    function tt:SetText(text) self.lines[#self.lines + 1] = tostring(text or "") end
-    ok(S.FillStateTip(tt) == "campfire", "tooltip charge : bloc d'état")
-    blob = table.concat(tt.lines, " | ")
-    ok(blob:find("Temps restant") or blob:find("Time remaining"), "tooltip charge : temps restant")
-    ok(blob:find("27") or blob:find("s"), "tooltip charge : secondes de l'aura")
-
-    -- Tooltip avantages : 2 h + lignes lues
-    S.ClearSim()
-    S.SetCampfireSim("buff")
-    tt = { lines = {} }
-    function tt:AddLine(text) self.lines[#self.lines + 1] = tostring(text or "") end
-    function tt:SetText(text) self.lines[#self.lines + 1] = tostring(text or "") end
-    ok(S.FillStateTip(tt) == "campfire", "tooltip avantages : bloc d'état")
-    blob = table.concat(tt.lines, " | ")
-    ok(blob:find("Temps restant") or blob:find("Time remaining"), "tooltip avantages : temps restant")
-    ok(blob:find("2 h") or blob:find("7200") or blob:find("120 min"), "tooltip avantages : 2 heures")
-    ok(blob:find("Magnétite"), "tooltip avantages : ligne lue sur l'aura")
-
-    S.ClearSim()
-    _G.IsResting, _G.IsSitting, _G.GetXPExhaustion = prevRest, prevSit, prevXP
-    _G.UnitAura, _G.UnitBuff, _G.C_UnitAuras, _G.AuraUtil = prevUA, prevUB, prevC, prevAU
   end
 
   if S and S.StartTipTicker then

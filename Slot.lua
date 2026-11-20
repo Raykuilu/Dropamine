@@ -10,8 +10,8 @@ local Tr = ns.L
 local S = {}
 ns.Slot = S
 
-S.ORDER_SWORD   = { "death", "flight", "combat", "afk", "bags", "fishing", "swimming", "durability", "sleepingbag", "campfire", "rested" }
-S.ORDER_DEFAULT = { "death", "flight", "afk", "bags", "fishing", "swimming", "durability", "sleepingbag", "campfire", "rested" }
+S.ORDER_SWORD   = { "death", "flight", "combat", "afk", "bags", "fishing", "swimming", "durability", "sleepingbag", "rested" }
+S.ORDER_DEFAULT = { "death", "flight", "afk", "bags", "fishing", "swimming", "durability", "sleepingbag", "rested" }
 
 local MEDIA = "Interface\\AddOns\\Dropamine\\Media\\"
 S.SHEETS = {
@@ -38,7 +38,6 @@ S.OPT_KEYS = {
   afk = "slotAfk", bags = "slotBags", fishing = "slotFishing", swimming = "slotSwimming",
   durability = "slotDurability",
   sleepingbag = "slotSleepingBag",
-  campfire = "slotCampfire",
   rested = "slotRested", trainer = "slotTrainer",
 }
 
@@ -136,29 +135,6 @@ function S.SetSim(id, on)
     S._simBagStacks = nil
     S._bagBuilding, S._bagPeak = false, 0
   end
-  if id == "campfire" and not on then
-    S._simCamp = nil
-  end
-end
-
-function S.SetCampfireSim(state)
-  -- near | charge | burst  (ou 1 | 2 | 3). nil / off arrête la sim.
-  if state == nil or state == false or state == "off" or state == "stop" or state == "false" then
-    S._simCamp = nil
-    S.SetSim("campfire", false)
-    return nil
-  end
-  state = tostring(state or "near"):lower()
-  if state == "1" or state == "ember" or state == "proximite" or state == "proximité" then state = "near" end
-  if state == "2" or state == "flame" or state == "charge" then state = "charge" end
-  if state == "3" or state == "spark" or state == "burst" or state == "buff" then state = "burst" end
-  if state ~= "near" and state ~= "charge" and state ~= "burst" then state = "near" end
-  S._simCamp = state
-  S.SetSim("campfire", true)
-  if state == "burst" then
-    S._campBurstUntil = Now() + 0.45
-  end
-  return state
 end
 
 function S.SetEatSim(kind)
@@ -433,18 +409,6 @@ S.DRINK_SPELLS = {
   [57085] = true, [61827] = true, [64356] = true, [66041] = true, [80167] = true,
   [44107] = true, [53270] = true, [53373] = true,
 }
-S.COZY_FIRE = 7353  -- Classic « Cozy Fire » (esprit) : PAS l'aura de charge Forever
--- Forever : « Feu de camp proche » / Campfire Nearby = proximité (pas de minuteur).
-S.CAMP_NEAR_SPELLS = { [1283391] = true }
--- Forever : « Feu de camp accueillant » / Welcoming Campfire = phase de CHARGE (1 min).
-S.CAMP_CHARGE_SPELLS = { [1229739] = true, [1289723] = true }
--- Forever : « Avantages du camp » / Camp Benefits, après la charge (2 h).
-S.CAMP_BENEFIT_SPELLS = { [1229741] = true }
--- Icône « avantages pris » : au plus 10 s après l'obtention si l'on n'est plus près du feu.
-S.CAMP_BENEFIT_HOLD = 10
--- Sorts de *pose* d'un feu (pas des auras joueur) : ne pas s'en servir pour l'état fiole.
-S.CAMPFIRE_SPELLS = { [818] = true, [6196] = true, [5265] = true, [4470] = true }
-S.CAMPFIRE_CHARGE = 60
 S.NOT_EAT_SPELLS = {
   [19705] = true, [19706] = true, [19708] = true, [19709] = true, [19710] = true, [19711] = true,
   [24799] = true, [24870] = true, [25661] = true, [33254] = true, [33255] = true, [33256] = true,
@@ -654,8 +618,6 @@ function S.ScanPlayerAuras(force)
   S._fishOn = okF and fish and true or false
   local okB, using = pcall(S.SleepingBagUsing)
   S._bagUsing = okB and using and true or false
-  local okC, cozy = pcall(S.CozyFireAura)
-  S._cozyFire = okC and cozy and true or false
   return S._eatName, S._eatSpell
 end
 
@@ -977,350 +939,6 @@ function S.SyncSleepingBag()
   end
 end
 
-local CAMP_NAMES = {
-  campfire = true, ["basic campfire"] = true, ["journeyman campfire"] = true,
-  ["expert campfire"] = true, bonfire = true, brazier = true, ["fire pit"] = true,
-  ["feu de camp"] = true, ["feu de camp basique"] = true, ["feu de camp de compagnon"] = true,
-  ["feu de camp de specialiste"] = true, ["feu de camp de spécialiste"] = true,
-  ["feu de joie"] = true, brasero = true, ["feu douillet"] = true,
-  ["cozy fire"] = true, ["cozy-fire"] = true,
-  ["feu de camp accueillant"] = true, accueillant = true, ["welcoming fire"] = true,
-}
-
-local function FoldName(v)
-  if type(v) ~= "string" or v == "" then return "" end
-  if ns.IsSecret and ns.IsSecret(v) then return "" end
-  local ok, f = pcall(function() return (ns.Fold and ns.Fold(v)) or v:lower() end)
-  return (ok and type(f) == "string" and f) or ""
-end
-
-function S.IsCampfireName(name)
-  local fold = FoldName(name)
-  if fold == "" then return false end
-  -- « Chaleur du feu » / Warmth of the Fire : buff résultant (sac ou autre),
-  -- pas le feu de camp lui-même (Feu de camp accueillant / Cozy Fire / 7353).
-  if fold:find("chaleur du feu", 1, true) or fold:find("warmth of the fire", 1, true) then
-    return false
-  end
-  if CAMP_NAMES[fold] then return true end
-  if fold:find("campfire", 1, true) or fold:find("feu de camp", 1, true) then return true end
-  if fold:find("cozy fire", 1, true) or fold:find("feu douillet", 1, true) then return true end
-  if fold:find("accueillant", 1, true) or fold:find("welcoming fire", 1, true) then return true end
-  return false
-end
-
--- Noms d'aura de PROXIMITÉ (pas de minuteur), distincts des objets-feu.
-local CAMP_NEAR_NAMES = {
-  ["feu de camp proche"] = true,
-  ["campfire nearby"] = true,
-  ["nearby campfire"] = true,
-}
--- Noms d'aura de CHARGE (compte à rebours 1 min).
-local CAMP_CHARGE_NAMES = {
-  ["feu de camp accueillant"] = true,
-  ["welcoming campfire"] = true,
-  ["welcoming fire"] = true,
-  ["cozy fire"] = true,
-  ["feu douillet"] = true,
-}
--- Noms d'aura d'AVANTAGES (après la charge, 2 h).
-local CAMP_BENEFIT_NAMES = {
-  ["avantages du camp"] = true,
-  ["camp benefits"] = true,
-  ["camp advantages"] = true,
-}
-
-local function FoldAuraName(name)
-  local fold = (FoldName and FoldName(name)) or ""
-  if fold == "" and type(SafeFold) == "function" then fold = SafeFold(name) or "" end
-  return fold
-end
-
-function S.IsCampNearName(name)
-  local fold = FoldAuraName(name)
-  return fold ~= "" and CAMP_NEAR_NAMES[fold] and true or false
-end
-
-function S.IsCampChargeName(name)
-  local fold = FoldAuraName(name)
-  return fold ~= "" and CAMP_CHARGE_NAMES[fold] and true or false
-end
-
-function S.IsCampBenefitName(name)
-  local fold = FoldAuraName(name)
-  return fold ~= "" and CAMP_BENEFIT_NAMES[fold] and true or false
-end
-
-function S.IsCampNearSpell(id)
-  id = N(id)
-  return id and S.CAMP_NEAR_SPELLS and S.CAMP_NEAR_SPELLS[id] and true or false
-end
-
-function S.IsCampChargeSpell(id)
-  id = N(id)
-  return id and S.CAMP_CHARGE_SPELLS and S.CAMP_CHARGE_SPELLS[id] and true or false
-end
-
-function S.IsCampBenefitSpell(id)
-  id = N(id)
-  return id and S.CAMP_BENEFIT_SPELLS and S.CAMP_BENEFIT_SPELLS[id] and true or false
-end
-
-local function AuraInfoFromData(data, name, spellId)
-  if type(data) ~= "table" then data = {} end
-  local exp = N(data.expirationTime or data.ExpirationTime)
-  local dur = N(data.duration or data.Duration)
-  local now = Now()
-  local remain
-  if exp and exp > 0 then
-    remain = exp - now
-    if remain < 0 then remain = 0 end
-  end
-  local prog
-  if remain and dur and dur > 0 then
-    prog = 1 - (remain / dur)
-    if prog < 0 then prog = 0 elseif prog > 1 then prog = 1 end
-  end
-  return {
-    name = name or data.name,
-    spellId = spellId or data.spellId or data.spellID,
-    expirationTime = exp,
-    duration = dur,
-    remaining = remain,
-    progress = prog,
-  }
-end
-
-local function ReadAuraIndex(i)
-  local name, spellId, present = AuraAt(i)
-  if not present then return nil end
-  local data = {}
-  local C = _G.C_UnitAuras
-  if type(C) == "table" and type(C.GetAuraDataByIndex) == "function" then
-    local ok, d = pcall(C.GetAuraDataByIndex, "player", i, "HELPFUL")
-    if ok and type(d) == "table" then return name, spellId, d end
-  end
-  local fn = _G.UnitAura or _G.UnitBuff
-  if type(fn) == "function" then
-    local ok, r = pcall(function() return { fn("player", i, "HELPFUL") } end)
-    if ok and type(r) == "table" then
-      data.duration = N(r[6]) or N(r[5])
-      data.expirationTime = N(r[7]) or N(r[6])
-    end
-  end
-  return name, spellId, data
-end
-
--- kind = "near" | "charge" | "benefit". Ne lit que des auras réelles (id ou nom exact).
-function S.FindCampAura(kind)
-  local function want(name, id)
-    if kind == "near" then
-      return S.IsCampNearSpell(id) or S.IsCampNearName(name)
-    end
-    if kind == "benefit" then
-      return S.IsCampBenefitSpell(id) or S.IsCampBenefitName(name)
-    end
-    return S.IsCampChargeSpell(id) or S.IsCampChargeName(name)
-  end
-  local ids
-  if kind == "near" then
-    ids = S.CAMP_NEAR_SPELLS
-  elseif kind == "benefit" then
-    ids = S.CAMP_BENEFIT_SPELLS
-  else
-    ids = S.CAMP_CHARGE_SPELLS
-  end
-  local C = _G.C_UnitAuras
-  if type(C) == "table" and type(C.GetPlayerAuraBySpellID) == "function" and type(ids) == "table" then
-    for id in pairs(ids) do
-      local ok, data = pcall(C.GetPlayerAuraBySpellID, id)
-      if ok and type(data) == "table" then
-        return AuraInfoFromData(data, data.name, id)
-      end
-    end
-  end
-  for i = 1, 40 do
-    local name, spellId, data = ReadAuraIndex(i)
-    if name or spellId then
-      if want(name, spellId) then
-        return AuraInfoFromData(data, name, spellId)
-      end
-    end
-  end
-  return nil
-end
-
-function S.CampfireNearbyAura()
-  if S._simCamp == "near" then
-    return { name = "Feu de camp proche", spellId = 1283391 }
-  end
-  if S._simCamp then return nil end
-  return S.FindCampAura("near")
-end
-
-function S.CampfireChargeAura()
-  if S._simCamp == "charge" then
-    local remain, dur = 27, 60
-    return {
-      name = "Feu de camp accueillant", spellId = 1229739,
-      duration = dur, remaining = remain, expirationTime = Now() + remain,
-      progress = 1 - (remain / dur),
-    }
-  end
-  if S._simCamp then return nil end
-  return S.FindCampAura("charge")
-end
-
-function S.CampfireBenefitAura()
-  if S._simCamp == "burst" or S._simCamp == "buff" then
-    local remain, dur = 7200, 7200
-    return {
-      name = "Avantages du camp", spellId = 1229741,
-      duration = dur, remaining = remain, expirationTime = Now() + remain,
-      progress = 1,
-      description = "Magnétite : puissance d'attaque en mêlée augmentée de 49.",
-    }
-  end
-  if S._simCamp then return nil end
-  return S.FindCampAura("benefit")
-end
-
--- Compat : l'ancienne API désigne désormais l'aura de CHARGE (accueillant / 1229739).
-function S.CozyFireAura()
-  if S._simCamp then return S._simCamp == "charge" and true or false end
-  local info = S.CampfireChargeAura()
-  return info and true or false
-end
-
-function S.CampfireAuraInfo()
-  local st = (S.CampfireState and S.CampfireState()) or S._campState
-  if st == "near" then
-    return S.CampfireNearbyAura()
-  end
-  if st == "buff" or st == "burst" then
-    return S.CampfireBenefitAura() or S.CampfireChargeAura()
-  end
-  if st == "charge" then
-    return S.CampfireChargeAura()
-  end
-  return S.CampfireChargeAura() or S.CampfireBenefitAura() or S.CampfireNearbyAura()
-end
-
--- Lignes d'avantages lues sur l'aura (description réelle uniquement, jamais inventées).
-function S.CampfireBenefitLines(info)
-  info = info or (S.CampfireBenefitAura and S.CampfireBenefitAura())
-  if type(info) ~= "table" then return nil end
-  local desc = info.description or info.Description
-  if type(desc) ~= "string" or desc == "" then
-    local id = N(info.spellId or info.spellID)
-    local fn = _G.GetSpellDescription
-    if not fn and type(_G.C_Spell) == "table" then fn = _G.C_Spell.GetSpellDescription end
-    if id and type(fn) == "function" then
-      local ok, s = pcall(fn, id)
-      if ok and type(s) == "string" and s ~= "" then desc = s end
-    end
-  end
-  if type(desc) ~= "string" or desc == "" then return nil end
-  local lines, n = {}, 0
-  for line in string.gmatch(desc, "[^\r\n]+") do
-    line = line:gsub("^%s+", ""):gsub("%s+$", "")
-    if line ~= "" then
-      n = n + 1
-      if n > 8 then break end
-      lines[n] = line
-    end
-  end
-  return n > 0 and lines or nil
-end
-
--- Ne plus prolonger l'état fiole avec un délai : un sort de pose n'implique
--- pas qu'un feu reste à portée (l'auberge le montrait encore 5 min après).
-function S.NoteCampfireSpell(spellId, name)
-  spellId = N(spellId)
-  if (spellId and S.CAMPFIRE_SPELLS[spellId]) or S.IsCampfireName(name) then
-    return true
-  end
-  return false
-end
-
--- Proximité : uniquement l'aura « Feu de camp proche » / 1283391 (pas de
--- minuteur interne, pas de ciblage, pas de repos / auberge).
-function S.LiveNearbyFire()
-  if S._simCamp == "near" then return true end
-  if S._simCamp then return false end
-  return S.CampfireNearbyAura() and true or false
-end
-
-function S.NearCampfire()
-  return S.LiveNearbyFire() and true or false
-end
-
-function S.CampfireStationary()
-  if type(_G.IsSitting) == "function" and Call(_G.IsSitting) then return true end
-  if type(_G.IsPlayerMoving) == "function" then
-    local moving = Call(_G.IsPlayerMoving)
-    if moving == false then return true end
-    if moving == true then return false end
-  end
-  return not S._campMoving
-end
-
--- near | charge | buff | burst (sim) | nil
--- Uniquement les trois auras Forever. Jamais un repos d'auberge, « Chaleur du feu »,
--- ni un minuteur interne. L'icône « avantages » ne reste pas 2 h : seulement tant
--- que l'on est encore près du feu, ou 10 s après l'obtention.
-function S.CampfireState()
-  if S._simCamp == "near" or S._simCamp == "charge" then
-    S._campState = S._simCamp
-    return S._simCamp
-  end
-  if S._simCamp == "burst" or S._simCamp == "buff" then
-    S._campState = S._simCamp
-    return S._simCamp
-  end
-  -- Charge (« Feu de camp accueillant » / 1229739, 1289723) en priorité.
-  local charge = S.CampfireChargeAura()
-  if charge then
-    S._campExpire = charge.expirationTime
-    S._campState = "charge"
-    S._cozyFire = true
-    return "charge"
-  end
-  S._cozyFire = false
-  local benefit = S.CampfireBenefitAura()
-  local near = S.CampfireNearbyAura()
-  if benefit then
-    S._campExpire = benefit.expirationTime
-    if not S._campBenefitSeenAt then S._campBenefitSeenAt = Now() end
-    local hold = S.CAMP_BENEFIT_HOLD or 10
-    local recent = hold > 0 and (Now() - S._campBenefitSeenAt) <= hold
-    -- Icône prise : encore près du feu, ou juste après l'obtention.
-    if near or recent then
-      S._campState = "buff"
-      return "buff"
-    end
-    -- Avantages encore actifs (2 h) mais loin du feu : pas d'icône.
-    S._campState = nil
-    return nil
-  end
-  S._campBenefitSeenAt = nil
-  if near then
-    S._campState = "near"
-    S._campExpire = nil
-    return "near"
-  end
-  S._campState, S._campExpire, S._campStartedAt, S._campChargeAt, S._fireUntil = nil, nil, nil, nil, nil
-  return nil
-end
-
-function S.LiveCampfire()
-  if S._sim.campfire or S._simCamp then return true end
-  if S.Opt and not S.Opt("slotCampfire") then return false end
-  local st = S.CampfireState()
-  return st == "near" or st == "charge" or st == "burst" or st == "buff"
-end
-
-
 function S.LiveSleepingBag()
   if S._sim.sleepingbag then return true end
   if S.Opt and not S.Opt("slotSleepingBag") then return false end
@@ -1345,7 +963,6 @@ function S.Want(id)
   if id == "trainer" then return S.LiveTrainer() end
   if id == "eating" then return S.LiveEating() end
   if id == "sleepingbag" then return S.LiveSleepingBag() end
-  if id == "campfire" then return S.LiveCampfire() end
   return false
 end
 
@@ -1726,10 +1343,6 @@ end
 -- lisible, et la fiole est restaurée proprement à la fin.
 S.STATE_ICON = {
   combat   = MEDIA .. "Combat-Icon",
-  campfire = MEDIA .. "Campfire-Icon",
-  ["campfire-near"]   = MEDIA .. "Campfire-Near-Icon",
-  ["campfire-charge"] = MEDIA .. "Campfire-Charge-Icon",
-  ["campfire-buff"]   = MEDIA .. "Campfire-Buff-Icon",
   food     = MEDIA .. "Food-Icon",
   drink    = MEDIA .. "Drink-Icon",
   both     = MEDIA .. "Eat-Both-Icon",
@@ -1821,7 +1434,7 @@ function S.ApplyStateIcon(t, key, mode)
     x, y = (w - side) * 0.5, (h - side) * 0.5
     alpha = 0.92 + 0.08 * (0.5 + 0.5 * math.sin(phase * 2 * math.pi))
   elseif mode == "burst" or mode == "buff" then
-    -- flamme pleine, statique, lueur gérée par EnsureCampfire
+    -- flamme / glyphe plein, statique
     alpha = 1
   elseif mode == "bob" then
     local bob = math.sin(phase * 2 * math.pi) * math.max(0.6, h * 0.04)
@@ -1984,7 +1597,7 @@ end
 
 function S.ReplacesFlaskIcon(t)
   local act = S.Active and S.Active()
-  if act == "sleepingbag" or act == "fishing" or act == "campfire" or act == "combat" or act == "rested" then return true end
+  if act == "sleepingbag" or act == "fishing" or act == "combat" or act == "rested" then return true end
   if act == "drop" and S.CombatStateOn and S.CombatStateOn() then return true end
   if act == "drop" and S.Want and S.Want("eating") then return true end
   if act and act ~= "drop" and S.SHEETS and S.SHEETS[act] then return true end
@@ -2449,11 +2062,6 @@ function S.ApplyTotal(t)
     S.ApplySlotZ(t, false)
     HideSymbol(t)
     S.ApplySleepingBag(t)
-  elseif act == "campfire" then
-    S.ApplySlotZ(t, false)
-    HideSymbol(t)
-    if t.icon and t.icon.Show then t.icon:Show() end
-    S.ApplyCampfire(t)
   elseif act == "rested" then
     S.ApplySlotZ(t, false)
     HideSymbol(t)
@@ -2473,11 +2081,9 @@ function S.ApplyTotal(t)
       S.HideStateIcon(t)
     end
   end
-  if act ~= "campfire" then S.HideCampfire(t) end
   if act ~= "rested" and S.HideRestIcon then S.HideRestIcon(t) end
-  if act ~= "fishing" and not (S.CombatStateOn and S.CombatStateOn()) and act ~= "campfire" then
-    if t._stIcon and t._stIcon._kind and t._stIcon._kind ~= "campfire" and S.HideStateIcon then
-      -- HideCampfire already clears campfire ; clear a stale fishing/combat glyph
+  if act ~= "fishing" and not (S.CombatStateOn and S.CombatStateOn()) then
+    if t._stIcon and t._stIcon._kind and S.HideStateIcon then
       if act ~= "combat" then
         local kind = t._stIcon._kind
         if kind == "fishing" or kind == "combat" then S.HideStateIcon(t) end
@@ -2551,7 +2157,6 @@ S.TIPS = {
   fishing   = { "En train de pêcher", "La ligne est lancée." },
   swimming  = { "À la nage", "Tu nages." },
   durability= { "Équipement usé", "Une pièce d'équipement est sous 20 %." },
-  campfire  = { "Feu de camp", "Braise près du feu, puis flamme pendant la charge, étincelles au buff." },
   rested    = { "Au repos", "Tu te reposes à l'auberge ou en capitale." },
 }
 S.COMBAT_TIP = "En combat : XP et armes en cours"
@@ -2625,9 +2230,7 @@ end
 function S.FillStateTip(tt)
   if not tt then return nil end
   local act = S.Active and S.Active()
-  if act ~= "sleepingbag" and act ~= "rested" and act ~= "campfire" then
-    -- Pas d'icône feu, mais les avantages (2 h) restent consultables au survol.
-    if S.FillCampBenefitTip then return S.FillCampBenefitTip(tt) end
+  if act ~= "sleepingbag" and act ~= "rested" then
     return nil
   end
   local function line(text, r, g, b)
@@ -2688,61 +2291,7 @@ function S.FillStateTip(tt)
     end
     return "rested"
   end
-  if act == "campfire" then
-    title(Tr["Feu de camp"])
-    local st = (S.CampfireState and S.CampfireState()) or S._campState
-    if st == "charge" then
-      line(Tr["Charge en cours"], 1, 0.93, 0.80)
-    elseif st == "buff" or st == "burst" then
-      line(Tr["Avantages du camp"], 1, 0.93, 0.80)
-    elseif st == "near" then
-      line(Tr["À proximité du feu"], 1, 0.93, 0.80)
-    end
-    -- durée uniquement si une aura réelle (ou une sim d'aura) fournit expirationTime
-    local info = S.CampfireAuraInfo and S.CampfireAuraInfo()
-    if info and info.remaining then
-      S._campExpire = info.expirationTime
-      local rv = S.FormatExact(info.remaining)
-      if rv then line(string.format(Tr["Temps restant : %s"], rv), 1, 1, 1) end
-    end
-    if st == "buff" or st == "burst" then
-      local lines = S.CampfireBenefitLines and S.CampfireBenefitLines(info)
-      if type(lines) == "table" then
-        for i = 1, #lines do line(lines[i], 1, 1, 1) end
-      end
-    end
-    return "campfire"
-  end
-  -- Icône absente (loin du feu) : le survol de la fiole peut encore afficher
-  -- le temps restant des avantages, sans réactiver l'état.
-  if S.FillCampBenefitTip and S.FillCampBenefitTip(tt) then
-    return "camp-benefits"
-  end
   return nil
-end
-
-function S.FillCampBenefitTip(tt)
-  if not tt then return nil end
-  if S.CampfireState and S.CampfireState() then return nil end
-  local info = S.CampfireBenefitAura and S.CampfireBenefitAura()
-  if not (info and info.remaining) then return nil end
-  local function line(text, r, g, b)
-    if type(tt.AddLine) == "function" and text and text ~= "" then
-      pcall(tt.AddLine, tt, text, r or 1, g or 1, b or 1, true)
-    end
-  end
-  if type(tt.SetText) == "function" then
-    pcall(tt.SetText, tt, Tr["Avantages du camp"], 1, 0.82, 0)
-  else
-    line(Tr["Avantages du camp"], 1, 0.82, 0)
-  end
-  local rv = S.FormatExact(info.remaining)
-  if rv then line(string.format(Tr["Temps restant : %s"], rv), 1, 1, 1) end
-  local lines = S.CampfireBenefitLines and S.CampfireBenefitLines(info)
-  if type(lines) == "table" then
-    for i = 1, #lines do line(lines[i], 1, 1, 1) end
-  end
-  return "camp-benefits"
 end
 
 function S.ShowExplanation(owner)
@@ -2769,7 +2318,7 @@ function S.ShowExplanation(owner)
   if not (tt and owner) then return end
   if type(tt.SetOwner) == "function" then pcall(tt.SetOwner, tt, owner, "ANCHOR_RIGHT") end
   if type(tt.ClearLines) == "function" then pcall(tt.ClearLines, tt) end
-  if act == "sleepingbag" or act == "rested" or act == "campfire" then
+  if act == "sleepingbag" or act == "rested" then
     S.FillStateTip(tt)
     local Wd = ns.Wide
     if Wd and Wd.FillTotalTip then
@@ -2808,7 +2357,7 @@ end
 ------------------------------------------------------------------------------
 function S.RestedOnly()
   -- z + vague de repos : pas besoin de repeindre tout le puits à 20 i/s.
-  if S.Want("trainer") or S.Want("campfire") or S.FillBusy() then return false end
+  if S.Want("trainer") or S.FillBusy() then return false end
   if (S._jolt or 0) > 0 or S._lvlT or S._sparkT then return false end
   local F = ns.Flight
   if F and (F.Paused and F.Paused() or (F._vis or 0) > 0) then return false end
@@ -2820,7 +2369,6 @@ function S.NeedsDriver()
   -- sac de couchage : pictogramme statique, pas d'OnUpdate.
   if act and act ~= "drop" and act ~= "sleepingbag" then return true end
   if S.Want("trainer") then return true end
-  if S.Want("campfire") then return true end
   if S.Want("eating") then return true end
   if act == "rested" then return true end
   if S.CombatStateOn and S.CombatStateOn() then return true end
@@ -2874,9 +2422,6 @@ function S.Tick(dt)
   if S._phase > 1 then S._phase = S._phase - math.floor(S._phase) end
   if S._sparkT ~= nil then S.TickBarSpark(dt) end
   if S._lvlT ~= nil then S.TickLevelUp(dt) end
-  if S.Active and S.Active() == "campfire" then
-    S.ApplyCampfire()
-  end
   if S.Active and S.Active() == "rested" then
     S.ApplyRestIcon()
   end
@@ -3362,162 +2907,6 @@ function S.ApplyRegenWave(dt)
     if e.wave2 and e.wave2.AddMaskTexture then pcall(e.wave2.AddMaskTexture, e.wave2, mask) end
   end
   S._eatOn = true
-end
-
-------------------------------------------------------------------------------
--- Feu de camp (un seul glyphe) + débordement de niveau
-------------------------------------------------------------------------------
-function S.CampfireIconKey(st)
-  if st == "near" then return "campfire-near" end
-  if st == "charge" then return "campfire-charge" end
-  -- buff / burst (sim d'avantages)
-  return "campfire-buff"
-end
-
-function S.EnsureCampfire(t)
-  if not t then return nil end
-  local _, content, w, h = S.PlaceIconClip(t)
-  local parent = content or t.icon or t
-  if t._camp then
-    if t._camp.SetParent and parent and t._camp.GetParent and t._camp:GetParent() ~= parent then
-      pcall(t._camp.SetParent, t._camp, parent)
-    end
-    return t._camp
-  end
-  local ok, f = pcall(CreateFrame, "Frame", nil, parent)
-  if not (ok and f) then return nil end
-  S.SetSizeIf(f, 1, 1)
-  if f.EnableMouse then pcall(f.EnableMouse, f, false) end
-  if f.SetFrameLevel and parent and parent.GetFrameLevel then
-    local lv = parent:GetFrameLevel()
-    pcall(f.SetFrameLevel, f, (lv or 0) + 2)
-  end
-  local function tex(layer, sub)
-    if type(f.CreateTexture) ~= "function" then return nil end
-    return f:CreateTexture(nil, layer or "ARTWORK", nil, sub or 0)
-  end
-  -- Lueur statique (buff), barre de charge, étincelles poolées (jamais allouées au tick).
-  f.glow = tex("ARTWORK", -1)
-  if f.glow then
-    if f.glow.SetTexture then pcall(f.glow.SetTexture, f.glow, "Interface\\Buttons\\WHITE8X8") end
-    if f.glow.SetBlendMode then pcall(f.glow.SetBlendMode, f.glow, "ADD") end
-    if f.glow.Hide then f.glow:Hide() end
-  end
-  f.fillBg = tex("OVERLAY", 0)
-  f.fill = tex("OVERLAY", 1)
-  if f.fillBg then
-    if f.fillBg.SetTexture then pcall(f.fillBg.SetTexture, f.fillBg, "Interface\\Buttons\\WHITE8X8") end
-    if f.fillBg.Hide then f.fillBg:Hide() end
-  end
-  if f.fill then
-    if f.fill.SetTexture then pcall(f.fill.SetTexture, f.fill, "Interface\\Buttons\\WHITE8X8") end
-    if f.fill.Hide then f.fill:Hide() end
-  end
-  f.sparks = { tex("OVERLAY", 2), tex("OVERLAY", 2), tex("OVERLAY", 2), tex("OVERLAY", 2), tex("OVERLAY", 2) }
-  for _, sp in ipairs(f.sparks) do
-    if sp then
-      if sp.SetTexture then pcall(sp.SetTexture, sp, "Interface\\Buttons\\WHITE8X8") end
-      if sp.SetVertexColor then pcall(sp.SetVertexColor, sp, 1, 0.92, 0.62, 1) end
-      if sp.Hide then sp:Hide() end
-    end
-  end
-  t._camp = f
-  return f
-end
-
-function S.HideCampfire(t)
-  t = t or S.FlaskTile and S.FlaskTile()
-  if t and t._camp and t._camp.Hide then t._camp:Hide() end
-  if t and t._stIcon then
-    local kind = t._stIcon._kind
-    if type(kind) == "string" and kind:sub(1, 8) == "campfire" and S.HideStateIcon then
-      S.HideStateIcon(t)
-    end
-  end
-end
-
-function S.ApplyCampfire(t)
-  t = t or S.FlaskTile and S.FlaskTile()
-  if not t then return end
-  local st = S.CampfireState and S.CampfireState()
-  if not st then
-    S.HideCampfire(t)
-    return
-  end
-  local key = S.CampfireIconKey and S.CampfireIconKey(st) or "campfire-buff"
-  S.ApplyStateIcon(t, key, st)
-  -- Recale _kind sur « campfire* » pour HideCampfire / tests, tout en
-  -- conservant la variante de texture.
-  if t._stIcon then t._stIcon._kind = key end
-  local f = S.EnsureCampfire(t)
-  if not f then return end
-  local clip, content, w, h = S.PlaceIconClip(t)
-  w, h = w or 16, h or 16
-  if f.SetParent and content then pcall(f.SetParent, f, content) end
-  if S.SetSizeIf(f, w, h) or f._clipParent ~= (content or clip) then
-    if f.ClearAllPoints then pcall(f.ClearAllPoints, f) end
-    if f.SetPoint then pcall(f.SetPoint, f, "BOTTOMLEFT", content or clip, "BOTTOMLEFT", 0, 0) end
-    f._clipParent = content or clip
-  end
-  -- Charge : barre de progression = 1 - remaining/duration (aura réelle).
-  local prog
-  if st == "charge" then
-    local info = S.CampfireChargeAura and S.CampfireChargeAura()
-    if info then prog = info.progress end
-    if not prog then prog = 0 end
-  end
-  if st == "charge" and f.fillBg and f.fill then
-    local bh = math.max(2, math.floor(h * 0.12 + 0.5))
-    local pad = 1
-    local fw = math.max(0, w - pad * 2)
-    S.PlaceClippedTex(f.fillBg, f, fw, bh, pad, pad)
-    if f.fillBg.SetVertexColor then pcall(f.fillBg.SetVertexColor, f.fillBg, 0.10, 0.07, 0.04, 0.85) end
-    if f.fillBg.Show then f.fillBg:Show() end
-    local iw = math.max(0, math.floor(fw * prog + 0.5))
-    if iw < 1 and prog > 0 then iw = 1 end
-    if iw > 0 then
-      S.PlaceClippedTex(f.fill, f, iw, math.max(1, bh - 1), pad, pad)
-      if f.fill.SetVertexColor then pcall(f.fill.SetVertexColor, f.fill, 1, 0.72, 0.28, 0.95) end
-      if f.fill.Show then f.fill:Show() end
-    elseif f.fill.Hide then
-      f.fill:Hide()
-    end
-  else
-    if f.fillBg and f.fillBg.Hide then f.fillBg:Hide() end
-    if f.fill and f.fill.Hide then f.fill:Hide() end
-  end
-  -- Lueur statique uniquement une fois les avantages pris (pas de pulsation).
-  if (st == "buff" or st == "burst") and f.glow then
-    local gw = math.max(4, w * 0.92)
-    local gh = math.max(4, h * 0.92)
-    S.PlaceClippedTex(f.glow, f, gw, gh, (w - gw) * 0.5, (h - gh) * 0.5)
-    if f.glow.SetVertexColor then pcall(f.glow.SetVertexColor, f.glow, 1, 0.55, 0.12, 0.28) end
-    if f.glow.Show then f.glow:Show() end
-  elseif f.glow and f.glow.Hide then
-    f.glow:Hide()
-  end
-  -- Étincelles montantes uniquement pendant la charge (textures déjà poolées).
-  if st == "charge" then
-    local phase = S._phase or 0
-    for i, sp in ipairs(f.sparks or {}) do
-      if sp then
-        local u = (phase * 1.35 + (i - 1) * 0.18) % 1
-        local sx = w * (0.28 + 0.44 * ((i * 0.37) % 1)) + math.sin((phase + i) * 5.2) * math.max(0.4, w * 0.04)
-        local sy = h * (0.18 + 0.70 * u)
-        local sz = math.max(1, (1.6 + (i % 2)) * (w / 20))
-        local a = (1 - u) * (0.55 + 0.45 * (i % 2))
-        S.PlaceClippedTex(sp, f, sz, sz, sx - sz * 0.5, sy)
-        if sp.SetAlpha then pcall(sp.SetAlpha, sp, a) end
-        if sp.SetVertexColor then pcall(sp.SetVertexColor, sp, 1, 0.90, 0.55, 1) end
-        if sp.Show then sp:Show() end
-      end
-    end
-  else
-    for _, sp in ipairs(f.sparks or {}) do
-      if sp and sp.Hide then sp:Hide() end
-    end
-  end
-  if f.Show then f:Show() end
 end
 
 -- Palette unique (voile de case, « +1 », étincelle, teinte de toast).
@@ -4082,8 +3471,6 @@ S.OPTIONS = {
     help = "Des bulles montent dans le puits tant que tu nages." },
   { type = "check", key = "slotDurability", label = "Équipement usé", default = false,
     help = "Un bouclier fendu dans le puits et un toast quand une pièce équipée passe sous 20 % de durabilité. Coupé par défaut." },
-  { type = "check", key = "slotCampfire", label = "Feu de camp", default = true,
-    help = "Près d'un feu de camp, une petite braise s'affiche dans le puits. Elle grandit en flamme pendant la minute de charge. Quand le buff est pris, une courte gerbe d'étincelles, puis retour à la goutte (pas de fumée)." },
   { type = "check", key = "slotSleepingBag", label = "Sac de couchage", default = true,
     help = "Dans le puits de la fiole, le sac de couchage (style A) à 1, 2 ou 3 bandes uniquement pendant la charge (sort Unroll Bag 429961 / canal). Le buff Bien reposé (429959) et les buffs résultants n'entretiennent pas l'icône. Priorité juste avant les z de repos. Si tu pars avant 3 charges, un toast XP indique le palier manqué." },
   { type = "check", key = "slotRested", label = "« z » de repos sur la fiole", default = true,
@@ -4187,21 +3574,9 @@ if ns.On then
       if ev == "UI_ERROR_MESSAGE" then
         pcall(S.OnInvFullError, ...)
       end
-      if ev == "PLAYER_STARTED_MOVING" then
-        S._campMoving = true
-      elseif ev == "PLAYER_STOPPED_MOVING" then
-        S._campMoving = nil
-      end
       if ev == "UNIT_SPELLCAST_SUCCEEDED" then
-        local unit, _, spellId, spellName = select(2, ...)
+        local unit = select(2, ...)
         if type(unit) ~= "string" then unit = select(1, ...) end
-        if type(spellId) ~= "number" then
-          spellId = select(5, ...) or select(3, ...)
-        end
-        if type(spellName) ~= "string" then spellName = select(2, ...) end
-        if (not unit or unit == "player") and S.NoteCampfireSpell then
-          pcall(S.NoteCampfireSpell, spellId, spellName)
-        end
         if unit and unit ~= "player" then return end
       end
       if ev == "PLAYER_UPDATE_RESTING" or ev == "ZONE_CHANGED"
