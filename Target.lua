@@ -1,7 +1,7 @@
 -- Dropamine 3.3.6 — SURBRILLANCE DE LA GRILLE SELON LA CIBLE.
 -- À chaque changement de cible (PLAYER_TARGET_CHANGED), les cases dont le
 -- rang / l'XP peut monter grâce à cette cible reçoivent un voile vert discret et
--- une petite marque verte « +1 » :
+-- un liseré coloré (GAIN_COLORS) ; le « +1 » et le pop vert clair sont réservés au vrai gain :
 --   * Niveau : la cible donne de l'XP (pas grise pour ton niveau, pas tapée par
 --     un autre, pas un joueur, niveau maximal pas atteint) ;
 --   * compétence d'arme / farouche (et distance pour un chasseur), Défense :
@@ -528,6 +528,23 @@ function T.KeyFor(d)
   if d.id then return "id:" .. tostring(d.id) end
 end
 
+-- Couleur du liseré de pré-sélection : GAIN_COLORS (rouge XP, bleu armes/Défense, vert métiers).
+function T.GainColor(d)
+  local S = ns.Slot
+  if d and S and S.ColorForGain then
+    local c = S.ColorForGain(d.kind, d.id, d.name or d.skillName, d.header or d.section)
+    if c then return c end
+  end
+  local G = ns.GAIN_COLORS or (S and S.ADD_COLORS)
+  if not G then return T.GREEN end
+  local k = d and d.kind
+  if k == "level" then return G.red end
+  if k == "melee" or k == "ranged" or k == "defense" or k == "feral" or (d and d.combatTile) then
+    return G.blue
+  end
+  return G.green
+end
+
 -- Marque d'une case (créée une fois, réutilisée).
 function T.Mark(t)
   local m = t._osrsTgt
@@ -581,9 +598,16 @@ function T.Paint()
       local m = T.Mark(t)
       local base = t.GetFrameLevel and t:GetFrameLevel() or 1
       pcall(m.SetFrameLevel, m, base + 4)
-      m.veil:SetAlpha(T.VEIL[e.level])
-      m.fs:SetText(e.level == "direct" and "+1" or "+")
-      m.fs:SetAlpha(e.level == "direct" and 1 or 0.55)
+      -- Pré-sélection : liseré coloré seulement (pas de voile, pas de « +1 »).
+      if m.veil then
+        if m.veil.SetAlpha then pcall(m.veil.SetAlpha, m.veil, 0) end
+        if m.veil.Hide then m.veil:Hide() end
+      end
+      if m.fs then
+        if m.fs.SetText then m.fs:SetText("") end
+        if m.fs.Hide then m.fs:Hide() end
+      end
+      t._tgtCol = T.GainColor(t.data)
       t._tgtLit = (e.level == "direct") and "direct" or "indirect"
       if ns.Theme and ns.Theme.BevelColor then pcall(ns.Theme.BevelColor, t) end
       m._level = e.level
@@ -593,7 +617,7 @@ function T.Paint()
     else
       t._tgtWhy = nil
       if t._osrsTgt then t._osrsTgt:Hide() t._osrsTgt._level = nil end
-      if t._tgtLit then t._tgtLit = nil if ns.Theme and ns.Theme.BevelColor then pcall(ns.Theme.BevelColor, t) end end
+      if t._tgtLit then t._tgtLit, t._tgtCol = nil, nil if ns.Theme and ns.Theme.BevelColor then pcall(ns.Theme.BevelColor, t) end end
     end
     end
   end
@@ -606,7 +630,7 @@ function T.Clear()
   for _, t in ipairs(UI.embed and UI.embed.tiles or {}) do
     t._tgtWhy = nil
     if t._osrsTgt then t._osrsTgt:Hide() t._osrsTgt._level = nil end
-    if t._tgtLit then t._tgtLit = nil if ns.Theme and ns.Theme.BevelColor then pcall(ns.Theme.BevelColor, t) end end
+    if t._tgtLit then t._tgtLit, t._tgtCol = nil, nil if ns.Theme and ns.Theme.BevelColor then pcall(ns.Theme.BevelColor, t) end end
   end
   T.shown = 0
 end

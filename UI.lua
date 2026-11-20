@@ -4733,7 +4733,8 @@ function UI:DropHold()
 end
 function UI:DropBgAlpha()
   local v = ns.db and ns.db.ui and ns.N(ns.db.ui.dropBgAlpha)
-  if not v then return nil end
+  if not v then v = 0.68 end   -- défaut de l'option « Fond des toasts »
+  if v > 1 then v = math.min(1, v / 100) end
   return math.max(0, math.min(1, v))
 end
 local TOAST_BORDER = { 0.12, 0.10, 0.08, 0.95 }
@@ -5634,22 +5635,28 @@ end
 -- Même opacité que le fond de toast d'avant la teinte (seul le RVB change).
 -- Sources identiques à ApplyRestToastChromeRaw / Skin.Ch.Toast / Theme.ToastLook.
 function UI.ToastBgAlpha(frame)
-  local a = frame and ns.N(frame._bgAlpha)
-  if not a then
-    local P = ns.Panel
-    if P and P.tip then a = ns.N(P.tip.bgAlpha) end
-  end
-  if not a and UI.DropBgAlpha then a = UI:DropBgAlpha() end
-  if not a then
-    local P = ns.Panel
-    if P and P.BgAlpha then
-      local v = ns.N(P.BgAlpha())
-      if v then a = (v > 1) and (v / 100) or v end
+  -- Uniquement « Fond des toasts » (dropBgAlpha), jamais l'opacité du panneau
+  -- ou de l'infobulle (sinon un toast XP rouge reste quasi opaque à 20 %).
+  local a = UI.DropBgAlpha and UI:DropBgAlpha() or 0.68
+  if a > 1 then a = math.min(1, a / 100) end
+  a = math.max(0, math.min(1, a))
+  if frame then frame._bgAlpha = a end
+  return a
+end
+
+function UI.RefreshToastOpacity()
+  local list = {}
+  for _, f in ipairs(UI.dropsActive or {}) do list[#list + 1] = f end
+  for _, f in ipairs(UI._toastPool or {}) do list[#list + 1] = f end
+  for i = 1, #list do
+    local f = list[i]
+    if f then
+      f._tintA = nil
+      if f._tintFill then f._tintFill._bgAlpha = nil end
+      if ns.Chrome and ns.Chrome.Toast then pcall(ns.Chrome.Toast, f) end
+      if UI.ApplyToastTint then pcall(UI.ApplyToastTint, f, f._tintOpts or {}) end
     end
   end
-  if not a then a = 0.85 end
-  if a > 1 then a = math.min(1, a / 100) end
-  return math.max(0, math.min(1, a))
 end
 
 function UI.ApplyToastTint(frame, opts)
@@ -6635,6 +6642,11 @@ local function Now()
 end
 function UI:FlushSkillDiff()
   self._skillDiffPending = false
+  if ns.InCombat and ns.InCombat() then
+    self._skillDiffAfterCombat = true
+    self.dirty = true
+    return
+  end
   if not ns.SkillRankSnapshot then return end
   -- 3.5.21 : on compare aussi en combat (rangs lisibles). Si des rangs
   -- restent secrets, MergeRankCache / la garde « rang 0 » conservent la
@@ -6862,6 +6874,11 @@ function UI:ParseSkillMessage(msg)
 end
 
 function UI:OnSkillDiff()
+  if ns.InCombat and ns.InCombat() then
+    self._skillDiffAfterCombat = true
+    self.dirty = true
+    return
+  end
   if self._skillDiffPending then return end
   self._skillDiffPending = true
   local holder = self:TimerFrame("skilldiff")

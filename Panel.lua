@@ -398,7 +398,12 @@ end
 -- réglables ici.
 P.DEFAULT_OPACITY, P.DEFAULT_FADE = 60, 3
 function P.Opacity() return P.Clamp(DB().opacity, 0, 100) or P.DEFAULT_OPACITY end
-function P.FadeDelay() return P.Clamp(DB().fadeDelay, 0, 60) or P.DEFAULT_FADE end
+function P.FadeDelay()
+  if DB().fadeDelay == nil then return P.DEFAULT_FADE end
+  local c = P.Clamp(DB().fadeDelay, 0, 60)
+  if c == nil then return P.DEFAULT_FADE end
+  return c   -- 0 = jamais (ne pas retomber sur le défaut)
+end
 -- 3.3.8 : FOND à l'état actif (survol / gain) = alpha ABSOLU du fond, réglable
 -- (/drop fond <0-100>, mémorisé) : plus clair / translucide, comme les fenêtres
 -- du compteur de dégâts. Le repos garde son aspect (jamais plus opaque que l'actif) ;
@@ -715,14 +720,22 @@ end
 function P.ScheduleSleep()
   P._sleepToken = (P._sleepToken or 0) + 1
   local tok = P._sleepToken
-  P._sleepAt = Now() + P.FadeDelay()
+  local delay = P.FadeDelay()
+  -- 0 = jamais : le repos n'est pas déclenché.
+  if not delay or delay <= 0 then
+    P._sleepAt = nil
+    return
+  end
+  P._sleepAt = Now() + delay
   local function go()
     if tok ~= P._sleepToken or P._hoverWant then return end
     P._sleepAt = nil
     P._target = 0
     P.StartFade()
   end
-  if not After(P.FadeDelay(), go) then go() end
+  if not After(delay, go) then
+    -- sans C_Timer on ne déclenche pas immédiatement (0 était instantané)
+  end
 end
 function P.Wake(reason)
   P.lastWake = reason or "gain"
@@ -784,9 +797,15 @@ function P.SetBgAlpha(v)
 end
 function P.SetFadeDelay(v)
   local c = P.Clamp(v, 0, 60)
-  if not c then return nil end
+  if c == nil then return nil end
   DB().fadeDelay = c
   if ns.SaveActiveProfile then pcall(ns.SaveActiveProfile) end
+  if c == 0 then
+    P._sleepToken = (P._sleepToken or 0) + 1
+    P._sleepAt = nil
+    P._target = 1
+    if P.StartFade then P.StartFade() end
+  end
   return c
 end
 function P.SetIconAlpha(v)
@@ -843,7 +862,13 @@ ns.SlashExt.opacite = function(rest)
 end
 ns.SlashExt.fondu = function(rest)
   local c = P.SetFadeDelay((rest or ""):match("^%s*(%-?[%d%.]+)"))
-  if c then say(Tr["retour au repos après "] .. c .. Tr[" s sans survol ni gain"]) else say(Tr["fondu : "] .. P.FadeDelay() .. Tr[" s (usage : /drop fondu <0-60>)"]) end
+  if c == 0 then say(Tr["retour au repos : "] .. Tr["Jamais"])
+  elseif c then say(Tr["retour au repos après "] .. c .. Tr[" s sans survol ni gain"])
+  else
+    local d = P.FadeDelay()
+    if d <= 0 then say(Tr["fondu : "] .. Tr["Jamais"] .. Tr[" (usage : /drop fondu <0-60>)"])
+    else say(Tr["fondu : "] .. d .. Tr[" s (usage : /drop fondu <0-60>)"]) end
+  end
 end
 ns.SlashExt.fond = function(rest)
   local c = P.SetBgAlpha((rest or ""):match("^%s*(%-?[%d%.]+)"))
