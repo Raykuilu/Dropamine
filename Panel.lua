@@ -198,10 +198,20 @@ function P.ApplyMode()
     list:SetSize(W.LIST_W, W.SIZE.h - W.TOP - W.PAD)
     pcall(f.SetFrameStrata, f, "HIGH")
   else
-    local lh = P.CompactListHeight()
-    f:SetSize(W.LIST_W + 2 * P.CPAD, P.CTOP + lh + P.CPAD)
-    list:SetPoint("TOPLEFT", f, "TOPLEFT", P.CPAD, -P.CTOP)
-    list:SetSize(W.LIST_W, lh)
+    local Lyt = ns.Layout
+    local fw, fh, pad, gw, gh
+    if Lyt and Lyt.ContentSize then
+      fw, fh, pad, gw, gh = Lyt.ContentSize()
+    else
+      local lh = P.CompactListHeight()
+      pad = P.CPAD
+      gw, gh = W.LIST_W, lh
+      fw, fh = gw + 2 * pad, gh + 2 * pad
+    end
+    f:SetSize(fw, fh)
+    list:SetPoint("TOPLEFT", f, "TOPLEFT", pad, -pad)
+    list:SetSize(gw, gh)
+    P._contentPad = pad
     -- Au-dessus du chat (MEDIUM). Niveau stable : on ne le redescend pas.
     pcall(f.SetFrameStrata, f, "HIGH")
     if f.SetToplevel then pcall(f.SetToplevel, f, true) end
@@ -913,10 +923,16 @@ function UI:LayoutGrid(wrap, snap)
   return unpack(r)
 end
 function P.CompactListHeight()
+  -- Hauteur de la grille seule (sans marge, sans écart fantôme sous la
+  -- dernière rangée). Le cadre ajoute la même marge de chaque côté.
+  local Lyt = ns.Layout
+  if Lyt and Lyt.GridSize then
+    local gw, gh, cols, rows = Lyt.GridSize()
+    return gh, cols, rows
+  end
   local n = (UI.snapshot and UI.snapshot.tiles and #UI.snapshot.tiles or 9) + 1
-  local ins = UI:ListInsets()
-  local inner = W.LIST_W - ins.left - ins.right
-  local cols = math.max(1, math.floor((inner + I.HGAP) / (I.TILE + I.HGAP)))
+  local cols = (Lyt and Lyt.Cols and Lyt.Cols()) or 5
   local rows = math.max(1, math.ceil(n / cols))
-  return ins.top + rows * I.STEP + 4, cols, rows
+  local gh = rows * (I.TILE or 40) + math.max(0, rows - 1) * (I.VGAP or 12)
+  return gh, cols, rows
 end

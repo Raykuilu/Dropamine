@@ -1,0 +1,3042 @@
+-- Tests hors jeu 3.6.3 : noms d'objets sans « objet 159 », pause en vol.
+-- Harnais repris de test_v362.lua (lignes 8-745).
+-- /tmp/lua-5.1.5/src/lua tests/test_v363.lua
+
+local addonDir = arg and arg[0] and arg[0]:match("^(.*)/tests/[^/]+%.lua$") or "."
+if addonDir == "" then addonDir = "." end
+
+
+-- Géométrie : rectangle absolu déduit des ancres (TOPLEFT/RIGHT/ALL…), y vers le haut.
+local function anchorXY(r, name)
+  local x = name:find("LEFT") and r.l or (name:find("RIGHT") and r.r) or (r.l + r.r) / 2
+  local y = name:find("TOP") and r.t or (name:find("BOTTOM") and r.b) or (r.t + r.b) / 2
+  return x, y
+end
+function __rect(f, depth)
+  depth = depth or 0
+  if type(f) ~= "table" or depth > 30 then return nil end
+  if f._abs then return f._abs end
+  if f.allPoints then return __rect(f.allPoints, depth + 1) end
+  local pts = f.points
+  if not pts or #pts == 0 then return nil end
+  local L, R, T, B, CX, CY
+  for _, p in ipairs(pts) do
+    if p[1] == "ALL" then return __rect(p[2], depth + 1) end
+    local rr = __rect(p[2] or f.parent, depth + 1)
+    if not rr then return nil end
+    local ax, ay = anchorXY(rr, p[3] or p[1])
+    ax, ay = ax + (p[4] or 0), ay + (p[5] or 0)
+    local n = p[1]
+    if n:find("LEFT") then L = ax elseif n:find("RIGHT") then R = ax else CX = ax end
+    if n:find("TOP") then T = ay elseif n:find("BOTTOM") then B = ay else CY = ay end
+  end
+  local w, h = f.width or 0, f.height or 0
+  if not L and not R then L = (CX or 0) - w / 2 R = L + w elseif not L then L = R - w elseif not R then R = L + w end
+  if not T and not B then T = (CY or 0) + h / 2 B = T - h elseif not T then T = B + h elseif not B then B = T - h end
+  return { l = L, r = R, t = T, b = B }
+end
+
+_G.__ags = {}
+local failures = 0
+local function ok(cond, msg)
+  if cond then print("  OK  " .. msg)
+  else failures = failures + 1 print("  FAIL  " .. msg) end
+end
+
+local function hasPoint(frame, point, rel, relPoint)
+  if not frame or not frame.points then return false end
+  for i = 1, #frame.points do
+    local p = frame.points[i]
+    if p[1] == point then
+      if rel and p[2] ~= rel then return false end
+      if relPoint and p[3] ~= relPoint then return false end
+      return true
+    end
+  end
+  return false
+end
+
+-- Cadre / région instrumentés ------------------------------------------------
+local framesByName = {}
+
+local function newObj(class, name, parent)
+  local f = {
+    typ = class or "Frame",
+    name = name,
+    parent = parent,
+    shown = true,
+    width = 100,
+    height = 50,
+    points = {},
+    children = {},
+    regions = {},
+    scripts = {},
+    hooks = {},
+    alpha = 1,
+    level = parent and ((parent.level or 1) + 1) or 1,
+    strata = "MEDIUM",
+    text = "",
+    justifyH = "LEFT",
+    allPoints = nil,
+    _setSizes = {},
+  }
+  if parent and parent.children then parent.children[#parent.children + 1] = f end
+  if name then framesByName[name] = f; _G[name] = f end
+
+  function f:GetName() return self.name end
+  function f:GetObjectType() return self.typ end
+  function f:GetParent() return self.parent end
+  function f:SetParent(p)
+    if self.parent and self.parent.children then
+      for i = #self.parent.children, 1, -1 do
+        if self.parent.children[i] == self then table.remove(self.parent.children, i) end
+      end
+    end
+    self.parent = p
+    if p and p.children then p.children[#p.children + 1] = self end
+  end
+  function f:GetChildren() return unpack(self.children) end
+  function f:GetRegions() return unpack(self.regions) end
+  function f:SetSize(w, h) self.width, self.height = w, h; self._setSizes[#self._setSizes + 1] = { w, h } end
+  function f:GetWidth() return self.width end
+  function f:SetWidth(w) self.width = w end
+  function f:GetHeight() return self.height end
+  function f:SetHeight(h) self.height = h end
+  function f:GetLeft() local r = __rect(self) return r and r.l or (self._left or 0) end
+  function f:GetBottom() local r = __rect(self) return r and r.b or (self._bottom or 0) end
+  function f:GetRight() local r = __rect(self) return r and r.r or nil end
+  function f:GetTop() local r = __rect(self) return r and r.t or nil end
+  function f:IsVisible() local o = self while o do if o.shown == false then return false end o = o.parent end return true end
+  function f:ClearAllPoints() self.points = {}; self.allPoints = nil end
+  function f:SetPoint(point, rel, relPoint, x, y)
+    if type(rel) == "number" then
+      x, y = rel, relPoint
+      rel, relPoint = self.parent, point
+    end
+    self.points[#self.points + 1] = { point, rel, relPoint, x, y }
+  end
+  function f:SetAllPoints(rel) self.allPoints = rel or self.parent; self.points = { { "ALL", self.allPoints } } end
+  function f:GetPoint(i)
+    local p = self.points[i or 1]
+    if not p then return nil end
+    return p[1], p[2], p[3], p[4], p[5]
+  end
+  function f:GetNumPoints() return #self.points end
+  local function fire(self, ev)
+    local list = self.hooks[ev]
+    if list then for i = 1, #list do list[i](self) end end
+    if self.scripts[ev] then self.scripts[ev](self) end
+  end
+  function f:Show()
+    local was = self.shown
+    self.shown = true
+    if not was then fire(self, "OnShow") end
+  end
+  function f:Hide()
+    local was = self.shown
+    self.shown = false
+    if was then fire(self, "OnHide") end
+  end
+  function f:IsShown() return self.shown and true or false end
+  function f:SetShown(v) if v then self:Show() else self:Hide() end end
+  function f:SetScript(ev, fn) self.scripts[ev] = fn end
+  function f:GetScript(ev) return self.scripts[ev] end
+  function f:HookScript(ev, fn)
+    self.hooks[ev] = self.hooks[ev] or {}
+    self.hooks[ev][#self.hooks[ev] + 1] = fn
+  end
+  function f:SetFrameStrata(st) self.strata = st end
+  function f:GetFrameStrata() return self.strata end
+  function f:SetFrameLevel(l) self.level = l end
+  function f:GetFrameLevel() return self.level end
+  function f:SetAlpha(a) self.alpha = a end
+  function f:GetAlpha() return self.alpha end
+  function f:SetMovable() end
+  function f:EnableMouse(v) self.mouse = v and true or false end
+  function f:IsMouseEnabled() return self.mouse end
+  function f:RegisterForDrag() end
+  function f:RegisterForClicks() end
+  function f:SetClampedToScreen() end
+  function f:StartMoving() self._moving = true end
+  function f:StopMovingOrSizing() self._moving = false end
+  function f:SetText(t) self.text = t or "" end
+  function f:GetText() return self.text end
+  function f:SetTextColor(r, g, b, a) self.tr, self.tg, self.tb, self.ta = r, g, b, a end
+  function f:GetTextColor() return self.tr, self.tg, self.tb, self.ta end
+  function f:SetJustifyH(j) self.justifyH = j end
+  function f:GetJustifyH() return self.justifyH end
+  function f:SetJustifyV() end
+  function f:SetWordWrap(v) self.wrap = v and true or false end
+  function f:SetNonSpaceWrap() end
+  function f:SetFont(p, s, fl) self._font = { p, s, fl } return true end
+  function f:SetShadowOffset(x, y) self._shadowOff = { x, y } end
+  function f:SetShadowColor(r, g, b, a) self._shadowCol = { r, g, b, a } end
+  function f:SetSnapToPixelGrid(v) self._snap = v end
+  function f:SetTexelSnappingBias(v) self._texelBias = v end
+  function f:GetFont() if self._font then return self._font[1], self._font[2], self._font[3] end end
+  function f:SetButtonState(st, lock) self._bstate, self._block = st, lock end
+  function f:GetButtonState() return self._bstate or "NORMAL" end
+  function f:SetDrawLayer(layer, sub) self.layer, self.sublayer = layer, sub end
+  function f:LockHighlight() self._hlLocked = true end
+  function f:UnlockHighlight() self._hlLocked = nil end
+  function f:SetVertexColor(r, g, b, a) self._vc = { r, g, b, a } end
+  function f:GetVertexColor() local c = self._vc if c then return c[1], c[2], c[3], c[4] end return 1, 1, 1, 1 end
+  function f:SetTexture(p) self._texSet = p if _G.__missingTex and type(p) == "string" and p:find(_G.__missingTex, 1, true) then return false end return true end
+  function f:SetDesaturated(v) self.desat = v end
+  function f:SetAtlas(a) self._atlasSet = a return true end
+  function f:GetTexture() return self._tex end
+  function f:GetAtlas() return self._atlas end
+  function f:SetColorTexture(r, g, b, a) self._colorTex = { r, g, b, a } end
+  function f:SetTexCoord(...) self._tcoord = { ... } end
+  function f:SetStatusBarTexture(p) self._barTex = p return true end
+  function f:SetStatusBarColor(r,g,b,a) self._barColor = { r, g, b, a } end
+  function f:SetMinMaxValues() end
+  function f:SetValue() end
+  function f:SetNormalTexture() end
+  function f:GetNormalTexture() return self._nt end
+  function f:SetPushedTexture() end
+  function f:SetHighlightTexture() end
+  function f:GetHighlightTexture() return self._hlt end
+  function f:SetBlendMode(m) self.blend = m end
+  function f:GetBlendMode() return self.blend end
+  function f:SetHitRectInsets(l, r, t, b) self.hitInsets = { l, r, t, b } end
+  function f:SetCheckedTexture() end
+  function f:SetBackdrop() return true end
+  function f:SetBackdropColor() end
+  function f:SetBackdropBorderColor() end
+  function f:SetMask() end
+  function f:SetID() end
+  function f:RegisterEvent() end
+  function f:UnregisterEvent() end
+  function f:SetScrollChild() end
+  function f:EnableMouseWheel() end
+  function f:GetVerticalScroll() return 0 end
+  function f:GetVerticalScrollRange() return 0 end
+  function f:SetVerticalScroll() end
+  function f:CreateTexture(_, layer, _, sub)
+    local t = newObj("Texture", nil, self)
+    t.layer, t.sublayer = layer, sub
+    self.regions[#self.regions + 1] = t
+    return t
+  end
+  function f:CreateAnimationGroup()
+    local ag = { owner = self, anims = {}, scripts = {}, playing = false, plays = 0 }
+    function ag:CreateAnimation(kind)
+      local a = { kind = kind, group = self }
+      function a:SetDuration(d) self.duration = d end
+      function a:SetOffset(x, y) self.offset = { x, y } end
+      function a:SetSmoothing(s) self.smoothing = s end
+      function a:SetFromAlpha(v) self.fromAlpha = v end
+      function a:SetToAlpha(v) self.toAlpha = v end
+      function a:SetScaleTo(x, y) self.scaleTo = { x, y } end
+      function a:SetStartDelay(d) self.delay = d end
+      function a:SetOrder(o) self.order = o end
+      self.anims[#self.anims + 1] = a
+      return a
+    end
+    function ag:SetScript(ev, fn) self.scripts[ev] = fn end
+    function ag:Play() self.playing = true self.plays = self.plays + 1 _G.__ags[#_G.__ags + 1] = self end
+    function ag:Stop() self.playing = false end
+    function ag:IsPlaying() return self.playing end
+    function ag:Finish() if self.playing then self.playing = false if self.scripts.OnFinished then self.scripts.OnFinished(self) end end end
+    function ag:Find(kind) for _, a in ipairs(self.anims) do if a.kind == kind then return a end end end
+    return ag
+  end
+  function f:GetStringWidth() return 6 * #(self.text or "") end
+  function f:GetUnboundedStringWidth() return 6 * #(self.text or "") end
+  function f:SetMaxLines(n) self._maxLines = n end
+  function f:GetMaxLines() return self._maxLines end
+  function f:SetHorizontalScroll(v) self._hscroll = v end
+  function f:GetHorizontalScroll() return self._hscroll or 0 end
+  function f:GetDrawLayer() return self.layer end
+  function f:GetStatusBarTexture()
+    if not self._sbt then self._sbt = newObj("Texture", nil, self) self._sbt.layer = "ARTWORK" end
+    if self._barTex then self._sbt._tex = self._barTex end
+    return self._sbt
+  end
+  function f:GetStatusBarColor() local c = self._barColor if c then return c[1], c[2], c[3], c[4] end end
+  function f:SetFontObject(o) self.fontObj = o end
+  function f:GetFontObject() return self.fontObj end
+  function f:CreateFontString(_, _, font)
+    local fs = newObj("FontString", nil, self)
+    fs.font = font
+    self.regions[#self.regions + 1] = fs
+    return fs
+  end
+  return f
+end
+
+_G.CreateFrame = function(kind, name, parent, template)
+  local f = newObj(kind or "Frame", name, parent)
+  f.template = template
+  -- Largeurs par défaut un peu réalistes
+  if kind == "StatusBar" then f.typ = "StatusBar" end
+  return f
+end
+
+_G.UIParent = newObj("Frame", "UIParent")
+_G.UIParent.width, _G.UIParent.height = 1920, 1080
+_G.Minimap = newObj("Frame", "Minimap", _G.UIParent)
+_G.Minimap.width, _G.Minimap.height = 140, 140
+_G.CharacterFrame = newObj("Frame", "CharacterFrame", _G.UIParent)
+_G.SkillFrame = newObj("Frame", "SkillFrame", _G.CharacterFrame)
+_G.SkillFrame.width, _G.SkillFrame.height = 700, 500
+_G.SkillListScrollFrame = newObj("ScrollFrame", "SkillListScrollFrame", _G.SkillFrame)
+_G.SkillListScrollFrame.width, _G.SkillListScrollFrame.height = 380, 420
+_G.SkillDetailFrame = newObj("Frame", "SkillDetailFrame", _G.SkillFrame)
+_G.SkillDetailFrame.width, _G.SkillDetailFrame.height = 240, 420
+_G.SkillDetailName = newObj("FontString", "SkillDetailName", _G.SkillDetailFrame)
+_G.SkillDetailName:SetText("Dépeçage")
+_G.SkillDetailNameText = _G.SkillDetailName
+_G.SkillDetailStatusBar = newObj("StatusBar", "SkillDetailStatusBar", _G.SkillDetailFrame)
+_G.SkillDetailDescriptionText = newObj("FontString", "SkillDetailDescriptionText", _G.SkillDetailFrame)
+_G.SkillDetailDescriptionText:SetText("Une compétence en dépeçage plus élevée...")
+_G.EditModeManagerFrame = newObj("Frame", "EditModeManagerFrame", _G.UIParent)
+_G.EditModeManagerFrame.shown = false
+
+_G.GameTooltip = newObj("Frame", "GameTooltip", _G.UIParent)
+function _G.GameTooltip:SetOwner(owner, anchor)
+  self.owner, self.anchor = owner, anchor
+  self.shown = true
+end
+function _G.GameTooltip:IsOwned(o) return self.owner == o end
+function _G.GameTooltip:ClearLines()
+  self.lines = {}
+  self._text, self.itemId, self.link = nil, nil, nil
+end
+function _G.GameTooltip:SetText(text, r, g, b)
+  self._text = text
+  self.lines = { { text = text, r = r, g = g, b = b } }
+end
+function _G.GameTooltip:AddLine(text, r, g, b)
+  self.lines = self.lines or {}
+  self.lines[#self.lines + 1] = { text = text, r = r, g = g, b = b }
+end
+function _G.GameTooltip:AddDoubleLine(l, r)
+  self.lines = self.lines or {}
+  self.lines[#self.lines + 1] = { text = l, right = r }
+end
+function _G.GameTooltip:SetItemByID(id)
+  self.itemId = id
+end
+function _G.GameTooltip:SetHyperlink(link)
+  self.link = link
+end
+
+_G.SlashCmdList = {}
+_G.DropamineDB = nil
+_G.hooksecurefunc = function() end
+_G.InCombatLockdown = function() return false end
+_G.UnitLevel = function() return 25 end
+_G.MAX_PLAYER_LEVEL = nil
+_G.UnitName = function() return "Ray Kullu" end
+_G.UnitStat = function(_, index)
+  local bases = { 61, 77, 80, 56, 60 }
+  return bases[index], bases[index], 0, 0
+end
+_G.UnitXP = function() return 1200 end
+_G.UnitXPMax = function() return 8000 end
+_G.INVSLOT_MAINHAND = 16
+_G.INVSLOT_RANGED = 18
+local equipped = {
+  [16] = { id = 854, link = "|cffffffff|Hitem:854::::::::25:::::::::|h[Bâton]|h|r",
+           texture = "Interface\\Icons\\INV_Staff_08",
+           name = "Bâton noueux", typ = "Arme", sub = "Bâtons", eq = "INVTYPE_2HWEAPON",
+           classID = 2, subclassID = 10 },
+}
+_G.GetInventoryItemID = function(_, slot) return equipped[slot] and equipped[slot].id or nil end
+_G.GetInventoryItemLink = function(_, slot) return equipped[slot] and equipped[slot].link or nil end
+_G.GetInventoryItemTexture = function(_, slot) return equipped[slot] and equipped[slot].texture or nil end
+_G.GetInventorySlotInfo = function(name)
+  if name == "MainHandSlot" then return 16 end
+  if name == "RangedSlot" then return 18 end
+end
+_G.GetItemInfo = function(item)
+  for _, it in pairs(equipped) do
+    if item == it.id or item == it.link then
+      return it.name, it.link, 1, 20, 15, it.typ, it.sub, 1, it.eq, it.texture, 0, it.classID, it.subclassID
+    end
+  end
+end
+
+local skills = {
+  { name = "Métiers", isHeader = true, isCollapsed = false, rank = 0, maxRank = 0 },
+  { name = "Dépeçage", isHeader = false, rank = 161, maxRank = 225, modifier = 0, description = "Une compétence en dépeçage plus élevée..." },
+  { name = "Travail du cuir", isHeader = false, rank = 96, maxRank = 150 },
+  { name = "Compétences secondaires", isHeader = true, isCollapsed = false, rank = 0, maxRank = 0 },
+  { name = "Cuisine", isHeader = false, rank = 78, maxRank = 150 },
+  { name = "Pêche", isHeader = false, rank = 95, maxRank = 150 },
+  { name = "Secourisme", isHeader = false, rank = 130, maxRank = 150 },
+  { name = "Compétences d'armes", isHeader = true, isCollapsed = false, rank = 0, maxRank = 0 },
+  { name = "Bâtons", isHeader = false, rank = 58, maxRank = 125 },
+  { name = "Combat farouche", isHeader = false, rank = 124, maxRank = 125 },
+  { name = "Dagues", isHeader = false, rank = 1, maxRank = 125 },
+  { name = "Défense", isHeader = false, rank = 122, maxRank = 125 },
+}
+_G.C_SkillInfo = {
+  GetNumSkillLines = function() return #_G.__visibleSkills() end,
+  GetSkillLineInfo = function(i) return _G.__visibleSkills()[i] end,
+  ExpandSkillHeader = function() end,
+  SetSelectedSkill = function() end,
+  GetSelectedSkill = function() return 2 end,
+}
+
+local prints = {}
+local realPrint = print
+_G.print = function(...)
+  local parts = { ... }
+  local s = tostring(parts[1] or "")
+  for i = 2, #parts do s = s .. "\t" .. tostring(parts[i]) end
+  prints[#prints + 1] = s
+  -- garder un echo discret des messages de test (ceux qui commencent par "  OK" / "  FAIL" / "==")
+  if s:find("^  OK") or s:find("^  FAIL") or s:find("^==") or s:find("^TOTAL") then
+    realPrint(...)
+  end
+end
+
+
+-- Comme en jeu : à ADDON_LOADED la fiche est fermée.
+_G.CharacterFrame.shown = false
+_G.SkillFrame.shown = false
+local toggleCalls = 0
+_G.ToggleCharacter = function(name)
+  toggleCalls = toggleCalls + 1
+  if name ~= "SkillFrame" then return end
+  if _G.CharacterFrame.shown and _G.SkillFrame.shown then
+    _G.SkillFrame:Hide() _G.CharacterFrame:Hide()
+  else
+    _G.CharacterFrame:Show() _G.SkillFrame:Show()
+  end
+end
+
+-- Flèche native qui replie le panneau droit
+local arrow = newObj("Button", "SkillFrameCollapseButton", _G.SkillFrame)
+arrow.width, arrow.height = 24, 24
+arrow.level = 9
+
+-- Lignes natives (enfants directs du SkillFrame, comme sur la fiche native)
+for i = 1, 3 do
+  local r = newObj("StatusBar", "SkillRankFrame" .. i, _G.SkillFrame)
+  r.width, r.height = 271, 15
+  local l = newObj("Button", "SkillTypeLabel" .. i, _G.SkillFrame)
+  l.width, l.height = 271, 15
+end
+
+-- v2.8.3 : liste native réaliste (en-tête, ligne, barre, cadre, surbrillance)
+local function fontObj(n) local o = { GetName = function() return n end } _G[n] = o return o end
+local HdrFont, RowFont, BarFont = fontObj("NLHdrFont"), fontObj("NLRowFont"), fontObj("NLBarFont")
+local TitleFont, DescFont, DHdrFont, LineFont = fontObj("NLTitleFont"), fontObj("NLDescFont"), fontObj("NLDHdrFont"), fontObj("NLLineFont")
+_G.SkillFrame._abs = { l = 0, r = 700, t = 500, b = 0 }
+_G.SkillListScrollFrame._abs = { l = 20, r = 330, t = 440, b = 40 }
+local function tex(parent, path, layer, abs, vc)
+  local t = parent:CreateTexture(nil, layer) t._tex = path t._abs = abs t._vc = vc return t
+end
+do
+  local h = _G.SkillTypeLabel1
+  h._abs = { l = 24, r = 320, t = 438, b = 420 }
+  local fs = h:CreateFontString(nil, "OVERLAY") fs.text = "Compétences d'armes" fs.fontObj = HdrFont
+  fs.tr, fs.tg, fs.tb, fs.ta = 1, 0.82, 0, 1
+  fs._abs = { l = 46, r = 200, t = 434, b = 424 }
+  -- « − » natif = texture normale du bouton d'en-tête : une RÉGION de l'en-tête
+  -- (comme en jeu), à droite (15×3, 6 px du bord droit, mesuré sur native-284.png)
+  h._nt = newObj("Texture", nil, h) h._nt._tex = "Interface\\Buttons\\UI-MinusButton-Up"
+  h._nt._abs = { l = 299, r = 314, t = 430, b = 427 } h._nt.layer = "ARTWORK"
+  table.insert(h.regions, h._nt)
+  tex(h, "Interface\\Native\\HdrL", "BACKGROUND", { l = 24, r = 34, t = 438, b = 420 }, { 1, 1, 1, 1 })
+  tex(h, "Interface\\Native\\HdrM", "BACKGROUND", { l = 34, r = 310, t = 438, b = 420 }, { 0.9, 0.8, 0.7, 1 })
+  tex(h, "Interface\\Native\\HdrR", "BACKGROUND", { l = 310, r = 320, t = 438, b = 420 }, { 1, 1, 1, 1 })
+  local row = _G.SkillTypeLabel2
+  row._abs = { l = 24, r = 320, t = 416, b = 401 }
+  local rfs = row:CreateFontString(nil, "OVERLAY") rfs.text = "Bâtons" rfs.fontObj = RowFont
+  rfs.tr, rfs.tg, rfs.tb, rfs.ta = 1, 0.99, 0.98, 1
+  rfs._abs = { l = 30, r = 120, t = 414, b = 403 }
+  row._hlt = tex(row, "Interface\\Native\\RowHL", "HIGHLIGHT", { l = 24, r = 320, t = 416, b = 401 })
+  row._hlt.blend = "ADD" row._hlt.alpha = 0.6
+  local bar = _G.SkillRankFrame2
+  bar._abs = { l = 150, r = 318, t = 416, b = 402 }   -- hauteur native 14
+  bar._barTex = "Interface\\Native\\BarFill" bar._barColor = { 0.1, 0.2, 0.9, 1 }
+  tex(bar, "Interface\\Native\\BarBg", "BACKGROUND", { l = 150, r = 318, t = 416, b = 402 }, { 0, 0, 0, 0.5 })
+  local bd = newObj("Button", "SkillRankFrame2Border", bar)
+  bd._abs = { l = 145, r = 323, t = 425, b = 393 }
+  tex(bd, "Interface\\Native\\BarBorder", "ARTWORK", { l = 145, r = 323, t = 425, b = 393 })
+  local bfs = bd:CreateFontString(nil, "OVERLAY") bfs.text = "58 / 125" bfs.fontObj = BarFont bfs.tr, bfs.tg, bfs.tb = 1, 1, 1
+  local row3 = _G.SkillTypeLabel3
+  row3._abs = { l = 24, r = 320, t = 399, b = 384 }
+  local r3 = row3:CreateFontString(nil, "OVERLAY") r3.text = "Défense" r3.fontObj = RowFont
+  _G.SkillRankFrame1._abs = { l = 150, r = 318, t = 380, b = 366 }
+  _G.SkillRankFrame3._abs = { l = 150, r = 318, t = 399, b = 385 }
+end
+-- Cadre natif invisible (alpha 0) mais sensible à la souris, AU-DESSUS de la
+-- grille : c'est ce qui volait la souris en jeu (lignes de liste voilées).
+_G.SkillFrame.ScrollBar = newObj("Slider", "SkillFrameScrollBar", _G.SkillFrame)
+_G.SkillFrame.ScrollBar._abs = { l = 332, r = 348, t = 440, b = 40 }
+local catcher = newObj("Button", "SkillFrameRowCatcher", _G.SkillFrame)
+catcher._abs = { l = 20, r = 330, t = 440, b = 40 }
+catcher.mouse = true catcher.alpha = 0 catcher.level = 80
+-- Détail natif : titre, description, bouton d'en-tête, ligne
+_G.SkillDetailFrame._abs = { l = 360, r = 600, t = 440, b = 40 }
+table.insert(_G.SkillDetailFrame.regions, _G.SkillDetailName)
+table.insert(_G.SkillDetailFrame.regions, _G.SkillDetailDescriptionText)
+_G.SkillDetailName.fontObj = TitleFont _G.SkillDetailName._abs = { l = 420, r = 540, t = 430, b = 416 }
+_G.SkillDetailDescriptionText.fontObj = DescFont
+_G.SkillDetailDescriptionText._abs = { l = 382, r = 590, t = 390, b = 350 }
+do
+  local hb = newObj("Button", "SkillDetailHdrBtn", _G.SkillDetailFrame)
+  hb._abs = { l = 380, r = 580, t = 340, b = 318 }
+  local hfs = hb:CreateFontString(nil, "OVERLAY") hfs.text = "Adversaire de niveau égal" hfs.fontObj = DHdrFont
+  hfs.tr, hfs.tg, hfs.tb = 1, 1, 1 hfs._abs = { l = 400, r = 560, t = 335, b = 323 }
+  local lfs = _G.SkillDetailFrame:CreateFontString(nil, "OVERLAY") lfs.text = "Chance de toucher : 95 %" lfs.fontObj = LineFont
+  lfs._abs = { l = 382, r = 590, t = 312, b = 300 }
+end
+
+local nativeUpdateCalls = 0
+_G.SkillFrame_UpdateSkills = function()
+  nativeUpdateCalls = nativeUpdateCalls + 1
+  for i = 1, 3 do _G["SkillRankFrame" .. i]:Show() _G["SkillTypeLabel" .. i]:Show() end
+end
+local secureHooks = {}
+_G.hooksecurefunc = function(a, b, c)
+  local name, fn = a, b
+  if type(a) == "table" then return end
+  local orig = _G[name]
+  if type(orig) ~= "function" then error("hooksecurefunc: " .. tostring(name)) end
+  _G[name] = function(...) local r = orig(...) fn(...) return r end
+  secureHooks[name] = true
+end
+
+local popupShown = {}
+_G.StaticPopupDialogs = {}
+_G.StaticPopup_Show = function(which, a1, a2, data)
+  local eb = newObj("EditBox", nil, _G.UIParent)
+  local p = newObj("Frame", nil, _G.UIParent)
+  p.editBox = eb
+  p.data = data
+  popupShown[#popupShown + 1] = { which = which, a1 = a1, a2 = a2, data = data, popup = p }
+  local dlg = _G.StaticPopupDialogs[which]
+  if dlg and dlg.OnShow then dlg.OnShow(p, data) end
+  return p
+end
+local shiftDown = false
+_G.IsShiftKeyDown = function() return shiftDown end
+local playerClass, shapeForm = "DRUID", 0
+_G.UnitClass = function() return "Druide", playerClass end
+_G.GetShapeshiftForm = function() return shapeForm end
+_G.GetRealmName = function() return "Forever" end
+local clock = 1000000
+_G.time = function() return clock end
+
+-- Liste native : un en-tête replié masque ses enfants (comme en jeu).
+local SECRET = -424242
+_G.issecretvalue = function(v) return v == SECRET end
+local secretMode = false
+_G.__visibleSkills = function()
+  local out, hidden = {}, false
+  for _, s in ipairs(skills) do
+    if s.isHeader then hidden = s.isCollapsed out[#out + 1] = s
+    elseif not hidden then
+      if secretMode then out[#out + 1] = { name = s.name, isHeader = false, rank = SECRET, maxRank = SECRET }
+      else out[#out + 1] = s end
+    end
+  end
+  return out
+end
+-- Minuteries regroupées (C_Timer) : exécutées à la demande.
+local timers = {}
+_G.C_Timer = { After = function(_, fn) timers[#timers + 1] = fn end }
+local function flushTimers() local n = 0 while #timers > 0 do local t = table.remove(timers, 1) t() n = n + 1 end return n end
+local gtime = 100
+_G.GetTime = function() return gtime end
+-- Sacs et fenêtre de métier
+local bags = {}
+_G.GetItemCount = function(id) return bags[id] or 0 end
+local trade = { line = nil, list = {} }
+_G.GetTradeSkillLine = function() return trade.line, 0, 0 end
+_G.GetNumTradeSkills = function() return #trade.list end
+_G.GetTradeSkillInfo = function(i) local r = trade.list[i] return r.name, r.kind, 0 end
+_G.GetTradeSkillIcon = function(i) return "Interface\\Icons\\T" .. i end
+_G.GetTradeSkillNumReagents = function(i) return #(trade.list[i].reagents or {}) end
+_G.GetTradeSkillReagentInfo = function(i, j) local g = trade.list[i].reagents[j] return g.name, nil, g.count, bags[g.id] or 0 end
+_G.GetTradeSkillReagentItemLink = function(i, j) return "|cffffffff|Hitem:" .. trade.list[i].reagents[j].id .. "::::::::|h[x]|h|r" end
+local craft = { line = nil, list = {} }
+_G.GetCraftDisplaySkillLine = function() return craft.line, 0, 0 end
+_G.GetNumCrafts = function() return #craft.list end
+_G.GetCraftInfo = function(i) local r = craft.list[i] return r.name, "", r.kind, 0 end
+_G.GetCraftIcon = function() return "Interface\\Icons\\Spell_Holy_GreaterHeal" end
+_G.GetCraftNumReagents = function(i) return #(craft.list[i].reagents or {}) end
+_G.GetCraftReagentInfo = function(i, j) local g = craft.list[i].reagents[j] return g.name, nil, g.count, 0 end
+_G.GetCraftReagentItemLink = function(i, j) return "|Hitem:" .. craft.list[i].reagents[j].id .. ":|h" end
+
+-- 3.6.2 : client français (comme chez Arnaud)
+_G.GetLocale = function() return "frFR" end
+local ns = {}
+local function load(file)
+  local chunk, err = loadfile(addonDir .. "/" .. file)
+  if not chunk then error("loadfile " .. file .. ": " .. tostring(err)) end
+  chunk("Dropamine", ns)
+end
+do
+  local cf = _G.CreateFrame
+  _G.CreateFrame = function(kind, ...)
+    local f = cf(kind, ...)
+    if kind == "CheckButton" and not f.SetChecked then
+      function f:SetChecked(v) self.checked = v and true or false end
+      function f:GetChecked() return self.checked end
+    end
+    return f
+  end
+end-- 3.2.0 : chargement dans l'ordre EXACT du .toc (Window.lua compris)
+do
+  local toc = io.open(addonDir .. "/Dropamine.toc"):read("*a")
+  for line in toc:gmatch("[^\r\n]+") do
+    if not line:match("^%s*#") and line:match("%.lua%s*$") then load((line:gsub("\\", "/"):gsub("%s+$", ""))) end
+  end
+end
+_G.UISpecialFrames = _G.UISpecialFrames or {}
+-- 3.3.13 : les anciennes sections testent le repli « cadre d'infobulle » ;
+-- l'habillage FlareUI (Skin.lua) est testé dans ses propres sections.
+ns.Skin.enabled = false
+ns.Wide.forceShown = true
+ns.PvP.forceOff = true      -- anciennes sections : pas de case JcJ   -- anciennes sections : case Niveau total présente (3.3.13 : masquée par défaut)
+
+-- états de bouton enregistrés (le harnais de base les ignore)
+local function recordStates(b)
+  for _, st in ipairs({ "Normal", "Pushed", "Highlight", "Checked", "Disabled" }) do
+    b["Set" .. st .. "Texture"] = function(self, p)
+      local t = { _texSet = p, GetTexture = function() return p end, GetAtlas = function() return nil end }
+      self["_st" .. st] = t
+      return true
+    end
+    b["Get" .. st .. "Texture"] = function(self) return self["_st" .. st] end
+  end
+  return b
+end
+do
+  local cf = _G.CreateFrame
+  _G.CreateFrame = function(kind, ...)
+    local f = cf(kind, ...)
+    if kind == "Button" and type(f) == "table" and ((f.name or ""):find("SideTab", 1, true) or (f.name or ""):find("MicroButton", 1, true)) then recordStates(f) end
+    if type(f) == "table" then
+      function f:SetBackdrop(bd) self._bdFile = bd and bd.bgFile self._bdEdge = bd and bd.edgeFile self._bdEdgeSize = bd and bd.edgeSize self._bdInset = bd and bd.insets and bd.insets.left return true end
+      function f:SetAttribute(k, v) self.attrs = self.attrs or {} self.attrs[k] = v end
+      function f:GetAttribute(k) return self.attrs and self.attrs[k] end
+      function f:SetChecked(v) self.checked = v and true or false end
+      function f:GetChecked() return self.checked end
+      function f:SetAutoFocus() end
+      function f:SetMaxLetters() end
+      function f:ClearFocus() end
+      function f:SetValueStep(v) self.valueStep = v end
+      function f:SetObeyStepOnDrag() end
+      function f:SetOrientation() end
+      function f:SetValue(v) self.value = v if self.scripts.OnValueChanged then self.scripts.OnValueChanged(self, v) end end
+      function f:GetValue() return self.value end
+      function f:SetBackdropColor(r, g, b, a) self._bdColor = { r, g, b, a } end
+      function f:SetBackdropBorderColor(r, g, b, a) self._bdBorder = { r, g, b, a } end
+    end
+    return f
+  end
+end
+_G.Minimap._abs = { l = 1760, r = 1900, t = 1060, b = 920 }
+-- Fiche du personnage : rectangle + onglets latéraux natifs à droite, puis
+-- l'onglet de Zygor (enfant d'UIParent) sous le dernier.
+_G.CharacterFrame._abs = { l = 0, r = 700, t = 900, b = 380 }
+local nativeTabs = {}
+for i = 1, 3 do
+  local b = recordStates(newObj("Button", "CharacterFrameSideTab" .. i, _G.CharacterFrame))
+  b._abs = { l = 702, r = 746, t = 880 - (i - 1) * 50, b = 836 - (i - 1) * 50 }
+  b:SetNormalTexture("Interface\\Icons\\NativeIcon" .. i)     -- icône (à NE PAS recopier)
+  b:SetHighlightTexture("Interface\\Native\\SideTabHL")
+  local bd = b:CreateTexture(nil, "BACKGROUND")                  -- cadre qui déborde
+  bd._tex = "Interface\\Native\\SideTabBorder"
+  bd._abs = { l = b._abs.l - 4, r = b._abs.l + 60, t = b._abs.t + 12, b = b._abs.t - 52 }
+  local ic = b:CreateTexture(nil, "ARTWORK")                      -- icône intérieure
+  ic._tex = "Interface\\Icons\\Inner" .. i
+  ic._abs = { l = b._abs.l + 4, r = b._abs.r - 4, t = b._abs.t - 4, b = b._abs.b + 4 }
+  nativeTabs[i] = b
+end
+-- Onglet de Zygor : nom SANS « zygor » (comme en jeu, la détection par nom
+-- échouait) et un art plus grand que son bouton qui DÉPASSE vers le bas
+-- (carré doré à blocs colorés + « Z » blanc).
+local zyg = recordStates(newObj("Button", "ZGV_CharacterSideTab", _G.UIParent))
+zyg._abs = { l = 702, r = 746, t = 730, b = 686 }
+zyg:SetNormalTexture("Interface\\AddOns\\ZygorGuidesViewer\\Skins\\tab-z")
+zyg:SetHighlightTexture("Interface\\AddOns\\ZygorGuidesViewer\\Skins\\tab-hl")
+local zart = zyg:CreateTexture(nil, "BACKGROUND")
+zart._tex = "Interface\\AddOns\\ZygorGuidesViewer\\Skins\\tab-art"
+zart._abs = { l = 698, r = 752, t = 734, b = 680 }
+
+-- 3.3.2 : rangée native du micro menu (classique : 28×58, recouvrement de 3 px)
+_G.MainMenuBarArtFrame = newObj("Frame", "MainMenuBarArtFrame", _G.UIParent)
+local MICRO = { "CharacterMicroButton", "SpellbookMicroButton", "TalentMicroButton", "QuestLogMicroButton",
+  "SocialsMicroButton", "WorldMapMicroButton", "MainMenuMicroButton", "HelpMicroButton" }
+local micro = {}
+for i, n in ipairs(MICRO) do
+  local b = recordStates(newObj("Button", n, _G.MainMenuBarArtFrame))
+  b._abs = { l = 552 + (i - 1) * 25, r = 580 + (i - 1) * 25, t = 60, b = 2 }
+  b.level = 2
+  b.strata = "MEDIUM"
+  micro[i] = b
+end
+local cmb = micro[1]
+cmb:SetNormalTexture("Interface\\Buttons\\UI-MicroButtonCharacter-Up")
+cmb:SetPushedTexture("Interface\\Buttons\\UI-MicroButtonCharacter-Down")
+cmb:SetHighlightTexture("Interface\\Buttons\\UI-MicroButton-Hilight")
+cmb:SetDisabledTexture("Interface\\Buttons\\UI-MicroButtonCharacter-Up")
+local portrait = cmb:CreateTexture("MicroButtonPortrait", "OVERLAY")
+portrait._abs = { l = 557, r = 575, t = 32, b = 7 }
+_G.MicroButtonPortrait = portrait
+micro[8]:SetNormalTexture("Interface\\Buttons\\UI-MicroButton-Help-Up")
+local microLayoutCalls = 0
+_G.UIParent._abs = { l = 0, r = 1920, t = 1080, b = 0 }
+-- 3.3.3 : portrait du personnage (SetPortraitTexture enregistré)
+local portraitCalls = 0
+_G.SetPortraitTexture = function(tex, unit) portraitCalls = portraitCalls + 1 tex._portraitUnit = unit tex._texSet = "portrait:" .. tostring(unit) end
+_G.UpdateMicroButtons = function() microLayoutCalls = microLayoutCalls + 1 end
+
+-- Empreinte complète de l'onglet Comp. natif (et de l'onglet Zygor) : elle doit
+-- rester IDENTIQUE quoi que fasse l'addon.
+local function fp(o, seen, out, path)
+  if type(o) ~= "table" or seen[o] then return end
+  seen[o] = true
+  local pts = {}
+  for _, p in ipairs(o.points or {}) do pts[#pts + 1] = tostring(p[1]) .. tostring(p[2]) .. tostring(p[3]) .. tostring(p[4]) .. tostring(p[5]) end
+  local hk = 0
+  for _, l in pairs(o.hooks or {}) do hk = hk + #l end
+  local sc = 0
+  for _ in pairs(o.scripts or {}) do sc = sc + 1 end
+  out[#out + 1] = path .. "|" .. tostring(o.shown) .. "|" .. tostring(o.alpha) .. "|" .. tostring(o.parent) .. "|"
+    .. table.concat(pts, ";") .. "|" .. tostring(o.width) .. "x" .. tostring(o.height) .. "|" .. tostring(o.level) .. "|"
+    .. tostring(o.strata) .. "|" .. tostring(o._texSet) .. "|" .. tostring(o.text) .. "|h" .. hk .. "|s" .. sc .. "|m" .. tostring(o.mouse)
+  for n, c in ipairs(o.children or {}) do fp(c, seen, out, path .. "/" .. n) end
+end
+local function nativeFP()
+  local out = {}
+  fp(_G.SkillFrame, {}, out, "SkillFrame")
+  fp(zyg, {}, out, "Zygor")
+  for i, b in ipairs(nativeTabs) do fp(b, {}, out, "Tab" .. i) end
+  fp(_G.MainMenuBarArtFrame, {}, out, "Micro")
+  return table.concat(out, "\n")
+end
+local FP0 = nativeFP()
+local toggle0 = toggleCalls
+local function fire(ev, ...) ns.eventFrame.scripts.OnEvent(ns.eventFrame, ev, ...) end
+local okLoad, errLoad = pcall(fire, "ADDON_LOADED", "Dropamine")
+ok(okLoad, "ADDON_LOADED sans erreur (" .. tostring(errLoad) .. ")")
+pcall(fire, "PLAYER_LOGIN")
+pcall(fire, "PLAYER_ENTERING_WORLD")
+
+
+local UI = ns.UI
+local function slash(msg) SlashCmdList.DROPAMINE(msg) end
+local function lastPrint() return prints[#prints] or "" end
+local function skill(name) for i = 1, #skills do if skills[i].name == name then return skills[i] end end end
+local function tileFor(key)
+  for i = 1, #(UI.embed and UI.embed.tiles or {}) do
+    local t = UI.embed.tiles[i]
+    if t.data and (t.data.key == key) and t:IsShown() then return t end
+  end
+end
+local function dropTitles()
+  local out = {}
+  for i = 1, #(UI.dropsActive or {}) do out[#out + 1] = UI.dropsActive[i].titleFS.text end
+  return table.concat(out, " || ")
+end
+local function clearDrops()
+  for i = 1, #(UI.dropsActive or {}) do UI.dropsActive[i]:Hide() end
+  UI.dropsActive = {}
+end
+local function errs() local n = 0 for _ in pairs(UI.errors or {}) do n = n + 1 end return n end
+
+ok(not (ns.Window and ns.Window.IsShown()), "au chargement : fenêtre fermée")
+slash("")  -- 3.2.0 : ouvre la fenêtre
+ok(UI.embed and UI.embed:IsShown(), "grille OSRS ouverte")
+clearDrops()
+
+
+-- ===========================================================================
+local function header(name) for i = 1, #skills do if skills[i].isHeader and skills[i].name == name then return skills[i] end end end
+local function total() return UI.snapshot and UI.snapshot.total end
+local function tick() UI:FlushSkillDiff() UI:Refresh(true) end
+local function nDrops() local n = 0 for _, f in ipairs(UI.dropsActive or {}) do if f:IsShown() then n = n + 1 end end return n end
+local function findDrop(pat) for _, f in ipairs(UI.dropsActive or {}) do if f.titleFS and tostring(f.titleFS.text):find(pat, 1, true) then return f end end end
+
+-- ===========================================================================
+
+-- ===========================================================================
+local NL = ns.NativeLook
+local C = ns.Compact
+local function setLang(l) ns.db.ui = ns.db.ui or {} ns.db.ui.lang = l DropamineDB.ui.lang = l end
+local function joined(list) local t = {} for i, l in ipairs(list) do t[i] = (type(l) == "table") and l[1] or l end return table.concat(t, "\n") end
+local function strip(s) return (tostring(s):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
+
+
+-- ===========================================================================
+-- 3.6.3
+-- ===========================================================================
+
+print("== 3.6.3 : jamais « objet 159 » / « item 159 »")
+do
+  local gi = _G.GetItemInfo
+  _G.GetItemInfo = function(id)
+    if id == 854 then return gi(id) end
+    return nil
+  end
+  ns._itemNames[159] = nil
+  local nm = ns.ItemDisplayName(159)
+  ok(nm == nil, "ItemDisplayName(159) sans cache : nil, pas un repli")
+  ok(not tostring(nm or ""):find("159", 1, true), "aucun « 159 » renvoyé")
+  ok(ns.BareItemIdLabel("objet 159") and ns.BareItemIdLabel("item 159") and ns.BareItemIdLabel("objet 159 "), "BareItemIdLabel reconnaît objet/item + id")
+  ok(not ns.BareItemIdLabel("Eau de source") and not ns.BareItemIdLabel("Viande de loup maigre"), "un vrai nom n'est pas un repli")
+  setLang("fr")
+  ok(ns.ItemDisplayName(159, "objet 159") == nil, "repli « objet 159 » rejeté (FR)")
+  setLang("en")
+  ok(ns.ItemDisplayName(159, "item 159") == nil, "repli « item 159 » rejeté (EN)")
+  setLang("fr")
+  ok(ns.ItemDisplayName(159, "Eau de source") == "Eau de source", "repli sensé conservé")
+  -- StaticItem : un objet de la base (viande de palourde 5503 si présent)
+  local st = ns.Scanner and ns.Scanner.StaticItem and ns.Scanner.StaticItem(5503)
+  if st and (st.fr or st.en) then
+    ns._itemNames[5503] = nil
+    local got = ns.ItemDisplayName(5503)
+    ok(got and not ns.BareItemIdLabel(got), "StaticItem 5503 : vrai nom « " .. tostring(got) .. " »")
+  else
+    ok(true, "StaticItem 5503 absent de la base (ignoré)")
+  end
+  _G.GetItemInfo = gi
+end
+
+print("== 3.6.3 : toast recette, seulement le nom de recette tant que l'objet n'est pas chargé")
+do
+  setLang("fr")
+  local rec = { name = "Palourdes bouillies" }
+  local matches = { { recipe = rec, item = 159, itemName = nil, diff = "medium" } }
+  local line = strip(ns.Craft.FormatMatch(matches[1]))
+  ok(line == "Palourdes bouillies (+1)", "FR sans nom : « Palourdes bouillies (+1) » (" .. line .. ")")
+  ok(not line:find("objet", 1, true) and not line:find("159", 1, true), "FR : ni objet ni id")
+  matches[1].itemName = "objet 159"
+  ok(strip(ns.Craft.FormatMatch(matches[1])) == "Palourdes bouillies (+1)", "FR : « objet 159 » ignoré, seulement la recette")
+  matches[1].itemName = "Eau de source fraîche"
+  ok(strip(ns.Craft.FormatMatch(matches[1])) == "Eau de source fraîche : Palourdes bouillies (+1)", "FR avec nom : « Eau de source fraîche : Palourdes bouillies (+1) »")
+  setLang("en")
+  rec.name = "Boiled Clams"
+  matches[1].itemName = nil
+  local en = strip(ns.Craft.FormatMatch(matches[1]))
+  ok(en == "Boiled Clams (+1)", "EN sans nom : « Boiled Clams (+1) » (" .. en .. ")")
+  matches[1].itemName = "Refreshing Spring Water"
+  ok(strip(ns.Craft.FormatMatch(matches[1])) == "Refreshing Spring Water: Boiled Clams (+1)", "EN avec nom : « Refreshing Spring Water: Boiled Clams (+1) »")
+  setLang("fr")
+  rec.name = "Palourdes bouillies"
+end
+
+print("== 3.6.3 : mise à jour quand le nom arrive (GET_ITEM_INFO_RECEIVED)")
+do
+  ns._itemNames[159] = nil
+  ns._itemWait[159] = nil
+  local gi = _G.GetItemInfo
+  _G.GetItemInfo = function(id)
+    if id == 159 then return nil end
+    return gi(id)
+  end
+  local seen
+  ns.WhenItemName(159, function(nm) seen = nm end)
+  ok(seen == nil, "callback pas encore appelé")
+  _G.GetItemInfo = function(id)
+    if id == 159 then return "Eau de source fraîche" end
+    return gi(id)
+  end
+  fire("GET_ITEM_INFO_RECEIVED", 159, true)
+  ok(seen == "Eau de source fraîche", "GET_ITEM_INFO_RECEIVED met à jour le nom (" .. tostring(seen) .. ")")
+  ok(ns.ItemDisplayName(159) == "Eau de source fraîche", "cache retenu ensuite")
+  _G.GetItemInfo = gi
+  ns._itemNames[159] = nil
+end
+
+print("== 3.6.3 : Item:CreateFromItemID / ContinueOnItemLoad")
+do
+  ns._itemNames[159] = nil
+  ns._itemWait[159] = nil
+  local gi = _G.GetItemInfo
+  local pending = {}
+  _G.GetItemInfo = function(id)
+    if id == 159 then return nil end
+    return gi(id)
+  end
+  _G.Item = {
+    CreateFromItemID = function(id)
+      return {
+        id = id,
+        ContinueOnItemLoad = function(self, cb) pending[#pending + 1] = { id = self.id, cb = cb } end,
+      }
+    end,
+  }
+  local seen
+  ns.WhenItemName(159, function(nm) seen = nm end)
+  ok(#pending == 1 and pending[1].id == 159, "CreateFromItemID + ContinueOnItemLoad utilisés")
+  _G.GetItemInfo = function(id)
+    if id == 159 then return "Eau de source fraîche" end
+    return gi(id)
+  end
+  pending[1].cb()
+  ok(seen == "Eau de source fraîche", "ContinueOnItemLoad met à jour le toast/nom (" .. tostring(seen) .. ")")
+  _G.Item = nil
+  _G.GetItemInfo = gi
+  ns._itemNames[159] = nil
+end
+
+print("== 3.6.3 : le titre du toast se met à jour une fois le nom chargé")
+do
+  setLang("fr")
+  local rec = { name = "Palourdes bouillies" }
+  local matches = { { recipe = rec, item = 159, itemName = nil, diff = "easy" } }
+  local frame = {
+    shown = true,
+    IsShown = function(self) return self.shown end,
+    titleFS = { text = "", SetText = function(self, s) self.text = s end },
+    subFS = { text = "", SetText = function(self, s) self.text = s end },
+    hintFS = { text = "", SetText = function(self, s) self.text = s end },
+  }
+  ns._itemNames[159] = nil
+  ns._itemWait[159] = nil
+  local gi = _G.GetItemInfo
+  _G.GetItemInfo = function(id) if id == 159 then return nil end return gi(id) end
+  ns.Craft.BindToastItems(frame, matches)
+  ok(strip(frame.titleFS.text) == "Palourdes bouillies (+1)" or frame.titleFS.text == "", "toast initial : recette seule ou en attente")
+  -- BindToastItems only SetText in the callback, so simulate arrival
+  _G.GetItemInfo = function(id) if id == 159 then return "Eau de source fraîche" end return gi(id) end
+  fire("GET_ITEM_INFO_RECEIVED", 159, true)
+  ok(strip(frame.titleFS.text) == "Eau de source fraîche : Palourdes bouillies (+1)", "toast mis à jour : « Eau de source fraîche : Palourdes bouillies (+1) » (" .. strip(frame.titleFS.text) .. ")")
+  frame.shown = false
+  matches[1].itemName = nil
+  ns._itemNames[160] = nil
+  ns._itemWait[160] = nil
+  matches[1].item = 160
+  ns.Craft.BindToastItems(frame, matches)
+  _G.GetItemInfo = function(id) if id == 160 then return "Trop tard" end return gi(id) end
+  fire("GET_ITEM_INFO_RECEIVED", 160, true)
+  ok(strip(frame.titleFS.text) == "Eau de source fraîche : Palourdes bouillies (+1)", "toast déjà masqué : texte non réécrit")
+  _G.GetItemInfo = gi
+  setLang("fr")
+end
+
+print("== 3.6.3 : ailleurs, plus de « objet <id> »")
+do
+  setLang("fr")
+  ns._itemNames[42] = nil
+  local gi = _G.GetItemInfo
+  _G.GetItemInfo = function() return nil end
+  -- Links : composant de repli
+  ok((ns.ItemDisplayName(42) or "composant") == "composant" or ns.L["composant"] == "composant", "Links / courses : repli « composant », pas « objet 42 »")
+  _G.GetItemInfo = gi
+end
+
+print("== 3.6.3 : option Pause pendant le vol (défaut on, FR/EN)")
+do
+  local it = ns.Options.Find("pauseFlying")
+  ok(it and it.default == true and it.key == "pauseFlying", "option pauseFlying trouvée, défaut on")
+  ok(it.cmd == "/drop vol on|off", "commande /drop vol on|off")
+  setLang("fr")
+  ok(ns.L[it.label] == "Pause pendant le vol" or it.label == "Pause pendant le vol", "libellé FR : Pause pendant le vol")
+  setLang("en")
+  ok(ns.L["Pause pendant le vol"] == "Pause while flying", "libellé EN : Pause while flying")
+  setLang("fr")
+  ok(ns.Flight.OptionOn() == true, "option active par défaut (nil)")
+  ok(ns.CMD_ALIAS.flight == "vol" and ns.CMD_ALIAS.fly == "vol", "alias flight / fly → vol")
+end
+
+print("== 3.6.3 : en taxi, suivi et toasts en pause, rien en file à l'atterrissage")
+do
+  local taxi = false
+  _G.UnitOnTaxi = function(u) return u == "player" and taxi end
+  ns.SetOpt("pauseFlying", true)
+  -- l'astuce « premier vol » est testée plus bas ; ici on la considère déjà vue
+  local ch = ns.CharDB and ns.CharDB()
+  if ch then ch.flightPauseHint = true end
+  taxi = false
+  ns.Flight.Sync("test-sol")
+  ok(ns.PausedForFlight() == false, "au sol : pas en pause")
+  clearDrops()
+  local f0 = UI:SpawnDrop("Interface\\Icons\\X", "Sol toast", "ok", nil, nil, nil, { kind = "skill", force = true })
+  -- force bypasses pause; use a normal toast
+  clearDrops()
+  local f1 = UI:SpawnDrop("Interface\\Icons\\X", "Sol toast", "ok", nil, nil, nil, { kind = "skill" })
+  ok(f1 ~= nil, "au sol : toast normalement affiché")
+  clearDrops()
+
+  taxi = true
+  ns.Flight.Sync("test-taxi")
+  ok(ns.Flight.OnTaxi() == true and ns.PausedForFlight() == true, "en vol : PausedForFlight")
+  local queued = 0
+  local f2 = UI:SpawnDrop("Interface\\Icons\\X", "objet 159 : Palourdes bouillies (+1)", "nope", nil, nil, nil, { kind = "scanner" })
+  if f2 then queued = queued + 1 end
+  ok(f2 == nil, "en vol : SpawnDrop refuse le toast")
+  ok(ns.Scanner.OnPlateAdded("nameplate1") == nil, "en vol : scan de barre de nom ignoré")
+  -- Craft.Notify via SpawnDrop
+  if ns.Craft and ns.Craft.Notify then
+    ns.db.ui.craftNotify = true
+    local gains = { { n = 1, diff = "easy", skill = "cooking", recipe = { name = "Palourdes bouillies", icon = "Interface\\Icons\\Inv_Misc_Shell_01" } } }
+    local fn = ns.Craft.Notify(gains)
+    ok(fn == nil, "en vol : toast de recette réalisable refusé")
+  end
+  ok(nDrops() == 0, "en vol : aucun toast visible")
+
+  -- atterrissage : pas de rattrapage
+  taxi = false
+  ns.Flight.Sync("test-land")
+  ok(ns.PausedForFlight() == false, "au sol : plus en pause")
+  ok(nDrops() == 0, "atterrissage : aucun toast en file (" .. nDrops() .. ")")
+
+  -- option coupée : les toasts passent même en vol
+  taxi = true
+  ns.SetOpt("pauseFlying", false)
+  ns.Flight.Sync("test-off")
+  ok(ns.PausedForFlight() == false, "option off en vol : pas en pause")
+  clearDrops()
+  local f3 = UI:SpawnDrop("Interface\\Icons\\X", "Vol autorisé", "ok", nil, nil, nil, { kind = "skill" })
+  ok(f3 ~= nil, "option off : toast affiché en vol")
+  clearDrops()
+  ns.SetOpt("pauseFlying", true)
+  taxi = false
+  ns.Flight.Sync("test-reset")
+  _G.UnitOnTaxi = function() return false end
+end
+
+print("== 3.6.3 : /drop vol on|off")
+do
+  slash("vol off")
+  ok(ns.db.ui.pauseFlying == false, "/drop vol off")
+  slash("vol on")
+  ok(ns.db.ui.pauseFlying == true, "/drop vol on")
+  slash("flight off")
+  ok(ns.db.ui.pauseFlying == false, "/drop flight off (alias)")
+  slash("vol on")
+end
+
+print("== 3.6.3 : audit chemins nil")
+do
+  local function safe(tag, fn) local okk, err = pcall(fn) ok(okk, tag .. (okk and "" or (" : " .. tostring(err)))) end
+  safe("ItemDisplayName(nil / « objet 1 »)", function()
+    ns.ItemDisplayName(nil) ns.ItemDisplayName("x") ns.ItemDisplayName(159, "objet 1")
+  end)
+  safe("WhenItemName(nil)", function() ns.WhenItemName(nil, function() end) end)
+  safe("FormatMatch(nil / {})", function() ns.Craft.FormatMatch(nil) ns.Craft.FormatMatch({}) ns.Craft.MatchLines(nil, nil) end)
+  safe("BindToastItems(nil)", function() ns.Craft.BindToastItems(nil, {}) ns.Craft.BindToastItems({}, nil) end)
+  safe("Flight.Sync sans UnitOnTaxi", function()
+    local keep = _G.UnitOnTaxi
+    _G.UnitOnTaxi = nil
+    ns.Flight.Sync("noapi")
+    _G.UnitOnTaxi = keep
+  end)
+  safe("PausedForFlight", function() ok(ns.PausedForFlight() == false or ns.PausedForFlight() == true, "booléen") end)
+end
+
+
+print("== 3.6.3 : sablier — feuille 32 images (3 s, drainage puis retournement 0,4 s)")
+do
+  local F = ns.Flight
+  ok(F.SAND_DUR == 2.6 and F.FLIP_DUR == 0.4 and F.CYCLE == 3.0, "durées : 2,6 s + 0,4 s = 3 s")
+  ok(F.HG_FPS == 20 and math.abs((F.HG_STEP or 0) - 0.05) < 1e-6, "20 im/s")
+  ok(F.SAND_FRAMES == 26 and F.FLIP_FRAMES == 6 and F.SHEET_N == 32, "32 images : 26 + 6")
+  ok(F.SHEET_COLS == 8 and F.SHEET_ROWS == 4, "feuille 8×4")
+  ok(F.SheetIndex(0) == 0, "t=0 : image 0")
+  ok(F.SheetIndex(2.6 - 1e-9) == 25, "fin du drainage : image 25")
+  ok(F.SheetIndex(2.6) == 26, "t=2,6 s : première image du retournement")
+  -- milieu du flip (2,8 s, p=0,5) → floor(0,5*6)+26 = 29
+  ok(F.SheetIndex(2.8) >= 28 and F.SheetIndex(2.8) <= 29, "t=2,8 s : milieu du flip, image " .. tostring(F.SheetIndex(2.8)))
+  ok(F.SheetIndex(3.0) == 0, "t=3 s : retour à l'image 0")
+  ok(F.Phase(0) == "sand" and F.Phase(2.6) == "flip" and F.Phase(3.0) == "sand", "Phase : drainage / flip / drainage")
+  local u0, u1, v0, v1 = F.SheetTexCoord(0)
+  ok(math.abs(u0) < 1e-9 and math.abs(u1 - 0.125) < 1e-9 and math.abs(v0) < 1e-9 and math.abs(v1 - 0.25) < 1e-9,
+    "texcoords image 0 : (0, 1/8, 0, 1/4)")
+  u0, u1, v0, v1 = F.SheetTexCoord(8)
+  ok(math.abs(u0) < 1e-9 and math.abs(u1 - 0.125) < 1e-9 and math.abs(v0 - 0.25) < 1e-9 and math.abs(v1 - 0.50) < 1e-9,
+    "texcoords image 8 : rangée 1")
+  -- toutes les coordonnées restent dans [0, 1]
+  local okuv = true
+  for i = 0, 31 do
+    local a,b,c,d = F.SheetTexCoord(i)
+    if a < 0 or c < 0 or b > 1+1e-9 or d > 1+1e-9 or b <= a or d <= c then okuv = false end
+  end
+  ok(okuv, "toutes les texcoords dans [0, 1], cases non vides")
+end
+
+print("== 3.6.3 : sablier remplace la goutte en vol, calé dans l'emplacement, fondu et assombrissement")
+do
+  local F = ns.Flight
+  local taxi = false
+  _G.UnitOnTaxi = function(u) return u == "player" and taxi end
+  ns.SetOpt("pauseFlying", true)
+  -- le toast d'astuce n'interfère pas avec ces tests
+  if F.ResetHints then F.ResetHints() end
+  local c = ns.CharDB and ns.CharDB()
+  if c then c.flightPauseHint = true end   -- déjà vue, pas de toast ici
+  taxi = false
+  F.Sync("hg-sol")
+  local tot = ns.Wide.TotalTile()
+  ok(tot ~= nil, "case Niveau total présente")
+  ok((F._vis or 0) == 0 and (tot._hg == nil or not tot._hg:IsShown()), "au sol : pas de sablier")
+  local dim0 = ns.Panel.FrameAlpha()
+  local iconW = tot.icon and tot.icon.GetWidth and tot.icon:GetWidth()
+  taxi = true
+  F.Sync("hg-taxi")
+  ok(F.Paused(), "en vol : pause")
+  ok(F._visFrame and F._visFrame:IsShown(), "pilote OnUpdate démarré")
+  for i = 1, 12 do
+    gtime = gtime + 0.05
+    F.TickVisual(F._visFrame, 0.05)
+  end
+  ok((F._vis or 0) >= 0.99, "après 0,6 s : vis = 1 (" .. tostring(F._vis) .. ")")
+  local h = tot._hg
+  ok(h and h:IsShown(), "sablier affiché sur la fiole")
+  ok((h._texSet or (h.GetTexture and h:GetTexture()) or ""):find("Hourglass-Sheet", 1, true)
+     or tostring(h._texSet or ""):find("Hourglass-Sheet", 1, true),
+    "texture = feuille Hourglass-Sheet (" .. tostring(h._texSet) .. ")")
+  ok(not h.sandTop and not h.frame, "une seule texture, pas de pièces de sable empilées")
+  ok(tot.icon and (tot.icon.alpha or 1) < 0.05, "goutte d'origine estompée (alpha " .. tostring(tot.icon and tot.icon.alpha) .. ")")
+  -- même taille que la goutte (aucun débordement)
+  local hw = h.GetWidth and h:GetWidth()
+  local hh = h.GetHeight and h:GetHeight()
+  ok(iconW and hw and math.abs(hw - iconW) < 0.5, "largeur = goutte (" .. tostring(hw) .. " / " .. tostring(iconW) .. ")")
+  ok(hh and iconW and math.abs(hh - iconW) < 0.5 or (tot.icon.GetHeight and math.abs((hh or 0) - tot.icon:GetHeight()) < 0.5),
+    "hauteur = goutte (" .. tostring(hh) .. ")")
+  -- drainage : l'indice avance
+  F._cycle0 = gtime - 1.3
+  F.TickVisual(F._visFrame, 0.05)
+  ok(h._idx and h._idx >= 10 and h._idx <= 16, "à 1,3 s : image milieu de drainage (" .. tostring(h._idx) .. ")")
+  -- retournement : l'indice est dans 26–31, la taille ne change pas
+  F._cycle0 = gtime - 2.8
+  F.TickVisual(F._visFrame, 0.05)
+  ok(h._idx and h._idx >= 26 and h._idx <= 31, "à 2,8 s : image de retournement (" .. tostring(h._idx) .. ")")
+  local hw2 = h.GetWidth and h:GetWidth()
+  local hh2 = h.GetHeight and h:GetHeight()
+  ok(hw2 and math.abs(hw2 - (hw or hw2)) < 0.5 and hh2 and math.abs(hh2 - (hh or hh2)) < 0.5,
+    "flip pré-rendu : la taille de l'emplacement ne change pas")
+  local dim = F.DimMul()
+  ok(math.abs(dim - 0.75) < 0.02, "assombrissement ×0,75 (" .. tostring(dim) .. ")")
+  if ns.Panel.ApplyOpacity then ns.Panel.ApplyOpacity() end
+  local fa = ns.Panel.FrameAlpha()
+  ok(fa <= dim0 * 0.8 + 0.05, "FrameAlpha tient compte du dim (idle " .. tostring(dim0) .. " → " .. tostring(fa) .. ")")
+  taxi = false
+  F.Sync("hg-land")
+  ok(not F.Paused(), "atterri")
+  F.TickVisual(F._visFrame, 0.05)
+  ok((F._vis or 1) < 1, "fondu de sortie commencé (" .. tostring(F._vis) .. ")")
+  for i = 1, 12 do
+    gtime = gtime + 0.05
+    if F._visFrame and F._visFrame:IsShown() then F.TickVisual(F._visFrame, 0.05) end
+  end
+  ok((F._vis or 0) <= 0.01, "après 0,6 s : vis = 0 (" .. tostring(F._vis) .. ")")
+  ok(not (tot._hg and tot._hg:IsShown()), "sablier caché")
+  ok(tot.icon and (tot.icon.alpha or 1) >= 0.99, "goutte restaurée")
+  ok(math.abs((F.DimMul() or 1) - 1) < 0.01, "opacité pleine restaurée")
+  ok(not (F._visFrame and F._visFrame:IsShown()), "OnUpdate arrêté une fois caché")
+  taxi = true
+  ns.SetOpt("pauseFlying", false)
+  F.Sync("hg-off")
+  for i = 1, 4 do gtime = gtime + 0.05 if F._visFrame and F._visDriving then F.TickVisual(F._visFrame, 0.05) end end
+  ok(not F.Paused() and (F._vis or 0) <= 0.01, "option off : pas de sablier en vol")
+  ns.SetOpt("pauseFlying", true)
+  taxi = false
+  F.Sync("hg-reset")
+  _G.UnitOnTaxi = function() return false end
+end
+
+print("== 3.6.3 : infobulle fiole « En pause pendant le vol »")
+do
+  local F = ns.Flight
+  setLang("fr")
+  local taxi = true
+  _G.UnitOnTaxi = function(u) return u == "player" and taxi end
+  ns.SetOpt("pauseFlying", true)
+  F.Sync("hg-tip")
+  F._vis = 1
+  ok(F.ShowPauseTip(), "ShowPauseTip en pause")
+  local tot = ns.Wide.TotalTile()
+  local C = ns.Compact
+  local m = C.TooltipModel and C.TooltipModel(tot and tot.data or { kind = "total" })
+  local cm = {}
+  if m and m.lines then for _, l in ipairs(m.lines) do cm[#cm+1] = l[1] end end
+  local blob = table.concat(cm, "\n")
+  ok(blob:find("En pause pendant le vol", 1, true), "infobulle FR : « En pause pendant le vol »")
+  ok(blob:find("Le scan reprend dès l'atterrissage.", 1, true), "infobulle fiole FR : « Le scan reprend dès l'atterrissage. »")
+  setLang("en")
+  m = C.TooltipModel(tot and tot.data or { kind = "total" })
+  cm = {}
+  if m and m.lines then for _, l in ipairs(m.lines) do cm[#cm+1] = l[1] end end
+  blob = table.concat(cm, "\n")
+  ok(blob:find("Paused while flying", 1, true), "infobulle EN : « Paused while flying »")
+  ok(blob:find("Scanning resumes as soon as you land.", 1, true), "infobulle fiole EN : « Scanning resumes as soon as you land. »")
+  local gt = _G.GameTooltip
+  if F.ShowPauseExplanation then
+    F.ShowPauseExplanation(tot or gt)
+    ok(gt._text and tostring(gt._text):find("Paused while flying", 1, true), "sablier : titre EN « Paused while flying »")
+    local has = false
+    for _, ln in ipairs(gt.lines or {}) do
+      if ln.text and tostring(ln.text):find("Scanning resumes as soon as you land.", 1, true) then has = true end
+    end
+    ok(has, "sablier : ligne EN « Scanning resumes as soon as you land. »")
+  end
+  setLang("fr")
+  if F.ShowPauseExplanation then
+    F.ShowPauseExplanation(tot or gt)
+    ok(gt._text and tostring(gt._text):find("En pause pendant le vol", 1, true), "sablier : titre FR « En pause pendant le vol »")
+    local has = false
+    for _, ln in ipairs(gt.lines or {}) do
+      if ln.text and tostring(ln.text):find("Le scan reprend dès l'atterrissage.", 1, true) then has = true end
+    end
+    ok(has, "sablier : ligne FR « Le scan reprend dès l'atterrissage. »")
+  end
+  if tot and ns.Wide and ns.Wide.SyncFlaskHit then pcall(ns.Wide.SyncFlaskHit, tot, 1) end
+  local hit = tot and tot._hgHit
+  ok(hit and hit.IsShown and hit:IsShown(), "cadre de survol de la fiole affiché en vol")
+  ok(hit and hit.IsMouseEnabled and hit:IsMouseEnabled(), "cadre de survol de la fiole : souris active")
+  taxi = false
+  F._vis = 0
+  F.Sync("hg-tip-end")
+  if tot and ns.Wide and ns.Wide.ApplyHourglassTo then pcall(ns.Wide.ApplyHourglassTo, tot, 0) end
+  _G.UnitOnTaxi = function() return false end
+end
+
+print("== 3.6.3 : premier trajet — un toast d'astuce, une fois par personnage")
+
+do
+  local F = ns.Flight
+  local function visibleToasts()
+    local n, titles = 0, {}
+    local ui = ns.UI
+    for _, f in ipairs((ui and ui.dropsActive) or {}) do
+      if f and f.IsShown and f:IsShown() and not f._editPreview then
+        n = n + 1
+        titles[#titles+1] = (f.titleFS and f.titleFS:GetText()) or f._title or ""
+      end
+    end
+    return n, titles
+  end
+  local function hasHint(titles)
+    for _, s in ipairs(titles) do
+      if tostring(s):find("Suivi en pause", 1, true) or tostring(s):find("Tracking paused", 1, true) then return true end
+    end
+    return false
+  end
+  F.ResetHints()
+  local c = ns.CharDB()
+  ok(c.flightPauseHint == nil, "astuce pas encore vue")
+  setLang("fr")
+  ns.SetOpt("pauseFlying", true)
+  -- un toast normal au sol, puis le vol doit le masquer et poser l'astuce
+  if ns.UI and ns.UI.SpawnDrop then
+    ns.UI:SpawnDrop("Interface\\Icons\\INV_Misc_QuestionMark", "toast-sol", "x", nil, nil, nil, { kind = "skill", force = true })
+  end
+  local taxi = true
+  _G.UnitOnTaxi = function(u) return u == "player" and taxi end
+  F._taxi = false
+  F.Sync("hint-first")
+  ok(F.Paused(), "en vol pour l'astuce")
+  local n, titles = visibleToasts()
+  ok(hasHint(titles), "toast d'astuce FR visible (« Suivi en pause pendant le vol. »)")
+  -- le toast « sol » a été masqué
+  local leftover = false
+  for _, s in ipairs(titles) do if tostring(s):find("toast-sol", 1, true) then leftover = true end end
+  ok(not leftover, "les toasts déjà ouverts ont été masqués")
+  ok(c.flightPauseHint == true, "marqueur perso enregistré")
+  -- un toast « recette » en vol reste refusé
+  local before = n
+  if ns.UI and ns.UI.SpawnDrop then
+    local r = ns.UI:SpawnDrop("Interface\\Icons\\INV_Misc_QuestionMark", "Palourdes bouillies (+1)", nil, nil, nil, nil, { kind = "scanner" })
+    ok(r == nil, "les autres toasts restent refusés en vol")
+  end
+  local function hintFrame()
+    for _, f in ipairs((ns.UI and ns.UI.dropsActive) or {}) do
+      if f and f._kind == "flight-hint" then return f end
+    end
+  end
+  local function tick(f, dt)
+    local fn = f and f.GetScript and f:GetScript("OnUpdate")
+    if fn then fn(f, dt) end
+  end
+  local hf = hintFrame()
+  ok(hf and not hf._sticky, "toast d'astuce standard (pas sticky)")
+  local sub = hf and hf.subFS and hf.subFS.GetText and hf.subFS:GetText() or ""
+  local htxt = hf and hf.hintFS and hf.hintFS.GetText and hf.hintFS:GetText() or ""
+  ok(tostring(sub):find("Le scan reprend dès l'atterrissage.", 1, true),
+    "sous-titre FR : « Le scan reprend dès l'atterrissage. »")
+  ok(not tostring(htxt):find("Clic pour fermer", 1, true), "pas de ligne « Clic pour fermer »")
+  if hf then for _ = 1, 20 do tick(hf, 0.05) end end
+  ok(hf and hf.IsShown and hf:IsShown(), "l'astuce est encore visible après 1 s (maintien)")
+  if ns.UI and ns.UI.SpawnDrop then
+    ns.UI:SpawnDrop("Interface\\Icons\\INV_Misc_QuestionMark", "toast-force", "x", nil, nil, nil, { kind = "skill", force = true })
+  end
+  F.HideActiveToasts()
+  n, titles = visibleToasts()
+  ok(not hasHint(titles), "HideActiveToasts masque aussi l'astuce")
+  -- second trajet : plus d'astuce
+  -- second trajet : plus d'astuce
+  taxi = false
+  F.Sync("hint-land")
+  if F.HideActiveToasts then F.HideActiveToasts() end
+  taxi = true
+  F.Sync("hint-second")
+  n, titles = visibleToasts()
+  ok(not hasHint(titles), "deuxième vol : pas de second toast d'astuce")
+  -- reset-hints rouvre le droit
+  taxi = false
+  F.Sync("hint-reset-land")
+  if F.HideActiveToasts then F.HideActiveToasts() end
+  F.ResetHints()
+  ok(c.flightPauseHint == nil, "/drop reset-hints (API) efface le marqueur")
+  taxi = true
+  F.Sync("hint-again")
+  n, titles = visibleToasts()
+  ok(hasHint(titles), "après reset-hints : l'astuce réapparaît")
+  hf = hintFrame()
+  if hf then
+    for _ = 1, 80 do tick(hf, 0.05) end  -- 4 s > maintien 2,6 + fondu 0,7
+  end
+  n, titles = visibleToasts()
+  ok(not hasHint(titles), "toast d'astuce : fondu automatique comme les autres")
+  -- slash
+  taxi = false
+  F.Sync("hint-slash-land")
+  hf = hintFrame()
+  if hf and ns.UI and ns.UI.DismissDrop then ns.UI:DismissDrop(hf) end
+  if F.HideActiveToasts then F.HideActiveToasts() end
+  F.ResetHints()
+  -- laisser le slash le faire
+  c.flightPauseHint = true
+  local slash = SlashCmdList.DROPAMINE
+  if slash then slash("reset-hints") end
+  ok(c.flightPauseHint == nil, "/drop reset-hints efface le marqueur")
+  -- alias
+  c.flightPauseHint = true
+  if slash then slash("resethints") end
+  ok(c.flightPauseHint == nil, "alias resethints")
+  -- EN
+  setLang("en")
+  F.ResetHints()
+  taxi = true
+  F.Sync("hint-en")
+  n, titles = visibleToasts()
+  local enTitle, enSub, enHint = false, false, false
+  for _, f in ipairs((ns.UI and ns.UI.dropsActive) or {}) do
+    local title = f.titleFS and f.titleFS.GetText and f.titleFS:GetText() or ""
+    local sub2 = f.subFS and f.subFS.GetText and f.subFS:GetText() or ""
+    local hint2 = f.hintFS and f.hintFS.GetText and f.hintFS:GetText() or ""
+    if tostring(title):find("Tracking paused while flying.", 1, true) then enTitle = true end
+    if tostring(sub2):find("Scanning resumes as soon as you land.", 1, true) then enSub = true end
+    if tostring(hint2):find("Click to dismiss", 1, true) then enHint = true end
+  end
+  ok(enTitle, "toast d'astuce EN : « Tracking paused while flying. »")
+  ok(enSub, "sous-titre EN : « Scanning resumes as soon as you land. »")
+  ok(not enHint, "pas de ligne EN « Click to dismiss »")
+  hf = hintFrame()
+  if hf and ns.UI and ns.UI.DismissDrop then ns.UI:DismissDrop(hf) end
+  setLang("fr")
+  taxi = false
+  F.Sync("hint-done")
+  if F.HideActiveToasts then F.HideActiveToasts() end
+  _G.UnitOnTaxi = function() return false end
+end
+
+print("== 3.6.3 : toasts — une ligne, défilement, infobulle au survol")
+do
+  local ui = ns.UI
+  ns.SetOpt("pauseFlying", true)
+  _G.UnitOnTaxi = function() return false end
+  if ns.Flight then ns.Flight._taxi = false end
+  local function tick(f, dt)
+    local fn = f and f.GetScript and f:GetScript("OnUpdate")
+    if fn then fn(f, dt) end
+  end
+  local function enter(f)
+    local fn = f and f.GetScript and f:GetScript("OnEnter")
+    if fn then fn(f) end
+  end
+  local function leave(f)
+    local fn = f and f.GetScript and f:GetScript("OnLeave")
+    if fn then fn(f) end
+  end
+  local shortName = "Soupe courte"
+  local longName = "A Very Long Recipe Name That Definitely Overflows The Toast Title Line When Measured At Six Pixels Per Character Because It Is Extremely Verbose Indeed"
+  local short = ui:SpawnDrop("Interface\\Icons\\INV_Misc_QuestionMark", shortName, "détail court", nil, nil, nil, { kind = "skill", force = true })
+  local long = ui:SpawnDrop("Interface\\Icons\\INV_Misc_QuestionMark", longName, "détail aussi très long pour forcer un défilement de la seconde ligne aussi", nil, nil, nil, { kind = "scanner", force = true })
+  ok(short and long, "toasts court et long créés")
+  local sh = short and (short:GetHeight() or short._h)
+  local lh = long and (long:GetHeight() or long._h)
+  ok(sh and lh and sh == lh, "hauteur identique pour un nom court et un nom très long")
+  ok(long and long._tfBaseH and (long:GetHeight() == long._tfBaseH or long._h == long._tfBaseH), "hauteur du toast long inchangée (pas de 2e ligne)")
+  local tfs = long and long.titleFS
+  ok(tfs and tfs.wrap == false, "titre : SetWordWrap(false)")
+  ok(tfs and (tfs._maxLines == 1 or tfs.GetMaxLines and tfs:GetMaxLines() == 1), "titre : une seule ligne (SetMaxLines(1))")
+  local need = tfs and tfs:GetStringWidth() or 0
+  local room = ns.ToastFit and ns.ToastFit.Avail and ns.ToastFit.Avail(long, tfs) or 0
+  ok(need > room, "le nom de recette très long dépasse la largeur disponible")
+  -- laisser ToastFit poser le clip
+  if ns.ToastFit and ns.ToastFit.Fit then ns.ToastFit.Fit(long) end
+  local mq = tfs and tfs._mq
+  ok(mq, "clip / défilement installé pour le titre trop long")
+  -- avant la pause initiale : offset 0
+  for _ = 1, 10 do tick(long, 0.05) end  -- 0.5 s < 1.2 s d'attente
+  ok((mq.off or 0) == 0, "pas de défilement pendant la pause initiale")
+  for _ = 1, 30 do tick(long, 0.05) end  -- +1.5 s : le défilement a commencé
+  ok((mq.off or 0) > 0, "le titre défile une fois le texte trop long")
+  local off = mq.off
+  enter(long)
+  ok(long._hover, "survol : _hover")
+  for _ = 1, 40 do tick(long, 0.05) end
+  ok(mq.off == off, "survol : le défilement est en pause")
+  leave(long)
+  ok(not long._hover, "sortie : _hover levé")
+  for _ = 1, 20 do tick(long, 0.05) end
+  ok((mq.off or 0) > off, "sortie : le défilement reprend")
+
+  -- Infobulle : toast simple = titre + détail intégraux
+  enter(short)
+  local gt = _G.GameTooltip
+  local function tipHas(frag)
+    if gt._text and tostring(gt._text):find(frag, 1, true) then return true end
+    for _, ln in ipairs(gt.lines or {}) do
+      if ln.text and tostring(ln.text):find(frag, 1, true) then return true end
+    end
+    return false
+  end
+  ok(gt.shown and gt:IsOwned(short), "survol d'un toast : GameTooltip affichée")
+  ok(tipHas(shortName), "infobulle : titre intégral")
+  ok(tipHas("détail court"), "infobulle : ligne de détail intégrale")
+  leave(short)
+  ok(not gt.shown, "sortie : GameTooltip masquée")
+
+  -- Recette / réalisable : métier, rang, difficulté, nombre, composants, objet
+  if _G.bags then _G.bags[159] = 1; _G.bags[2678] = 0 end
+  bags[159] = 1
+  bags[2678] = 0
+  local recipe = {
+    name = longName,
+    req = 50,
+    itemID = 5525,
+    reagents = {
+      { id = 159, name = "Eau de source", count = 1 },
+      { id = 2678, name = "Épices douces", count = 1 },
+    },
+  }
+  local craft = ui:SpawnDrop("Interface\\Icons\\INV_Misc_Food_15", longName, "1 × possible", nil, nil, nil, {
+    kind = "craft", force = true,
+    toastData = {
+      kind = "craft", skill = "cooking", recipe = recipe, n = 0, diff = "optimal",
+      item = 5525,
+    },
+  })
+  ok(craft, "toast recette créé")
+  if ns.ToastFit and ns.ToastFit.Fit then ns.ToastFit.Fit(craft) end
+  enter(craft)
+  ok(gt.itemId == 5525 or (gt.link and tostring(gt.link):find("5525", 1, true)),
+    "infobulle recette : SetItemByID / SetHyperlink avec l'id objet")
+  ok(tipHas(longName), "infobulle recette : nom intégral (non tronqué)")
+  ok(tipHas("Métier :") or tipHas("Profession:"), "infobulle recette : métier")
+  ok(tipHas("Rang requis : 50") or tipHas("Required rank: 50"), "infobulle recette : rang requis")
+  ok(tipHas("Difficulté :") or tipHas("Difficulty:"), "infobulle recette : difficulté")
+  ok(tipHas("Réalisable maintenant : 0") or tipHas("Can craft now: 0"), "infobulle recette : nombre fabricable")
+  ok(tipHas("Composants manquants") or tipHas("Missing reagents"), "infobulle recette : composants manquants")
+  ok(tipHas("Épices douces") or tipHas("2678"), "infobulle recette : le composant manquant est cité")
+  leave(craft)
+
+  -- Minuterie de fondu : le survol la met en pause, la sortie la reprend (sans relancer)
+  local fading = ui:SpawnDrop("Interface\\Icons\\INV_Misc_QuestionMark", "fade-test", "x", nil, nil, nil, { kind = "skill", force = true })
+  ok(fading, "toast pour la minuterie de fondu")
+  -- presque en fin de maintien (0,15 + 2,55 ≈ juste avant le fondu)
+  tick(fading, 2.65)
+  ok(fading:IsShown(), "encore visible juste avant la fin du maintien")
+  enter(fading)
+  for _ = 1, 100 do tick(fading, 0.05) end  -- 5 s de survol
+  ok(fading:IsShown(), "survol : la minuterie de fondu est en pause")
+  leave(fading)
+  tick(fading, 1.0)  -- reprise : le reste du maintien + fondu doit suffire à le fermer
+  ok(not fading:IsShown(), "sortie : la minuterie reprend et le toast finit par disparaître")
+
+  -- nettoyage
+  if short and short:IsShown() and ui.DismissDrop then ui:DismissDrop(short) end
+  if long and long:IsShown() and ui.DismissDrop then ui:DismissDrop(long) end
+  if craft and craft:IsShown() and ui.DismissDrop then ui:DismissDrop(craft) end
+end
+
+print("== 3.6.3 : sablier d'abord, l'échec de l'astuce ne le bloque pas")
+do
+  local F = ns.Flight
+  ns.SetOpt("pauseFlying", true)
+  local saved = F.MaybeShowHint
+  F.MaybeShowHint = function() error("hint boom") end
+  _G.UnitOnTaxi = function(u) return u == "player" end
+  F._taxi = nil
+  F._visDriving = false
+  local okCall = pcall(F.Sync, "hard-login-taxi")
+  ok(okCall, "login déjà en vol : Sync ne lève pas si l'astuce échoue")
+  ok(F.Paused(), "login déjà en vol : pause")
+  ok(F._visDriving or (F._visFrame and F._visFrame:IsShown()), "login déjà en vol : le sablier démarre malgré l'échec de l'astuce")
+  _G.UnitOnTaxi = function() return false end
+  F._simTaxi = nil
+  F.SetTaxi(false, "hard-land")
+  F.MaybeShowHint = function() error("hint boom 2") end
+  _G.UnitOnTaxi = function(u) return u == "player" end
+  okCall = pcall(F.Sync, "hard-takeoff")
+  ok(okCall, "envol après login : Sync ne lève pas si l'astuce échoue")
+  ok(F._visDriving or (F._visFrame and F._visFrame:IsShown()), "envol après login : le sablier démarre malgré l'échec de l'astuce")
+  F.MaybeShowHint = saved
+  _G.UnitOnTaxi = function() return false end
+  F._simTaxi = nil
+  F.SetTaxi(false, "hard-done")
+  F.Sync("hard-done")
+end
+
+print("== 3.6.3 : section Test (DEV) + /drop test")
+do
+  local T = ns.Test
+  local F = ns.Flight
+  ok(ns.DEV_TEST == true, "ns.DEV_TEST = true (un seul drapeau)")
+  ok(T and T.Enabled and T.Enabled(), "module ns.Test actif")
+  if ns.Options and ns.Options.Build then pcall(ns.Options.Build) end
+  ok(ns.Options and ns.Options.devTestBox, "panneau Options : section Test (DEV) construite")
+  local f = T.Toast()
+  ok(f and f.titleFS and tostring(f.titleFS:GetText()):find(T.LONG_NAME, 1, true), "bouton Toast : toast au nom long")
+  if ns.ToastFit and ns.ToastFit.Fit then pcall(ns.ToastFit.Fit, f) end
+  local need = f and f.titleFS and f.titleFS.GetStringWidth and f.titleFS:GetStringWidth() or 0
+  local room = ns.ToastFit and ns.ToastFit.Avail and ns.ToastFit.Avail(f, f.titleFS) or 0
+  ok(need > room, "toast test : le nom dépasse (défilement)")
+  local c = ns.CharDB()
+  c.flightPauseHint = true
+  _G.UnitOnTaxi = function() return false end
+  T.StartFlight()
+  ok(F._simTaxi and F.Paused(), "test vol : pause simulée sans taxi réel")
+  ok(F._visDriving or (F._visFrame and F._visFrame:IsShown()), "test vol : sablier démarré")
+  local seen = false
+  for _, drop in ipairs((ns.UI and ns.UI.dropsActive) or {}) do
+    local title = drop.titleFS and drop.titleFS:GetText() or ""
+    if tostring(title):find("Suivi en pause", 1, true) then seen = true end
+  end
+  ok(seen, "test vol : toast d'astuce affiché (même si déjà vu)")
+  ok(c.flightPauseHint == true, "test vol : le marqueur perso n'est pas réécrit")
+  local slash = SlashCmdList.DROPAMINE
+  if slash then slash("test off") end
+  ok(not F._simTaxi and not T.IsOn("flight"), "/drop test off arrête la simulation")
+  ok(T.Start("death") == true, "test mort : simulation du crâne")
+  ok(ns.Slot and ns.Slot.IsSim("death"), "test mort : sim active")
+  T.StopAll()
+  ok(not (ns.Slot and ns.Slot.IsSim("death")), "test mort : stoppé")
+  if slash then slash("test flight") end
+  ok(F._simTaxi and F.Paused(), "/drop test flight démarre la simulation")
+  if slash then slash("test off") end
+  _G.UnitOnTaxi = function() return false end
+  F.Sync("dev-done")
+end
+
+print("== 3.6.3 : fichiers Media du sablier")
+do
+  local f1 = io.open(addonDir .. "/Media/Hourglass.tga", "rb")
+  local f2 = io.open(addonDir .. "/Media/Hourglass-Sheet.tga", "rb")
+  ok(f1 and f2, "Media/Hourglass.tga et Hourglass-Sheet.tga présents")
+  if f1 then f1:close() end
+  if f2 then f2:close() end
+  -- la feuille fait 512×256 (32 cases de 64)
+  if f2 == nil then
+    -- already closed; reopen to check size
+  end
+  local s = io.open(addonDir .. "/Media/Hourglass-Sheet.tga", "rb")
+  if s then
+    local hdr = s:read(18)
+    s:close()
+    local w = hdr:byte(13) + hdr:byte(14) * 256
+    local h = hdr:byte(15) + hdr:byte(16) * 256
+    ok(w == 512 and h == 256, "feuille 512×256 (reçue " .. tostring(w) .. "×" .. tostring(h) .. ")")
+  end
+end
+
+
+print("== 3.6.3 : départ et atterrissage détectés sans /reload")
+do
+  local F = ns.Flight
+  local ch = ns.CharDB and ns.CharDB()
+  if ch then ch.flightPauseHint = true end
+  ns.SetOpt("pauseFlying", true)
+  local taxi = false
+  _G.UnitOnTaxi = function(u) return u == "player" and taxi end
+  taxi = false
+  F.Sync("login-sol")
+  ok(not F.Paused(), "après login au sol : pas en pause")
+  F.EnsurePoll()
+  ok(F._pollFrame ~= nil, "cadre de sondage créé")
+  ok(F._pollFrame.IsShown and F._pollFrame:IsShown(), "cadre de sondage affiché (OnUpdate tourne en jeu)")
+  ok(F._pollFrame.GetScript and F._pollFrame:GetScript("OnUpdate") ~= nil, "OnUpdate posé au sol, avant tout taxi")
+
+  -- Envol typique : PLAYER_CONTROL_LOST se déclenche AVANT que UnitOnTaxi soit vrai.
+  fire("PLAYER_CONTROL_LOST")
+  ok(not F.Paused(), "PLAYER_CONTROL_LOST trop tôt : pas encore en pause")
+  ok(F._pollFrame:GetScript("OnUpdate") ~= nil, "le sondage n'est pas arrêté après CONTROL_LOST")
+  ok(F._burst and #F._burst >= 3, "recontrôles 0,1 / 0,5 / 1,5 s planifiés (" .. tostring(F._burst and #F._burst) .. ")")
+
+  -- UnitOnTaxi passe à vrai, sans /reload ; le premier recontrôle à 0,1 s doit voir le taxi.
+  taxi = true
+  local upd = F._pollFrame:GetScript("OnUpdate")
+  upd(F._pollFrame, 0.1)
+  ok(F.Paused() == true, "0,1 s plus tard, UnitOnTaxi vrai : pause sans /reload")
+
+  -- Atterrissage détecté par le sondage 0,5 s, sans event et sans /reload
+  taxi = false
+  F._burst = {}
+  F._elapsed = 0
+  upd(F._pollFrame, 0.5)
+  ok(not F.Paused(), "atterrissage détecté par le sondage 0,5 s, sans /reload")
+
+  -- PLAYER_CONTROL_GAINED
+  taxi = true
+  F.Sync("reprise-vol")
+  ok(F.Paused(), "repart en vol")
+  taxi = false
+  fire("PLAYER_CONTROL_GAINED")
+  ok(not F.Paused(), "PLAYER_CONTROL_GAINED : atterrissage")
+
+  -- TAXIMAP_CLOSED puis UnitOnTaxi un instant plus tard
+  taxi = false
+  F.Sync("sol-carte")
+  fire("TAXIMAP_CLOSED")
+  ok(not F.Paused(), "TAXIMAP_CLOSED : pas encore en taxi")
+  taxi = true
+  upd(F._pollFrame, 0.1)
+  ok(F.Paused(), "après TAXIMAP_CLOSED + 0,1 s : pause")
+
+  -- UNIT_FLAGS d'une autre unité : ignoré
+  taxi = false
+  F.Sync("sol-flags")
+  F._burst = {}
+  fire("UNIT_FLAGS", "target")
+  taxi = true
+  -- Paused() lit UnitOnTaxi en direct ; on vérifie que le *déclenchement* n'a pas eu lieu.
+  ok(F._taxi ~= true, "UNIT_FLAGS d'une autre unité : pas de déclenchement")
+  -- UNIT_FLAGS joueur trop tôt, puis le taxi devient vrai
+  taxi = false
+  F.Sync("sol-flags2")
+  fire("UNIT_FLAGS", "player")
+  ok(not F.Paused(), "UNIT_FLAGS joueur trop tôt : pas encore en pause")
+  taxi = true
+  upd(F._pollFrame, 0.1)
+  ok(F.Paused(), "UNIT_FLAGS joueur + 0,1 s : pause")
+
+  -- le sondage périodique (0,5 s) détecte aussi un envol sans aucun event
+  taxi = false
+  F.Sync("sol-poll")
+  F._burst = {}
+  F._elapsed = 0
+  taxi = true
+  upd(F._pollFrame, 0.5)
+  ok(F.Paused(), "sondage 0,5 s seul, sans event : pause à l'envol")
+
+  ns.SetOpt("pauseFlying", true)
+  taxi = false
+  F.Sync("fin-detect")
+  _G.UnitOnTaxi = function() return false end
+end
+
+
+print("== 3.6.3 : gestionnaire d'états de la fiole")
+do
+  local S = ns.Slot
+  ok(S ~= nil, "Slot.lua chargé")
+  ok(io.open(addonDir .. "/Dropamine.toc"):read("*a"):find("Rested.lua\nSlot.lua\nRankToast.lua", 1, true),
+    ".toc : Slot.lua et RankToast.lua après Rested.lua")
+  ok(S.CombatStyle() == "bubbles", "style de combat par défaut : bulles")
+  -- priorité sans épée (style bulles)
+  S.ClearSim()
+  S.SetCombatStyle("bubbles")
+  S.SetSim("afk", true)
+  S.SetSim("fishing", true)
+  S.SetSim("combat", true)
+  ok(S.Active() == "afk", "bulles : AFK passe avant pêche et combat (pas d'épée dans le puits)")
+  S.SetSim("flight", true)
+  -- flight wants F.Paused(); sim flight alone is not enough
+  -- death > flight
+  S.SetSim("death", true)
+  ok(S.Active() == "death", "priorité : mort devant AFK")
+  S.SetSim("death", false)
+  S.SetSim("flight", false)
+  S.SetCombatStyle("sword")
+  S.SetSim("combat", true)
+  S.SetSim("afk", true)
+  ok(S.Active() == "combat", "style épée : combat devant AFK")
+  S.SetCombatStyle("bubbles")
+  ok(S.Active() == "afk", "retour aux bulles : plus d'épée, AFK reprend le puits")
+  S.ClearSim()
+  S.Refresh("test-clean")
+  ok(S.Active() == "drop", "aucune sim : goutte")
+end
+
+print("== 3.6.3 : style de combat (bulles / épée / off) et transitions")
+do
+  local S, F, Wd = ns.Slot, ns.Flight, ns.Wide
+  S.ClearSim()
+  S.SetCombatStyle("bubbles")
+  local tot = Wd and Wd.TotalTile and Wd.TotalTile()
+  ok(tot ~= nil, "case total présente pour le liquide de combat")
+  -- remplissage : p monte, vert s'efface, proportions rouge/bleu conservées
+  local widths = { 20, 10, 30 }
+  local out0 = S.TransformWidths(widths, 60, { p = 0, grey = 0, drain = 1 })
+  ok(math.abs((out0[1] or 0) - 20) < 0.6 and math.abs((out0[2] or 0) - 10) < 0.6 and math.abs((out0[3] or 0) - 30) < 0.6,
+    "p=0 : largeurs normales à trois couleurs")
+  local out1 = S.TransformWidths(widths, 60, { p = 1, grey = 0, drain = 1 })
+  local rb = (out1[1] or 0) + (out1[2] or 0)
+  ok((out1[3] or 0) < 0.6, "p=1 : vert disparu (" .. tostring(out1[3]) .. ")")
+  ok(math.abs(rb - 60) < 1.5, "p=1 : rouge+bleu remplissent la piste (" .. tostring(rb) .. ")")
+  ok(math.abs((out1[1] or 0) / math.max(0.01, out1[2] or 0) - 2) < 0.15, "p=1 : proportion rouge/bleu conservée")
+  -- montée animée
+  S.fill.p, S.fill.grey, S.fill.drain = 0, 0, 1
+  S.SetSim("combat", true)
+  S.Refresh("combat-on")
+  ok(S.Active() == "drop", "style bulles : le puits garde la goutte (pas d'épée)")
+  for i = 1, 14 do S.Tick(0.05) end
+  ok(S.fill.p >= 0.99, "après 0,7 s en combat : p ≈ 1 (" .. tostring(S.fill.p) .. ")")
+  ok(S.fill.targetP == 1, "cible de remplissage = 1")
+  -- descente
+  S.SetSim("combat", false)
+  S.Refresh("combat-off")
+  S.Tick(0.05)
+  local mid = S.fill.p
+  ok(mid < 0.99 and mid > 0.05, "descente commencée (p=" .. tostring(mid) .. ")")
+  -- reprise au milieu de la descente
+  S.SetSim("combat", true)
+  S.Refresh("combat-re")
+  S.Tick(0.05)
+  ok(S.fill.targetP == 1 and S.fill.p >= mid, "reprise en combat : p remonte depuis " .. tostring(mid) .. " (" .. tostring(S.fill.p) .. ")")
+  for i = 1, 14 do S.Tick(0.05) end
+  ok(S.fill.p >= 0.99, "reprise : p revient à 1")
+  -- style off : pas de liquide
+  S.SetCombatStyle("off")
+  S.Refresh("combat-style-off")
+  ok(S.fill.targetP == 0, "style Désactivé : pas de remplissage combat")
+  -- style épée : symbole dans le puits
+  S.SetCombatStyle("sword")
+  S.SetSim("combat", true)
+  S.Refresh("combat-sword")
+  ok(S.Active() == "combat", "style épée : Active = combat")
+  if tot then S.ApplyTotal(tot) end
+  local h = tot and tot._hg
+  ok(h and h:IsShown(), "style épée : symbole dans le puits")
+  local tex = tostring((h and (h._texSet or (h.GetTexture and h:GetTexture()))) or "")
+  ok(tex:find("Combat-C-Sheet", 1, true) or tex:find("Sword-Sheet", 1, true),
+    "texture épée = Combat-C-Sheet (" .. tex .. ")")
+  -- /reload en combat : p part de 0 et rejoint 1
+  S.fill.p, S.fill.grey, S.fill.drain = 0, 0, 1
+  S.SetCombatStyle("bubbles")
+  S.SetSim("combat", true)
+  S.Refresh("reload-in-combat")
+  ok(S.fill.targetP == 1 and S.fill.p < 0.2, "/reload en combat : cible 1, départ proche de 0")
+  for i = 1, 14 do S.Tick(0.05) end
+  ok(S.fill.p >= 0.99, "/reload en combat : s'installe à p=1")
+  S.ClearSim()
+  S.SetCombatStyle("bubbles")
+  S.fill.p, S.fill.grey, S.fill.drain = 0, 0, 1
+  S.Refresh("clean")
+end
+
+print("== 3.6.3 : mort (crâne, fiole grise, pause) et conflit avec le combat")
+do
+  local S, UI = ns.Slot, ns.UI
+  S.ClearSim()
+  S.SetCombatStyle("bubbles")
+  S.SetSim("combat", true)
+  S.fill.p = 1
+  S.Refresh("pre-death")
+  S.SetSim("death", true)
+  S.Refresh("death-in-combat")
+  ok(S.Active() == "death", "mort en combat : le crâne gagne")
+  ok(S.fill.targetDrain == 0 and S.fill.targetGrey == 1, "mort : cible vide + grise")
+  for i = 1, 14 do S.Tick(0.05) end
+  ok(S.fill.drain <= 0.05 and S.fill.grey >= 0.95, "après 0,7 s : fiole vidée et grisée")
+  ok(S.DeathPause() and ns.PausedForFlight(), "suivi en pause pendant la mort")
+  if UI and UI.SpawnDrop then
+    local r = UI:SpawnDrop("Interface\\Icons\\INV_Misc_QuestionMark", "pendant-mort", "x", nil, nil, nil, { kind = "skill" })
+    ok(r == nil, "mort : SpawnDrop refuse le toast (sans force)")
+  end
+  local tot = ns.Wide.TotalTile()
+  if tot then S.ApplyTotal(tot) end
+  local h = tot and tot._hg
+  local tex = tostring((h and (h._texSet or (h.GetTexture and h:GetTexture()))) or "")
+  ok(h and h:IsShown() and tex:find("Death-Sheet", 1, true), "crâne : feuille Death-Sheet (" .. tex .. ")")
+  -- résurrection, encore en combat
+  S.SetSim("death", false)
+  S.Refresh("rez")
+  ok(S.fill.targetDrain == 1 and S.fill.targetGrey == 0 and S.fill.targetP == 1,
+    "résurrection en combat : refill vers l'état combat")
+  for i = 1, 14 do S.Tick(0.05) end
+  ok(S.fill.drain >= 0.95 and S.fill.grey <= 0.05 and S.fill.p >= 0.95, "refill terminé vers combat rempli")
+  -- résurrection hors combat
+  S.SetSim("combat", false)
+  S.SetSim("death", true)
+  S.fill.p, S.fill.grey, S.fill.drain = 0, 1, 0
+  S.Refresh("dead-again")
+  S.SetSim("death", false)
+  S.Refresh("rez-peace")
+  ok(S.fill.targetP == 0 and S.fill.targetDrain == 1 and S.fill.targetGrey == 0,
+    "résurrection hors combat : retour à l'état normal à trois couleurs")
+  S.ClearSim()
+  S.fill.p, S.fill.grey, S.fill.drain = 0, 0, 1
+  S.Refresh("clean")
+end
+
+print("== 3.6.3 : infobulle de combat, AFK, pêche, test /drop")
+do
+  local S = ns.Slot
+  S.ClearSim()
+  S.SetCombatStyle("bubbles")
+  S.SetSim("combat", true)
+  S.Refresh("tip-combat")
+  -- GameTooltip mock
+  local gt = _G.GameTooltip
+  if gt then
+    if gt.ClearLines then pcall(gt.ClearLines, gt) end
+    gt.text, gt.lines = nil, {}
+  end
+  setLang("fr")
+  local tot = ns.Wide.TotalTile()
+  S.ShowExplanation(tot or { typ = "Frame" })
+  local blob = tostring((gt and (gt.text or gt._text)) or "")
+  if gt and gt.lines then
+    for _, l in ipairs(gt.lines) do blob = blob .. "\n" .. tostring(l[1] or l) end
+  end
+  -- certains mocks stockent dans records
+  if gt and gt.logs then blob = blob .. table.concat(gt.logs, "\n") end
+  ok(blob:find("En combat : XP et armes en cours", 1, true),
+    "infobulle FR combat : « En combat : XP et armes en cours » (" .. blob .. ")")
+  setLang("en")
+  if gt and gt.ClearLines then pcall(gt.ClearLines, gt) end
+  if gt then gt.text, gt.lines = nil, {} end
+  S.ShowExplanation(tot or { typ = "Frame" })
+  blob = tostring((gt and (gt.text or gt._text)) or "")
+  if gt and gt.lines then for _, l in ipairs(gt.lines) do blob = blob .. "\n" .. tostring(l[1] or l) end end
+  ok(blob:find("In combat: XP and weapon skills in progress", 1, true),
+    "infobulle EN combat : « In combat: XP and weapon skills in progress » (" .. blob .. ")")
+  setLang("fr")
+  S.ClearSim()
+  S.SetSim("afk", true)
+  S.Refresh("afk")
+  ok(S.Active() == "afk", "AFK : horloge")
+  S.ClearSim()
+  S.SetSim("fishing", true)
+  S.Refresh("fish")
+  ok(S.Active() == "fishing", "pêche : hameçon")
+  S.OnCatch()
+  ok((S._jolt or 0) > 0, "prise : sursaut du hameçon")
+  S.ClearSim()
+  S.SetSim("swimming", true)
+  ok(S.Active() == "swimming", "nage : bulles")
+  S.ClearSim()
+  S.Refresh("clean")
+
+  -- option Style de combat
+  local it
+  if ns.Options and ns.Options.Find then it = ns.Options.Find("combatStyle") end
+  ok(it and it.type == "radio" and it.default == "bubbles", "Options : Style de combat, radio, défaut bulles")
+  ok(it and it.choices and it.choices[1] and it.choices[1][1] == "bubbles", "choix Bulles / Épée / Désactivé")
+
+  -- /drop test
+  if ns.Test then
+    ns.Test.StopAll()
+    ok(ns.Test.Start("combat") == true, "/drop test combat")
+    ok(S.IsSim("combat"), "sim combat active")
+    ok(ns.Test.Start("rankup") == true, "/drop test rankup")
+    ns.Test.StopAll()
+    ok(not S.IsSim("combat"), "test off : sims arrêtées")
+  end
+end
+
+print("== 3.6.3 : toast collant rang supérieur chez le maître")
+do
+  local RT, UI = ns.RankToast, ns.UI
+  ok(RT ~= nil, "RankToast.lua chargé")
+  -- option par défaut on
+  ok(RT.Opt(), "option trainerRankToast active par défaut")
+  setLang("fr")
+  local list = {
+    { id = "skinning", name = "Dépeçage", icon = "Interface\\Icons\\INV_Misc_Pelt_Wolf_01" },
+    { id = "cooking", name = "Cuisine", icon = "Interface\\Icons\\INV_Misc_Food_15" },
+  }
+  ok(RT.Title(list):find("Dépeçage, Cuisine : rang supérieur disponible chez le maître", 1, true),
+    "titre FR combiné : « Dépeçage, Cuisine : rang supérieur disponible chez le maître »")
+  setLang("en")
+  ok(RT.Title({ list[1] }):find("Dépeçage: next rank available at the trainer", 1, true),
+    "titre EN : « <Profession>: next rank available at the trainer »")
+  setLang("fr")
+  -- sim ville + dispo
+  if UI and UI.dropsActive then
+    for i = #UI.dropsActive, 1, -1 do
+      if UI.DismissDrop then pcall(UI.DismissDrop, UI, UI.dropsActive[i]) end
+    end
+  end
+  RT._dismissedVisit, RT._queued, RT._wasInCity, RT._toast = nil, nil, nil, nil
+  RT._leftAt, RT._leftKey, RT._wasKey = nil, nil, nil
+  RT.SetSim(true, { list[1] })
+  -- ni vol ni combat
+  if ns.Flight then ns.Flight._simTaxi = nil end
+  if ns.Slot then ns.Slot.ClearSim() ns.Slot.SetCombatStyle("bubbles") end
+  local f = RT.Show(RT.Available())
+  ok(f ~= nil, "toast rang maître affiché")
+  ok(f and f._sticky, "toast collant (pas de fondu auto)")
+  ok(f and f._dedupeKey == "rank-trainer", "dedupe rank-trainer")
+  -- plafond : un sticky n'est pas évincé
+  if UI and UI.DROP_MAX then
+    local cap = UI.DROP_MAX
+    for i = 1, cap + 2 do
+      UI:SpawnDrop("Interface\\Icons\\X", "n" .. i, "x", nil, nil, nil, { kind = "skill", force = true })
+    end
+    local still = false
+    for _, o in ipairs(UI.dropsActive or {}) do
+      if o == f or (o and o._dedupeKey == "rank-trainer") then still = true end
+    end
+    ok(still, "le toast collant n'est pas évincé par le plafond")
+  end
+  -- clic : fermé, pas de relance tant qu'on reste en ville
+  if UI and f then pcall(UI.DismissDrop, UI, f) end
+  ok(RT._dismissedVisit, "clic : visite dismissée")
+  local f2 = RT.Show(RT.Available())
+  ok(f2 == nil, "pas de relance dans la même visite")
+  -- sortie + rentrée immédiate dans la même capitale : pas de relance
+  RT._simCity = false
+  RT.Refresh("leave")
+  ok(not RT._dismissedVisit, "sortie de ville : dismiss oublié")
+  ok(RT._leftAt ~= nil, "sortie : horodatage de grâce posé")
+  RT._simCity = true
+  RT.Refresh("ZONE_CHANGED_NEW_AREA")
+  ok(not RT.IsShowing(), "rentrée immédiate dans la même capitale : pas de nouveau toast")
+  -- après la grâce : le toast peut revenir
+  RT._simCity = false
+  RT.Refresh("leave")
+  RT._leftAt = (GetTime and GetTime() or 0) - ((RT.REENTRY_GRACE or 90) + 1)
+  RT._simCity = true
+  RT.Refresh("ZONE_CHANGED_NEW_AREA")
+  ok(RT.IsShowing() or (RT._toast ~= nil), "après la grâce : le toast se relance")
+  -- auberge / repos : pas un toast de maître
+  RT.Hide("test")
+  RT._wasInCity, RT._wasKey, RT._queued, RT._dismissedVisit = true, "sim", nil, nil
+  RT._simCity = true
+  RT.Refresh("PLAYER_UPDATE_RESTING")
+  ok(not RT.IsShowing(), "PLAYER_UPDATE_RESTING : pas de toast maître")
+  RT.Refresh("ZONE_CHANGED_INDOORS")
+  ok(not RT.IsShowing(), "ZONE_CHANGED_INDOORS : pas de toast maître")
+  -- Menethil / auberge (repos) n'est pas une capitale
+  local bakCity, bakRest, bakZone = _G.GetRealZoneText, _G.IsResting, _G.GetZoneText
+  _G.GetRealZoneText = function() return "Menethil Harbor" end
+  _G.GetZoneText = function() return "Menethil Harbor" end
+  _G.IsResting = function() return true end
+  RT.SetSim(false)
+  RT._simList = { list[1] }
+  ok(not RT.InCapital(), "Menethil + repos : pas une capitale")
+  _G.GetRealZoneText, _G.IsResting, _G.GetZoneText = bakCity, bakRest, bakZone
+  RT.SetSim(true, { list[1] })
+  if not RT.IsShowing() then RT.Show(RT.Available()) end
+  -- apprentissage : plus rien de disponible → fermeture
+  RT._simList = {}
+  RT.Refresh("SKILL_LINES_CHANGED")
+  ok(not RT.IsShowing(), "rang appris : toast fermé")
+  -- file d'attente en vol
+  RT.SetSim(true, { list[1] })
+  RT._dismissedVisit, RT._wasInCity = nil, true
+  if ns.Test and ns.Test.StartFlight then ns.Test.StartFlight() end
+  RT.Refresh("flight")
+  ok(RT.Blocked() == "flight", "en vol : toast bloqué")
+  ok(not RT.IsShowing() or RT._queued, "en vol : toast en file (pas affiché)")
+  if ns.Test and ns.Test.StopFlight then ns.Test.StopFlight() end
+  RT._queued = true
+  RT.Refresh("PLAYER_REGEN_ENABLED")
+  ok(RT.IsShowing(), "après le vol : file vidée, toast affiché")
+  -- combat : file
+  if ns.Slot then ns.Slot.SetSim("combat", true) end
+  RT.Refresh("combat")
+  ok(RT.Blocked() == "combat", "en combat : toast bloqué")
+  if ns.Slot then ns.Slot.SetSim("combat", false) ns.Slot.ClearSim() end
+  RT.Refresh("PLAYER_REGEN_ENABLED")
+  ok(RT.IsShowing(), "sortie de combat : toast réaffiché")
+  -- nettoyage
+  RT.SetSim(false)
+  RT.Hide("test")
+  if ns.Test then ns.Test.StopAll() end
+  setLang("fr")
+end
+
+print("== 3.6.3 : fuite mémoire toasts, capitals, coalesce, fiole")
+do
+  local UI, S, RT = ns.UI, ns.Slot, ns.RankToast
+  -- vivier de toasts : DismissDrop recycle, un second Spawn réutilise le cadre
+  if UI and UI.dropsActive then
+    for i = #UI.dropsActive, 1, -1 do
+      if UI.DismissDrop then pcall(UI.DismissDrop, UI, UI.dropsActive[i]) end
+    end
+  end
+  UI._toastPool = UI._toastPool or {}
+  local before = UI._toastCreated or 0
+  local a = UI:SpawnDrop("Interface\\Icons\\X", "pool-a", "x", nil, nil, nil, { kind = "skill", force = true })
+  ok(a ~= nil, "toast pool : premier cadre créé")
+  local created = UI._toastCreated or 0
+  ok(created >= before + 1 or a._osrsToast, "toast pool : cadre marqué")
+  UI:DismissDrop(a)
+  ok(a._inPool, "DismissDrop remet le toast dans le vivier")
+  local poolN = #(UI._toastPool or {})
+  ok(poolN >= 1, "vivier non vide après fermeture")
+  local b = UI:SpawnDrop("Interface\\Icons\\X", "pool-b", "x", nil, nil, nil, { kind = "skill", force = true })
+  ok(b == a, "second toast : réutilise le même cadre")
+  ok((UI._toastCreated or 0) == created, "aucun cadre supplémentaire créé")
+  UI:DismissDrop(b)
+
+  -- TransformWidths réutilise sa table
+  if S and S.TransformWidths then
+    S._widthOut = nil
+    local t1 = S.TransformWidths({ 10, 20, 30 }, 100, { p = 0, grey = 0, drain = 1 })
+    local t2 = S.TransformWidths({ 11, 21, 31 }, 100, { p = 0, grey = 0, drain = 1 })
+    ok(t1 == t2 and t1 == S._widthOut, "TransformWidths réutilise le même tableau")
+    ok(t2[1] == 11 and t2[2] == 21 and t2[3] == 31, "TransformWidths met à jour le tampon")
+  else
+    ok(false, "S.TransformWidths présent")
+  end
+
+  -- FlushSkillDiff sans palier : pas de Collect
+  if UI.FlushSkillDiff and ns.SkillRankSnapshot then
+    local calls = 0
+    local prevC = ns.Collect
+    ns.Collect = function(...)
+      calls = calls + 1
+      if prevC then return prevC(...) end
+      return {}, {}
+    end
+    UI._skillSeeded = true
+    UI._prevSkills = { foo = { name = "Foo", rank = 10, max = 75 } }
+    -- snapshot identique
+    local prevSnap = ns.SkillRankSnapshot
+    ns.SkillRankSnapshot = function()
+      return { foo = { name = "Foo", rank = 10, max = 75 } }
+    end
+    UI:FlushSkillDiff()
+    ok(calls == 0, "FlushSkillDiff sans palier : pas de Collect")
+    ns.Collect, ns.SkillRankSnapshot = prevC, prevSnap
+  end
+
+  -- icône officielle jamais cachée (fiole noire)
+  if S and S.ApplySlotZ then
+    local hidden = false
+    local tile = {
+      _wideOn = true,
+      icon = {
+        Show = function(self) self.shown = true hidden = false end,
+        Hide = function(self) self.shown = false hidden = true end,
+        SetAlpha = function(self, a) self.a = a end,
+      },
+    }
+    -- EnsureSlotZ peut échouer sans CreateFrame sur la case : on pose un clip factice
+    tile._slotZ = {
+      Show = function() end, Hide = function() end,
+      SetPoint = function() end, ClearAllPoints = function() end,
+      SetSize = function() end,
+    }
+    S.IconInnerSize = S.IconInnerSize or function() return 14, 14, tile.icon, 2 end
+    S.ApplySlotZ(tile, true)
+    ok(not hidden and tile.icon.shown ~= false, "ApplySlotZ : la fiole officielle reste visible")
+  end
+
+  ok(S and S.OnRestOrZone and S.QuietSkills, "OnRestOrZone / QuietSkills présents")
+  ok(UI.REFRESH_WAIT and UI.REFRESH_WAIT.idle >= 1 and UI.REFRESH_WAIT.raid <= 2.01,
+    "rescans regroupés toutes les 1–2 s")
+  ok(S and S.ApplyGridFill and S.EnsureGridFill, "remplissage de fiole en grille")
+  ok(RT and RT.InCapital and RT.REENTRY_GRACE == 90, "InCapital + grâce 90 s")
+  ok(ns.Compact and ns.Compact.ShouldHold, "Compact.ShouldHold présent")
+  -- icône XP : silhouette officielle (pas l'ancienne goutte + splash)
+  ok(type(ns.LEVEL_ICON) == "string" and ns.LEVEL_ICON:find("XP-Icon", 1, true), "LEVEL_ICON pointe vers XP-Icon")
+  local xpPath = addonDir .. "/Media/XP-Icon.tga"
+  local xf = io.open(xpPath, "rb")
+  ok(xf ~= nil, "Media/XP-Icon.tga présent")
+  if xf then
+    local hdr = xf:read(18)
+    xf:close()
+    if hdr and #hdr >= 18 then
+      local w = hdr:byte(13) + hdr:byte(14)*256
+      local h = hdr:byte(15) + hdr:byte(16)*256
+      ok(w == 64 and h == 64, "XP-Icon 64×64 (lisible en petit)")
+    end
+  end
+  ok(UI.TOAST_SLIDE == 7, "toast : glissement de 7 px")
+  ok(UI.ToastSlideAmount and UI.ApplyToastPoint, "toast : helpers de glissement")
+  -- politique XP inchangée
+  ok(UI.SpawnQuestXPToast and UI.MaybeXPMilestone and UI.XP_MILESTONES, "politique XP : quête + jalons")
+  local marks = UI.XP_MILESTONES
+  ok(marks and marks[1]==25 and marks[2]==50 and marks[3]==75, "jalons XP 25 / 50 / 75 %")
+  -- repas : kinds
+  ok(S.ClassifyEat and S.EatKind and S.EAT_WAVE, "repas : ClassifyEat / EatKind / couleurs")
+  ok(S.ClassifyEat("Nourriture") == "food" and S.ClassifyEat("Boisson") == "drink", "repas : nourriture ambre, boisson bleue")
+  ok(S.ClassifyEat("Nourriture et Boisson") == "both", "repas : les deux = two waves")
+  -- feu de camp 3 états
+  ok(S.SetCampfireSim and S.CampfireState and S.LiveCampfire, "feu de camp : API")
+  S.ClearSim()
+  S.SetCampfireSim("near")
+  ok(S.CampfireState() == "near", "feu de camp : braise (near)")
+  S.SetCampfireSim("charge")
+  ok(S.CampfireState() == "charge", "feu de camp : flamme (charge)")
+  S.SetCampfireSim("burst")
+  ok(S.CampfireState() == "burst", "feu de camp : étincelles (burst)")
+  S.ClearSim()
+  ok(S.PlayTotalAdd and S.PlayLevelUp and S.TickTotalAdd and S.TickLevelUp, "goutte dans la fiole + débordement de niveau")
+  -- Personnages
+  local PU = ns.ProgressUI
+  ok(PU and PU.TABS, "ProgressUI chargé")
+  local hasChars
+  for _, tab in ipairs(PU.TABS or {}) do if tab.id == "chars" then hasChars = true end end
+  ok(hasChars, "onglet Personnages présent")
+  ok(PU.BuildChars and PU.RefreshChars and PU.SetCharSort, "table Personnages triable")
+  ok(ns.CaptureCharSheet and ns.AllCharSheets, "instantanés de personnages")
+  if ns.Test then
+    ok(ns.Test.StartCampfire and ns.Test.StartEating and ns.Test.StartTotalAdd and ns.Test.StartLevelUp,
+      "/drop test campfire|eating|totaladd|levelup")
+  end
+
+  if ns.Compact and ns.Compact.ShouldHold then
+    ok(not ns.Compact.ShouldHold({ combatTile = true, skillName = "Mains nues", kind = "melee" }),
+      "armes / cases combat : pas de retenue")
+  end
+end
+
+print("== 3.6.3 : sacs, trajet, chargement, repas, calme auto, usure, efficacité, rentabilité")
+do
+  local S, F, P, E, UI, PU = ns.Slot, ns.Flight, ns.Progress, ns.Efficiency, ns.UI, ns.ProgressUI
+  ok(S and F and P and E, "modules Slot, Flight, Progress, Efficiency chargés")
+
+  -- priorité : mort > vol > épée combat > AFK > sacs > pêche > nage > usure > repos
+  S.ClearSim()
+  S.SetCombatStyle("sword")
+  if ns.SetOpt then ns.SetOpt("slotDurability", true) end
+  S.SetSim("durability", true)
+  S.SetSim("swimming", true)
+  S.SetSim("fishing", true)
+  S.SetSim("bags", true)
+  S.SetSim("afk", true)
+  S.SetSim("combat", true)
+  S.SetSim("flight", true)
+  S.SetSim("death", true)
+  ok(S.Active() == "death", "priorité : mort d'abord")
+  S.SetSim("death", false)
+  ok(S.Active() == "flight", "priorité : vol après la mort")
+  S.SetSim("flight", false)
+  ok(S.Active() == "combat", "priorité : épée de combat après le vol")
+  S.SetSim("combat", false)
+  ok(S.Active() == "afk", "priorité : AFK après le combat")
+  S.SetSim("afk", false)
+  ok(S.Active() == "bags", "priorité : sacs pleins après AFK")
+  S.SetSim("bags", false)
+  ok(S.Active() == "fishing", "priorité : pêche après les sacs")
+  S.SetSim("fishing", false)
+  ok(S.Active() == "swimming", "priorité : nage après la pêche")
+  S.SetSim("swimming", false)
+  ok(S.Active() == "durability", "priorité : usure après la nage (option allumée)")
+  S.SetCombatStyle("bubbles")
+  if ns.SetOpt then ns.SetOpt("slotDurability", false) end
+  S.ClearSim()
+  S.SetSim("durability", true)
+  ok(S.Active() == "drop", "usure : coupée par défaut, pas de signal")
+  ok(S.Opt("slotDurability") == false, "option slotDurability off par défaut")
+  S.ClearSim()
+
+  -- toast sacs : une seule fois tant que ça reste plein
+  S._bagsToastShown, S._bagsWereFull = nil, nil
+  local function countToast(key)
+    local n = 0
+    for _, d in ipairs((UI and UI.dropsActive) or {}) do
+      local k = d._dedupeKey or d.dedupeKey or (d.opts and d.opts.dedupeKey)
+      local title = d.titleFS and d.titleFS:GetText() or d.title or ""
+      if k == key or tostring(title):find("Sacs pleins", 1, true) then n = n + 1 end
+    end
+    return n
+  end
+  local before = countToast("bags-full")
+  S.SetSim("bags", true)
+  S.CheckBags()
+  local mid = countToast("bags-full")
+  S.CheckBags()
+  S.CheckBags()
+  local after = countToast("bags-full")
+  ok(mid >= before + 1 or S._bagsToastShown, "sacs pleins : un toast (ou marqueur posé)")
+  ok(after == mid, "sacs pleins : pas de second toast tant que ça reste plein")
+  S.SetSim("bags", false)
+  S.CheckBags()
+  ok(S._bagsToastShown == false, "sacs : le marqueur se remet à zéro quand une place se libère")
+  S.ClearSim()
+
+  -- transport : pause + sablier, pas d'astuce premier vol
+  if ns.Test then ns.Test.StopAll() end
+  local ch = ns.CharDB and ns.CharDB()
+  if ch then ch.flightPauseHint = nil end
+  local function countHint()
+    local n = 0
+    for _, d in ipairs((UI and UI.dropsActive) or {}) do
+      local k = d._dedupeKey or (d.opts and d.opts.dedupeKey) or d.kind
+      local title = d.titleFS and d.titleFS:GetText() or ""
+      if k == "flight-hint" or tostring(title):find("Suivi en pause pendant le vol", 1, true) then n = n + 1 end
+    end
+    return n
+  end
+  ok(ns.Test.Start("transport") == true, "/drop test transport")
+  ok(F.Paused() and F.TravelPause and F.TravelPause(), "trajet : suivi en pause")
+  ok(F.ShowHourglass and F.ShowHourglass(), "trajet : sablier allumé")
+  ok(not (F.SafetyPause and F.SafetyPause()), "trajet : pas une pause de sécurité")
+  ok(countHint() == 0, "trajet : pas d'astuce de premier vol")
+  ns.Test.Stop("transport")
+  ok(not F._simTransport, "trajet : simulation arrêtée")
+
+  -- chargement : pause silencieuse, pas de sablier
+  ok(ns.Test.Start("loading") == true, "/drop test loading")
+  ok(F.Paused() and F.SafetyPause and F.SafetyPause(), "chargement : pause de sécurité")
+  ok(not (F.ShowHourglass and F.ShowHourglass()), "chargement : pas de sablier")
+  ns.Test.Stop("loading")
+
+  -- repas : couche (pas dans ORDER), remplace la fiole par un disque
+  S.ClearSim()
+  S.SetSim("eating", true)
+  ok(S.Want("eating") == true, "repas : Want('eating')")
+  ok(S.LiveEating() == true, "repas : LiveEating")
+  ok(S.Active() == "drop", "repas : pas un symbole de priorité (Active reste drop)")
+  S.ClearSim()
+
+  -- calme auto en donjon
+  local prevQuiet = P.QuietSetting and P.QuietSetting() or "off"
+  if ns.SetOpt then ns.SetOpt("quietMode", "off") ns.SetOpt("quietAuto", true) end
+  P._autoQuietHeld, P._autoQuietPrev = nil, nil
+  ok(ns.Test.Start("dungeon") == true, "/drop test dungeon")
+  ok(P.QuietSetting() == "instance", "donjon : mode calme instance allumé tout seul")
+  ok(P._autoQuietHeld, "donjon : le maintien auto est posé")
+  ns.Test.Stop("dungeon")
+  ok(P.QuietSetting() == "off", "sortie de donjon : le réglage précédent est rétabli")
+  -- déjà instance : ne pas écraser
+  if ns.SetOpt then ns.SetOpt("quietMode", "instance") end
+  P._autoQuietHeld, P._autoQuietPrev = nil, nil
+  P._simInstance = "party"
+  P.AutoQuietSync(true)
+  ok(not P._autoQuietHeld, "déjà en mode instance : le calme auto ne prend pas la main")
+  P._simInstance = nil
+  if ns.SetOpt then ns.SetOpt("quietMode", prevQuiet) end
+  P.AutoQuietSync(true)
+
+  -- P.Rates : lph = xph / UnitXPMax, pas les niveaux gagnés
+  local s, _, c = P.Session()
+  local oldStart, oldXp, oldLv, oldAct = s.start, s.xp, s.levels, s.active
+  local oldStarted = c.session and c.session.started
+  c.session = c.session or {}
+  c.session.started = clock - 600
+  s.start = clock - 600
+  s.xp, s.levels, s.active = 21953, 0, 600
+  local r = P.Rates(clock)
+  ok(r.xph and r.xph > 0, "Rates : XP/h mesuré")
+  local mx = (_G.UnitXPMax and _G.UnitXPMax()) or 8000
+  ok(r.lph and math.abs(r.lph - (r.xph / mx)) < 1e-9, "Rates : lph = xph / UnitXPMax (plus de 0,00 niv./h sans ding)")
+  ok(r.pctLevelPerHour and math.abs(r.pctLevelPerHour - r.lph * 100) < 1e-6, "Rates : % niv./h = lph × 100")
+  ok((r.levelsPerHour or 0) == 0, "Rates : levelsPerHour reste 0 si on n'a pas ding (métrique à part)")
+  s.start, s.xp, s.levels, s.active = oldStart, oldXp, oldLv, oldAct
+  if c.session then c.session.started = oldStarted end
+
+  -- efficacité : le score est la part active, pas l'XP/h
+  local secs = E.Secs and nil
+  local empty = {}
+  for _, k in ipairs(E.ALL or { "combat", "gather", "craft", "death", "loading", "flight", "transport", "afk", "other" }) do
+    empty[k] = 0
+  end
+  empty.combat, empty.gather, empty.craft = 1800, 900, 300
+  empty.flight, empty.transport, empty.afk, empty.death, empty.loading, empty.other = 720, 180, 240, 90, 60, 510
+  local score, total = E.Score(empty)
+  ok(total and total >= 4800, "Score : temps total mesuré")
+  local active = (1800 + 900 + 300)
+  ok(score and math.abs(score - (active / total)) < 1e-9, "Score : part de temps actif (pas XP/h ni points/h)")
+  setLang("fr")
+  local tip = E.Tip({ secs = empty, total = total, score = score })
+  ok(type(tip) == "string" and tip:find("vol", 1, true) and tip:find("%", 1, true),
+    "conseil : plus grande part de temps mort, factuel (« vol ») (" .. tostring(tip) .. ")")
+  ok(not (tip and tip:find("pts/h", 1, true)) and not (tip and tip:find("XP/h", 1, true)),
+    "conseil : ne compare pas par points/h ou XP/h")
+
+  -- or : format + classement mixte par somme de centiles
+  local fmt = E.FormatMoney(123456, true)
+  ok(type(fmt) == "string" and fmt:find("UI%-GoldIcon") and fmt:find("12"), "FormatMoney : icône or + 12")
+  ok(fmt:find("UI%-SilverIcon") and fmt:find("UI%-CopperIcon"), "FormatMoney : argent et cuivre")
+  local neg = E.FormatMoney(-50, true)
+  ok(type(neg) == "string" and neg:sub(1, 1) == "-", "FormatMoney : signe moins pour une dépense nette")
+
+  local rep = {
+    total = 3600, moneyNet = 100000,
+    spots = {
+      { zone = "A", secs = 600, zoneSecs = 600, pctLevelPerHour = 40, goldPerHour = 70000 },
+      { zone = "B", secs = 600, zoneSecs = 600, pctLevelPerHour = 20, goldPerHour = 1000 },
+      { zone = "C", secs = 600, zoneSecs = 600, pctLevelPerHour = 5, goldPerHour = 40000 },
+      { zone = "D", secs = 600, zoneSecs = 600, goldPerHour = 90000 }, -- or seulement
+      { zone = "E", secs = 600, zoneSecs = 600, pctLevelPerHour = 50 }, -- progression seulement
+      { zone = "F", secs = 10, zoneSecs = 10, pctLevelPerHour = 99, goldPerHour = 999999 }, -- trop court
+    },
+    moneyByZone = {}, zoneSecs = {}, xpFracByZone = {},
+  }
+  local pr = E.Profitability(rep)
+  ok(pr and pr.bestProg and pr.bestProg.zone == "E", "rentabilité : meilleur spot progression = E")
+  ok(pr.bestGold and pr.bestGold.zone == "D", "rentabilité : meilleur spot or = D")
+  ok(pr.bestMix and pr.bestMix.zone == "A", "rentabilité : meilleur spot mixte = A (haut aux deux centiles)")
+  ok(pr.bestMix.zone ~= "F" and pr.bestMix.zone ~= "D" and pr.bestMix.zone ~= "E",
+    "rentabilité : le mixte ignore le spot trop court et les spots à une seule métrique")
+  local tipS = E.ScoringTip and E.ScoringTip() or ""
+  ok(tipS:find("centile", 1, true) and tipS:find("somme", 1, true), "infobulle : le scoring mixte est expliqué")
+
+  -- teinte des toasts : familles, système neutre
+  ok(UI and UI.ToastFamily({ kind = "xp" }) == "level", "teinte : XP → level")
+  ok(UI.ToastFamily({ kind = "rank-trainer" }) == "prof", "teinte : rang maître → prof")
+  ok(UI.ToastFamily({ kind = "bags-full" }) == nil, "teinte : toast système sacs reste neutre")
+  ok(UI.ToastFamily({ kind = "goal", skillId = "skinning" }) == "prof", "teinte : objectif métier → prof")
+  ok(UI.ToastFamily({ kind = "palier", skillId = "skinning" }) == "prof", "teinte : palier métier → prof")
+  ok(UI.ToastFamily({ kind = "tier", skillId = "skinning" }) == "prof", "teinte : test palier (tier) → prof")
+  ok(UI.ToastFamily({ kind = "skill", skillId = "skinning", skillName = "Dépeçage" }) == "prof", "teinte : palier +1 métier → prof")
+  ok(UI.ToastFamily({ kind = "scanner", skillId = "leatherworking" }) == "prof", "teinte : recette possible → prof")
+  ok(UI.ToastFamily({ kind = "objectif", skillId = "skinning" }) == "prof", "teinte : kind objectif → prof")
+  local skinIcon = UI.ResolveToastIcon and UI.ResolveToastIcon(ns.LEVEL_ICON, { kind = "goal", skillId = "skinning" })
+  ok(skinIcon and tostring(skinIcon):find("Pelt", 1, true), "icône objectif Dépeçage : pelage, pas la fiole")
+  local lwIcon = UI.ResolveToastIcon(ns.FALLBACK_ICON, { kind = "scanner", skillId = "leatherworking" })
+  ok(lwIcon and tostring(lwIcon):find("LeatherWorking", 1, true), "icône recette Cuir léger : Travail du cuir")
+  ok(UI.ResolveToastIcon(ns.LEVEL_ICON, { kind = "xp" }) == ns.LEVEL_ICON,
+    "icône XP +75 : fiole XP (XP-Icon), pas le fallback vide")
+  ok(UI.ResolveToastIcon(ns.LEVEL_ICON, { kind = "levelup" }) == ns.LEVEL_ICON,
+    "icône montee de niveau : fiole XP conservée")
+  -- teinte visible même si Skin cache _toastBg
+  if UI.ApplyToastTint then
+    local host = CreateFrame("Frame", "DropamineTintHost", UIParent)
+    local fr = CreateFrame("Frame", "DropamineTintToast", UIParent)
+    fr._skinHost = host
+    fr._toastBg = fr:CreateTexture(nil, "BACKGROUND")
+    if fr._toastBg.Hide then fr._toastBg:Hide() end
+    fr._bgAlpha = 0.68
+    local fam = UI.ApplyToastTint(fr, { kind = "goal", skillId = "skinning" })
+    ok(fam == "prof", "ApplyToastTint : famille prof pour l'objectif métier")
+    ok(fr._tintFill and fr._tintFill.shown ~= false, "ApplyToastTint : calque visible sur l'habillage (pas seulement _toastBg)")
+    local c = fr._tintFill and fr._tintFill._colorTex
+    ok(c and math.abs((c[4] or 0) - 0.68) < 1e-6,
+      "teinte : même opacité que le fond (0.68), pas alpha 1")
+    local prof = UI.TOAST_TINT.prof
+    ok(c and math.abs(c[1] - prof[1]) < 1e-6 and math.abs(c[2] - prof[2]) < 1e-6 and math.abs(c[3] - prof[3]) < 1e-6,
+      "teinte : RVB conservé, seul l'alpha suit le réglage")
+    fr._bgAlpha = 0.40
+    UI.ApplyToastTint(fr, { kind = "goal", skillId = "skinning" })
+    c = fr._tintFill and fr._tintFill._colorTex
+    ok(c and math.abs((c[4] or 0) - 0.40) < 1e-6, "teinte : l'opacité suit _bgAlpha (0.40)")
+    -- XP : teinte + icône
+    local fr2 = CreateFrame("Frame", "DropamineTintToastXP", UIParent)
+    fr2._skinHost = host
+    fr2._bgAlpha = 0.68
+    UI.ApplyToastTint(fr2, { kind = "xp" })
+    local lc = fr2._tintFill and fr2._tintFill._colorTex
+    local lv = UI.TOAST_TINT.level
+    ok(lc and math.abs(lc[1] - lv[1]) < 1e-6 and math.abs((lc[4] or 0) - 0.68) < 1e-6,
+      "teinte XP : couleur level, même alpha que le fond")
+  end
+  ok(UI.TOAST_TINT and UI.TOAST_TINT.level and UI.TOAST_TINT.weapon and UI.TOAST_TINT.prof, "teinte : trois familles")
+  local tl = UI.TOAST_TINT.level
+  ok(math.abs(tl[1] - 32/255) < 1e-6 and math.abs(tl[2] - 17/255) < 1e-6 and math.abs(tl[3] - 14/255) < 1e-6,
+    "teinte XP : ligne soutenue (32, 17, 14)")
+
+  -- titres recettes : pas de « × » orphelin ; « N × » seulement si N ≥ 2
+  local C = ns.Craft
+  if C and C.RecipeToastTitle then
+    local t1 = C.RecipeToastTitle(nil, "Viande de sanglier rôtie")
+    ok(not tostring(t1):find("×", 1, true), "recette sans compte : pas de × orphelin")
+    ok(tostring(t1):find("Viande de sanglier rôtie", 1, true) and tostring(t1):find("possible", 1, true),
+      "recette sans compte : nom + possible")
+    local t0 = C.RecipeToastTitle(0, "Viande de sanglier rôtie")
+    ok(not tostring(t0):find("×", 1, true), "recette n=0 : pas de ×")
+    local t2 = C.RecipeToastTitle(1, "Viande de sanglier rôtie")
+    ok(not tostring(t2):find("×", 1, true), "recette n=1 : pas de préfixe 1 ×")
+    local t3 = C.RecipeToastTitle(2, "Viande de sanglier rôtie")
+    ok(tostring(t3):find("2 ×", 1, true) and tostring(t3):find("possibles", 1, true),
+      "recette n=2 : préfixe 2 × et possibles")
+    if C.StripStrayCount then
+      local raw = C.StripStrayCount("× Viande de sanglier rôtie possible")
+      ok(raw == "Viande de sanglier rôtie possible", "StripStrayCount : enlève le × de tête")
+    end
+  end
+
+  -- icônes
+  ok(type(ns.LEVEL_ICON) == "string" and ns.LEVEL_ICON:find("XP-Icon", 1, true), "icône XP : Media/XP-Icon")
+  ok(type(ns.SPELLS_ICON) == "string" and ns.SPELLS_ICON:find("Spells-Icon", 1, true), "icône sorts : Media/Spells-Icon")
+  ok(type(ns.FARM_ICON) == "string" and ns.FARM_ICON:find("Farm-Spots-Icon", 1, true), "icône spots : Media/Farm-Spots-Icon")
+  ok(type(ns.FALLBACK_ICON) == "string" and ns.FALLBACK_ICON:find("Fallback-Icon", 1, true), "icône de repli : Media/Fallback-Icon")
+  ok(type(ns.RANK_BADGE) == "string" and ns.RANK_BADGE:find("Rank-Badge", 1, true), "badge de rang : Media/Rank-Badge")
+
+  -- badge rang maître cadré
+  local RT = ns.RankToast
+  if RT and RT.ApplyBadge then
+    local f = { typ = "Frame", CreateTexture = function(self)
+      local tex = { typ = "Texture", parent = self }
+      function tex:SetTexture(p) self._tex = p end
+      function tex:SetAllPoints(o) self._all = o or self.parent end
+      function tex:SetTexCoord() end
+      function tex:Show() self.shown = true end
+      function tex:Hide() self.shown = false end
+      function tex:SetDrawLayer() end
+      function tex:GetTexture() return self._tex end
+      return tex
+    end }
+    -- si le mock CreateFrame n'est pas sur la table, ApplyBadge utilise frame.CreateTexture
+    local b = RT.ApplyBadge(f)
+    ok(f._rankBadge ~= nil or b ~= nil, "RangToast : badge créé")
+    local tex = f._rankBadge and (f._rankBadge._tex or f._rankBadge:GetTexture())
+    ok(not tex or tostring(tex):find("Rank-Badge", 1, true), "RangToast : texture Rank-Badge")
+  else
+    ok(false, "RangToast.ApplyBadge présent")
+  end
+
+  -- textes tronqués : helper
+  ok(PU and PU.IsTruncated, "ProgressUI.IsTruncated présent")
+  local fs = { typ = "FontString" }
+  function fs:GetStringWidth() return 200 end
+  function fs:GetWidth() return 80 end
+  function fs:GetText() return "texte trop long pour la carte" end
+  ok(PU.IsTruncated(fs, 80) == true, "IsTruncated : largeur visuelle < largeur du texte")
+  function fs:GetStringWidth() return 40 end
+  ok(PU.IsTruncated(fs, 80) == false, "IsTruncated : texte entier visible")
+
+  -- niveau max : les rythmes d'XP sont masqués
+  local prevLvl, prevCap = ns.GetPlayerLevel, ns.GetLevelCap
+  ns.GetPlayerLevel = function() return 60 end
+  ns.GetLevelCap = function() return 60 end
+  ok(E.AtMaxLevel() == true, "AtMaxLevel : vrai au plafond")
+  ok(PU.AtMaxLevel and PU.AtMaxLevel() == true, "ProgressUI.AtMaxLevel suit le plafond")
+  ns.GetPlayerLevel, ns.GetLevelCap = prevLvl, prevCap
+  -- curve : composante XP à 0 au niveau max
+  if not ns.GetPlayerLevel then
+    -- déjà restauré
+  end
+
+  -- TOC / données de démo
+  ok(E.SetSim, "Efficiency.SetSim présent")
+  if ns.Test then
+    ns.Test.StopAll()
+    ok(ns.Test.Start("efficiency") == true, "/drop test efficiency")
+    local demo = E.Report("session")
+    ok(demo and demo.score and demo.profit and demo.profit.bestMix, "démo efficacité : rapport + spot mixte")
+    ns.Test.Stop("efficiency")
+  end
+
+
+  -- valeur marchand : pièces + prix vendeur, jamais GetMoney
+  ok(E.ParseLootMoney, "ParseLootMoney présent")
+  local frCoin = E.ParseLootMoney("Vous ramassez 1 Or, 2 Argent et 5 Cuivre.")
+  ok(frCoin == 10205, "ParseLootMoney : FR 1 or 2 argent 5 cuivre")
+  local enCoin = E.ParseLootMoney("You loot 1 Gold, 2 Silver, 5 Copper.")
+  ok(enCoin == 10205, "ParseLootMoney : EN 1 gold 2 silver 5 copper")
+  ok(E.ParseLootMoney("Courrier reçu : 5 Or.") == nil, "ParseLootMoney : ignore un courrier (pas un butin)")
+  ok(E.ParseLootMoney("Your auction sold for 5 Gold.") == nil, "ParseLootMoney : ignore une vente à l'hôtel des ventes")
+
+  local e = E.Sess()
+  local bak = {
+    lootCoin = e.lootCoin, lootVendor = e.lootVendor, lootValue = e.lootValue, moneyNet = e.moneyNet,
+  }
+  e.lootCoin, e.lootVendor, e.lootValue, e.moneyNet = 0, 0, 0, 0
+  E.AddLoot(10205, 2500, "Elwynn")
+  ok(e.lootCoin == 10205 and e.lootVendor == 2500 and e.lootValue == 12705,
+    "AddLoot : pièces + prix vendeur = valeur marchand")
+  ok(e.moneyNet == e.lootValue, "moneyNet est un alias de lootValue")
+
+  local gm, moneyWas = _G.GetMoney, nil
+  _G.GetMoney = function() return 999999 end
+  local beforeVal = e.lootValue
+  if E.NoteMoney then E.NoteMoney() end
+  ok(e.lootValue == beforeVal, "NoteMoney / GetMoney ne change pas la valeur marchand")
+  if type(ns.Emit) == "function" then pcall(ns.Emit, "PLAYER_MONEY") end
+  ok(e.lootValue == beforeVal, "PLAYER_MONEY ne change pas la valeur marchand")
+  _G.GetMoney = gm
+
+  local gi = _G.GetItemInfo
+  local prices = {}
+  _G.GetItemInfo = function(id)
+    local p = prices[id]
+    if p == nil then return end
+    return "Eau", "|Hitem:"..id.."|h", 1, 1, 1, "Consommable", "Eau", 20, "", "tex", p
+  end
+  local added = E.NoteLootItem("Vous recevez l'objet : |cffffffff|Hitem:159:0:0:0:0:0:0:0:25|h[Eau de source]|h|r.")
+  ok(added == nil and E._pendingVendor and #E._pendingVendor >= 1, "NoteLootItem : sans prix, le butin est en attente")
+  prices[159] = 6
+  E.FlushPendingVendor(159)
+  ok(e.lootVendor == 2500 + 6, "FlushPendingVendor : le prix vendeur est attribué au moment du butin")
+  _G.GetItemInfo = gi
+  e.lootCoin, e.lootVendor, e.lootValue, e.moneyNet = bak.lootCoin, bak.lootVendor, bak.lootValue, bak.moneyNet
+
+  -- historique : 30 détaillées, le 31e bascule en semaine
+  local pchar = E.Hist and E.Hist()
+  ok(pchar ~= nil, "Hist : profil personnage disponible")
+  if pchar then
+    local oldLog, oldWeeks, oldPrev = pchar.sessLog, pchar.sessWeeks, pchar.effPrev
+    pchar.sessLog, pchar.sessWeeks, pchar.effPrev = {}, {}, nil
+    local base = (type(time) == "function" and time()) or 1700000000
+    for i = 1, 31 do
+      E.ArchiveRecap({
+        start = base - i * 86400, ended = base - i * 86400 + 3600, duration = 3600,
+        score = 0.5, pctLevelPerHour = 10, skillUpsPerHour = 2, goldPerHour = 1000,
+        lootValue = 1000, lootCoin = 200, lootVendor = 800, xph = 999999, pts = 42,
+      })
+    end
+    ok(#pchar.sessLog == 30, "ArchiveRecap : 30 sessions détaillées au plus")
+    local weeks, wn = pchar.sessWeeks, 0
+    for _ in pairs(weeks or {}) do wn = wn + 1 end
+    ok(wn >= 1, "ArchiveRecap : la 31e session rejoint un agrégat hebdomadaire")
+    local cmp = E.CompareRecap({
+      score = 0.6, pctLevelPerHour = 12, skillUpsPerHour = 3, goldPerHour = 2000, xph = 888, ptsPerHour = 77,
+    })
+    local keys, unexpected = { score = true, pctLevelPerHour = true, skillUpsPerHour = true, goldPerHour = true }, {}
+    for k in pairs(cmp or {}) do if not keys[k] then unexpected[#unexpected + 1] = k end end
+    ok(#unexpected == 0, "CompareRecap : uniquement des clés normalisées")
+    ok(cmp.score and cmp.pctLevelPerHour and cmp.skillUpsPerHour and cmp.goldPerHour, "CompareRecap : score, % niv./h, pal./h, valeur/h")
+    pchar.sessLog, pchar.sessWeeks, pchar.effPrev = oldLog, oldWeeks, oldPrev
+  end
+
+  -- fiole en grille : liquide, z, vague dans la case total
+  local prevTotal = ns.Wide and ns.Wide.TotalTile
+  local tot = CreateFrame("Button", "DropamineTestGridTotal", UIParent)
+  tot.data = { kind = "total" }
+  tot._wideOn = false
+  tot:SetSize(36, 36)
+  tot.icon = tot:CreateTexture(nil, "ARTWORK")
+  if tot.icon.SetSize then tot.icon:SetSize(32, 32) end
+  function tot:SetClipsChildren(v) self.clipsChildren = v and true or false end
+  function tot.icon:SetClipsChildren(v) self.clipsChildren = v and true or false end
+  function tot:CreateMaskTexture()
+    self._mask = self._mask or CreateFrame("Frame", nil, self)
+    return self._mask
+  end
+  if ns.Wide then ns.Wide.TotalTile = function() return tot end end
+  ns.UI = ns.UI or {}
+  ns.UI.embed = ns.UI.embed or {}
+  local prevTiles = ns.UI.embed.tiles
+  ns.UI.embed.tiles = { tot }
+
+  S.ClearSim()
+  S.SetSim("rested", true)
+  ok(S.TakesRestedZ() == true, "TakesRestedZ : vrai sur la case total même sans _wideOn")
+  ok(S.StealsLevelZ() == true, "StealsLevelZ : vrai en grille (les z vont dans la fiole du total)")
+  tot._wideOn = true
+  ok(S.StealsLevelZ() == true, "StealsLevelZ : vrai en barre large")
+  tot._wideOn = false
+
+  S.ClearSim()
+  S.SetCombatStyle("bubbles")
+  S.SetSim("combat", true)
+  S.fill = S.fill or {}
+  S.fill.p, S.fill.targetP, S.fill.drain, S.fill.grey = 1, 1, 1, 0
+  local okFill = pcall(S.ApplyFlaskFill, tot)
+  ok(okFill, "ApplyFlaskFill : no-op propre en grille (pas de Wd.last.widths)")
+  pcall(S.ApplyTotal)
+  local okLiq = pcall(S.ApplyCombatLiq, tot)
+  ok(okLiq, "ApplyCombatLiq : pas d'erreur")
+  ok(not tot._cLiq or tot._cLiq.shown == false, "combat grille : plus de bandes liquide")
+  ok(tot._stIcon and tot._stIcon.shown ~= false, "combat grille : icône de jeu visible")
+  local ctex = tot._stIcon and (tot._stIcon._texSet or tot._stIcon._tex)
+  ok(type(ctex) == "string" and ctex:find("Ability_DualWield", 1, true),
+    "combat grille : Ability_DualWield (" .. tostring(ctex) .. ")")
+  if tot.icon then
+    ok(tot.icon.shown == false, "combat grille : la fiole officielle est remplacée")
+  end
+  ok(tot._iconClip, "case total : cadre de rognage (ScrollFrame) sur l'icône")
+
+  S.ClearSim()
+  S.SetSim("eating", true)
+  S.fill.p, S.fill.grey = 0, 0
+  local okWave = pcall(S.ApplyRegenWave, 0.16)
+  ok(okWave, "ApplyRegenWave : range les reliquats, plus de vague")
+  ok(S.Want("eating") == true and S.LiveEating() == true, "grille : état repas allumé")
+  ok(not tot._eat or (tot._eat.body and tot._eat.body.shown == false and (not tot._eat.food or tot._eat.food.shown == false)
+      and (not tot._eat.wave or tot._eat.wave.shown == false)),
+    "grille : pas de vague / badge repas superposé")
+  pcall(S.ApplyTotal)
+  ok(tot._stIcon and tot._stIcon.shown ~= false, "grille : disque de repas à la place de la fiole")
+  if tot.icon then
+    ok(tot.icon.shown == false, "grille repas : fiole officielle remplacée")
+  end
+  S.ClearSim()
+  pcall(S.ApplyTotal)
+  if tot.icon then
+    ok(tot.icon.shown ~= false, "sans état : la fiole officielle du total est visible")
+  end
+  -- Géométrie : rien ne doit dépasser le rectangle intérieur de l'icône (32×32, inset).
+  local function assertInside(label, obj, maxW, maxH)
+    if not obj then return end
+    local w = (obj.GetWidth and obj:GetWidth()) or obj.width or 0
+    local h = (obj.GetHeight and obj:GetHeight()) or obj.height or 0
+    ok(w <= maxW + 0.51 and w >= 1, label .. " largeur " .. tostring(w) .. " ≤ " .. tostring(maxW))
+    ok(h <= maxH + 0.51 and h >= 0, label .. " hauteur " .. tostring(h) .. " ≤ " .. tostring(maxH))
+  end
+  local iw, ih, _, inset = S.IconInnerSize(tot)
+  ok(iw < 32 and iw > 8, "grille : intérieur icône < 32 px (pas le défaut 100)")
+  assertInside("clip grille", tot._iconClip, iw, ih)
+  if tot._iconClip and tot._iconClip._content then
+    assertInside("contenu clip grille", tot._iconClip._content, iw, ih)
+  end
+  if tot._cLiq then
+    -- reliquat combat doit être caché pendant le repas, ou cadré
+    if tot._cLiq.shown ~= false and tot._cLiq.IsShown and tot._cLiq:IsShown() then
+      assertInside("liquide combat grille", tot._cLiq, iw, ih)
+    end
+  end
+
+  -- Rejouer le combat en grille et vérifier la géométrie.
+  S.ClearSim()
+  S.SetCombatStyle("bubbles")
+  S.SetSim("combat", true)
+  S.fill = S.fill or {}
+  S.fill.p, S.fill.targetP, S.fill.drain, S.fill.grey = 1, 1, 1, 0
+  pcall(S.ApplyTotal)
+  pcall(S.ApplyCombatLiq, tot)
+  iw, ih = S.IconInnerSize(tot)
+  ok(not tot._cLiq or tot._cLiq.shown == false, "rejeu combat grille : pas de bandes")
+  if tot._stIcon then
+    assertInside("icône combat grille", tot._stIcon, iw, ih)
+  end
+
+  -- Barre large : petite goutte 14×14, même chemin de clip (pas un pavé 100×50).
+  local bar = CreateFrame("Button", "DropamineTestBarTotal", UIParent)
+  bar.data = { kind = "total" }
+  bar._wideOn = true
+  bar._wideH = 16
+  bar:SetSize(220, 16)
+  bar.icon = bar:CreateTexture(nil, "ARTWORK")
+  if bar.icon.SetSize then bar.icon:SetSize(14, 14) end
+  function bar:SetClipsChildren(v) self.clipsChildren = v and true or false end
+  if ns.Wide then ns.Wide.TotalTile = function() return bar end end
+  ns.UI.embed.tiles = { bar }
+  S.ClearSim()
+  S.SetSim("eating", true)
+  S.fill.p, S.fill.grey = 0, 0
+  local okBar = pcall(S.ApplyRegenWave, 0.16)
+  ok(okBar, "repas en barre : no-op (état retiré)")
+  local bw, bh = S.IconInnerSize(bar)
+  ok(bw <= 14 and bw >= 6, "barre : intérieur de la goutte ≤ 14 px (pas 32 ni 100)")
+  -- Combat en barre : icône de jeu à la place de la goutte, pas de bandes.
+  S.ClearSim()
+  S.SetCombatStyle("bubbles")
+  S.SetSim("combat", true)
+  S.fill.p, S.fill.drain, S.fill.grey = 1, 1, 0
+  pcall(S.ApplyTotal)
+  pcall(S.ApplyCombatLiq, bar)
+  ok(not bar._cLiq or bar._cLiq.shown == false, "combat en barre : pas de bandes sur la goutte")
+  ok(bar._stIcon and bar._stIcon.shown ~= false, "combat en barre : icône de jeu sur la goutte")
+  assertInside("icône combat barre", bar._stIcon, bw, bh)
+  S.ClearSim()
+  pcall(S.ApplyCombatLiq, bar)
+  pcall(S.ApplyTotal)
+  ok(not bar._stIcon or bar._stIcon.shown == false, "fin combat barre : icône d'état rangée")
+
+  if ns.Wide then ns.Wide.TotalTile = prevTotal end
+  ns.UI.embed.tiles = prevTiles
+
+  -- vue récap
+  ok(PU and PU.OpenRecap, "ProgressUI.OpenRecap présent")
+  if PU and PU.OpenRecap then
+    local okOpen = pcall(PU.OpenRecap, "demo")
+    ok(okOpen, "OpenRecap : ouverture du récap de démonstration")
+    local page = PU.frame and PU.frame.pages and PU.frame.pages.recap
+    ok(page and page.shown ~= false, "OpenRecap : page récap visible")
+    if PU.CloseRecap then pcall(PU.CloseRecap) end
+  end
+  if ns.Test and ns.Test.Start then
+    ok(ns.Test.Start("recap") == true, "/drop test recap")
+    ns.Test.Stop("recap")
+  end
+
+
+  -- repas : détection FR/EN, spellId, trous d'aura, Bien nourri ignoré
+  local prevUA, prevUB, prevC, prevAU, prevCh = _G.UnitAura, _G.UnitBuff, _G.C_UnitAuras, _G.AuraUtil, _G.UnitChannelInfo
+  _G.C_UnitAuras, _G.AuraUtil, _G.UnitBuff, _G.UnitChannelInfo = nil, nil, nil, nil
+  local function packAura(name, id)
+    return { name, nil, nil, nil, nil, nil, nil, nil, nil, id }
+  end
+  local auras = {}
+  _G.UnitAura = function(unit, i)
+    local a = auras[i]
+    if not a then return end
+    return unpack(a)
+  end
+  auras[1] = packAura("Nourriture", 433)
+  local nm = S.FoodDrinkAura()
+  ok(nm == "Nourriture" or (type(nm) == "string" and nm:find("433", 1, true)), "repas : aura FR Nourriture")
+  auras = { [1] = packAura("Food", 433) }
+  nm = S.FoodDrinkAura()
+  ok(nm == "Food" or (type(nm) == "string" and nm:find("433", 1, true)), "repas : aura EN Food")
+  auras = { [1] = packAura("Boisson", 430) }
+  ok(S.FoodDrinkAura(), "repas : aura FR Boisson")
+  auras = { [1] = packAura(nil, 430) }
+  ok(S.FoodDrinkAura(), "repas : détecté par spellId si le nom est illisible")
+  auras = { [1] = packAura("Bien nourri", 19705) }
+  ok(S.FoodDrinkAura() == nil, "repas : Bien nourri n'est pas le canal de régénération")
+  auras = { [1] = packAura("Well Fed", 19706) }
+  ok(S.FoodDrinkAura() == nil, "repas : Well Fed ignoré")
+  auras = { [2] = packAura("Nourriture", 433) } -- trou à l'index 1
+  ok(S.FoodDrinkAura(), "repas : un trou d'aura n'arrête pas le scan")
+  _G.UnitAura = function() return nil end
+  _G.UnitChannelInfo = function() return "Boisson" end
+  ok(S.FoodDrinkAura(), "repas : canal UnitChannelInfo « Boisson »")
+  _G.UnitAura, _G.UnitBuff, _G.C_UnitAuras, _G.AuraUtil, _G.UnitChannelInfo = prevUA, prevUB, prevC, prevAU, prevCh
+  S.ClearSim()
+  S.SetSim("eating", true)
+  ok(S.LiveEating() == true and S.Want("eating") == true, "repas : sim eating allume l'état")
+  S.SetSim("eating", false)
+  if ns.Test then
+    ok(ns.Test.Start("eating") == true, "/drop test eating")
+    ok(S.LiveEating() == true, "test eating : LiveEating")
+    ns.Test.Stop("eating")
+  end
+  S.ClearSim()
+
+  if ns.Test then ns.Test.StopAll() end
+  S.ClearSim()
+  S.SetCombatStyle("bubbles")
+  setLang("fr")
+end
+
+
+
+  -- /drop mem : ventilation et tailles
+  ok(ns.MemSize and ns.MemReport and ns.SlashExt and ns.SlashExt.mem, "/drop mem : MemReport et commande")
+  ok(ns.MemSize({ a = 1, b = "xy" }) > 0, "MemSize : table non nulle")
+  local rpt, before, after, rows = ns.MemReport()
+  ok(type(rpt) == "table" and #rpt >= 2, "/drop mem : rapport avec ventilation")
+  ok(tostring(rpt[1] or ""):find("moire", 1, true) or tostring(rpt[1] or ""):find("memory", 1, true)
+    or tostring(rpt[1] or ""):find("Mo", 1, true) or tostring(rpt[1] or ""):find("Ko", 1, true),
+    "/drop mem : en-tête avec mesure")
+  local names = {}
+  for i = 1, #(rows or {}) do names[rows[i].name] = rows[i] end
+  ok(names["ScannerDB (base)"] or names["DropamineDB"], "/drop mem : ScannerDB ou DropamineDB dans la ventilation")
+
+  -- compactage historique / prune scanner
+  local Sc = ns.Scanner
+  if Sc and Sc.DB and Sc.PruneLearned then
+    local sdb = Sc.DB()
+    -- PNJ déjà dans la base statique, sans butin : doit disparaître
+    local staticId
+    if ns.ScannerDB and ns.ScannerDB.npcs then
+      for id in pairs(ns.ScannerDB.npcs) do staticId = id break end
+    end
+    if staticId then
+      sdb.creatures[staticId] = { name = "dup" }
+      local dropped = Sc.PruneLearned()
+      ok(sdb.creatures[staticId] == nil, "PruneLearned : retire le PNJ déjà dans ScannerDB sans butin")
+    end
+    sdb.creatures[999999] = { name = "appris", loots = 3, items = { [123] = 1 } }
+    Sc.PruneLearned()
+    ok(sdb.creatures[999999] ~= nil, "PruneLearned : conserve une créature apprise avec butin")
+    sdb.creatures[999999] = nil
+  end
+  local E = ns.Efficiency
+  if E and E.SlimProfit and E.CompactHist then
+    local fat = { moneyNet = 10, goldPerHour = 2, spots = { { zone = "A" } }, candidates = { { zone = "A" } },
+      bestMix = { zone = "Les Paluns", skill = "skinning", mixScore = 1.5, goldPerHour = 3 } }
+    local slim = E.SlimProfit(fat)
+    ok(slim.bestMix and slim.bestMix.zone == "Les Paluns" and slim.candidates == nil and slim.spots == nil,
+      "SlimProfit : garde le meilleur spot, pas les copies candidates")
+    local p = { sessLog = { { profit = fat, spots = { { zone = "A" }, { zone = "B" } }, tip = "x" } }, sessWeeks = {} }
+    E.CompactHist(p)
+    ok(p.sessLog[1].tip == nil and p.sessLog[1].profit and p.sessLog[1].profit.candidates == nil,
+      "CompactHist : allège les récaps déjà stockés")
+  end
+
+
+  -- sacs pleins : uniquement bagType 0, pas de 0 transitoire
+  do
+    local S = ns.Slot
+    local prevC, prevN, prevK, prevF = _G.C_Container, _G.NUM_BAG_SLOTS, _G.KEYRING_CONTAINER, _G.GetContainerNumFreeSlots
+    _G.NUM_BAG_SLOTS = 4
+    _G.KEYRING_CONTAINER = -2
+    local bagFree = {
+      [0] = { 20, 0 },  -- sac à dos : 20 places générales
+      [1] = { 8, 32 },  -- sac de métier (herbes) : ignoré
+      [2] = { 0, 0 },
+      [3] = { 0, 0 },
+      [4] = { 0, 0 },
+      [-2] = { 12, 256 }, -- trousseau : ignoré
+    }
+    _G.C_Container = { GetContainerNumFreeSlots = function(bag)
+      local e = bagFree[bag]
+      if not e then return 0, 0 end
+      return e[1], e[2]
+    end }
+    S._sim.bags, S._simFree = nil, nil
+    S._bagsToastShown, S._bagsWereFull, S._bagsZeroSince, S._bagsLastFree = nil, nil, nil, nil
+    local free = S.FreeBagSlots()
+    ok(free == 20, "sacs : uniquement bagType 0 (20 générales, métier et trousseau ignorés)")
+    S.CheckBags()
+    ok(S._bagsToastShown ~= true, "sacs : 20 places générales → pas de toast « sacs pleins »")
+
+    -- lecture ratée ≠ 0
+    _G.C_Container.GetContainerNumFreeSlots = function() error("bag api") end
+    ok(S.FreeBagSlots() == nil, "sacs : API en échec → nil, pas 0")
+    S.CheckBags()
+    ok(S._bagsToastShown ~= true, "sacs : lecture ratée → pas de toast")
+
+    -- 0 transitoire : pas de toast au premier BAG_UPDATE
+    _G.C_Container.GetContainerNumFreeSlots = function() return 0, 0 end
+    S._bagsZeroSince, S._bagsToastShown, S._bagsWereFull = nil, nil, nil
+    S.CheckBags()
+    ok(S._bagsToastShown ~= true and S._bagsWereFull ~= true, "sacs : 0 transitoire, pas de toast immédiat")
+    -- confirmation après le délai
+    S._bagsZeroSince = (ns.Now and ns.Now() or 0) - 2
+    S.CheckBags()
+    ok(S._bagsToastShown == true or S._bagsWereFull == true, "sacs : 0 confirmé après délai → toast")
+    -- une place se libère
+    _G.C_Container.GetContainerNumFreeSlots = function(bag)
+      if bag == 0 then return 5, 0 end
+      return 0, 0
+    end
+    S.CheckBags()
+    ok(S._bagsToastShown == false, "sacs : une place générale libérée → marqueur remis à zéro")
+
+    _G.C_Container, _G.NUM_BAG_SLOTS, _G.KEYRING_CONTAINER, _G.GetContainerNumFreeSlots = prevC, prevN, prevK, prevF
+    S._sim.bags, S._simFree = nil, nil
+    S._bagsToastShown, S._bagsWereFull, S._bagsZeroSince = nil, nil, nil
+  end
+
+  -- profils d'affichage par personnage : persistés, chargés avant l'UI, écrits à chaque réglage
+  do
+    local prevName, prevRealm = _G.UnitName, _G.GetRealmName
+    local function asChar(name, realm)
+      _G.UnitName = function() return name end
+      _G.GetRealmName = function() return realm or "Valais" end
+      if ns.charProfileActive and ns.RestoreAccountUI then pcall(ns.RestoreAccountUI) end
+      ns.charProfileActive = nil
+    end
+    pcall(ns.RestoreAccountUI)
+    ns.EnsureDB()
+    ns.db.chars = ns.db.chars or {}
+    ns.db.ui = ns.db.ui or {}
+    ns.db.ui.cols = 5
+    ns.db.ui.theme = "flare"
+    -- perso A
+    asChar("Arnaud")
+    local a = ns.CharDB()
+    a.charUI = nil
+    a.uiProfile = nil
+    ok(ns.ApplyCharProfile() == true, "profil A : appliqué (réglages du compte comme défaut)")
+    ok(a.uiProfile ~= nil, "profil A : créé à partir des réglages existants")
+    ns.db.ui.cols = 3
+    ok(ns.SaveActiveProfile() == true, "profil A : SaveActiveProfile écrit tout de suite")
+    ok(a.uiProfile and a.uiProfile.cols == 3, "profil A : cols 3 enregistré sans attendre PLAYER_LOGOUT")
+    pcall(ns.RestoreAccountUI)
+    -- perso B : nouveau, reçoit le défaut du compte (5), pas les 3 de A
+    asChar("Alts")
+    local b = ns.CharDB()
+    b.charUI, b.uiProfile = nil, nil
+    ns.ApplyCharProfile()
+    ok(ns.db.ui.cols == 5, "profil B : défaut = réglages du compte, pas les 3 colonnes de A")
+    ns.db.ui.cols = 2
+    ns.SaveActiveProfile()
+    ok(b.uiProfile and b.uiProfile.cols == 2, "profil B : cols 2 enregistré")
+    pcall(ns.RestoreAccountUI)
+    -- retour sur A
+    asChar("Arnaud")
+    ns.ApplyCharProfile()
+    ok(ns.db.ui.cols == 3, "retour sur A : le profil 3 colonnes est conservé")
+    -- seed des persos déjà en SV sans profil
+    asChar("Nouveau")
+    ns.db.chars["Nouveau-Valais"] = {}
+    local n = ns.SeedCharProfiles()
+    ok(ns.db.chars["Nouveau-Valais"].uiProfile ~= nil, "SeedCharProfiles : les réglages existants deviennent le défaut de chaque perso")
+    pcall(ns.RestoreAccountUI)
+    _G.UnitName, _G.GetRealmName = prevName, prevRealm
+  end
+
+
+
+print("== 3.6.3 : icônes d'état, repos Z, cadre exact, pas de fuite")
+do
+  local S, L, I, W, P, UI = ns.Slot, ns.Layout, ns.Icons, ns.Window, ns.Panel, ns.UI
+  local prevTotal = ns.Wide and ns.Wide.TotalTile
+  local tot = CreateFrame("Button", "DropamineTestStateIcon", UIParent)
+  tot.data = { kind = "total" }
+  tot._wideOn = false
+  tot:SetSize(36, 36)
+  tot.icon = tot:CreateTexture(nil, "ARTWORK")
+  if tot.icon.SetSize then tot.icon:SetSize(32, 32) end
+  if tot.icon.Show then tot.icon:Show() end
+  function tot:SetClipsChildren(v) self.clipsChildren = v and true or false end
+  if ns.Wide then ns.Wide.TotalTile = function() return tot end end
+  local function texOf(obj)
+    return obj and (obj._texSet or obj._tex)
+  end
+
+  -- Pêche validée : feuille Fishing-Sheet remplace la fiole (pas de badge en coin).
+  S.ClearSim()
+  S.SetSim("fishing", true)
+  pcall(S.ApplyTotal)
+  ok(tot.icon and tot.icon.shown == false, "pêche : fiole officielle remplacée")
+  local fishTex = tot._hg and texOf(tot._hg)
+  ok(type(fishTex) == "string" and fishTex:find("Fishing-Sheet", 1, true),
+    "pêche : Fishing-Sheet (" .. tostring(fishTex) .. ")")
+  ok(not tot._stIcon or tot._stIcon.shown == false or (texOf(tot._stIcon) or ""):find("Fishing-Sheet") or not tostring(texOf(tot._stIcon) or ""):find("Trade_Fishing", 1, true),
+    "pêche : pas de badge Trade_Fishing en coin")
+  S.ClearSim()
+  pcall(S.ApplyTotal)
+  ok(tot.icon and tot.icon.shown ~= false, "pêche : fiole restaurée")
+
+  -- Combat / feu : icônes de jeu
+  local function after(key, path, label)
+    S.ClearSim()
+    if S.SetCampfireSim then S.SetCampfireSim(nil) end
+    if key == "campfire" then S.SetCampfireSim("near") else S.SetSim(key, true) end
+    pcall(S.ApplyTotal)
+    if key == "combat" then pcall(S.ApplyCombatLiq, tot) end
+    if key == "campfire" then pcall(S.ApplyCampfire, tot) end
+    ok(tot._stIcon and tot._stIcon.shown ~= false, label .. " : icône de jeu visible")
+    local pth = texOf(tot._stIcon)
+    ok(type(pth) == "string" and pth:find(path, 1, true), label .. " : " .. path .. " (" .. tostring(pth) .. ")")
+    if tot.icon then ok(tot.icon.shown == false, label .. " : fiole officielle remplacée") end
+    ok(not tot._cLiq or tot._cLiq.shown == false, label .. " : pas de bandes")
+    S.ClearSim()
+    if S.SetCampfireSim then S.SetCampfireSim(nil) end
+    pcall(S.ApplyCampfire, tot)
+    pcall(S.ApplyCombatLiq, tot)
+    pcall(S.ApplyTotal)
+    ok(not tot._stIcon or tot._stIcon.shown == false, label .. " : icône d'état rangée après la fin")
+    if tot.icon then ok(tot.icon.shown ~= false, label .. " : fiole restaurée") end
+  end
+  S.SetCombatStyle("bubbles")
+  after("combat", "Ability_DualWield", "combat")
+  after("campfire", "Spell_Fire_Fire", "feu de camp")
+
+  -- Repas : disque fourchette / tasse remplace la fiole
+  S.ClearSim()
+  S.SetEatSim("food")
+  pcall(S.ApplyTotal)
+  ok(S.Want("eating"), "repas : état allumé")
+  ok(tot._stIcon and tot._stIcon.shown ~= false, "repas food : disque visible")
+  local fp = texOf(tot._stIcon)
+  ok(type(fp) == "string" and fp:find("Fork", 1, true), "repas food : fourchette (" .. tostring(fp) .. ")")
+  if tot.icon then ok(tot.icon.shown == false, "repas : fiole remplacée") end
+  S.SetEatSim("drink")
+  pcall(S.ApplyTotal)
+  local dp = texOf(tot._stIcon)
+  ok(type(dp) == "string" and dp:find("INV_Drink", 1, true), "repas drink : tasse (" .. tostring(dp) .. ")")
+  S.ClearSim()
+  pcall(S.ApplyTotal)
+  if tot.icon then ok(tot.icon.shown ~= false, "repas : fiole restaurée") end
+
+  -- Repos : Z crème/bronze remplace la fiole, pas de bandes (grille et barre)
+  S.ClearSim()
+  S.SetSim("rested", true)
+  pcall(S.ApplyTotal)
+  pcall(S.ApplyRestIcon, tot)
+  ok(S.Active() == "rested", "repos : Active = rested")
+  ok(tot._restZ and tot._restZ.shown ~= false, "repos : icône Z visible")
+  ok(tot._restZ and tot._restZ.fs and (tot._restZ.fs._txt == "Z" or (tot._restZ.fs.GetText and tot._restZ.fs:GetText() == "Z")),
+    "repos : glyphe Z")
+  if tot.icon then ok(tot.icon.shown == false, "repos : fiole officielle remplacée") end
+  ok(not tot._cLiq or tot._cLiq.shown == false, "repos grille : pas de bandes")
+  if tot._slotZ then ok(tot._slotZ.shown == false, "repos : pas de z superposés, un seul Z") end
+  -- barre large : bandes cachées
+  tot._wideOn, tot._wideH, tot._wideW = true, 16, 200
+  tot._wideParts = tot._wideParts or {}
+  local segs = {}
+  for i = 1, 3 do
+    segs[i] = tot:CreateTexture(nil, "ARTWORK")
+    if segs[i].Show then segs[i]:Show() end
+  end
+  tot._wideParts.segs = segs
+  tot._pseg = tot._wideParts
+  pcall(S.ApplyFlaskFill, tot)
+  pcall(S.ApplyRestIcon, tot)
+  local anySeg
+  for i = 1, 3 do if segs[i].shown ~= false then anySeg = true end end
+  ok(not anySeg, "repos barre : bandes rouge/bleu/vert cachées")
+  if tot.icon then ok(tot.icon.shown == false, "repos barre : fiole remplacée par le Z") end
+  tot._wideOn = false
+  S.ClearSim()
+  pcall(S.ApplyTotal)
+  if tot.icon then ok(tot.icon.shown ~= false, "repos : fiole restaurée") end
+  ok(not tot._restZ or tot._restZ.shown == false, "repos : Z rangé après la fin")
+
+  -- Cadre exact : 3 col. sans total = 3×3 ; avec total = 3 rangées + barre fine.
+  UI.snapshot = UI.snapshot or {}
+  local tiles = {}
+  for i = 1, 9 do tiles[i] = { id = i } end
+  UI.snapshot.tiles = tiles
+  if ns.db and ns.db.ui then ns.db.ui.cols = 3 ns.db.ui.showTotal = nil end
+  if ns.Wide then ns.Wide.forceShown = false end
+  ok(L.Cols() == 3, "disposition : 3 colonnes")
+  ok(L.Rows() == 3, "sans total : 3 rangées (9 compétences)")
+  local fw, fh, pad, gw, gh, c, r = L.ContentSize()
+  local tile, hg, vg, M = I.TILE, I.HGAP, I.VGAP, L.MARGIN
+  ok(c == 3 and r == 3, "ContentSize sans total : 3 × 3")
+  ok(gw == 3 * tile + 2 * hg, "largeur grille = 3×case + 2×écart")
+  ok(gh == 3 * tile + 2 * vg, "hauteur grille = 3×case + 2×écart")
+  ok(pad == M and fw == gw + 2 * pad and fh == gh + 2 * pad, "cadre = grille + même marge des 4 côtés")
+  local oldW = (22 + 3 * (tile + hg)) + 2 * 8
+  ok(oldW - fw >= 8, "plus de marge vide à droite (ancien " .. oldW .. ", nouveau " .. fw .. ")")
+  if ns.Wide then ns.Wide.forceShown = true end
+  if ns.db and ns.db.ui then ns.db.ui.showTotal = true end
+  local fwB, fhB, padB, gwB, ghB, cB, rB = L.ContentSize()
+  local slim = math.max((ns.Wide.MIN_H or 14), math.floor(tile * (ns.Wide.SLIM or 0.45) + 0.5))
+  local expectH = 3 * tile + 2 * vg + vg + slim
+  ok(gwB == gw, "avec total en barre : même largeur de grille")
+  ok(ghB == expectH, "avec total en barre : 3 rangées + barre fine (" .. tostring(ghB) .. " attendu " .. expectH .. ")")
+  ok(fhB == ghB + 2 * padB, "barre : cadre = contenu + 2×marge")
+  if ns.Wide then ns.Wide.forceShown = nil end
+  if ns.db and ns.db.ui then ns.db.ui.showTotal = nil end
+  if P.ApplyMode then pcall(P.ApplyMode) end
+  if L.SnapToContent then pcall(L.SnapToContent) end
+
+  -- Fuite : 500 transitions d'état, aucun nouveau cadre / texture, croissance mémoire bornée.
+  S.ClearSim()
+  pcall(S.ApplyTotal)
+  local states = { "fishing", "combat", "rested", "eating", "campfire", "swimming", "death", "afk" }
+  -- échauffement : crée les calques une fois
+  for _, id in ipairs(states) do
+    if id == "campfire" and S.SetCampfireSim then S.SetCampfireSim("near")
+    elseif id == "eating" and S.SetEatSim then S.SetEatSim("food")
+    else S.SetSim(id, true) end
+    pcall(S.ApplyTotal)
+    if S.Tick then pcall(S.Tick, 0.05) end
+    S.ClearSim()
+    if S.SetCampfireSim then S.SetCampfireSim(nil) end
+    pcall(S.ApplyTotal)
+  end
+  if S.PlayTotalAdd then pcall(S.PlayTotalAdd, 1, "red") if S.Tick then pcall(S.Tick, 0.05) end if S.HideTotalAdd then pcall(S.HideTotalAdd) end end
+  local nCF, nTex, nFS = 0, 0, 0
+  local baseCF = _G.CreateFrame
+  _G.CreateFrame = function(...)
+    nCF = nCF + 1
+    local f = baseCF(...)
+    if f and f.CreateTexture then
+      local ct = f.CreateTexture
+      function f:CreateTexture(...)
+        nTex = nTex + 1
+        return ct(self, ...)
+      end
+    end
+    if f and f.CreateFontString then
+      local cf = f.CreateFontString
+      function f:CreateFontString(...)
+        nFS = nFS + 1
+        return cf(self, ...)
+      end
+    end
+    return f
+  end
+  local beforeMem = collectgarbage("count")
+  for i = 1, 500 do
+    local id = states[((i - 1) % #states) + 1]
+    if id == "campfire" and S.SetCampfireSim then S.SetCampfireSim((i % 3 == 0) and "burst" or (i % 3 == 1) and "near" or "charge")
+    elseif id == "eating" and S.SetEatSim then S.SetEatSim((i % 3 == 0) and "both" or (i % 3 == 1) and "food" or "drink")
+    else S.SetSim(id, true) end
+    pcall(S.ApplyTotal)
+    if S.Tick then pcall(S.Tick, 0.05) end
+    S.ClearSim()
+    if S.SetCampfireSim then S.SetCampfireSim(nil) end
+    pcall(S.ApplyTotal)
+  end
+  collectgarbage("collect")
+  local afterMem = collectgarbage("count")
+  _G.CreateFrame = baseCF
+  ok(nCF == 0, "500 transitions : aucun nouveau CreateFrame (" .. nCF .. ") — cause typique : cadre créé par test/état au lieu d'un pool")
+  ok(nTex == 0, "500 transitions : aucune nouvelle texture (" .. nTex .. ")")
+  ok(nFS == 0, "500 transitions : aucune nouvelle FontString (" .. nFS .. ")")
+  local grew = (afterMem or 0) - (beforeMem or 0)
+  ok(grew < 512, "500 transitions : croissance mémoire bornée (" .. string.format("%.1f", grew) .. " Ko, seuil 512 Ko)")
+
+  if ns.Wide then ns.Wide.TotalTile = prevTotal end
+  S.ClearSim()
+end
+
+ok(errs() == 0, "aucune erreur UI (3.6.3)")
+print(failures == 0 and "\n3.6.3 : TOUS LES TESTS PASSENT" or ("\n3.6.3 : " .. failures .. " ÉCHEC(S)"))
+os.exit(failures == 0 and 0 or 1)

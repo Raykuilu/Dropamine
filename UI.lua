@@ -6485,9 +6485,11 @@ function UI:OnXPUpdate()
       if src == "quest" then
         self._pendingXPToast = nil
         self:SpawnQuestXPToast(delta, cur, maxxp, level, hint)
+        if ns.Slot and ns.Slot.PlayTotalAdd then pcall(ns.Slot.PlayTotalAdd, delta, "red") end
       elseif src == "kill" or src == "other" then
-        -- Monstre (et exploration) : pas de toast, seulement la vague / le remplissage de la fiole.
+        -- Monstre (et exploration) : pas de toast, goutte rouge dans la fiole.
         self._pendingXPToast = nil
+        if ns.Slot and ns.Slot.PlayTotalAdd then pcall(ns.Slot.PlayTotalAdd, delta, "red") end
       else
         -- Source encore inconnue : on attend un message de quête (2 s), sans toast monstre.
         self._pendingXPToast = {

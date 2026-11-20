@@ -28,11 +28,73 @@ local function IsValid(n) for _, v in ipairs(L.VALID) do if v == n then return t
 
 function L.Cols() local c = N(DB().cols) return (c and IsValid(c)) and c or L.BASE_COLS end
 function L.Scale() local s = N(DB().scale) if not s then return 100 end return math.max(L.SCALE_MIN, math.min(L.SCALE_MAX, math.floor(s + 0.5))) end
--- largeur de la liste pour n colonnes (même marge que la grille 5 colonnes)
--- 3.3.12 : suit la taille dynamique des cases (marges de liste fixes)
-L.LIST_PAD = L.BASE_W - L.BASE_COLS * (40 + 8)
-function L.ListW(cols) return L.LIST_PAD + (cols or L.Cols()) * (I.TILE + I.HGAP) end
-function L.Rows(cols) local n = (UI.snapshot and UI.snapshot.tiles and #UI.snapshot.tiles or 9) + 1 return math.ceil(n / (cols or L.Cols())) end
+-- Largeur / hauteur de la GRILLE seule : colonnes×case + (n-1)×écarts.
+-- Pas de marge historique (22 px issus de la grille 5 col.) ni d'écart fantôme
+-- à droite / en bas (cols×HGAP et rows×STEP en ajoutaient un).
+function L.TileCount()
+  local skills = (UI.snapshot and UI.snapshot.tiles and #UI.snapshot.tiles) or 9
+  local totalOn = ns.Wide and ns.Wide.Shown and ns.Wide.Shown() and true or false
+  return skills + (totalOn and 1 or 0), skills, totalOn
+end
+function L.Rows(cols)
+  local n = L.TileCount()
+  return math.max(1, math.ceil(n / (cols or L.Cols())))
+end
+function L.GridSize(cols, rows)
+  cols = cols or L.Cols()
+  local tile = I.TILE or 40
+  local hg = I.HGAP or 8
+  local vg = I.VGAP or 12
+  local gw = cols * tile + math.max(0, cols - 1) * hg
+  local n, skills, totalOn = L.TileCount()
+  local Wd = ns.Wide
+  local barOn = totalOn and Wd and Wd.ShouldWiden and Wd.ShouldWiden(cols, n)
+  if barOn then
+    local skillRows = math.max(1, math.ceil((n - 1) / cols))
+    local slim = math.max((Wd.MIN_H or 14), math.floor(tile * (Wd.SLIM or 0.45) + 0.5))
+    local gh = skillRows * tile + math.max(0, skillRows - 1) * vg + vg + slim
+    return gw, gh, cols, skillRows
+  end
+  rows = rows or L.Rows(cols)
+  local gh = rows * tile + math.max(0, rows - 1) * vg
+  return gw, gh, cols, rows
+end
+function L.ListW(cols)
+  local gw = L.GridSize(cols, L.Rows(cols))
+  return gw
+end
+-- Cadre = grille + la même marge sur les 4 côtés.
+function L.ContentSize(cols, rows)
+  local pad = L.MARGIN or 12
+  local gw, gh, c, r = L.GridSize(cols, rows)
+  return gw + 2 * pad, gh + 2 * pad, pad, gw, gh, c, r
+end
+function L.SnapToContent()
+  local f, list = W.frame, W.list
+  if not (f and list and P.IsExpanded and not P.IsExpanded()) then return nil end
+  local fw, fh, pad, gw, gh = L.ContentSize()
+  if not (fw and fh and fw > 0 and fh > 0) then return nil end
+  fw, fh, pad, gw, gh = L.Px(fw, f), L.Px(fh, f), L.Px(pad, f), L.Px(gw, f), L.Px(gh, f)
+  local cw = N(f.GetWidth and f:GetWidth()) or 0
+  local ch = N(f.GetHeight and f:GetHeight()) or 0
+  if math.abs(cw - fw) > 0.51 or math.abs(ch - fh) > 0.51 then
+    if f.SetSize then f:SetSize(fw, fh) end
+  end
+  local lw = N(list.GetWidth and list:GetWidth()) or 0
+  local lh = N(list.GetHeight and list:GetHeight()) or 0
+  if math.abs(lw - gw) > 0.51 or math.abs(lh - gh) > 0.51 then
+    if list.SetSize then list:SetSize(gw, gh) end
+  end
+  local okP, lp, lrel, lrp, lx, ly = pcall(list.GetPoint, list, 1)
+  if not (okP and lp == "TOPLEFT" and lrel == f and lrp == "TOPLEFT"
+      and math.abs((N(lx) or -1e9) - pad) < 0.01 and math.abs((N(ly) or -1e9) - (-pad)) < 0.01) then
+    if list.ClearAllPoints then list:ClearAllPoints() end
+    if list.SetPoint then list:SetPoint("TOPLEFT", f, "TOPLEFT", pad, -pad) end
+  end
+  L._listX, L._listY = pad, -pad
+  L.margins = { pad, pad, pad, pad }
+  return fw, fh
+end
 
 -- W.LIST_W suit la disposition avant chaque mise en forme du panneau
 local baseApplyMode = P.ApplyMode
@@ -122,8 +184,8 @@ function L.Candidates()
   local out = {}
   for _, c in ipairs(L.VALID) do
     local rows = L.Rows(c)
-    local lh = select(1, (function() local saved = W.LIST_W W.LIST_W = L.ListW(c) local h = P.CompactListHeight() W.LIST_W = saved return h end)())
-    out[#out + 1] = { cols = c, w = L.ListW(c) + 2 * P.CPAD, h = P.CTOP + lh + P.CPAD, rows = rows }
+    local fw, fh = L.ContentSize(c, rows)
+    out[#out + 1] = { cols = c, w = fw, h = fh, rows = rows }
   end
   return out
 end
@@ -245,18 +307,20 @@ function L.Center()
     list:SetPoint("TOPLEFT", f, "TOPLEFT", ox, oy)
   end
   L._listX, L._listY = ox, oy
-  -- 3.6.3 : Center ne change JAMAIS la taille ni l'échelle du panneau.
-  -- Celles-ci ne bougent que sur une action utilisateur (colonnes, /drop taille,
-  -- poignée). Recalculer w/h depuis GridRect (fiole amincie, calques d'état)
-  -- faisait rétrécir le panneau tout seul, parfois sous le chat.
+  -- 3.6.3 : le cadre épouse la grille (case×colonnes + écarts + même marge
+  -- des 4 côtés), recalculé ici, sur changement de colonnes / taille, et
+  -- à la fin d'un état. On ne reprend plus GridRect (calques d'état, fiole
+  -- amincie) qui faisait dériver la taille.
+  L.SnapToContent()
+  local pad = L.MARGIN or M
   if P.handle then
     P.handle:ClearAllPoints()
     P.handle:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
     P.handle:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
-    P.handle:SetHeight(M)
+    P.handle:SetHeight(pad)
   end
   if L.grip then L.PlaceGrip() end
-  L.margins = { M, M, MT, M }   -- gauche, droite, haut, bas
+  L.margins = { pad, pad, pad, pad }
   return true
 end
 -- ApplyMode repose la liste à (CPAD, -CTOP) : on repart de là à chaque fois

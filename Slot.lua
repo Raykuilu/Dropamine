@@ -37,7 +37,7 @@ S.OPT_KEYS = {
   durability = "slotDurability",
   sleepingbag = "slotSleepingBag",
   campfire = "slotCampfire",
-  rested = "slotRested", trainer = "slotTrainer", eating = "slotEating",
+  rested = "slotRested", trainer = "slotTrainer",
 }
 
 function S.CombatStyle()
@@ -137,13 +137,15 @@ function S.SetSim(id, on)
   if id == "campfire" and not on then
     S._simCamp = nil
   end
-  if id == "eating" and not on then
-    S._simEat = nil
-  end
 end
 
 function S.SetCampfireSim(state)
-  -- near | charge | burst  (ou 1 | 2 | 3)
+  -- near | charge | burst  (ou 1 | 2 | 3). nil / off arrête la sim.
+  if state == nil or state == false or state == "off" or state == "stop" or state == "false" then
+    S._simCamp = nil
+    S.SetSim("campfire", false)
+    return nil
+  end
   state = tostring(state or "near"):lower()
   if state == "1" or state == "ember" or state == "proximite" or state == "proximité" then state = "near" end
   if state == "2" or state == "flame" or state == "charge" then state = "charge" end
@@ -1278,6 +1280,11 @@ function S.ApplyFlaskFill(t)
     return
   end
   if t._gFill and t._gFill.Hide then t._gFill:Hide() end
+  -- Aucune bande (rouge/bleu/vert) tant qu'un état remplace la fiole (repos, combat, …).
+  if S.ReplacesFlaskIcon and S.ReplacesFlaskIcon(t) then
+    S.HideBarBands(t)
+    return
+  end
   local last = Wd.last
   if not last or not last.widths or not last.track then return end
   local pseg = Wd.EnsureSegs(t)
@@ -1353,31 +1360,14 @@ function S.ApplySheet(t, id)
   iw, ih = iw or 16, ih or 16
   local parent = content or clip
   if h.SetParent and parent then pcall(h.SetParent, h, parent) end
-  local bar = t._wideOn and true or false
   local sideW, sideH, x, y = iw, ih, 0, 0
-  -- Pêche : badge en coin (~1/3 en grille, petit en barre), fiole officielle conservée.
-  -- Les autres feuilles restent un glyphe dans la zone icône.
-  if id == "fishing" then
-    local frac = bar and 0.55 or (1 / 3)
-    local lo = bar and 5 or 8
-    local hi = bar and 8 or 14
-    local side = math.max(lo, math.min(hi, math.floor(math.min(iw, ih) * frac + 0.5)))
-    if side > iw then side = iw end
-    if side > ih then side = ih end
-    sideW, sideH, x, y = side, side, iw - side, ih - side
-    if t.icon and t.icon.Show then t.icon:Show() end
-  else
-    if t.icon and t.icon.Hide then t.icon:Hide() end
-  end
+  if t.icon and t.icon.Hide then t.icon:Hide() end
+  -- Pêche validée : la feuille remplace toute la fiole (pas un badge en coin).
+  -- Un sursaut à la prise décale légèrement le glyphe dans le clip.
   if id == "fishing" and (S._jolt or 0) > 0 then
     local j = S._jolt
-    local ox = math.sin(j * 42) * 1.2 * j
-    local oy = math.cos(j * 31) * 1.2 * j
-    if x + ox < 0 then ox = -x end
-    if y + oy < 0 then oy = -y end
-    if x + sideW + ox > iw then ox = iw - x - sideW end
-    if y + sideH + oy > ih then oy = ih - y - sideH end
-    x, y = x + ox, y + oy
+    x = math.sin(j * 42) * 1.2 * j
+    y = math.cos(j * 31) * 1.2 * j
   end
   if S.PlaceClippedTex then
     S.PlaceClippedTex(h, parent or t, sideW, sideH, x, y)
@@ -1434,11 +1424,314 @@ function S.IconAnchor(t)
 end
 
 -- États qui remplacent le glyphe de la goutte (pas une couche par-dessus).
+
+-- Icônes de jeu pour les états encore à valider : elles remplacent la
+-- fiole (comme le sablier), restent dans la zone icône, le compteur reste
+-- lisible, et la fiole est restaurée proprement à la fin.
+S.STATE_ICON = {
+  combat   = "Interface\\Icons\\Ability_DualWield",
+  campfire = "Interface\\Icons\\Spell_Fire_Fire",
+  food     = "Interface\\Icons\\INV_Misc_Fork&Knife",
+  drink    = "Interface\\Icons\\INV_Drink_07",
+}
+
+function S.CombatStateOn()
+  if S.CombatStyle and S.CombatStyle() == "off" then return false end
+  local act = S.Active and S.Active()
+  if act and act ~= "drop" and act ~= "combat" then return false end
+  return (S.LiveCombat and S.LiveCombat()) and true or false
+end
+
+function S.EnsureStateIcon(t)
+  if not t then return nil end
+  local _, content, w, h = S.PlaceIconClip(t)
+  local parent = content
+  if not parent then return t._stIcon end
+  if t._stIcon then
+    if t._stIcon.SetParent and t._stIcon.GetParent and t._stIcon:GetParent() ~= parent then
+      pcall(t._stIcon.SetParent, t._stIcon, parent)
+    end
+    return t._stIcon, parent, w, h
+  end
+  if type(parent.CreateTexture) ~= "function" then return nil end
+  local tex = parent:CreateTexture(nil, "ARTWORK", nil, 5)
+  if not tex then return nil end
+  S.PlaceClippedTex(tex, parent, 1, 1, 0, 0)
+  if tex.Hide then tex:Hide() end
+  t._stIcon = tex
+  return tex, parent, w, h
+end
+
+function S.HideStateIcon(t)
+  t = t or (S.FlaskTile and S.FlaskTile())
+  if not t then return end
+  local right = t._stIconR
+  if right then
+    if right.SetAlpha then pcall(right.SetAlpha, right, 0) end
+    if right.SetHeight then pcall(right.SetHeight, right, 0) end
+    if right.Hide then right:Hide() end
+  end
+  local tex = t._stIcon
+  if tex then
+    if S.HideFlaskOverlay then
+      -- HideFlaskOverlay expects a frame with named textures; hide the tex directly.
+    end
+    if tex.SetAlpha then pcall(tex.SetAlpha, tex, 0) end
+    if tex.SetHeight then pcall(tex.SetHeight, tex, 0) end
+    tex._szH, tex._clipY, tex._kind = 0, nil, nil
+    if tex.Hide then tex:Hide() end
+  end
+  if t.icon and t.icon.Show and not (S.ReplacesFlaskIcon and S.ReplacesFlaskIcon(t)) then
+    t.icon:Show()
+    if t.icon.SetAlpha then pcall(t.icon.SetAlpha, t.icon, 1) end
+  end
+end
+
+-- mode : "pulse" | "bob" | "near" | "charge" | "burst"
+function S.ApplyStateIcon(t, key, mode)
+  if not (t and key) then return nil end
+  local path = S.STATE_ICON and S.STATE_ICON[key]
+  if not path then return nil end
+  local tex, parent, w, h = S.EnsureStateIcon(t)
+  if not (tex and parent) then return nil end
+  local clip, content, iw, ih = S.PlaceIconClip(t)
+  w, h = iw or w or 16, ih or h or 16
+  parent = content or clip or parent
+  if not parent then return nil end
+  -- Taille : toute la zone icône (comme le sablier), jamais la case entière.
+  local side = math.min(w, h)
+  local x, y = (w - side) * 0.5, (h - side) * 0.5
+  local alpha = 1
+  local phase = S._phase or 0
+  mode = mode or "pulse"
+  if mode == "near" then
+    side = math.max(8, side * 0.72)
+    x, y = (w - side) * 0.5, (h - side) * 0.5
+    alpha = 0.80
+  elseif mode == "charge" then
+    local now = Now()
+    local at = S._campChargeAt or now
+    local grow = 0.72 + 0.28 * math.max(0, math.min(1, (now - at) / (S.CAMPFIRE_CHARGE or 60)))
+    if S._simCamp == "charge" then grow = 0.92 end
+    local pulse = 0.06 * math.sin(phase * 2 * math.pi)
+    side = math.max(8, side * math.min(1, grow + pulse * 0.05))
+    x, y = (w - side) * 0.5, (h - side) * 0.5
+    alpha = 0.88 + 0.12 * (0.5 + 0.5 * math.sin(phase * 2 * math.pi))
+  elseif mode == "burst" then
+    local life = math.max(0, (S._campBurstUntil or Now()) - Now())
+    local u = 1 - math.max(0, math.min(1, life / 0.45))
+    side = math.max(8, side * (1 - 0.08 * u))
+    x, y = (w - side) * 0.5, (h - side) * 0.5
+    alpha = 1 - 0.55 * u
+  elseif mode == "bob" then
+    local bob = math.sin(phase * 2 * math.pi) * math.max(0.6, h * 0.04)
+    y = y + bob
+    if (S._jolt or 0) > 0 then
+      local j = S._jolt
+      local ox = math.sin(j * 42) * 1.1 * j
+      local oy = math.cos(j * 31) * 1.1 * j
+      x, y = x + ox, y + oy
+    end
+    if x < 0 then x = 0 end
+    if y < 0 then y = 0 end
+    if x + side > w then x = math.max(0, w - side) end
+    if y + side > h then y = math.max(0, h - side) end
+    alpha = 1
+  else
+    -- pulse (combat, défaut) : simple battement d'alpha, comme un sablier discret.
+    alpha = 0.78 + 0.22 * (0.5 + 0.5 * math.sin(phase * 2 * math.pi))
+  end
+  if tex.SetTexture then pcall(tex.SetTexture, tex, path) end
+  if tex.SetTexCoord then pcall(tex.SetTexCoord, tex, 0.07, 0.93, 0.07, 0.93) end
+  if tex.SetVertexColor then pcall(tex.SetVertexColor, tex, 1, 1, 1, 1) end
+  S.PlaceClippedTex(tex, parent, side, side, x, y)
+  if tex.SetAlpha then pcall(tex.SetAlpha, tex, alpha) end
+  if tex.Show then tex:Show() end
+  tex._kind = key
+  if t.icon and t.icon.Hide then t.icon:Hide() end
+  local mask = S.IconMaskFor and S.IconMaskFor(t)
+  if mask and tex.AddMaskTexture then pcall(tex.AddMaskTexture, tex, mask) end
+  return tex
+end
+
+
+-- Cache les bandes rouge/bleu/vert de la jauge (barre large) et le remplissage grille.
+function S.HideBarBands(t)
+  t = t or (S.FlaskTile and S.FlaskTile())
+  if not t then return end
+  local pseg = t._pseg or t._wideParts
+  if pseg then
+    local segs = pseg.segs
+    if segs then
+      local i, tex = 1, segs[1]
+      while tex do
+        if tex.Hide then tex:Hide() end
+        i = i + 1
+        tex = segs[i]
+      end
+    end
+    if pseg.track and pseg.track.Hide then pseg.track:Hide() end
+    if pseg.fill and pseg.fill.Hide then pseg.fill:Hide() end
+    if pseg.sheen and pseg.sheen.Hide then pseg.sheen:Hide() end
+    if pseg.edge and pseg.edge.Hide then pseg.edge:Hide() end
+  end
+  if t._gFill then
+    if S.HideFlaskOverlay then S.HideFlaskOverlay(t._gFill) elseif t._gFill.Hide then t._gFill:Hide() end
+  end
+end
+
+-- Z de repos : un glyphe unique, créé une fois, animé comme le sablier
+-- (flottement + fondu, phase partagée, zéro allocation). Crème / bronze, sobre.
+S.REST_Z_COLOR = { 0.93, 0.82, 0.58, 1 }   -- crème bronze (guideline)
+function S.EnsureRestIcon(t)
+  if not t then return nil end
+  local _, content, w, h = S.PlaceIconClip(t)
+  local parent = content or t
+  if t._restZ and t._restZ.fs then
+    if t._restZ.SetParent and parent and t._restZ.GetParent and t._restZ:GetParent() ~= parent then
+      pcall(t._restZ.SetParent, t._restZ, parent)
+    end
+    return t._restZ, w, h
+  end
+  if type(parent.CreateFontString) ~= "function" and type(parent.CreateFrame) ~= "function" then
+    return t._restZ, w, h
+  end
+  local ok, holder = pcall(CreateFrame, "Frame", nil, parent)
+  if not (ok and holder) then return t._restZ, w, h end
+  S.SetSizeIf(holder, 1, 1)
+  if holder.EnableMouse then pcall(holder.EnableMouse, holder, false) end
+  if holder.Hide then holder:Hide() end
+  local fs = holder.CreateFontString and holder:CreateFontString(nil, "OVERLAY")
+  if fs then
+    if fs.SetFont then pcall(fs.SetFont, fs, "Fonts\\FRIZQT__.TTF", 16, "OUTLINE") end
+    if fs.SetText then fs:SetText("Z") end
+    local c = S.REST_Z_COLOR
+    if fs.SetTextColor then pcall(fs.SetTextColor, fs, c[1], c[2], c[3], c[4] or 1) end
+    if fs.SetShadowColor then pcall(fs.SetShadowColor, fs, 0, 0, 0, 0.85) end
+    if fs.SetShadowOffset then pcall(fs.SetShadowOffset, fs, 1, -1) end
+    if fs.SetJustifyH then fs:SetJustifyH("CENTER") end
+    if fs.SetJustifyV then fs:SetJustifyV("MIDDLE") end
+  end
+  holder.fs = fs
+  t._restZ = holder
+  return holder, w, h
+end
+
+function S.HideRestIcon(t)
+  t = t or (S.FlaskTile and S.FlaskTile())
+  if not t then return end
+  local h = t._restZ
+  if h then
+    if h.Hide then h:Hide() end
+    if h.fs and h.fs.Hide then h.fs:Hide() end
+  end
+  if t._slotZ and t._slotZ.Hide then t._slotZ:Hide() end
+  if t.icon and t.icon.Show and not (S.ReplacesFlaskIcon and S.ReplacesFlaskIcon(t)) then
+    t.icon:Show()
+    if t.icon.SetAlpha then pcall(t.icon.SetAlpha, t.icon, 1) end
+  end
+end
+
+function S.ApplyRestIcon(t)
+  t = t or (S.FlaskTile and S.FlaskTile())
+  if not t then return nil end
+  -- Pas de z animés superposés, pas de bandes : un Z unique à la place de la fiole.
+  if t._slotZ and t._slotZ.Hide then t._slotZ:Hide() end
+  S.HideBarBands(t)
+  local holder, w, h = S.EnsureRestIcon(t)
+  if not holder then return nil end
+  local clip, content, iw, ih = S.PlaceIconClip(t)
+  w, h = iw or w or 16, ih or h or 16
+  local parent = content or clip or t
+  if holder.SetParent and parent then pcall(holder.SetParent, holder, parent) end
+  if holder.ClearAllPoints then pcall(holder.ClearAllPoints, holder) end
+  S.SetSizeIf(holder, w, h)
+  if holder.SetPoint then pcall(holder.SetPoint, holder, "BOTTOMLEFT", parent, "BOTTOMLEFT", 0, 0) end
+  local fs = holder.fs
+  if fs then
+    -- Taille sobre : un peu plus petite que la zone icône, lisible en barre (~14) et en grille (~32).
+    local px = math.max(8, math.floor(math.min(w, h) * 0.78 + 0.5))
+    if fs.SetFont then pcall(fs.SetFont, fs, "Fonts\\FRIZQT__.TTF", px, "OUTLINE") end
+    if fs.SetText and fs._txt ~= "Z" then fs:SetText("Z") fs._txt = "Z" end
+    local c = S.REST_Z_COLOR
+    if fs.SetTextColor then pcall(fs.SetTextColor, fs, c[1], c[2], c[3], 1) end
+    -- Même rythme que le sablier : fondu + léger flottement, phase déjà calculée.
+    local phase = S._phase or 0
+    local wave = math.sin(phase * 2 * math.pi)
+    local a = 0.78 + 0.22 * (0.5 + 0.5 * wave)
+    local bob = wave * math.max(0.6, h * 0.06)
+    if fs.ClearAllPoints then pcall(fs.ClearAllPoints, fs) end
+    if fs.SetPoint then pcall(fs.SetPoint, fs, "CENTER", holder, "CENTER", 0, bob) end
+    if fs.SetAlpha then pcall(fs.SetAlpha, fs, a) end
+    if fs.Show then fs:Show() end
+  end
+  if holder.SetAlpha then pcall(holder.SetAlpha, holder, 1) end
+  if holder.Show then holder:Show() end
+  if t.icon and t.icon.Hide then t.icon:Hide() end
+  local Wd = ns.Wide
+  if Wd and Wd.SyncFlaskHit then Wd.SyncFlaskHit(t) end
+  return holder
+end
+
+
+function S.ApplyEatDisc(t)
+  t = t or (S.FlaskTile and S.FlaskTile())
+  if not t then return nil end
+  local kind = (S.EatKind and S.EatKind()) or "food"
+  S.HideBarBands(t)
+  if kind == "both" then
+    -- Disque partagé : fourchette à gauche, tasse à droite, même clip, créés une fois.
+    S.ApplyStateIcon(t, "food", "pulse")
+    local tex = t and t._stIcon
+    if tex then
+      local clip, content, w, h = S.PlaceIconClip(t)
+      w, h = w or 16, h or 16
+      local parent = content or clip
+      local side = math.min(w, h)
+      local half = math.max(4, math.floor(side * 0.5))
+      local x0, y0 = (w - side) * 0.5, (h - side) * 0.5
+      if tex.SetTexCoord then pcall(tex.SetTexCoord, tex, 0.07, 0.50, 0.07, 0.93) end
+      S.PlaceClippedTex(tex, parent, half, side, x0, y0)
+    end
+    if not t._stIconR then
+      local _, parent = S.EnsureStateIcon(t)
+      if parent and type(parent.CreateTexture) == "function" then
+        local right = parent:CreateTexture(nil, "ARTWORK", nil, 5)
+        t._stIconR = right
+      end
+    end
+    local right = t._stIconR
+    local path = S.STATE_ICON and S.STATE_ICON.drink
+    if right and path then
+      local clip, content, w, h = S.PlaceIconClip(t)
+      w, h = w or 16, h or 16
+      local parent = content or clip
+      local side = math.min(w, h)
+      local half = math.max(4, math.floor(side * 0.5))
+      local x0, y0 = (w - side) * 0.5, (h - side) * 0.5
+      if right.SetTexture then pcall(right.SetTexture, right, path) end
+      if right.SetTexCoord then pcall(right.SetTexCoord, right, 0.50, 0.93, 0.07, 0.93) end
+      if right.SetVertexColor then pcall(right.SetVertexColor, right, 1, 1, 1, 1) end
+      S.PlaceClippedTex(right, parent, half, side, x0 + (side - half), y0)
+      local phase = S._phase or 0
+      local a = 0.78 + 0.22 * (0.5 + 0.5 * math.sin(phase * 2 * math.pi))
+      if right.SetAlpha then pcall(right.SetAlpha, right, a) end
+      if right.Show then right:Show() end
+    end
+    return tex
+  end
+  if t._stIconR then
+    if t._stIconR.SetAlpha then pcall(t._stIconR.SetAlpha, t._stIconR, 0) end
+    if t._stIconR.Hide then t._stIconR:Hide() end
+  end
+  return S.ApplyStateIcon(t, kind, "pulse")
+end
+
 function S.ReplacesFlaskIcon(t)
   local act = S.Active and S.Active()
-  if act == "sleepingbag" then return true end
-  -- Pêche : badge en coin, la fiole officielle reste.
-  if act == "fishing" then return false end
+  if act == "sleepingbag" or act == "fishing" or act == "campfire" or act == "combat" or act == "rested" then return true end
+  if act == "drop" and S.CombatStateOn and S.CombatStateOn() then return true end
+  if act == "drop" and S.Want and S.Want("eating") then return true end
   if act and act ~= "drop" and S.SHEETS and S.SHEETS[act] then return true end
   return false
 end
@@ -1778,15 +2071,21 @@ function S.ApplyCombatLiq(t)
   local Wd = ns.Wide
   t = t or S.FlaskTile() or (Wd and Wd.TotalTile and Wd.TotalTile())
   if not t then return end
+  -- Plus de bandes rouge/bleu/vert par-dessus la fiole : icône de jeu, comme le sablier.
+  if S.HideCombatLiq then S.HideCombatLiq(t) elseif t._cLiq and t._cLiq.Hide then t._cLiq:Hide() end
+  local show = S.CombatStateOn and S.CombatStateOn()
+  if not show then
+    if t._stIcon and t._stIcon._kind == "combat" then S.HideStateIcon(t) end
+    return
+  end
+  S.ApplyStateIcon(t, "combat", "pulse")
+  do return end
   local style = S.CombatStyle()
   local fill = S.fill or {}
   local p = math.max(0, math.min(1, (N(fill.p) or 0) * (N(fill.drain) or 1)))
   local grey = N(fill.grey) or 0
-  -- En barre large, le remplissage combat est déjà dans les segments horizontaux.
-  local show = (not t._wideOn) and style ~= "off" and p > 0.01 and grey < 0.85
   local liq = t._cLiq
   if not show then
-    if S.HideCombatLiq then S.HideCombatLiq(t) elseif liq and liq.Hide then liq:Hide() end
     return
   end
   liq = S.EnsureCombatLiq(t)
@@ -1901,8 +2200,9 @@ function S.ApplyTotal(t)
     if t.icon and t.icon.Show then t.icon:Show() end
     S.ApplyCampfire(t)
   elseif act == "rested" then
+    S.ApplySlotZ(t, false)
     HideSymbol(t)
-    S.ApplySlotZ(t, true)
+    S.ApplyRestIcon(t)
   elseif act ~= "drop" and S.SHEETS[act] then
     S.ApplySlotZ(t, false)
     HideBagIcon(t)
@@ -1910,8 +2210,25 @@ function S.ApplyTotal(t)
   else
     S.ApplySlotZ(t, false)
     HideSymbol(t)
+    if S.CombatStateOn and S.CombatStateOn() then
+      S.ApplyStateIcon(t, "combat", "pulse")
+    elseif S.Want and S.Want("eating") then
+      S.ApplyEatDisc(t)
+    elseif t._stIcon and S.HideStateIcon then
+      S.HideStateIcon(t)
+    end
   end
   if act ~= "campfire" then S.HideCampfire(t) end
+  if act ~= "rested" and S.HideRestIcon then S.HideRestIcon(t) end
+  if act ~= "fishing" and not (S.CombatStateOn and S.CombatStateOn()) and act ~= "campfire" then
+    if t._stIcon and t._stIcon._kind and t._stIcon._kind ~= "campfire" and S.HideStateIcon then
+      -- HideCampfire already clears campfire ; clear a stale fishing/combat glyph
+      if act ~= "combat" then
+        local kind = t._stIcon._kind
+        if kind == "fishing" or kind == "combat" then S.HideStateIcon(t) end
+      end
+    end
+  end
   if Wd and Wd.SyncFlaskHit then Wd.SyncFlaskHit(t) end
 end
 
@@ -1979,7 +2296,6 @@ S.TIPS = {
   fishing   = { "En train de pêcher", "La ligne est lancée." },
   swimming  = { "À la nage", "Tu nages." },
   durability= { "Équipement usé", "Une pièce d'équipement est sous 20 %." },
-  eating    = { "En train de manger ou de boire", "La fiole se remplit doucement." },
   campfire  = { "Feu de camp", "Braise près du feu, puis flamme pendant la charge, étincelles au buff." },
   rested    = { "Au repos", "Tu te reposes à l'auberge ou en capitale." },
 }
@@ -2004,7 +2320,6 @@ function S.ShowExplanation(owner)
   if act == "drop" and S.CombatLiquidOn() and (S.LiveCombat() or ((S.fill and S.fill.p) or 0) > 0.05) then
     act = "combat"
   end
-  if act == "drop" and S.Want("eating") then act = "eating" end
   if act == "drop" then return end
   local tt = _G.GameTooltip
   if not (tt and owner) then return end
@@ -2038,8 +2353,8 @@ end
 ------------------------------------------------------------------------------
 function S.RestedOnly()
   -- z + vague de repos : pas besoin de repeindre tout le puits à 20 i/s.
-  if S.Want("trainer") or S.Want("eating") or S.Want("campfire") or S.FillBusy() then return false end
-  if (S._jolt or 0) > 0 or S._eatOn or S._addT or S._lvlT then return false end
+  if S.Want("trainer") or S.Want("campfire") or S.FillBusy() then return false end
+  if (S._jolt or 0) > 0 or S._addT or S._lvlT then return false end
   local F = ns.Flight
   if F and (F.Paused and F.Paused() or (F._vis or 0) > 0) then return false end
   return S.Active() == "rested"
@@ -2050,11 +2365,13 @@ function S.NeedsDriver()
   -- sac de couchage : pictogramme statique, pas d'OnUpdate.
   if act and act ~= "drop" and act ~= "sleepingbag" then return true end
   if S.Want("trainer") then return true end
-  if S.Want("eating") then return true end
   if S.Want("campfire") then return true end
+  if S.Want("eating") then return true end
+  if act == "rested" then return true end
+  if S.CombatStateOn and S.CombatStateOn() then return true end
   if S.FillBusy() then return true end
   if (S._jolt or 0) > 0 then return true end
-  if S._eatOn or S._addT or S._lvlT then return true end
+  if S._addT or S._lvlT then return true end
   local F = ns.Flight
   if F and (F.Paused and F.Paused() or (F._vis or 0) > 0) then return true end
   return false
@@ -2104,9 +2421,11 @@ function S.Tick(dt)
   if S.Active and S.Active() == "campfire" then
     S.ApplyCampfire()
   end
+  if S.Active and S.Active() == "rested" then
+    S.ApplyRestIcon()
+  end
   if S.RestedOnly and S.RestedOnly() then
-    S.TickSlotZ(dt)
-    S.TickFlaskWave(dt)
+    S.ApplyRestIcon()
     return
   end
   S.SyncFillTargets()
@@ -2309,9 +2628,9 @@ function S.OnInvFullError(event, msg, ...)
 end
 
 ------------------------------------------------------------------------------
--- Vague de repas (réutilise le style « repos » : Dropamine-Wave)
+-- Nettoyage des calques (plus d'état repas en 3.6.3)
 ------------------------------------------------------------------------------
-function S.EnsureRegenWave(t)
+function S._DroppedEnsureRegenWave(t)
   if not t then return nil end
   local _, content, w, h = S.PlaceIconClip(t)
   -- Uniquement dans le clip de l'icône : jamais sur la case (ça recouvrirait le compteur).
@@ -2502,8 +2821,12 @@ function S.FillSurfaceY(t, h)
 end
 
 function S.ApplyRegenWave(dt)
-  dt = N(dt) or 0
+  -- 3.6.3 : l'état repas/boisson est retiré. On range d'éventuels reliquats.
   local t = S.FlaskTile and S.FlaskTile() or (ns.Wide and ns.Wide.TotalTile and ns.Wide.TotalTile())
+  if S.HideRegenWave then S.HideRegenWave(t) end
+  S._eatOn = false
+  do return end
+  dt = N(dt) or 0
   if not t then return end
   local inCombatFill = S.CombatLiquidOn() and ((S.fill and S.fill.p) or 0) > 0.05
   local show = S.Want("eating") and not inCombatFill and not (S.Opt("slotDeath") and S.LiveDeath())
@@ -2618,6 +2941,9 @@ end
 function S.HideCampfire(t)
   t = t or S.FlaskTile and S.FlaskTile()
   if t and t._camp and t._camp.Hide then t._camp:Hide() end
+  if t and t._stIcon and t._stIcon._kind == "campfire" and S.HideStateIcon then
+    S.HideStateIcon(t)
+  end
 end
 
 function S.ApplyCampfire(t)
@@ -2628,6 +2954,9 @@ function S.ApplyCampfire(t)
     S.HideCampfire(t)
     return
   end
+  if t._camp and t._camp.Hide then t._camp:Hide() end
+  S.ApplyStateIcon(t, "campfire", st)
+  do return end
   local f = S.EnsureCampfire(t)
   if not f then return end
   local clip, content, w, h = S.PlaceIconClip(t)
@@ -2724,11 +3053,24 @@ function S.EnsureTotalAdd(t)
   return f
 end
 
-function S.PlayTotalAdd(gain)
+S.ADD_COLORS = {
+  red   = { 0.616, 0.278, 0.227 },
+  blue  = { 0.329, 0.408, 0.604 },
+  green = { 0.310, 0.498, 0.243 },
+}
+function S.AddColor(key)
+  if type(key) == "table" and key[1] then return key end
+  key = tostring(key or "red"):lower()
+  if key == "blue" or key == "bleu" or key == "combat" or key == "armes" then return S.ADD_COLORS.blue end
+  if key == "green" or key == "vert" or key == "skill" or key == "metier" or key == "métier" then return S.ADD_COLORS.green end
+  return S.ADD_COLORS.red
+end
+function S.PlayTotalAdd(gain, color)
   local t = S.FlaskTile and S.FlaskTile()
   if not t then return end
   S._addT = 0
   S._addGain = N(gain) or 1
+  S._addColor = S.AddColor(color)
   S.StartDriver()
   S.EnsureTotalAdd(t)
 end
@@ -2763,6 +3105,8 @@ function S.TickTotalAdd(dt)
     local x = (w - dw) / 2
     local y = h + 2 - k * (h * 0.78 + 2)
     if f.drop then
+      local col = S._addColor or S.ADD_COLORS.red
+      if f.drop.SetVertexColor then pcall(f.drop.SetVertexColor, f.drop, col[1], col[2], col[3], 1) end
       S.PlaceClippedTex(f.drop, f, dw, dw, x, y)
       if f.drop.SetAlpha then pcall(f.drop.SetAlpha, f.drop, 1) end
       if f.drop.Show then f.drop:Show() end
@@ -2776,7 +3120,8 @@ function S.TickTotalAdd(dt)
     local wh = math.max(2, h * 0.12)
     if f.wave then
       S.PlaceClippedTex(f.wave, f, w, wh, 0, math.max(0, surf - wh * 0.4 + math.sin(k * 6.28) * 1.2))
-      if f.wave.SetVertexColor then pcall(f.wave.SetVertexColor, f.wave, 0.85, 0.45, 0.35, 0.85 * (1 - k)) end
+      local col = S._addColor or S.ADD_COLORS.red
+      if f.wave.SetVertexColor then pcall(f.wave.SetVertexColor, f.wave, col[1], col[2], col[3], 0.85 * (1 - k)) end
       if f.wave.SetTexCoord then
         local span = 0.5
         local uu = k * span
@@ -2791,7 +3136,8 @@ function S.TickTotalAdd(dt)
         local bs = math.max(1, 2.2 * (1 - k * 0.5))
         S.PlaceClippedTex(b, f, bs, bs, bx, by)
         if b.SetTexture then pcall(b.SetTexture, b, "Interface\\Buttons\\WHITE8X8") end
-        if b.SetVertexColor then pcall(b.SetVertexColor, b, 0.95, 0.78, 0.45, 0.8 * (1 - k)) end
+        local col = S._addColor or S.ADD_COLORS.red
+        if b.SetVertexColor then pcall(b.SetVertexColor, b, col[1], col[2], col[3], 0.8 * (1 - k)) end
         if b.Show then b:Show() end
       end
     end
@@ -2927,8 +3273,6 @@ S.OPTIONS = {
     help = "Des bulles montent dans le puits tant que tu nages." },
   { type = "check", key = "slotDurability", label = "Équipement usé", default = false,
     help = "Un bouclier fendu dans le puits et un toast quand une pièce équipée passe sous 20 % de durabilité. Coupé par défaut." },
-  { type = "check", key = "slotEating", label = "Vague au repas", default = true,
-    help = "Une vague douce à la surface pendant que tu manges ou bois. Le niveau de remplissage reste le vrai : seule la vague est colorée (ambre nourriture, bleu boisson, les deux = deux vagues)." },
   { type = "check", key = "slotCampfire", label = "Feu de camp", default = true,
     help = "Près d'un feu de camp, une petite braise s'affiche dans le puits. Elle grandit en flamme pendant la minute de charge. Quand le buff est pris, une courte gerbe d'étincelles, puis retour à la goutte (pas de fumée)." },
   { type = "check", key = "slotSleepingBag", label = "Sac de couchage", default = true,
@@ -3058,6 +3402,25 @@ if ns.On then
       end
       pcall(S.Refresh, ev)
     end)
+  end
+end
+
+-- Dernier mot après Polish/ClassicTheme : aucune bande si la fiole est remplacée.
+do
+  local Wd = ns.Wide
+  if Wd and Wd.Paint then
+    local basePaint = Wd.Paint
+    function Wd.Paint(t, ...)
+      local r = { basePaint(t, ...) }
+      if t and S.ReplacesFlaskIcon and S.ReplacesFlaskIcon(t) then
+        if S.HideBarBands then S.HideBarBands(t) end
+        if t.icon and t.icon.Hide then t.icon:Hide() end
+        if S.Active and S.Active() == "rested" and S.ApplyRestIcon then
+          S.ApplyRestIcon(t)
+        end
+      end
+      return unpack(r)
+    end
   end
 end
 
