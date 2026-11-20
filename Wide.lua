@@ -27,11 +27,11 @@ Wd.MIN_BAR_H = 12
 Wd.MIN_BAR_W = 100
 Wd.MIN_FONT  = 13
 Wd.MIN_PAD   = 3
-Wd.MIN_ISZ   = 31   -- 85 % de la case plancher 36 px
-Wd.ICON_K    = 0.85 -- glyphe seul, sans cadre, ~85 % de la hauteur de case
+Wd.MIN_ISZ   = 25   -- 70 % de la case plancher 36 px
+Wd.ICON_K    = 0.70 -- glyphe seul, sans cadre, ~70 % de la hauteur de case
 function Wd.IconSize(tile)
   tile = (ns.N and ns.N(tile)) or tonumber(tile) or (ns.Icons and ns.Icons.TILE) or Wd.REF_TILE or 40
-  return math.max(1, math.floor(tile * (Wd.ICON_K or 0.85) + 0.5))
+  return math.max(1, math.floor(tile * (Wd.ICON_K or 0.70) + 0.5))
 end
 function Wd.ColCenter(tile)
   tile = (ns.N and ns.N(tile)) or tonumber(tile) or (ns.Icons and ns.Icons.TILE) or Wd.REF_TILE or 40
@@ -83,7 +83,7 @@ function Wd.Metrics(tile)
   local minH = Wd.MIN_H or 36
   local minBh = Wd.MIN_BAR_H or 12
   local minIsz = Wd.MIN_ISZ or 36
-  -- Rangée ~ hauteur de case ; glyphe de fiole ~ 85 % (pas de cadre).
+  -- Rangée ~ hauteur de case ; glyphe de fiole ~ 70 % (pas de cadre).
   local h = math.max(minH, tile, math.floor(tile * (Wd.SLIM or 0.5) + 0.5))
   local bh = px(Wd.REF_BAR_H or Wd.BAR_H or 5, minBh)
   local pad = px(Wd.REF_PAD or Wd.PAD or 5, Wd.MIN_PAD or 3)
@@ -576,7 +576,7 @@ end
 function Wd.PlaceVialIcon(t, m)
   if not t then return end
   local tile = (m and m.tile) or (ns.Icons and ns.Icons.TILE) or 40
-  local isz = Wd.IconSize and Wd.IconSize(tile) or math.floor(tile * (Wd.ICON_K or 0.85) + 0.5)
+  local isz = Wd.IconSize and Wd.IconSize(tile) or math.floor(tile * (Wd.ICON_K or 0.70) + 0.5)
   local cx = Wd.ColCenter and Wd.ColCenter(tile) or math.floor(tile / 2 + 0.5)
   Wd.HideVialChrome(t)
   if t.icon and t.icon.ClearAllPoints then

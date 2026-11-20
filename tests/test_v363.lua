@@ -2624,12 +2624,12 @@ do
     assertInside("icône combat grille", tot._stIcon, iw, ih)
   end
 
-  -- Barre large : glyphe ~85 % de la case, sans cadre, pas un pavé 100×50.
+  -- Barre large : glyphe ~70 % de la case, sans cadre, pas un pavé 100×50.
   local bar = CreateFrame("Button", "DropamineTestBarTotal", UIParent)
   bar.data = { kind = "total" }
   bar._wideOn = true
   local tileSz = (I and I.TILE) or (ns.Icons and ns.Icons.TILE) or 40
-  local iconSz = (ns.Wide and ns.Wide.IconSize and ns.Wide.IconSize(tileSz)) or math.floor(tileSz * 0.85 + 0.5)
+  local iconSz = (ns.Wide and ns.Wide.IconSize and ns.Wide.IconSize(tileSz)) or math.floor(tileSz * 0.70 + 0.5)
   bar._wideH = tileSz
   bar:SetSize(220, tileSz)
   bar.icon = bar:CreateTexture(nil, "ARTWORK")
@@ -2644,7 +2644,7 @@ do
   ok(okBar, "repas en barre : no-op (état retiré)")
   local bw, bh = S.IconInnerSize(bar)
   ok(bw == iconSz and bh == iconSz,
-    "barre : goutte = 85 % de la case (" .. tostring(bw) .. "×" .. tostring(bh) .. ", attendu " .. tostring(iconSz) .. ")")
+    "barre : goutte = 70 % de la case (" .. tostring(bw) .. "×" .. tostring(bh) .. ", attendu " .. tostring(iconSz) .. ")")
   -- Combat en barre : icône de jeu à la place de la goutte, pas de bandes.
   S.ClearSim()
   S.SetCombatStyle("bubbles")
@@ -3585,15 +3585,15 @@ do
   if Wd and Wd.Metrics then
     local lo, mid, hi = at(90), at(100), at(200)
     local nlo = I.NumberSizes and I.NumberSizes(lo.tile)
-    local wantLo = (Wd.IconSize and Wd.IconSize(lo.tile)) or math.floor((lo.tile or 36) * 0.85 + 0.5)
+    local wantLo = (Wd.IconSize and Wd.IconSize(lo.tile)) or math.floor((lo.tile or 36) * 0.70 + 0.5)
     ok(lo.h >= 36 and lo.isz == wantLo and lo.bh >= 12 and lo.font == (nlo and nlo.total)
       and lo.minBarW >= 100 and lo.pad >= (Wd.MIN_PAD or 3)
-      and math.abs((lo.isz or 0) - (lo.tile or 0) * 0.85) <= 1.5,
-      "rangée total 90 % : plancher 36 px, fiole 85 % de la case, barre>=100")
+      and math.abs((lo.isz or 0) - (lo.tile or 0) * 0.70) <= 1.5,
+      "rangée total 90 % : plancher 36 px, fiole 70 % de la case, barre>=100")
     ok((Wd.MIN_H or 0) >= 36 and (Wd.MIN_BAR_H or 0) >= 12
-      and (Wd.MIN_BAR_W or 0) >= 100 and (Wd.ICON_K or 0) >= 0.84
+      and (Wd.MIN_BAR_W or 0) >= 100 and math.abs((Wd.ICON_K or 0) - 0.70) < 0.01
       and (I.TILE_MIN or 0) >= 36 and (L.SCALE_MIN or 0) >= 90,
-      "planchers : case 36 px, barre 100, fiole 85 %, échelle 90 %")
+      "planchers : case 36 px, barre 100, fiole 70 %, échelle 90 %")
     ok(nlo and nlo.rank > nlo.total and nlo.total > nlo.max,
       "90 % : rang > total > /max")
     -- En dessous de la taille medium, l'épaisseur reste au plancher 12 px (ratio plus élevé).
@@ -3607,7 +3607,7 @@ do
     local r150, r200 = midHi.bh / midHi.tile, hi.bh / hi.tile
     ok(math.abs(r150 - r200) < 0.03, "épaisseur barre : même ratio à 150 % et 200 % (" .. string.format("%.3f/%.3f", r150, r200) .. ")")
     ok(mid.font == mid.font and hi.font >= mid.font, "police total posée en px, pas étirée")
-    ok((Wd.ICON_K or 0) == 0.85, "fiole : glyphe à 85 % de la case, sans cadre")
+    ok(math.abs((Wd.ICON_K or 0) - 0.70) < 0.01, "fiole : glyphe à 70 % de la case, sans cadre")
   end
   if ns.db and ns.db.ui then ns.db.ui.scale = savedScale end
   if L and L.SyncMetrics then L.SyncMetrics() end
@@ -3801,9 +3801,9 @@ do
       ok(I.TILE >= 36, "5 col. 90 % : cases >= 36 px (tile=" .. tostring(I.TILE) .. ")")
       ok(I.TILE <= 36, "5 col. 90 % : cases = 36 px au plancher (tile=" .. tostring(I.TILE) .. ")")
       local n90 = I.NumberSizes and I.NumberSizes(I.TILE)
-      local wantI = (Wd.IconSize and Wd.IconSize(I.TILE)) or math.floor(I.TILE * 0.85 + 0.5)
+      local wantI = (Wd.IconSize and Wd.IconSize(I.TILE)) or math.floor(I.TILE * 0.70 + 0.5)
       ok(m.bh >= 12 and m.isz == wantI and m.h >= 36 and m.font == (n90 and n90.total),
-        string.format("5 col. 90 %% : fiole 85 %% (bh=%d font=%d isz=%d h=%d tile=%d)", m.bh, m.font, m.isz, m.h, I.TILE))
+        string.format("5 col. 90 %% : fiole 70 %% (bh=%d font=%d isz=%d h=%d tile=%d)", m.bh, m.font, m.isz, m.h, I.TILE))
       ok(n90 and n90.rank >= 11 and n90.rank > n90.total and n90.total > n90.max,
         "5 col. 90 % : rang / max lisibles, rang > total > /max")
       local fw, fh, pad, gw = L.ContentSize(5)
@@ -3813,6 +3813,9 @@ do
       ok(plan.overlay ~= true and plan.font == m.font,
         "5 col. 90 % : texte à côté de la barre, police du total non réduite")
       ok(plan.inner >= 100, "5 col. 90 % : barre longue d'au moins 100 px (" .. tostring(plan.inner) .. ")")
+      local midBar = math.floor(((plan.h or m.h) - (plan.bh or m.bh)) / 2 + 0.5)
+      ok(math.abs((plan.by or 0) - midBar) <= 1,
+        "5 col. 90 % : barre centrée verticalement (by=" .. tostring(plan.by) .. ", milieu=" .. tostring(midBar) .. ")")
       -- Une ancienne taille 50 % est relevée au plancher ; SetScale(50) rend 90.
       if ns.db and ns.db.ui then ns.db.ui.scale = 50 end
       ok(L.Scale() == 90 and ns.db.ui.scale == 90, "échelle sauvée 50 % relevée à 90 % au chargement")
@@ -3846,12 +3849,12 @@ do
         ok(cw + 0.5 >= minFw and ch + 0.5 >= minFh,
           "cadre trop petit remonte au plancher (" .. tostring(cw) .. "×" .. tostring(ch) .. ")")
       end
-      -- 54 : fiole = glyphe seul (~85 % de la case), centré sur la 1re colonne, pas de cadre.
+      -- 56 : fiole = glyphe seul (~70 % de la case), centré sur la 1re colonne, pas de cadre.
       do
         local tile = I.TILE or 36
-        local want = (Wd.IconSize and Wd.IconSize(tile)) or math.floor(tile * 0.85 + 0.5)
+        local want = (Wd.IconSize and Wd.IconSize(tile)) or math.floor(tile * 0.70 + 0.5)
         local cx = (Wd.ColCenter and Wd.ColCenter(tile)) or math.floor(tile / 2 + 0.5)
-        ok(want == math.floor(tile * 0.85 + 0.5), "taille fiole = 85 % de la case (" .. tostring(want) .. ")")
+        ok(want == math.floor(tile * 0.70 + 0.5), "taille fiole = 70 % de la case (" .. tostring(want) .. ")")
         local dummy = { _wideOn = true, icon = { shown = true, w = 0, h = 0, pts = {} },
           slotBg = { shown = true }, slotBorder = { shown = true }, bg333 = { shown = true },
           _flareRing = { shown = true }, _restZ = { disc = { shown = true } } }
@@ -3870,7 +3873,7 @@ do
         function dummy._restZ.disc:SetAlpha(a) self.a = a end
         if Wd.PlaceVialIcon then Wd.PlaceVialIcon(dummy, { tile = tile, isz = want }) end
         ok(dummy.icon.w == want and dummy.icon.h == want,
-          "PlaceVialIcon : glyphe " .. tostring(dummy.icon.w) .. "×" .. tostring(dummy.icon.h) .. " (85 %)")
+          "PlaceVialIcon : glyphe " .. tostring(dummy.icon.w) .. "×" .. tostring(dummy.icon.h) .. " (70 %)")
         ok(dummy.icon.pts and dummy.icon.pts[1] == "CENTER" and dummy.icon.pts[4] == cx,
           "PlaceVialIcon : centré sur la 1re colonne (x=" .. tostring(dummy.icon.pts and dummy.icon.pts[4]) .. ")")
         ok(dummy.slotBg.shown == false and dummy.slotBorder.shown == false

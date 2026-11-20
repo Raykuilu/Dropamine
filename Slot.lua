@@ -1587,11 +1587,11 @@ end
 -- (et dans le harnais) ça rend souvent 0 ou la taille par défaut (100).
 function S.IconInnerSize(t)
   if not t then return 16, 16, nil, 2 end
-  -- En barre : glyphe seul à ~85 % de la case, centré sur la 1re colonne, sans filet.
+  -- En barre : glyphe seul à ~70 % de la case, centré sur la 1re colonne, sans filet.
   if t._wideOn then
     local tile = (ns.Icons and ns.Icons.TILE) or (ns.N and ns.N(t._wideH)) or t._wideH or 40
     tile = (ns.N and ns.N(tile)) or tonumber(tile) or 40
-    local s = (ns.Wide and ns.Wide.IconSize and ns.Wide.IconSize(tile)) or math.max(1, math.floor(tile * ((ns.Wide and ns.Wide.ICON_K) or 0.85) + 0.5))
+    local s = (ns.Wide and ns.Wide.IconSize and ns.Wide.IconSize(tile)) or math.max(1, math.floor(tile * ((ns.Wide and ns.Wide.ICON_K) or 0.70) + 0.5))
     local anchor = t.icon or t.iconSlot or t
     return s, s, anchor, 0, s, s
   end
