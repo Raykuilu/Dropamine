@@ -1,6 +1,8 @@
 # Changelog
 
 ## 3.6.3
+- “Nouveaux sorts / Va voir ton maître de classe” (and any other title+body toast) is a normal full-height toast, not a ~20 px light bar that hid the text. Toast height never collapses to an empty strip.
+- Toast tint backgrounds keep the same red/blue/green hue, much darker to match the panel; only “Fond des toasts” sets alpha.
 - Session recap toast uses a short title (“Session”) and one compact line (e.g. “+81 · +484 XP · +3 compétences · 76 min”). Toast text wraps on up to 2 lines and the toast grows to fit; a marquee is only used if the text is still too long. Empty title+body toasts are not shown. The grey-mob Defense reminder is tooltip-only (no toast).
 - Combat pre-selection on tiles that can gain is a thin border (liseré) in the gain color (red XP, blue weapons and Defense, green professions): no fill and no “+1” on the pre-light. An actual gain plays a single “+1” and a short bright pop in a lighter shade of the type color (red XP, blue weapons and Defense, green professions; no double +1 or double glow).
 - Memory: character cards are no longer rebuilt on every chart refresh; an incremental collectgarbage(“step”) runs every ~2 s while out of combat, to shrink Lua heap churn.
