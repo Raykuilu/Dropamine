@@ -1250,7 +1250,9 @@ function S.ApplyGridFill(t)
   local fill = S.fill or {}
   local combatP = math.max(0, math.min(1, (N(fill.p) or 0) * (N(fill.drain) or 1)))
   if combatP > 0.01 and S.CombatLiquidOn and S.CombatLiquidOn() then
-    if t._gFill and t._gFill.Hide then t._gFill:Hide() end
+    if t._gFill then
+      if S.HideFlaskOverlay then S.HideFlaskOverlay(t._gFill) elseif t._gFill.Hide then t._gFill:Hide() end
+    end
     return
   end
   local gf = S.EnsureGridFill(t)
@@ -1300,6 +1302,7 @@ function S.ApplyGridFill(t)
       local tw = math.max(1, w - inset * 2)
       S.PlaceClippedTex(tex, gf, tw, hh, inset, y)
       if tex.SetTexture then pcall(tex.SetTexture, tex, "Interface\\Buttons\\WHITE8X8") end
+      if tex.SetAlpha then pcall(tex.SetAlpha, tex, 1) end
       if tex.SetVertexColor then pcall(tex.SetVertexColor, tex, r, g, b, a) end
       if tex.Show then tex:Show() end
       y = y + hh
@@ -1323,6 +1326,7 @@ function S.ApplyGridFill(t)
   if not S.ReplacesFlaskIcon(t) then
     if t.icon and t.icon.Show then t.icon:Show() end
   end
+  if gf.SetAlpha then pcall(gf.SetAlpha, gf, 1) end
   if gf.Show then gf:Show() end
 end
 
@@ -1827,7 +1831,7 @@ function S.ApplyCombatLiq(t)
   local show = (not t._wideOn) and style ~= "off" and p > 0.01 and grey < 0.85
   local liq = t._cLiq
   if not show then
-    if liq and liq.Hide then liq:Hide() end
+    if S.HideCombatLiq then S.HideCombatLiq(t) elseif liq and liq.Hide then liq:Hide() end
     return
   end
   liq = S.EnsureCombatLiq(t)
@@ -1868,6 +1872,7 @@ function S.ApplyCombatLiq(t)
       tex._clipY = y
     end
     if tex.SetTexture then pcall(tex.SetTexture, tex, "Interface\\Buttons\\WHITE8X8") end
+    if tex.SetAlpha then pcall(tex.SetAlpha, tex, 1) end
     if tex.SetVertexColor then pcall(tex.SetVertexColor, tex, r, g, b, a) end
     if tex.Show then tex:Show() end
   end
@@ -1904,6 +1909,7 @@ function S.ApplyCombatLiq(t)
   if liq.SetFrameLevel and t.GetFrameLevel then
     pcall(liq.SetFrameLevel, liq, (t:GetFrameLevel() or 1) + 2)
   end
+  if liq.SetAlpha then pcall(liq.SetAlpha, liq, 1) end
   if liq.Show then liq:Show() end
 end
 
@@ -2386,13 +2392,59 @@ function S.EnsureRegenWave(t)
   return t._eat
 end
 
+-- Quand un état s'arrête : cacher et remettre à zéro (alpha 0, hauteur 0)
+-- pour qu'aucun trait rouge/bleu ne reste au bas de la fiole.
+local function HideTex(tex)
+  if not tex then return end
+  if tex.SetAlpha then pcall(tex.SetAlpha, tex, 0) end
+  if tex.SetHeight then pcall(tex.SetHeight, tex, 0) end
+  tex._szH, tex._clipY = 0, nil
+  if tex.Hide then tex:Hide() end
+end
+
+local function HideOverlay(frame)
+  if not frame then return end
+  if frame.red then HideTex(frame.red) end
+  if frame.blue then HideTex(frame.blue) end
+  if frame.green then HideTex(frame.green) end
+  if frame.wave then HideTex(frame.wave) end
+  if frame.wave2 then HideTex(frame.wave2) end
+  if frame.body then HideTex(frame.body) end
+  if frame.drop then HideTex(frame.drop) end
+  if frame.spill then HideTex(frame.spill) end
+  if frame.bubbles then
+    if frame.bubbles.Hide then HideTex(frame.bubbles)
+    else
+      local i, b = 1, frame.bubbles[1]
+      while b do HideTex(b); i = i + 1; b = frame.bubbles[i] end
+    end
+  end
+  if frame.SetAlpha then pcall(frame.SetAlpha, frame, 0) end
+  if frame.Hide then frame:Hide() end
+end
+
+S.HideFlaskOverlay = HideOverlay
+
 function S.HideRegenWave(t)
+  t = t or (S.FlaskTile and S.FlaskTile())
   local e = t and t._eat
-  if not e then return end
-  if e.body and e.body.Hide then e.body:Hide() end
-  if e.wave and e.wave.Hide then e.wave:Hide() end
-  if e.wave2 and e.wave2.Hide then e.wave2:Hide() end
+  if not e then
+    S._eatOn = false
+    return
+  end
+  HideOverlay(e)
   S._eatOn = false
+end
+
+function S.HideCombatLiq(t)
+  t = t or (S.FlaskTile and S.FlaskTile())
+  if t and t._cLiq then HideOverlay(t._cLiq) end
+end
+
+function S.HideTotalAdd(t)
+  t = t or (S.FlaskTile and S.FlaskTile())
+  if t and t._add then HideOverlay(t._add) end
+  S._addT = nil
 end
 
 S.EAT_WAVE = {
@@ -2449,6 +2501,7 @@ function S.ApplyRegenWave(dt)
       return
     end
     S.PlaceClippedTex(tex, a, w, wh, 0, math.max(0, wy + (yoff or 0)))
+    if tex.SetAlpha then pcall(tex.SetAlpha, tex, 1) end
     if tex.SetVertexColor then pcall(tex.SetVertexColor, tex, col[1], col[2], col[3], col[4] or 0.9) end
     if tex.SetTexCoord then
       local span = (R and R.WAVE_U) or 0.5
@@ -2634,7 +2687,7 @@ function S.TickTotalAdd(dt)
   local t = S.FlaskTile and S.FlaskTile()
   if not t then S._addT = nil return end
   if S._addT == nil then
-    if t._add and t._add.Hide then t._add:Hide() end
+    if S.HideTotalAdd then S.HideTotalAdd(t) elseif t._add and t._add.Hide then t._add:Hide() end
     return
   end
   S._addT = (S._addT or 0) + (N(dt) or 0)
@@ -2649,6 +2702,7 @@ function S.TickTotalAdd(dt)
     if f.SetPoint then pcall(f.SetPoint, f, "BOTTOMLEFT", content or clip, "BOTTOMLEFT", 0, 0) end
     f._clipParent = content or clip
   end
+  if f.SetAlpha then pcall(f.SetAlpha, f, 1) end
   if f.Show then f:Show() end
   -- 0–0.40 s : la goutte tombe dans le puits. 0.40–0.95 s : vague + bulles.
   local fall, rest = 0.40, 0.55
@@ -2692,8 +2746,10 @@ function S.TickTotalAdd(dt)
       end
     end
   else
-    if f.Hide then f:Hide() end
-    S._addT = nil
+    if S.HideTotalAdd then S.HideTotalAdd(t) else
+      if f.Hide then f:Hide() end
+      S._addT = nil
+    end
   end
 end
 
