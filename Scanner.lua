@@ -900,6 +900,7 @@ function Scanner.Enabled()
 end
 
 function Scanner.OnPlateAdded(unit)
+  if ns.PausedForFlight and ns.PausedForFlight() then return nil end
   if not Scanner.Enabled() or not ns.Opt("scannerIcons") or InCombat() then return nil end
   if Scanner.IsPlayerUnit(unit) then
     local plate = type(_G.C_NamePlate) == "table" and Call(_G.C_NamePlate.GetNamePlateForUnit, unit)
@@ -934,14 +935,18 @@ function Scanner.OnPlateAdded(unit)
   -- Toast facultatif, une fois par créature (npcID) et par session :
   -- « <créature> → <ingrédient> → <recette> (+1) », jusqu'à 3 recettes.
   local tkey = id or (seen and seen.name) or "?"
+  local silent = Scanner._noToast or (ns.Flight and ns.Flight._silentLand)
   if diff ~= "neutral" and ns.OptOff("scannerToast") and not Scanner.toasted[tkey] and ns.UI and ns.UI.SpawnDrop then
     Scanner.toasted[tkey] = true
+    if not silent then
     local lines = ns.Craft and ns.Craft.MatchLines(seen and seen.name, matches) or {}
-    ns.UI:SpawnDrop(e and e.icon, lines[1] or ((e and ns.CatalogDisplayName(e) or skill) .. Tr[" : "] .. tostring(seen and seen.name)), lines[2], nil, nil, nil,
+    local f = ns.UI:SpawnDrop(e and e.icon, lines[1] or ((e and ns.CatalogDisplayName(e) or skill) .. Tr[" : "] .. tostring(seen and seen.name)), lines[2], nil, nil, nil,
       { kind = "scanner", hint = lines[3], hintRaw = true })
+    if f and ns.Craft and ns.Craft.BindToastItems then pcall(ns.Craft.BindToastItems, f, matches) end
     if ((ns.SoundOk and ns.SoundOk("scannerSound")) or (not ns.SoundOk and ns.OptOff("scannerSound"))) and type(PlaySound) == "function" then
       local kit = _G.SOUNDKIT and _G.SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON
       if kit then pcall(PlaySound, kit) end
+    end
     end
   end
   return skill, diff
@@ -963,11 +968,15 @@ end
 
 function Scanner.RescanPlates()
   if InCombat() or not Scanner.Enabled() then return end
+  if ns.PausedForFlight and ns.PausedForFlight() then return end
+  local prev = Scanner._noToast
+  if ns.Flight and ns.Flight._silentLand then Scanner._noToast = true end
   local plates = type(_G.C_NamePlate) == "table" and Call(_G.C_NamePlate.GetNamePlates) or {}
   for _, p in ipairs(plates) do
     local unit = p.namePlateUnitToken or (p.UnitFrame and p.UnitFrame.unit)
     if unit then Scanner.OnPlateAdded(unit) end
   end
+  Scanner._noToast = prev
 end
 
 -- Info-bulle des nœuds : « Requiert Minage 75 » / « Requiert Minage (75) ». ---

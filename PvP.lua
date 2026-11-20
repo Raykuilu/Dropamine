@@ -663,6 +663,10 @@ function PV.Release(unit)
   PV.pool[#PV.pool + 1] = m
 end
 function PV.Evaluate(unit)
+  if ns.PausedForFlight and ns.PausedForFlight() then
+    if unit and PV.Release then pcall(PV.Release, unit) end
+    return nil
+  end
   if InCombat() then PV.pending[unit] = true return nil end
   if not (PV.Enabled() and ns.Opt and ns.Opt("pvpMarks")) then PV.Release(unit) return nil end
   local honor = PV.HonorFor(unit)

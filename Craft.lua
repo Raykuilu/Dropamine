@@ -175,10 +175,13 @@ function Craft.Known(skill)
 end
 
 local function ItemName(id, fallback)
-  local it = S.StaticItem and S.StaticItem(id)
+  if ns.ItemDisplayName then return ns.ItemDisplayName(id, fallback) end
+  local it = S and S.StaticItem and S.StaticItem(id)
   if it and (it.fr or it.en) then return ns.GameName(it.en, it.fr) end
   local nm = Str(Call(_G.GetItemInfo, id))
-  return nm or fallback or (Tr["objet "] .. tostring(id))
+  if nm then return nm end
+  if fallback and not (ns.BareItemIdLabel and ns.BareItemIdLabel(fallback)) then return fallback end
+  return nil
 end
 Craft.ItemName = ItemName
 
@@ -222,14 +225,47 @@ function Craft.MatchRaw(c, skill)
   return out, out[1] and out[1].diff or nil
 end
 
+-- 3.6.3 : si le nom d'ingrédient n'est pas encore connu, seulement « Recette (+1) ».
+function Craft.FormatMatch(m)
+  if not m then return "" end
+  local rec = tostring(m.recipe and m.recipe.name or "")
+  local item = m.itemName
+  local text
+  if type(item) == "string" and item ~= "" and not (ns.BareItemIdLabel and ns.BareItemIdLabel(item)) then
+    text = string.format(Tr["%s : %s (+1)"], item, rec)
+  else
+    text = string.format(Tr["%s (+1)"], rec)
+  end
+  return Craft.Paint(m.diff, text)
+end
+
 function Craft.MatchLines(creature, matches)
   local lines = {}
   for i = 1, math.min(Craft.MAX_LINES, #(matches or {})) do
-    local m = matches[i]
     -- 3.3.8 : ni nom de créature (déjà en titre), ni flèche (absente de la police du jeu)
-    lines[i] = Craft.Paint(m.diff, string.format(Tr["%s : %s (+1)"], m.itemName, tostring(m.recipe.name)))
+    lines[i] = Craft.FormatMatch(matches[i])
   end
   return lines
+end
+
+-- Met à jour un toast encore visible quand le nom d'objet arrive (cache client).
+function Craft.BindToastItems(frame, matches)
+  if not (frame and matches and ns.WhenItemName) then return end
+  local function apply()
+    if frame.IsShown and not frame:IsShown() then return end
+    local lines = Craft.MatchLines(nil, matches)
+    if frame.titleFS and lines[1] and frame.titleFS.SetText then pcall(frame.titleFS.SetText, frame.titleFS, lines[1]) end
+    if frame.subFS and frame.subFS.SetText then pcall(frame.subFS.SetText, frame.subFS, lines[2] or "") end
+    if frame.hintFS and lines[3] and frame.hintFS.SetText then pcall(frame.hintFS.SetText, frame.hintFS, lines[3]) end
+  end
+  for _, m in ipairs(matches) do
+    if m.item and (not m.itemName or m.itemName == "" or (ns.BareItemIdLabel and ns.BareItemIdLabel(m.itemName))) then
+      ns.WhenItemName(m.item, function(nm)
+        m.itemName = nm
+        apply()
+      end)
+    end
+  end
 end
 
 local SKILL_FR = { cooking = "Cuisine", firstaid = "Secourisme" }
@@ -250,7 +286,7 @@ function Craft.WhyLines(c, skill, creature)
       for _, rg in ipairs(r.reagents or {}) do
         if rg.id and c.items[rg.id] then
           any = true
-          out[#out + 1] = string.format(Tr["%s : %s pour %s est %s : pas d'icône."], fr, ItemName(rg.id, rg.name), tostring(r.name), Tr[S.DIFF_FR[Craft.Diff(r, rank) or "trivial"] or "?"])
+          out[#out + 1] = string.format(Tr["%s : %s pour %s est %s : pas d'icône."], fr, ItemName(rg.id, rg.name) or Tr["composant"], tostring(r.name), Tr[S.DIFF_FR[Craft.Diff(r, rank) or "trivial"] or "?"])
           break
         end
       end
@@ -306,6 +342,7 @@ Craft.prev = {}
 -- silent : lecture de fenêtre / premier passage → on mémorise sans annoncer.
 function Craft.Update(silent)
   if InCombat() then Craft._pending = true return nil end
+  if ns.PausedForFlight and ns.PausedForFlight() then silent = true end
   Craft._pending = false
   local gains = {}
   for skill in pairs(Craft.SKILLS) do
@@ -463,7 +500,7 @@ end
 -- Infobulle d'unité : jusqu'à 3 lignes « créature → ingrédient → recette (+1) ».
 function Craft.UnitTooltip(tt)
   if ns.Tip and ns.Tip.active then return nil end   -- 3.3.8 : infobulle compacte (Tip.lua)
-  if InCombat() or not S.Enabled() or type(tt) ~= "table" then return nil end
+  if InCombat() or (ns.PausedForFlight and ns.PausedForFlight()) or not S.Enabled() or type(tt) ~= "table" then return nil end
   local unit = "mouseover"
   local id = S.UnitNpcID(unit)
   if not id then return nil end

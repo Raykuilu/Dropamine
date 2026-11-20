@@ -141,7 +141,7 @@ local function HasLine(tt, text)
 end
 
 function Tip.UnitTooltip(tt, unit)
-  if InCombat() or type(tt) ~= "table" then return nil end
+  if InCombat() or (ns.PausedForFlight and ns.PausedForFlight()) or type(tt) ~= "table" then return nil end
   unit = unit or "mouseover"
   if not Call(_G.UnitName, unit) or Call(_G.UnitIsPlayer, unit) then return nil end
   -- 3.5.3 : l'infobulle d'unité est rafraîchie plusieurs fois par seconde par

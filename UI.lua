@@ -5425,6 +5425,7 @@ end
 
 function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opts)
   opts = opts or {}
+  if ns.PausedForFlight and ns.PausedForFlight() and not self._inEditMode and not (opts and opts.force) then return end
   if not self:DropsEnabled() and not self._inEditMode and not (opts and opts.force) then return end
   self:BuildDrops()
   local parent = self.dropsStack or self.dropsFrame or UIParent

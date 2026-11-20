@@ -241,11 +241,12 @@ function L.ItemOriginRaw(itemID)
   return table.concat(parts, " ; ")
 end
 local function ItemName(id)
-  local it = S.StaticItem and S.StaticItem(id)
+  if ns.ItemDisplayName then return ns.ItemDisplayName(id) end
+  local it = S and S.StaticItem and S.StaticItem(id)
   if it and (it.fr or it.en) then return ns.GameName(it.en, it.fr) end
   local ok, nm = pcall(_G.GetItemInfo or function() end, id)
-  if ok and type(nm) == "string" then return nm end
-  return Tr["objet "] .. tostring(id)
+  if ok and type(nm) == "string" and nm ~= "" then return nm end
+  return nil
 end
 
 -- Lien inverse : prochaines recettes à apprendre pour un métier.
@@ -289,7 +290,7 @@ function L.NextLinesRaw(skill)
     local diff = rank >= r.req and Craft.Diff(r, rank) or "locked"
     lines[#lines + 1] = Paint(diff, string.format(Tr["%s (rang %d)%s"], r.name, r.req, r.learn and (" · " .. Tr[r.learn]) or ""))
     local comp = {}
-    for _, rg in ipairs(r.reagents) do comp[#comp + 1] = rg.count .. " × " .. ItemName(rg.id) .. Tr[" : "] .. L.ItemOrigin(rg.id) end
+    for _, rg in ipairs(r.reagents) do comp[#comp + 1] = rg.count .. " × " .. (ItemName(rg.id) or Tr["composant"]) .. Tr[" : "] .. L.ItemOrigin(rg.id) end
     for _, cl in ipairs(comp) do lines[#lines + 1] = "|cffbbbbbb    " .. cl .. "|r" end
   end
   if #list > cap then lines[#lines + 1] = Tr["|cff999999… et "] .. (#list - cap) .. Tr[" autres|r"] end

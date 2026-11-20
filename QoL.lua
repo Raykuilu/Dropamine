@@ -274,7 +274,8 @@ function Q.ShoppingList(d)
     local parts = {}
     for _, rg in ipairs(r.reagents or {}) do
       local have = rg.id and N(Call(GetItemCount, rg.id)) or nil
-      local nm = rg.name or (rg.id and Str(Call(GetItemInfo, rg.id))) or (Tr["objet "] .. tostring(rg.id))
+      local nm = (ns.ItemDisplayName and ns.ItemDisplayName(rg.id, rg.name)) or rg.name or (rg.id and Str(Call(GetItemInfo, rg.id))) or Tr["composant"]
+      if ns.BareItemIdLabel and ns.BareItemIdLabel(nm) then nm = Tr["composant"] end
       local s = nm .. Tr[" ×"] .. tostring(rg.count or 1)
       if have then s = s .. Tr[" (en sac "] .. have .. ((have < (rg.count or 1)) and Tr[", manque "] .. ((rg.count or 1) - have) or "") .. ")" end
       parts[#parts + 1] = s
