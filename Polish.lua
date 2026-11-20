@@ -200,6 +200,11 @@ if Wd then
   Wd.PAD = 6
   Wd.SLIM = 0.5
   Wd.MIN_H = 20
+  -- Référence 100 % (zoom uniforme au-dessus des planchers).
+  Wd.REF_BAR_H = 8
+  Wd.REF_PAD = 6
+  Wd.REF_FONT = 11
+  Wd.TEXT_SIZE = 11
   Wd.FILL = ns.STYLE.BORDER               -- jeton unique #A67D45 (STYLE.md)
   Wd.SHEEN_A = 0.28                       -- reflet 1 px en haut du remplissage
   Wd.TRACK = { 0.15, 0.15, 0.15, 0.9 }    -- piste FlareUI
@@ -230,28 +235,32 @@ if Wd then
     local r = { basePaint(t, ...) }
     if not (t and t._wideOn and t._wideParts) then return unpack(r) end
     local p = t._wideParts
-    local h = N(t._wideH) or 20
-    -- icône : carrée, centrée, biseau compris dans la hauteur de la barre
-    local isz = math.max(8, h - 6)   -- biseau (3 px de chaque côté) compris dans la hauteur
+    local m = Wd.Metrics and Wd.Metrics() or {}
+    local h = N(t._wideH) or m.h or 20
+    local isz = m.isz or math.max(Wd.MIN_ISZ or 14, h - 2)
+    local slotW = isz + 2
     if t.icon and t.icon.SetSize then
       t.icon:ClearAllPoints()
-      t.icon:SetPoint("CENTER", t, "LEFT", math.floor(h / 2 + 0.5), 0)
+      t.icon:SetPoint("CENTER", t, "LEFT", math.floor(slotW / 2 + 0.5), 0)
       t.icon:SetSize(isz, isz)
     end
-    -- texte : Arial Narrow 11, même ombre que les chiffres, centré verticalement
-    pcall(p.text.SetFont, p.text, I.COUNT_PATH or "Fonts\\ARIALN.TTF", Wd.TEXT_SIZE, I.TEXT_FLAGS or "")
+    -- police posée en px (zoom de la référence), même ombre que les chiffres
+    pcall(p.text.SetFont, p.text, (m.fontPath or I.COUNT_PATH or "Fonts\ARIALN.TTF"), m.font or Wd.TEXT_SIZE or 11, m.fontFlags or I.TEXT_FLAGS or "")
     I.CleanText(p.text)
     p.text:SetTextColor(1, 0.93, 0.80)
     p.text:ClearAllPoints()
-    p.text:SetPoint("LEFT", t, "LEFT", h + Wd.PAD - 2, 0)
+    local pad = m.pad or Wd.PAD or 5
+    p.text:SetPoint("LEFT", t, "LEFT", slotW + pad, 0)
     local tw = Width(p.text)
     if tw <= 0 then tw = 56 end
     local w = N(t._wideW) or 0
-    local left = h + Wd.PAD - 2 + tw + Wd.PAD + Wd.EDGE_OUT
-    local inner = math.max(10, w - left - Wd.PAD - Wd.EDGE_OUT)
-    local bh = Wd.BAR_H
+    local edge = m.edgeOut or Wd.EDGE_OUT or 3
+    local left = slotW + pad + tw + pad + edge
+    local inner = w - left - pad - edge
+    if inner < (m.minBarW or 24) then inner = math.max(8, inner) end
+    local bh = m.bh or Wd.BAR_H
     local by = math.floor((h - bh) / 2 + 0.5)
-    local pct = (Wd.last and Wd.last.pct) or 0
+        local pct = (Wd.last and Wd.last.pct) or 0
     p.track:ClearAllPoints()
     p.track:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", left, by)
     p.track:SetSize(inner, bh)
@@ -290,8 +299,9 @@ if Wd then
     local e = Edge(t)
     if e then
       e:ClearAllPoints()
-      e:SetPoint("TOPLEFT", p.track, "TOPLEFT", -Wd.EDGE_OUT, Wd.EDGE_OUT)
-      e:SetPoint("BOTTOMRIGHT", p.track, "BOTTOMRIGHT", Wd.EDGE_OUT, -Wd.EDGE_OUT)
+      local edge = (Wd.last and Wd.last.edgeOut) or Wd.EDGE_OUT or 3
+      e:SetPoint("TOPLEFT", p.track, "TOPLEFT", -edge, edge)
+      e:SetPoint("BOTTOMRIGHT", p.track, "BOTTOMRIGHT", edge, -edge)
       if e.SetFrameLevel and t.GetFrameLevel then pcall(e.SetFrameLevel, e, (t:GetFrameLevel() or 1) + 1) end
       e:Show()
     end

@@ -864,7 +864,7 @@ function UI:LayoutGrid(wrap, snap)
         local nTot = (Lyt and Lyt.TileCount and select(1, Lyt.TileCount())) or 0
         if Wd.ShouldWiden(cols, nTot) then
           local tileH = (ns.Icons and ns.Icons.TILE) or th
-          placeH = math.max(Wd.MIN_H or 14, math.floor(tileH * (Wd.SLIM or 0.45) + 0.5))
+          placeH = (Wd.RowHeight and Wd.RowHeight(tileH)) or math.max(Wd.MIN_H or 14, math.floor(tileH * (Wd.SLIM or 0.45) + 0.5))
         end
       end
       local cyAbs = math.floor(y + row * step + (compact and 0 or (step - th) / 2))
