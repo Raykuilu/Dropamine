@@ -1,5 +1,22 @@
 # Changelog
 
+## 3.6.2
+- Weapon skill tooltips (tile and native skill list row): hit, crit and glancing values are back, in a short two-tone block ("Hit & crit (same lvl): 4.04% · 5.00%", boss line, "Glancing: 40% · -35% dmg"). The values are read from the game's skill detail pane, never computed; lines that cannot be read are left out. Root cause: the pane reader had been stubbed since 3.2.0, and cached values were looked up under the wrong key (and EN headers were not recognised). The parser now works by position, so colour-split text (Polearms, Feral Combat) reads correctly. The native description is no longer shown twice.
+- New **Rested XP animation** on the Level tile (Options › Display, on by default): white-blue z's with a dark shadow (1, 2 or 3 depending on rested XP) only while you are resting, and a translucent blue liquid that fills the portrait up to rested / 1.5 levels, with a clearly visible wave while it is recharging at an inn or in a city; as soon as you leave the rest area it fades (0.8 s) to a light, almost still liquid. Hidden at max level, in combat, in quiet mode or when the option is off. The z's go away when you leave the rest area (events plus a 2 s check that stops on its own when the panel is hidden).
+- Level tooltip: "Rested XP: 12,345 (45% of a level)", replacing the old rested line (no duplicate).
+- Level tile: the liquid is drawn inside the portrait, under its frame, and clipped by the theme mask, so it no longer spills over the top or bottom of the tile, in all themes and layouts. The z's stay in the portrait's corner.
+- Progress window: gridlines and axis labels no longer appear below the window. The scale comes from the actual maximum (for example +98 / +31 / +3) and no longer overwrites the chart's top margin after the first redraw. The chart is clipped to its frame.
+- Progress window: the empty-chart and empty-curve messages wrap on 2 lines inside their card instead of overflowing on the right.
+
+---
+
+- Infobulles des armes (case et ligne de la liste native des compétences) : les valeurs de toucher, crit et coups déviés sont de retour, en un bloc court bicolore (« Toucher & crit (même niv.) : 4,04 % · 5,00 % », ligne boss, « Coups déviés : 40 % · -35 % dégâts »). Les valeurs sont lues dans le volet de détail du jeu, jamais calculées ; une ligne illisible est omise. Cause : la lecture du volet était neutralisée depuis la 3.2.0, et les valeurs étaient cherchées sous la mauvaise clé (en-têtes anglais non reconnus). Le parseur travaille désormais par position : le texte découpé par couleurs (Armes d'hast, Combat farouche) est bien lu. La description native n'apparaît plus en double.
+- Nouvelle **animation XP de repos** sur la case Niveau (Options › Affichage, active par défaut) : des z blanc bleuté ombrés (1, 2 ou 3 selon l'XP de repos) seulement quand tu te reposes, et un liquide bleu translucide qui remplit le portrait jusqu'à repos / 1,5 niveau, avec une vague bien visible pendant qu'il se recharge à l'auberge ou en ville ; dès que tu sors de la zone de repos, il passe en fondu (0,8 s) à un liquide léger, presque immobile. Caché au niveau maximum, en combat, en mode calme ou si l'option est décochée. Les z disparaissent en quittant la zone de repos (événements + contrôle toutes les 2 s, qui s'arrête de lui-même quand le panneau est caché).
+- Infobulle du Niveau : « XP de repos : 12 345 (45 % d'un niveau) », à la place de l'ancienne ligne (pas de doublon).
+- Case Niveau : le liquide est dessiné dans le portrait, sous son cadre, et découpé par le masque du thème : il ne déborde plus en haut ni en bas de la case, dans tous les thèmes et dispositions. Les z restent dans le coin du portrait.
+- Fenêtre Progression : les lignes de graduation et leurs libellés ne s'affichent plus sous la fenêtre. L'échelle vient du vrai maximum (ex. +98 / +31 / +3) et n'écrase plus la marge haute du graphe après le premier rendu. Le graphe est découpé à son cadre.
+- Fenêtre Progression : les messages « aucune donnée » du graphe et de la courbe passent sur 2 lignes dans leur carte au lieu de déborder à droite.
+
 ## 3.6.1
 - Wide (bar) layout: the total row (flask, "total / max" text and bar) no longer turns white on hover or click. The square tile keeps its usual hover highlight.
 - Progress window: the chart title ("7-day progress" / "30-day progress") is fitted to the space and no longer clipped; the records line ("Best session +X · Best hour +X") no longer gets cut off and switches to a short form ("Sess. +X · Hour +X") when space is tight.

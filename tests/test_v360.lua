@@ -1146,7 +1146,7 @@ do
   local function popTimers() local n = #timers while #timers > 0 do local t = table.remove(timers, 1) t() end return n end
   local toc = io.open(addonDir .. "/Dropamine.toc"):read("*a")
   ok(toc:find("Progress.lua\nProgressUI.lua", 1, true), ".toc : ProgressUI.lua juste après Progress.lua")
-  ok(toc:find("## Version: 3.6.1", 1, true), ".toc : ## Version: 3.6.1")
+  ok(toc:find("## Version: 3.6.%d") and toc:find("## Version: " .. ns.VERSION, 1, true), ".toc : ## Version 3.6.x = ns.VERSION")
   ok(type(PU) == "table" and type(PU.Toggle) == "function", "ns.ProgressUI.Toggle disponible")
   ok(PU.frame == nil, "fenêtre pas créée au chargement (construite au premier clic)")
   ok(PU.mini ~= nil, "mini-graphe préparé à PLAYER_LOGIN (hors combat)")
