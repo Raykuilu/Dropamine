@@ -755,6 +755,7 @@ function P.SetOpacity(v)
   local c = P.Clamp(v, 0, 100)
   if not c then return nil end
   DB().opacity = c
+  if ns.SaveActiveProfile then pcall(ns.SaveActiveProfile) end
   P.ApplyOpacity()
   return c
 end
@@ -762,6 +763,7 @@ function P.SetBgAlpha(v)
   local c = P.Clamp(v, 0, 100)
   if not c then return nil end
   DB().bgAlpha = c
+  if ns.SaveActiveProfile then pcall(ns.SaveActiveProfile) end
   P.ApplyOpacity()
   return c
 end
@@ -769,12 +771,14 @@ function P.SetFadeDelay(v)
   local c = P.Clamp(v, 0, 60)
   if not c then return nil end
   DB().fadeDelay = c
+  if ns.SaveActiveProfile then pcall(ns.SaveActiveProfile) end
   return c
 end
 function P.SetIconAlpha(v)
   local c = P.Clamp(v, 20, 100)
   if not c then return nil end
   DB().iconAlpha = c
+  if ns.SaveActiveProfile then pcall(ns.SaveActiveProfile) end
   for _, t in ipairs(UI.embed and UI.embed.tiles or {}) do if t.icon and t.icon.SetAlpha then t.icon:SetAlpha(c / 100) end end
   return c
 end

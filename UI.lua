@@ -5285,13 +5285,26 @@ UI.TOAST_TINT = {
   prof   = { 16/255, 22/255, 12/255 },  -- #10160C  famille #4F7F3E
 }
 
-local function IsVialIcon(path)
+-- Icône manquante / fiole de repli (pas l'art XP).
+local function IsMissingToastIcon(path)
   if type(path) ~= "string" or path == "" then return true end
   if ns.IconMissing and ns.IconMissing(path) then return true end
-  if path == ns.FALLBACK_ICON or path == ns.LEVEL_ICON then return true end
+  if path == ns.FALLBACK_ICON then return true end
   local l = path:lower():gsub("/", "\\")
-  if l:find("fallback%-icon", 1, true) or l:find("xp%-icon", 1, true) then return true end
+  if l:find("fallback%-icon", 1, true) then return true end
   return false
+end
+
+local function IsXpVialIcon(path)
+  if type(path) ~= "string" or path == "" then return false end
+  if path == ns.LEVEL_ICON then return true end
+  local l = path:lower():gsub("/", "\\")
+  return l:find("xp%-icon", 1, true) and true or false
+end
+
+-- Compat : ancien nom, utilisé seulement comme « à remplacer » hors famille XP.
+local function IsVialIcon(path)
+  return IsMissingToastIcon(path) or IsXpVialIcon(path)
 end
 
 function UI.CatalogEntry(opts)
@@ -5371,16 +5384,24 @@ end
 
 function UI.ResolveToastIcon(path, opts)
   opts = opts or {}
-  if not IsVialIcon(path) then return path end
+  local fam = UI.ToastFamily(opts)
+  -- Toasts XP / niveau : garder l'icône fiole XP, jamais le fallback vide.
+  if fam == "level" then
+    if IsXpVialIcon(path) then return path end
+    if not IsMissingToastIcon(path) then return path end
+    return ns.LEVEL_ICON or ns.FALLBACK_ICON
+  end
+  -- Métiers : remplacer le fallback ou une fiole XP de substitution par l'icône du métier.
+  if not IsMissingToastIcon(path) and not IsXpVialIcon(path) then return path end
   local e, id, name = UI.CatalogEntry(opts)
-  if e and e.icon and not IsVialIcon(e.icon) then return e.icon end
+  if e and e.icon and not IsMissingToastIcon(e.icon) and not IsXpVialIcon(e.icon) then return e.icon end
   if name and UI.SkillDropIcon then
     local ic = UI.SkillDropIcon(UI, name, opts.header, opts.skillLine)
-    if ic and not IsVialIcon(ic) then return ic end
+    if ic and not IsMissingToastIcon(ic) and not IsXpVialIcon(ic) then return ic end
   end
   if (name or id) and ns.ResolveSkillIcon then
     local ic = ns.ResolveSkillIcon(name or id, opts.header, opts.skillLine)
-    if ic and not IsVialIcon(ic) then return ic end
+    if ic and not IsMissingToastIcon(ic) and not IsXpVialIcon(ic) then return ic end
   end
   return ns.FALLBACK_ICON
 end
@@ -5403,6 +5424,27 @@ function UI.EnsureToastFill(frame)
   return fill
 end
 
+-- Même opacité que le fond de toast d'avant la teinte (seul le RVB change).
+-- Sources identiques à ApplyRestToastChromeRaw / Skin.Ch.Toast / Theme.ToastLook.
+function UI.ToastBgAlpha(frame)
+  local a = frame and ns.N(frame._bgAlpha)
+  if not a then
+    local P = ns.Panel
+    if P and P.tip then a = ns.N(P.tip.bgAlpha) end
+  end
+  if not a and UI.DropBgAlpha then a = UI:DropBgAlpha() end
+  if not a then
+    local P = ns.Panel
+    if P and P.BgAlpha then
+      local v = ns.N(P.BgAlpha())
+      if v then a = (v > 1) and (v / 100) or v end
+    end
+  end
+  if not a then a = 0.85 end
+  if a > 1 then a = math.min(1, a / 100) end
+  return math.max(0, math.min(1, a))
+end
+
 function UI.ApplyToastTint(frame, opts)
   if not frame then return nil end
   if opts then frame._tintOpts = opts end
@@ -5415,9 +5457,13 @@ function UI.ApplyToastTint(frame, opts)
     if frame._tintFill and frame._tintFill.Hide then frame._tintFill:Hide() end
     return fam
   end
+  -- Alpha dans la couleur (comme _toastBg) ; SetAlpha reste 1 pour que
+  -- ToastAlpha (fondu du cadre) s'applique sans double multiplication.
+  local a = UI.ToastBgAlpha(frame)
   if fill then
-    FillTexture(fill, c[1], c[2], c[3], 1)
+    FillTexture(fill, c[1], c[2], c[3], a)
     if fill.SetAlpha then pcall(fill.SetAlpha, fill, 1) end
+    fill._bgAlpha = a
     if fill.Show then fill:Show() end
   end
   -- L'habillage Skin recouvre _toastBg : le calque _tintFill est sur le host.
@@ -5425,7 +5471,7 @@ function UI.ApplyToastTint(frame, opts)
     if frame._skinHost then
       if frame._toastBg.Hide then frame._toastBg:Hide() end
     else
-      FillTexture(frame._toastBg, c[1], c[2], c[3], 1)
+      FillTexture(frame._toastBg, c[1], c[2], c[3], a)
       if frame._toastBg.Show then frame._toastBg:Show() end
     end
   end
@@ -5605,8 +5651,22 @@ function UI:BumpDropTitle(f)
   f._bumps = (f._bumps or 0) + 1
 end
 
+local function StripStrayTimes(s)
+  if type(s) ~= "string" or s == "" then return s end
+  local prefix, rest = "", s
+  local code = s:match("^(|c%x%x%x%x%x%x%x%x)")
+  if code then
+    prefix, rest = code, s:sub(1 + #code)
+  end
+  rest = rest:gsub("^%s*×%s*", "", 1)
+  return prefix .. rest
+end
+
 function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opts)
   opts = opts or {}
+  if type(title) == "string" then title = StripStrayTimes(title) end
+  if type(subtitle) == "string" then subtitle = StripStrayTimes(subtitle) end
+  if opts.hint and type(opts.hint) == "string" then opts.hint = StripStrayTimes(opts.hint) end
   if ns.PausedForFlight and ns.PausedForFlight() and not self._inEditMode and not (opts and opts.force) then return end
   if not self:DropsEnabled() and not self._inEditMode and not (opts and opts.force) then return end
   self:BuildDrops()

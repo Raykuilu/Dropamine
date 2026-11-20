@@ -1146,6 +1146,77 @@ local function SkillList(sess)
   return out
 end
 
+function E.SlimSpot(s)
+  if type(s) ~= "table" then return s end
+  return {
+    skill = s.skill, zone = s.zone, pts = s.pts, secs = s.secs, n = s.n,
+    goldNet = s.goldNet, goldPerHour = s.goldPerHour,
+    pctLevelPerHour = s.pctLevelPerHour, gathersPerHour = s.gathersPerHour,
+    xpFrac = s.xpFrac, mixScore = s.mixScore, name = s.name,
+  }
+end
+
+function E.SlimSpots(list)
+  if type(list) ~= "table" then return list end
+  local out, n = {}, 0
+  for i = 1, #list do
+    n = n + 1
+    if n > 12 then break end
+    out[n] = E.SlimSpot(list[i])
+  end
+  return out
+end
+
+function E.SlimProfit(profit)
+  if type(profit) ~= "table" then return profit end
+  return {
+    moneyNet = profit.moneyNet, moneyIn = profit.moneyIn, moneyOut = profit.moneyOut,
+    goldPerHour = profit.goldPerHour, hours = profit.hours, minSecs = profit.minSecs,
+    bestMix = E.SlimSpot(profit.bestMix),
+    bestProg = E.SlimSpot(profit.bestProg),
+    bestGold = E.SlimSpot(profit.bestGold),
+  }
+end
+
+E.WEEKS_MAX = 104
+function E.CompactHist(p)
+  if type(p) ~= "table" then return 0 end
+  p.sessLog = p.sessLog or {}
+  p.sessWeeks = p.sessWeeks or {}
+  local n = 0
+  while #p.sessLog > (E.HIST_MAX or 30) do
+    table.remove(p.sessLog)
+    n = n + 1
+  end
+  for i = 1, #p.sessLog do
+    local s = p.sessLog[i]
+    if type(s) == "table" then
+      if s.profit then s.profit = E.SlimProfit(s.profit) end
+      if s.spots then s.spots = E.SlimSpots(s.spots) end
+      s.tip = nil
+    end
+  end
+  local weeks = {}
+  for k, v in pairs(p.sessWeeks) do
+    weeks[#weeks + 1] = { k = k, v = v }
+  end
+  table.sort(weeks, function(a, b) return tostring(a.k) < tostring(b.k) end)
+  while #weeks > E.WEEKS_MAX do
+    local old = table.remove(weeks, 1)
+    p.sessWeeks[old.k] = nil
+    n = n + 1
+  end
+  for i = 1, #weeks do
+    local v = weeks[i].v
+    if type(v) == "table" then
+      if v.profit then v.profit = E.SlimProfit(v.profit) end
+      if v.spots then v.spots = E.SlimSpots(v.spots) end
+      v.tip = nil
+    end
+  end
+  return n
+end
+
 function E.CaptureRecap(s)
   local P = ns.Progress
   if s then
@@ -1197,7 +1268,7 @@ function E.CaptureRecap(s)
     skills = ups, skillUps = upsN,
     skillUpsPerHour = (hours and hours >= (E.MIN_SECS / E.HOUR) and upsN > 0) and (upsN / hours) or nil,
     recipes = recipes,
-    spots = rep.spots, profit = rep.profit,
+    spots = E.SlimSpots(rep.spots), profit = E.SlimProfit(rep.profit),
     achievements = ach,
     tip = rep.tip,
     goldKind = "vendor",

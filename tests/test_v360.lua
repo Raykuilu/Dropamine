@@ -959,6 +959,10 @@ end
 -- ===========================================================================
 print("== 3.6.0 : profil d'affichage par personnage")
 do
+  -- Revenir au compte (le profil perso est maintenant le défaut) pour poser la base.
+  if ns.RestoreAccountUI then pcall(ns.RestoreAccountUI) end
+  ns.charProfileActive = nil
+  if ns.CharDB then local c0 = ns.CharDB() c0.charUI = false end
   ns.db.ui.cols = 4
   ns.db.ui.theme = "classic"
   ns.db.ui.winPos = nil

@@ -433,6 +433,37 @@ function Craft.Update(silent)
   return gains
 end
 
+-- Titre de toast « recette possible » : le préfixe « N × » seulement si N ≥ 2.
+-- Pas de « × » orphelin quand le compte est nil, 0 ou 1.
+function Craft.RecipeToastTitle(n, name)
+  n = ns.N(n)
+  name = tostring(name or "")
+  local word = (n and n > 1) and Tr["possibles"] or Tr["possible"]
+  local core = name
+  if name ~= "" then
+    core = name .. " " .. word .. " (+1)"
+  else
+    core = word .. " (+1)"
+  end
+  if n and n > 1 then
+    return tostring(math.floor(n + 0.5)) .. " × " .. core
+  end
+  return core
+end
+
+function Craft.StripStrayCount(s)
+  if type(s) ~= "string" or s == "" then return s end
+  -- Lua 5.1 : pas de groupes non-capturants.
+  local prefix = ""
+  local rest = s
+  local code = s:match("^(|c%x%x%x%x%x%x%x%x)")
+  if code then
+    prefix, rest = code, s:sub(1 + #code)
+  end
+  rest = rest:gsub("^%s*×%s*", "", 1)
+  return prefix .. rest
+end
+
 function Craft.Notify(gains)
   if not ns.Opt("craftNotify") or not (ns.UI and ns.UI.SpawnDrop) then return nil end
   table.sort(gains, function(a, b)
@@ -443,7 +474,7 @@ function Craft.Notify(gains)
   local lines = {}
   for i = 1, math.min(Craft.MAX_LINES, #gains) do
     local e = gains[i]
-    lines[i] = Craft.Paint(e.diff, string.format(Tr["%d × %s %s (+1)"], e.n, tostring(e.recipe.name), e.n > 1 and Tr["possibles"] or Tr["possible"]))
+    lines[i] = Craft.Paint(e.diff, Craft.RecipeToastTitle(e.n, e.recipe and e.recipe.name))
   end
   local g1 = gains[1]
   local f = ns.UI:SpawnDrop(g1.recipe.icon, lines[1], lines[2], nil, nil, nil, {

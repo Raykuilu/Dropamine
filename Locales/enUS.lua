@@ -114,7 +114,7 @@ E["  Objectifs : clic droit sur une case · /drop objectif <compétence> <rang> 
 E["  JcJ : /drop pvp on|off · pvp marques on|off"] = "  PvP: /drop pvp on|off · pvp marks on|off"
 E["  Notifications : /drop drops on|off · notif dessus|dessous|detache · recap"] = "  Notifications: /drop drops on|off · notif above|below|detach · recap"
 E["  Dopamine : /drop combo · defi · records · barre · collection · sons on|off"] = "  Dopamine: /drop combo · challenge · records · bar · collection · sounds on|off"
-E["  Plus : /drop help tout (toutes les commandes) · /drop debug (rapport copiable) · debug metier"] = "  More: /drop help all (all commands) · /drop debug (copyable report) · debug prof"
+E["  Plus : /drop help tout (toutes les commandes) · /drop debug (rapport copiable) · /drop mem · debug metier"] = "  More: /drop help all (all commands) · /drop debug (copyable report) · /drop mem · debug prof"
 E["/drop : ouvrir ou fermer le panneau (aussi : clic sur le bouton de minicarte)"] = "/drop: open or close the panel (also: click the minimap button)"
 E["/drop reset : remettre le panneau à sa place par défaut"] = "/drop reset: put the panel back in its default place"
 E["/drop minimap : afficher ou cacher le bouton de minicarte"] = "/drop minimap: show or hide the minimap button"
@@ -1412,3 +1412,9 @@ E["Simule le repos en auberge : « z » dans le puits de la fiole, dans tous les
 E["Simule le combat selon le style choisi (bulles, épée ou désactivé). Vérifie barre, 1, 2, 3 et 5 colonnes : le liquide rouge + bleu (proportionnel) avec bulles ambre reste dans l'icône de la case total."] = "Simulates combat using the current style (bubbles, sword or off). Check bar, 1, 2, 3 and 5 columns: the proportional red + blue liquid with amber bubbles stays inside the total tile icon."
 E["Simule un repas ou une boisson : vague de régénération dans la fiole (barre et grilles 1/2/3/5 col.)."] = "Simulates a meal or a drink: a regeneration wave in the flask (bar and 1/2/3/5-column grids)."
 E["Ouvre le récap de session avec des données d'exemple. Vérifie aussi chaque disposition : barre, 1, 2, 3 et 5 colonnes (liquide de combat, z de repos, vague de repas dans la case total)."] = "Opens the session recap with sample data. Also check every layout: bar, 1, 2, 3 and 5 columns (combat liquid, rested z's, eating wave in the total tile)."
+
+E["Dropamine mémoire : "] = "Dropamine memory: "
+E[" (après GC : "] = " (after GC: "
+E[", libéré "] = ", freed "
+E["Cible : moins de 18 Mo (niveau Flare). Le total de l'addon inclut aussi le code Lua et les cadres ; les lignes ci-dessus sont les tables retenues."] = "Target: under 18 MB (Flare's level). The addon total also includes Lua code and frames; the lines above are retained tables."
+E["/drop mem : mémoire de l'addon (GetAddOnMemoryUsage avant/après GC, ventilation des tables retenues)"] = "/drop mem: addon memory (GetAddOnMemoryUsage before/after GC, breakdown of retained tables)"
