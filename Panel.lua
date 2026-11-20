@@ -651,7 +651,10 @@ end
 function P.FrameAlpha()
   local a = P.Opacity() / 100
   local k = P._mix or 0
-  return a + (1 - a) * k
+  local base = a + (1 - a) * k
+  local dim = 1
+  if ns.Flight and ns.Flight.DimMul then dim = ns.Flight.DimMul() or 1 end
+  return base * dim
 end
 function P.ApplyOpacity()
   local f = W.frame

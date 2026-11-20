@@ -85,6 +85,9 @@ function C.TooltipModel(d)
     end
     local hl = HistoryLine(nil)
     if hl then add(hl, 0.8, 0.8, 0.8) end
+    if ns.Flight and ns.Flight.ShowPauseTip and ns.Flight.ShowPauseTip() then
+      add(Tr["En pause pendant le vol"], 1, 0.82, 0)
+    end
     return m
   end
   m.title = UI:DetailLabelFor(d) or d.name or "?"
