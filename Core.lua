@@ -10,9 +10,9 @@ _G.Dropamine = ns
 ns.ADDON = ADDON
 local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 ns.VERSION = "3.6.3"
--- DEV ONLY : une seule ligne à passer à false (ou à retirer) avant la version publique.
--- La section Options « Test » et /drop test n'existent que si ce drapeau est vrai.
-ns.DEV_TEST = true
+-- DEV ONLY : une seule ligne à passer à true pour rétablir la section Options « Test » et /drop test.
+-- Éteint sur la version publique.
+ns.DEV_TEST = false
 
 
 -- v2.5.0 : valeurs « secrètes » de Forever (UnitStat, UnitXP… en combat).
