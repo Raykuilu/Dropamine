@@ -4145,6 +4145,144 @@ do
 end
 end
 
+do
+  local Q, E, P, UI, C = ns.QoL, ns.Efficiency, ns.Progress, ns.UI, ns.Compact
+  -- historique : agrégats conservés, événements bruts retirés, plafond de jours
+  if Q and Q.PruneHistory and Q.SlimHistoryDay then
+    local c = { history = {} }
+    for i = 1, 50 do
+      c.history[string.format("2026-01-%02d", ((i-1)%28)+1) .. (i > 28 and ("-" .. i) or "")] = {
+        pts = i, total = 100+i, cat = { prof = 1 }, skills = { cooking = 1 },
+        events = { { t = 1 } }, curve = { { t = 1 } }, log = { "x" }, raw = { 1 },
+      }
+    end
+    -- clés uniques
+    c.history = {}
+    for i = 1, 50 do
+      c.history[string.format("2025-%02d-%02d", math.max(1, math.floor((i-1)/28)+1), ((i-1)%28)+1)] = {
+        pts = i, total = 100+i, cat = { prof = 1 }, skills = { cooking = 1 },
+        events = { { t = 1 } }, curve = { { t = 1 } }, log = { "x" }, raw = { 1 },
+      }
+    end
+    Q.PruneHistory(c)
+    local n = 0
+    for k, h in pairs(c.history) do
+      n = n + 1
+      ok(h.events == nil and h.curve == nil and h.log == nil and h.raw == nil,
+        "historique : jour " .. k .. " sans événements bruts")
+      ok(h.pts ~= nil and h.cat ~= nil, "historique : agrégats conservés")
+    end
+    ok(n <= (Q.HISTORY_DAYS or 35), "historique : au plus " .. tostring(Q.HISTORY_DAYS or 35) .. " jours (" .. n .. ")")
+  end
+
+  -- 51) chien de garde conservateur
+  local WD = ns.Watchdog
+  ok(WD and type(WD.Sweep) == "function", "Watchdog.Sweep disponible")
+  local prevCombat = _G.InCombatLockdown
+  _G.InCombatLockdown = function() return false end
+
+  -- toast visible encore dans sa durée : intact
+  local live
+  if UI and UI.SpawnDrop then
+    live = UI:SpawnDrop("Interface\\Icons\\INV_Misc_QuestionMark", "Cuisine +1", "160 / 225", 160, 225, nil,
+      { force = true, kind = "skill", skillName = "Cuisine", hold = 2.6 })
+  end
+  ok(live and live.shown ~= false, "watchdog : toast visible créé")
+  if live then
+    live._toastAge = 0.5
+    live._toastBorn = (GetTime and GetTime()) or 0
+    if live.SetScript then live:SetScript("OnUpdate", UI.ToastOnUpdate) end
+    if live.Show then live:Show() end
+    local script = live.GetScript and live:GetScript("OnUpdate")
+    pcall(WD.Sweep)
+    ok(live.shown ~= false and not live._inPool, "watchdog : ne ferme pas un toast visible en cours")
+    ok(live.GetScript and live:GetScript("OnUpdate") == script, "watchdog : OnUpdate du toast visible intact")
+  end
+
+  -- animation visible encore dans sa durée : intacte
+  local host = CreateFrame("Frame", nil, _G.UIParent)
+  host._osrsOwn = true
+  if host.Show then host:Show() end
+  local ag = host:CreateAnimationGroup()
+  local a = ag:CreateAnimation("Alpha")
+  if a and a.SetDuration then a:SetDuration(0.4) end
+  ag._wdMax, ag._wdStart = 0.4, (GetTime and GetTime()) or 0
+  host.ag = ag
+  if ag.Play then ag:Play() end
+  if C then C.pool = C.pool or {} C.pool[#C.pool + 1] = host end
+  pcall(WD.Sweep)
+  ok(ag.playing or (ag.IsPlaying and ag:IsPlaying()), "watchdog : ne stoppe pas une animation visible en cours")
+
+  -- en combat : ne touche à rien (toast coincé laissé)
+  local stuck
+  if UI and UI.SpawnDrop then
+    stuck = UI:SpawnDrop("Interface\\Icons\\INV_Misc_QuestionMark", "Bloqué", "x", nil, nil, nil, { force = true, kind = "skill", hold = 1 })
+  end
+  if stuck then
+    stuck._toastAge = 100
+    stuck._toastBorn = ((GetTime and GetTime()) or 100) - 100
+    if stuck.Show then stuck:Show() end
+  end
+  _G.InCombatLockdown = function() return true end
+  local nCombat = WD.Sweep()
+  ok((nCombat or 0) == 0, "watchdog : aucun geste en combat")
+  ok(stuck and stuck.shown ~= false and not stuck._inPool, "watchdog : toast coincé intact en combat")
+  _G.InCombatLockdown = function() return false end
+
+  -- toast hors délai + 5 s : libéré
+  if stuck then
+    pcall(WD.Sweep)
+    ok(stuck._inPool or stuck.shown == false, "watchdog : toast hors délai + 5 s libéré")
+  end
+
+  -- cadre caché avec OnUpdate, dans le vivier : script retiré
+  local hid = CreateFrame("Frame", nil, _G.UIParent)
+  hid._osrsOwn, hid._osrsToast = true, true
+  if hid.Hide then hid:Hide() end
+  local dummy = function() end
+  hid:SetScript("OnUpdate", dummy)
+  UI._toastPool = UI._toastPool or {}
+  UI._toastPool[#UI._toastPool + 1] = hid
+  pcall(WD.Sweep)
+  ok(hid:GetScript("OnUpdate") == nil, "watchdog : OnUpdate d'un cadre caché retiré")
+
+  -- animation sur cadre caché : stoppée
+  local hid2 = CreateFrame("Frame", nil, _G.UIParent)
+  hid2._osrsOwn = true
+  if hid2.Hide then hid2:Hide() end
+  local ag2 = hid2:CreateAnimationGroup()
+  ag2._wdMax, ag2._wdStart = 0.4, (GetTime and GetTime()) or 0
+  hid2.ag = ag2
+  if ag2.Play then ag2:Play() end
+  if C then C.pool[#C.pool + 1] = hid2 end
+  pcall(WD.Sweep)
+  ok(not (ag2.playing or (ag2.IsPlaying and ag2:IsPlaying())), "watchdog : animation d'un cadre caché stoppée")
+
+  -- animation visible mais > 2× sa durée : stoppée
+  local longf = CreateFrame("Frame", nil, _G.UIParent)
+  longf._osrsOwn = true
+  if longf.Show then longf:Show() end
+  local ag3 = longf:CreateAnimationGroup()
+  ag3._wdMax, ag3._wdStart = 0.4, ((GetTime and GetTime()) or 0) - 2
+  longf.ag = ag3
+  if ag3.Play then ag3:Play() end
+  if C then C.pool[#C.pool + 1] = longf end
+  pcall(WD.Sweep)
+  ok(not (ag3.playing or (ag3.IsPlaying and ag3:IsPlaying())), "watchdog : animation visible au-delà de 2× sa durée stoppée")
+
+  -- StepGC hors combat seulement
+  if ns.StepGC then
+    _G.InCombatLockdown = function() return true end
+    ok(ns.StepGC(200) == false, "StepGC : ignoré en combat")
+    _G.InCombatLockdown = function() return false end
+    ok(ns.StepGC(200) == true, "StepGC : pas en combat")
+  end
+
+  _G.InCombatLockdown = prevCombat or function() return false end
+  -- ne pas laisser le toast de test visible fausser d'autres asserts
+  if live and UI and UI.DismissDrop and not live._inPool then pcall(UI.DismissDrop, UI, live) end
+end
+
 ok(errs() == 0, "aucune erreur UI (3.6.3)")
 print(failures == 0 and "\n3.6.3 : TOUS LES TESTS PASSENT" or ("\n3.6.3 : " .. failures .. " ÉCHEC(S)"))
 os.exit(failures == 0 and 0 or 1)

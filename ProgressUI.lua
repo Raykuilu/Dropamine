@@ -2552,6 +2552,7 @@ function PU.Refresh()
   end
   PU.SyncPills()
   if PU.ScanTruncateTips then pcall(PU.ScanTruncateTips, f) end
+  if ns.StepGC then pcall(ns.StepGC, 400) end
   return true
 end
 -- Regroupé : un seul rafraîchissement par fenêtre de 0,5 s (2 s en combat).

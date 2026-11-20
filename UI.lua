@@ -5969,6 +5969,7 @@ end
 -- ~20 Mo à plus de 80 Mo. Le vivier plafonne au pic simultané (~5).
 UI._toastPool = UI._toastPool or {}
 UI._toastCreated = UI._toastCreated or 0
+UI.TOAST_POOL_MAX = 8
 
 function UI:AcquireToast(parent)
   local pool = self._toastPool
@@ -6009,6 +6010,8 @@ function UI:ReleaseToast(f)
   f._inPool = true
   f._osrsToast = true
   self._toastPool = self._toastPool or {}
+  -- Plafond : un pic de toasts ne doit pas rester dans le vivier pour toujours.
+  if #self._toastPool >= (self.TOAST_POOL_MAX or 8) then return end
   self._toastPool[#self._toastPool + 1] = f
 end
 
@@ -6319,7 +6322,7 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   -- Aperçu d'édition : pas de fondu, on le garde visible.
   if f._editPreview then return f end
 
-  f._toastAge = 0
+  f._toastAge, f._toastBorn = 0, (type(GetTime) == "function" and GetTime()) or 0
   f._dedupeKey = opts.dedupeKey
   f._acc = opts.accumulate and ns.N(opts.accumulate.delta) or nil
   f._kills = opts.accumulate and opts.accumulate.kills or nil

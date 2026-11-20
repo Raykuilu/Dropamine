@@ -1270,7 +1270,6 @@ function E.CaptureRecap(s)
     recipes = recipes,
     spots = E.SlimSpots(rep.spots), profit = E.SlimProfit(rep.profit),
     achievements = ach,
-    tip = rep.tip,
     goldKind = "vendor",
   }
   E._sessOverride, E._sessOverrideSrc = nil, nil
@@ -1327,6 +1326,7 @@ function E.ArchiveRecap(snap)
     skillUpsPerHour = snap.skillUpsPerHour, bagMiss = snap.bagMiss,
     deaths = snap.deaths, goldKind = "vendor",
   }
+  if ns.StepGC then pcall(ns.StepGC, 400) end
   return snap
 end
 
