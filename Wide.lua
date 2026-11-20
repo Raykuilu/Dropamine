@@ -621,9 +621,11 @@ end
 
 
 -- 3.6.3 : sablier animé sur la fiole du total pendant la pause en vol.
--- Cadre bronze (Media/Hourglass) + textures de sable (hauteur + SetTexCoord),
--- retournement 0,4 s (SetRotation si le client l'a, sinon écrasement + échange).
--- Un seul OnUpdate à 20 im/s, arrêté dès que tout est caché. Pas d'AnimationGroup.
+-- Feuille de 32 images (Media/Hourglass-Sheet, 8×4 cases de 64 px) parcourue
+-- par SetTexCoord. Une seule texture, calée exactement sur la goutte
+-- (SetAllPoints), sous le cadre bronze (ARTWORK). Pas d'AnimationGroup,
+-- pas de SetRotation (le retournement est pré-rendu, 6 images / 0,4 s).
+-- Un seul OnUpdate à 20 im/s, arrêté dès que tout est caché.
 do
   local F = ns.Flight
   if not F then return end
@@ -631,10 +633,11 @@ do
   F.SAND_DUR, F.FLIP_DUR, F.CYCLE = 2.6, 0.4, 3.0
   F.HG_FPS, F.HG_STEP = 20, 0.05
   F.DIM_TARGET, F.FADE_DUR = 0.75, 0.5
-  F.TEX_FRAME = "Interface\\AddOns\\Dropamine\\Media\\Hourglass"
-  F.TEX_SAND = "Interface\\AddOns\\Dropamine\\Media\\Hourglass-Sand"
-  -- géométrie (y depuis le haut de l'icône, 0–1), symétrique pour le retournement
-  F.HG_GEO = { top = 0.12, waist = 0.50, bot = 0.88, bulbW = 0.64, streamW = 0.08 }
+  F.SAND_FRAMES, F.FLIP_FRAMES, F.SHEET_N = 26, 6, 32
+  F.SHEET_COLS, F.SHEET_ROWS = 8, 4
+  F.TEX_SHEET = "Interface\\AddOns\\Dropamine\\Media\\Hourglass-Sheet"
+  F.TEX_ICON  = "Interface\\AddOns\\Dropamine\\Media\\Hourglass"
+  F.TEX_FRAME = F.TEX_ICON
 
   function F.Phase(t)
     t = (N(t) or 0) % F.CYCLE
@@ -643,16 +646,28 @@ do
     return "flip", (t - F.SAND_DUR) / math.max(1e-6, F.FLIP_DUR)
   end
 
-  -- top, bottom, stream (0–1), angle de retournement (radians, 0 si drainage)
-  function F.SandState(t)
-    local mode, p = F.Phase(t)
-    if mode == "sand" then
-      local stream = (p > 0.04 and p < 0.96) and 1 or 0
-      return 1 - p, p, stream, 0
+  function F.SheetIndex(t)
+    t = (N(t) or 0) % F.CYCLE
+    if t < 0 then t = 0 end
+    if t < F.SAND_DUR then
+      local i = math.floor((t / F.SAND_DUR) * F.SAND_FRAMES)
+      if i < 0 then i = 0 end
+      if i >= F.SAND_FRAMES then i = F.SAND_FRAMES - 1 end
+      return i
     end
-    local ang = p * math.pi
-    if p < 0.5 then return 0, 1, 0, ang end
-    return 1, 0, 0, ang
+    local p = (t - F.SAND_DUR) / math.max(1e-6, F.FLIP_DUR)
+    local i = math.floor(p * F.FLIP_FRAMES)
+    if i < 0 then i = 0 end
+    if i >= F.FLIP_FRAMES then i = F.FLIP_FRAMES - 1 end
+    return F.SAND_FRAMES + i
+  end
+
+  function F.SheetTexCoord(i)
+    i = math.floor(N(i) or 0) % F.SHEET_N
+    local col = i % F.SHEET_COLS
+    local row = math.floor(i / F.SHEET_COLS)
+    return col / F.SHEET_COLS, (col + 1) / F.SHEET_COLS,
+           row / F.SHEET_ROWS, (row + 1) / F.SHEET_ROWS
   end
 
   function F.DimMul()
@@ -671,79 +686,42 @@ do
     return nil
   end
 
-  local function IconSize(t)
-    if t.icon and t.icon.GetWidth then
-      local w = N(t.icon:GetWidth())
-      if w and w > 4 then return w end
-    end
-    if t._wideH then return math.max(8, (N(t._wideH) or 16) - 2) end
-    return 16
-  end
-
-  local function HasRotation(tex)
-    return tex and type(tex.SetRotation) == "function"
-  end
-
   function Wd.EnsureHourglass(t)
     if t._hg then return t._hg end
-    local ok, h = pcall(CreateFrame, "Frame", nil, t)
+    if not t.CreateTexture then return nil end
+    local ok, h = pcall(t.CreateTexture, t, nil, "ARTWORK", nil, 4)
     if not (ok and h) then return nil end
     h:Hide()
-    if t.GetFrameLevel and h.SetFrameLevel then
-      local lv = N(t:GetFrameLevel()) or 1
-      pcall(h.SetFrameLevel, h, lv + 5)
-    end
-    local function tex(layer, sub)
-      local r = h:CreateTexture(nil, layer, nil, sub)
-      return r
-    end
-    h.sandTop = tex("ARTWORK", 2)
-    h.sandBot = tex("ARTWORK", 2)
-    h.stream = tex("ARTWORK", 3)
-    h.frame = tex("OVERLAY", 4)
-    pcall(h.sandTop.SetTexture, h.sandTop, F.TEX_SAND)
-    pcall(h.sandBot.SetTexture, h.sandBot, F.TEX_SAND)
-    pcall(h.stream.SetTexture, h.stream, F.TEX_SAND)
-    pcall(h.frame.SetTexture, h.frame, F.TEX_FRAME)
-    for _, r in ipairs({ h.sandTop, h.sandBot, h.stream }) do
-      if r.SetVertexColor then pcall(r.SetVertexColor, r, 1, 1, 1, 1) end
-    end
+    pcall(h.SetTexture, h, F.TEX_SHEET)
     t._hg = h
     return h
   end
 
-  local function PlaceIcon(h, t, isz)
-    h:ClearAllPoints()
+  local function IconWH(t)
+    local w, ht = 14, 14
     if t.icon then
+      if t.icon.GetWidth then w = N(t.icon:GetWidth()) or w end
+      if t.icon.GetHeight then ht = N(t.icon:GetHeight()) or w end
+    elseif t._wideH then
+      w = math.max(8, (N(t._wideH) or 16) - 2)
+      ht = w
+    end
+    return w, ht
+  end
+
+  local function PlaceOnIcon(h, t)
+    h:ClearAllPoints()
+    local w, ht = IconWH(t)
+    if t.icon then
+      -- Même ancre que la goutte ; SetSize ensuite pour que la taille suive
+      -- même si SetAllPoints est un no-op (harness de test).
+      if h.SetAllPoints then pcall(h.SetAllPoints, h, t.icon) end
       h:SetPoint("CENTER", t.icon, "CENTER", 0, 0)
     else
-      local iconX = math.floor((t._wideH or isz) / 2 + 0.5)
+      local iconX = math.floor((t._wideH or w) / 2 + 0.5)
       h:SetPoint("CENTER", t, "LEFT", iconX, 0)
     end
-    h:SetSize(isz, isz)
-  end
-
-  local function HideSand(h)
-    if h.sandTop then h.sandTop:Hide() end
-    if h.sandBot then h.sandBot:Hide() end
-    if h.stream then h.stream:Hide() end
-  end
-
-  local function PlaceSand(tex, holder, cx, bottomFromTop, width, height, amt, isz)
-    if not tex or not height or height < 1 or amt <= 0.02 then
-      if tex then tex:Hide() end
-      return
-    end
-    tex:ClearAllPoints()
-    tex:SetSize(width, height)
-    -- « BOTTOM » du sable à `bottomFromTop` px sous le haut du support
-    tex:SetPoint("BOTTOM", holder, "TOP", 0, -bottomFromTop)
-    -- on montre le bas de la texture (le sable repose sur la taille)
-    if tex.SetTexCoord then
-      local topUV = math.max(0, 1 - amt)
-      pcall(tex.SetTexCoord, tex, 0, 1, topUV, 1)
-    end
-    tex:Show()
+    if h.SetSize then h:SetSize(w, ht) end
   end
 
   function Wd.ApplyHourglassTo(t, vis)
@@ -753,90 +731,28 @@ do
     local h = t._hg or (want and Wd.EnsureHourglass(t))
     if not h then return nil end
     if not want then
-      h:Hide()
-      if h.SetScript then pcall(h.SetScript, h, "OnUpdate", nil) end
-      if t.icon then
-        if t.icon.SetAlpha then pcall(t.icon.SetAlpha, t.icon, 1) end
-        if t._hgIconHidden and t.icon.Show then pcall(t.icon.Show, t.icon) end
-      end
+      if h.Hide then h:Hide() end
+      if t.icon and t.icon.SetAlpha then pcall(t.icon.SetAlpha, t.icon, 1) end
+      if t._hgIconHidden and t.icon and t.icon.Show then pcall(t.icon.Show, t.icon) end
       t._hgIconHidden = nil
-      -- rétablir la taille après un écrasement
-      local isz = IconSize(t)
-      pcall(h.SetHeight, h, isz)
-      pcall(h.SetWidth, h, isz)
       return h
     end
-    local isz = IconSize(t)
-    PlaceIcon(h, t, isz)
+    PlaceOnIcon(h, t)
     if t.icon then
       if t.icon.SetAlpha then pcall(t.icon.SetAlpha, t.icon, 1 - vis) end
       t._hgIconHidden = true
     end
     if h.SetAlpha then pcall(h.SetAlpha, h, vis) end
-    if h.frame and h.frame.SetAllPoints then pcall(h.frame.SetAllPoints, h.frame, h) end
-    if h.frame then h.frame:Show() end
-
+    if h.SetTexture then pcall(h.SetTexture, h, F.TEX_SHEET) end
     local t0 = F._cycle0 or 0
     local now = (type(GetTime) == "function" and GetTime()) or 0
-    local topA, botA, streamA, ang = F.SandState(now - t0)
-    local geo = F.HG_GEO
-    local waist = geo.waist * isz
-    local topInner, botInner = geo.top * isz, geo.bot * isz
-    local topMax = math.max(1, waist - topInner)
-    local botMax = math.max(1, botInner - waist)
-    local bulbW = math.max(2, geo.bulbW * isz * 0.85)
-    local topH = math.max(0, math.floor(topA * topMax + 0.5))
-    local botH = math.max(0, math.floor(botA * botMax + 0.5))
-
-    -- retournement : SetRotation si possible, sinon hauteur écrasée + échange déjà
-    -- reflété par SandState (p ≥ 0,5 → haut plein / bas vide).
-    local usedRot = false
-    if ang and ang > 0 and HasRotation(h.frame) then
-      usedRot = pcall(h.frame.SetRotation, h.frame, ang)
-      if usedRot then
-        -- essayer de tourner le sable autour du centre de l'icône
-        local function spin(tex, height, bottomFromTop)
-          if not (tex and HasRotation(tex) and height and height >= 1) then return end
-          local cyTex = 0.5
-          local texCenter = bottomFromTop - height / 2
-          local dy = texCenter - isz / 2
-          cyTex = 0.5 + dy / height
-          if not pcall(tex.SetRotation, tex, ang, 0.5, cyTex) then
-            pcall(tex.SetRotation, tex, ang)
-          end
-        end
-        if h.sandTop then spin(h.sandTop, topH, waist) end
-        if h.sandBot then spin(h.sandBot, botH, botInner) end
-        if h.stream then pcall(h.stream.SetRotation, h.stream, ang) end
-        pcall(h.SetHeight, h, isz)
-        pcall(h.SetWidth, h, isz)
-      end
-    elseif h.frame and h.frame.SetRotation then
-      pcall(h.frame.SetRotation, h.frame, 0)
+    local idx = F.SheetIndex(now - t0)
+    if h.SetTexCoord then
+      local u0, u1, v0, v1 = F.SheetTexCoord(idx)
+      pcall(h.SetTexCoord, h, u0, u1, v0, v1)
     end
-    if not usedRot and ang and ang > 0 then
-      local s = math.abs(math.cos(ang))
-      pcall(h.SetHeight, h, math.max(1, math.floor(isz * s + 0.5)))
-      pcall(h.SetWidth, h, isz)
-    elseif not usedRot then
-      pcall(h.SetHeight, h, isz)
-      pcall(h.SetWidth, h, isz)
-    end
-
-    PlaceSand(h.sandTop, h, 0, waist, bulbW, topH, topA, isz)
-    PlaceSand(h.sandBot, h, 0, botInner, bulbW, botH, botA, isz)
-    if streamA > 0.15 and (not ang or ang == 0 or (ang > 0 and math.abs(math.cos(ang)) > 0.35)) then
-      local sw = math.max(1, math.floor(isz * geo.streamW * 0.6 + 0.5))
-      local sh = math.max(2, math.floor(isz * 0.16 + 0.5))
-      h.stream:ClearAllPoints()
-      h.stream:SetSize(sw, sh)
-      h.stream:SetPoint("TOP", h, "TOP", 0, -(waist - 1))
-      if h.stream.SetTexCoord then pcall(h.stream.SetTexCoord, h.stream, 0, 1, 0.2, 0.8) end
-      h.stream:Show()
-    elseif h.stream then h.stream:Hide() end
-
-    h:Show()
-    h._topA, h._botA, h._ang = topA, botA, ang
+    if h.Show then h:Show() end
+    h._idx = idx
     return h
   end
 
@@ -906,7 +822,6 @@ do
     F.StartVisualDriver()
   end
   function F.EndVisual()
-    -- fondu 0,5 s : le pilote tourne jusqu'à vis = 0
     F.StartVisualDriver()
   end
 
