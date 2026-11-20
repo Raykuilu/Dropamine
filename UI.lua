@@ -5452,13 +5452,29 @@ function UI:PackDrops()
   end
 end
 
--- 3.6.3 : fond du toast = teinte sombre de la couleur de case (« un peu plus soutenu »).
--- Bordure bronze inchangée. Toasts système (vol, sacs, usure…) restent neutres.
-UI.TOAST_TINT = {
-  level  = { 32/255, 17/255, 14/255 },  -- #20110E  famille #9D473A
-  weapon = { 18/255, 20/255, 27/255 },  -- #12141B  famille #54689A
-  prof   = { 16/255, 22/255, 12/255 },  -- #10160C  famille #4F7F3E
+-- Teinte de toast = la même palette que le voile de case, le +1 et l'étincelle.
+-- Slot.lua pose ns.GAIN_COLORS ; repli identique si lu avant le chargement de Slot.
+-- Toasts système (vol, sacs, usure…) restent neutres (pas de famille).
+local GAIN_FALLBACK = {
+  red   = { 0.616, 0.278, 0.227 },
+  blue  = { 0.329, 0.408, 0.604 },
+  green = { 0.310, 0.498, 0.243 },
 }
+function UI.GainPalette()
+  return ns.GAIN_COLORS or (ns.Slot and ns.Slot.ADD_COLORS) or GAIN_FALLBACK
+end
+function UI.ToastTintColor(opts_or_fam)
+  local fam = opts_or_fam
+  if type(opts_or_fam) == "table" then fam = UI.ToastFamily(opts_or_fam) end
+  local G = UI.GainPalette()
+  if fam == "level" then return G.red end
+  if fam == "weapon" then return G.blue end
+  if fam == "prof" then return G.green end
+  return nil
+end
+UI.TOAST_TINT = setmetatable({}, {
+  __index = function(_, fam) return UI.ToastTintColor(fam) end,
+})
 
 -- Icône manquante / fiole de repli (pas l'art XP).
 local function IsMissingToastIcon(path)
@@ -5642,7 +5658,7 @@ function UI.ApplyToastTint(frame, opts)
   opts = opts or frame._tintOpts or {}
   local fam = UI.ToastFamily(opts)
   frame._tintFamily = fam
-  local c = fam and UI.TOAST_TINT[fam]
+  local c = (UI.ToastTintColor and UI.ToastTintColor(opts)) or (fam and UI.TOAST_TINT[fam])
   local fill = UI.EnsureToastFill(frame)
   if not c then
     if frame._tintFill and frame._tintFill.Hide then frame._tintFill:Hide() end

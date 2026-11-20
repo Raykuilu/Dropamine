@@ -40,21 +40,35 @@ function C.GainColor(opts, data)
       opts.skillName or opts.name or data.skillName or data.name,
       opts.header or data.headerName or data.header)
   end
-  return GAIN_GREEN
+  local G = ns.GAIN_COLORS or (S and S.ADD_COLORS)
+  return (G and G.green) or { 0.310, 0.498, 0.243 }
 end
 
--- +1 coloré sur la case + étincelle de même couleur sur la barre de total.
+-- Couleur partagée (voile, +1, étincelle) : jamais jaune, lime, nil ou noir.
+function C.SharedGainColor(color)
+  local S = ns.Slot
+  if S and S.UsableColor then
+    local u = S.UsableColor(color)
+    if u then return u end
+  end
+  if S and S.AddColor then
+    local c = S.AddColor(color)
+    if c then return c end
+  end
+  local G = ns.GAIN_COLORS or (S and S.ADD_COLORS)
+  return (G and G.green) or { 0.310, 0.498, 0.243 }
+end
+
+-- +1 coloré sur la case, puis une étincelle de même couleur quitte la case,
+-- rejoint la barre de total (arc court), la parcourt jusqu'au bout rempli et flash.
 -- La fiole elle-même n'est pas animée.
 function C.Announce(opts, targets)
   opts = opts or {}
   local color = C.GainColor(opts)
-  local sparked
+  local origin, wantSpark
   for _, tg in ipairs(targets or {}) do
     if tg.key == "total" then
-      if not sparked and ns.Slot and ns.Slot.PlayBarSpark then
-        pcall(ns.Slot.PlayBarSpark, color)
-        sparked = true
-      end
+      wantSpark = true
     else
       local tile = C.TileByKey and C.TileByKey(tg.key)
       if tile then
@@ -62,12 +76,16 @@ function C.Announce(opts, targets)
         if tg.gain and tg.gain > 0 and C.Gain then
           C.Gain(tile, "+" .. tostring(math.floor(tg.gain + 0.5)), color)
         end
+        if not origin then origin = tile end
       end
     end
   end
   local kind = opts.kind
-  if not sparked and (kind == "xp" or kind == "skill" or kind == "levelup") then
-    if ns.Slot and ns.Slot.PlayBarSpark then pcall(ns.Slot.PlayBarSpark, color) end
+  if kind == "xp" or kind == "skill" or kind == "levelup" or wantSpark then
+    -- XP : la case Niveau est l'origine ; armes / métiers : la case de compétence.
+    if ns.Slot and ns.Slot.PlayBarSpark then
+      pcall(ns.Slot.PlayBarSpark, color, origin)
+    end
   end
   return color
 end
@@ -608,7 +626,7 @@ function C.Pulse(t, color)
     p.tex:SetAllPoints(p)
     pcall(p.tex.SetTexture, p.tex, WHITE8)
     if p.tex.SetBlendMode then pcall(p.tex.SetBlendMode, p.tex, "ADD") end
-    local pc = color or TOAST_YELLOW
+    local pc = C.SharedGainColor and C.SharedGainColor(color) or color
     if p.tex.SetVertexColor then pcall(p.tex.SetVertexColor, p.tex, pc[1], pc[2], pc[3], 0.55) end
     if p.CreateAnimationGroup then
       local ok, ag = pcall(p.CreateAnimationGroup, p)
@@ -624,9 +642,11 @@ function C.Pulse(t, color)
   end
   local base = t.GetFrameLevel and t:GetFrameLevel() or 1
   pcall(p.SetFrameLevel, p, base + 6)
+  color = C.SharedGainColor and C.SharedGainColor(color) or color
   if color and p.tex and p.tex.SetVertexColor then
     pcall(p.tex.SetVertexColor, p.tex, color[1], color[2], color[3], 0.55)
   end
+  p._color = color
   p:Show()
   p._plays = (p._plays or 0) + 1
   if p.ag then if p.ag.Stop then pcall(p.ag.Stop, p.ag) end p.ag:Play()
@@ -637,6 +657,7 @@ end
 -- Gain coloré façon XP drop d'OSRS : au-dessus de l'icône, monte de quelques
 -- pixels et s'efface en ~1,5 s ; police contournée.
 function C.Gain(t, text, color)
+  color = C.SharedGainColor and C.SharedGainColor(color) or color
   local g = t._osrsGain
   if not g then
     g = CreateFrame("Frame", nil, t)
@@ -650,7 +671,7 @@ function C.Gain(t, text, color)
     if I.CleanText then I.CleanText(fs) elseif fs.SetShadowOffset then pcall(fs.SetShadowOffset, fs, 1, -1) end
     fs:SetPoint("CENTER", g, "CENTER", 0, 0)
     if fs.SetWordWrap then pcall(fs.SetWordWrap, fs, false) end
-    local gc = color or GAIN_GREEN
+    local gc = color or (C.SharedGainColor and C.SharedGainColor()) or { 0.310, 0.498, 0.243 }
     fs:SetTextColor(gc[1], gc[2], gc[3])
     g.fs = fs
     if g.CreateAnimationGroup then
@@ -670,7 +691,9 @@ function C.Gain(t, text, color)
   g.fs:SetText(text)
   if color and g.fs and g.fs.SetTextColor then
     g.fs:SetTextColor(color[1], color[2], color[3])
+    g.fs._color = color
   end
+  g._color = color
   g:SetAlpha(1)
   g:Show()
   g._plays = (g._plays or 0) + 1

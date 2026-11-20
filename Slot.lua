@@ -2351,6 +2351,7 @@ function S.NeedsDriver()
   if S.FillBusy() then return true end
   if (S._jolt or 0) > 0 then return true end
   if S._lvlT or S._sparkT then return true end
+  if S._sparkQ and S._sparkQ[1] then return true end
   local F = ns.Flight
   if F and (F.Paused and F.Paused() or (F._vis or 0) > 0) then return true end
   return false
@@ -2997,11 +2998,14 @@ function S.ApplyCampfire(t)
   if f.Show then f:Show() end
 end
 
+-- Palette unique (voile de case, « +1 », étincelle, teinte de toast).
+-- Jamais nil ni noir : tout le monde lit cette table.
 S.ADD_COLORS = {
   red   = { 0.616, 0.278, 0.227 },
   blue  = { 0.329, 0.408, 0.604 },
   green = { 0.310, 0.498, 0.243 },
 }
+ns.GAIN_COLORS = S.ADD_COLORS
 -- Rejette un RVB quasi noir (teinte de fond de toast ~0,07) : ça se voyait
 -- comme une étincelle ou un +1 noirs si on passait TOAST_TINT au lieu d'ADD_COLORS.
 function S.UsableColor(c)
@@ -3125,6 +3129,141 @@ function S.EnsureBarSpark(t)
   end
   return t._barSpark, t._barFlash
 end
+-- Parcours d'une étincelle : case (+1) → arc jusqu'à la barre → course jusqu'au
+-- bout rempli → flash. ~0,7–0,85 s, un seul cadre poolé, file si rafale.
+S.SPARK_FLY = 0.28
+S.SPARK_RUN = 0.40
+S.SPARK_FLASH = 0.15
+S.SPARK_QMAX = 4
+
+function S.TileIsSparkable(t)
+  if not t then return false end
+  if t.IsShown and not t:IsShown() then return false end
+  local w = (t.GetWidth and N(t:GetWidth())) or 0
+  local h = (t.GetHeight and N(t:GetHeight())) or 0
+  if w < 4 or h < 4 then return false end
+  return true
+end
+
+function S.AbsCenter(o)
+  if not o then return nil end
+  local ui = ns.UI
+  local RectOf = ui and (ui.RectOf or (ui._H and ui._H.RectOf))
+  if type(RectOf) == "function" then
+    local l, r, top, bot = RectOf(o)
+    if l and r and top and bot then return (l + r) * 0.5, (top + bot) * 0.5 end
+  end
+  local l = o.GetLeft and N(o:GetLeft())
+  local b = o.GetBottom and N(o:GetBottom())
+  local w = (o.GetWidth and N(o:GetWidth())) or 0
+  local h = (o.GetHeight and N(o:GetHeight())) or 0
+  if l and b then return l + w * 0.5, b + h * 0.5 end
+  return nil
+end
+
+function S.BarSparkEnds(t)
+  t = t or (S.FlaskTile and S.FlaskTile())
+  if not t then return nil end
+  local Wd = ns.Wide
+  local last = Wd and Wd.last
+  local left = (last and last.left) or 0
+  local inner = (last and last.inner) or 10
+  local by = (last and last.by) or 0
+  local bh = (last and last.bh) or (Wd and Wd.BAR_H) or 4
+  local pct = (last and last.pct) or 1
+  if pct < 0 then pct = 0 elseif pct > 1 then pct = 1 end
+  local bl, bb
+  local cx, cy = S.AbsCenter(t)
+  local w = (t.GetWidth and N(t:GetWidth())) or (t._wideW) or 0
+  local h = (t.GetHeight and N(t:GetHeight())) or (t._wideH) or 0
+  if cx and cy then
+    bl, bb = cx - w * 0.5, cy - h * 0.5
+  else
+    bl = (t.GetLeft and N(t:GetLeft())) or 0
+    bb = (t.GetBottom and N(t:GetBottom())) or 0
+  end
+  local landX = bl + left
+  local landY = bb + by + bh * 0.5
+  local tipX = bl + left + inner * pct
+  return landX, landY, tipX, landY, bh, left, inner, by, pct
+end
+
+function S.EnsureFlySpark()
+  if S._flySpark then return S._flySpark end
+  local parent = _G.UIParent
+  if type(_G.CreateFrame) ~= "function" or not parent then return nil end
+  local ok, f = pcall(_G.CreateFrame, "Frame", nil, parent)
+  if not (ok and f) then return nil end
+  f._osrsOwn = true
+  if f.EnableMouse then pcall(f.EnableMouse, f, false) end
+  if f.SetFrameStrata then pcall(f.SetFrameStrata, f, "HIGH") end
+  if f.SetSize then pcall(f.SetSize, f, 8, 8) end
+  if f.CreateTexture then
+    local tex = f:CreateTexture(nil, "OVERLAY")
+    if tex then
+      if tex.SetAllPoints then tex:SetAllPoints(f) end
+      if tex.SetTexture then pcall(tex.SetTexture, tex, "Interface\\Buttons\\WHITE8X8") end
+      if tex.SetBlendMode then pcall(tex.SetBlendMode, tex, "ADD") end
+      f.tex = tex
+    end
+  end
+  if f.Hide then f:Hide() end
+  S._flySpark = f
+  return f
+end
+
+function S.PlaceFlySpark(x, y, col, size, alpha)
+  local f = S.EnsureFlySpark()
+  if not f then return nil end
+  size = size or 8
+  if f.SetSize then pcall(f.SetSize, f, size, size) end
+  if f.ClearAllPoints then pcall(f.ClearAllPoints, f) end
+  local parent = _G.UIParent or f
+  if f.SetPoint then pcall(f.SetPoint, f, "CENTER", parent, "BOTTOMLEFT", x, y) end
+  if f.tex and f.tex.SetVertexColor and col then
+    pcall(f.tex.SetVertexColor, f.tex, col[1], col[2], col[3], 1)
+  end
+  if f.SetAlpha then pcall(f.SetAlpha, f, alpha or 1) end
+  if f.Show then f:Show() end
+  return f
+end
+
+function S.HideFlySpark()
+  local f = S._flySpark
+  if not f then return end
+  if f.SetAlpha then pcall(f.SetAlpha, f, 0) end
+  if f.Hide then f:Hide() end
+end
+
+function S.QueueSpark(col, from)
+  S._sparkQ = S._sparkQ or {}
+  local function same(c)
+    return c and col and math.abs((c[1] or 0) - (col[1] or 0)) < 0.02
+      and math.abs((c[2] or 0) - (col[2] or 0)) < 0.02
+      and math.abs((c[3] or 0) - (col[3] or 0)) < 0.02
+  end
+  local last = S._sparkQ[#S._sparkQ]
+  if last and same(last.color) then
+    last.from = from or last.from
+    last.n = (last.n or 1) + 1
+    return
+  end
+  if not last and S._sparkT ~= nil and same(S._sparkPlayColor) then
+    -- même couleur déjà en cours : on fusionne (pas de 2e trajet)
+    return
+  end
+  if #S._sparkQ >= (S.SPARK_QMAX or 4) then return end
+  S._sparkQ[#S._sparkQ + 1] = { color = col, from = from, n = 1 }
+end
+
+function S.FlushSparkQueue()
+  if S._sparkT ~= nil then return end
+  local q = S._sparkQ
+  if not (q and q[1]) then return end
+  local e = table.remove(q, 1)
+  if e then S._PlayBarSparkNow(e.color, e.from) end
+end
+
 function S.HideBarSpark(t)
   t = t or (S.FlaskTile and S.FlaskTile())
   local function wipe(tex)
@@ -3138,16 +3277,49 @@ function S.HideBarSpark(t)
     wipe(t._barSpark)
     wipe(t._barFlash)
   end
+  if S.HideFlySpark then S.HideFlySpark() end
   S._sparkT = nil
+  S._sparkPhase = nil
+  S._sparkFrom = nil
+  if not S._sparkFlushing and S.FlushSparkQueue then
+    S._sparkFlushing = true
+    S.FlushSparkQueue()
+    S._sparkFlushing = nil
+  end
 end
-function S.PlayBarSpark(color)
-  S._sparkColor = S.AddColor(color)
+
+function S._PlayBarSparkNow(color, from)
+  local col = S.AddColor(color)
+  S._sparkColor, S._sparkPlayColor = col, col
   local t = S.FlaskTile and S.FlaskTile()
   if not t then return end
-  S._sparkT = 0
   S.EnsureBarSpark(t)
-  S.StartDriver()
+  local useFly = from and S.TileIsSparkable(from) and S.AbsCenter(from) and true or false
+  if useFly then
+    S._sparkFrom = from
+    S._sparkPhase = "fly"
+    local sx, sy = S.AbsCenter(from)
+    S._sparkSX, S._sparkSY = sx, sy
+  else
+    S._sparkFrom = nil
+    S._sparkPhase = "run"
+    S._sparkSX, S._sparkSY = nil, nil
+    if S.HideFlySpark then S.HideFlySpark() end
+  end
+  S._sparkT = 0
+  if S.StartDriver then S.StartDriver() end
 end
+
+function S.PlayBarSpark(color, from)
+  local col = S.AddColor(color)
+  S._sparkColor = col
+  if S._sparkT ~= nil then
+    S.QueueSpark(col, from)
+    return
+  end
+  S._PlayBarSparkNow(col, from)
+end
+
 function S.TickBarSpark(dt)
   local t = S.FlaskTile and S.FlaskTile()
   if not t or S._sparkT == nil then
@@ -3155,51 +3327,100 @@ function S.TickBarSpark(dt)
     return
   end
   if not t._wideOn then
+    -- barre masquée / en case : on simplifie, pas de course
     S.HideBarSpark(t)
     return
   end
   local spark, flash = S.EnsureBarSpark(t)
-  if not spark then S._sparkT = nil return end
+  local col = S._sparkPlayColor or S._sparkColor or S.ADD_COLORS.red
+  local flyD, runD, flD = S.SPARK_FLY or 0.28, S.SPARK_RUN or 0.40, S.SPARK_FLASH or 0.15
   S._sparkT = (S._sparkT or 0) + (N(dt) or 0)
   local u = S._sparkT
-  local delay, dur, flD = S.SPARK_DELAY or 0.40, S.SPARK_DUR or 0.55, S.FLASH_DUR or 0.15
-  local Wd = ns.Wide
-  local last = Wd and Wd.last
-  local left = (last and last.left) or 0
-  local inner = (last and last.inner) or 10
-  local by = (last and last.by) or 0
-  local bh = (last and last.bh) or (Wd and Wd.BAR_H) or 6
-  local pct = (last and last.pct) or 1
-  if pct < 0 then pct = 0 elseif pct > 1 then pct = 1 end
-  local tip = left + inner * pct
-  local col = S._sparkColor or S.ADD_COLORS.red
-  if u < delay then
-    if spark.Hide then spark:Hide() end
-    if flash and flash.Hide then flash:Hide() end
-    return
+  local landX, landY, tipX, tipY, bh, left, inner, by, pct = S.BarSparkEnds(t)
+  bh = bh or 4
+  local phase = S._sparkPhase or "run"
+
+  if phase == "fly" then
+    if u >= flyD then
+      S.HideFlySpark()
+      S._sparkPhase = "run"
+      S._sparkT = u - flyD
+      u = S._sparkT
+      phase = "run"
+    else
+      local k = u / flyD
+      if k < 0 then k = 0 elseif k > 1 then k = 1 end
+      -- lissage (smoothstep)
+      local s = k * k * (3 - 2 * k)
+      local sx, sy = S._sparkSX, S._sparkSY
+      if not (sx and sy and landX and landY) then
+        S._sparkPhase = "run"
+        S._sparkT = 0
+        S.HideFlySpark()
+      else
+        local x = sx + (landX - sx) * s
+        local y = sy + (landY - sy) * s
+        local hop = math.sin(k * math.pi) * math.min(22, math.abs(sy - landY) * 0.28 + 8)
+        y = y + hop
+        local sz = 6 + 2 * math.sin(k * math.pi)
+        S.PlaceFlySpark(x, y, col, sz, 0.45 + 0.50 * math.sin(k * math.pi))
+        if spark and spark.Hide then spark:Hide() end
+        if flash and flash.Hide then flash:Hide() end
+        return
+      end
+    end
   end
-  local v = u - delay
-  if v <= dur then
-    local k = v / dur
-    local sw = math.max(4, bh * 0.85)
-    local span = math.max(0, tip - left - sw)
-    local x = left + k * span
-    if spark.ClearAllPoints then pcall(spark.ClearAllPoints, spark) end
-    if spark.SetPoint then pcall(spark.SetPoint, spark, "BOTTOMLEFT", t, "BOTTOMLEFT", x, by) end
-    if spark.SetSize then pcall(spark.SetSize, spark, sw, math.max(1, bh)) end
-    local a = 0.30 + 0.60 * math.sin(k * math.pi)
-    if spark.SetVertexColor then pcall(spark.SetVertexColor, spark, col[1], col[2], col[3], 1) end
-    if spark.SetAlpha then pcall(spark.SetAlpha, spark, a) end
-    if spark.Show then spark:Show() end
-    if flash and flash.Hide then flash:Hide() end
-  elseif v <= dur + flD then
-    local k = (v - dur) / flD
-    if spark.SetAlpha then pcall(spark.SetAlpha, spark, 0) end
-    if spark.Hide then spark:Hide() end
+
+  if phase == "run" then
+    if not spark then S._sparkT = nil return end
+    if u >= runD then
+      S._sparkPhase = "flash"
+      S._sparkT = u - runD
+      u = S._sparkT
+      phase = "flash"
+    else
+      local k = (runD > 0) and (u / runD) or 1
+      if k < 0 then k = 0 elseif k > 1 then k = 1 end
+      local sw = math.max(4, bh * 0.85)
+      local tip = (left or 0) + (inner or 10) * (pct or 1)
+      local span = math.max(0, tip - (left or 0) - sw)
+      local x = (left or 0) + k * span
+      if spark.ClearAllPoints then pcall(spark.ClearAllPoints, spark) end
+      if spark.SetPoint then pcall(spark.SetPoint, spark, "BOTTOMLEFT", t, "BOTTOMLEFT", x, by or 0) end
+      if spark.SetSize then pcall(spark.SetSize, spark, sw, math.max(1, bh)) end
+      local a = 0.35 + 0.55 * math.sin(k * math.pi)
+      if spark.SetVertexColor then pcall(spark.SetVertexColor, spark, col[1], col[2], col[3], 1) end
+      if spark.SetAlpha then pcall(spark.SetAlpha, spark, a) end
+      if spark.Show then spark:Show() end
+      if flash and flash.Hide then flash:Hide() end
+      S.HideFlySpark()
+      return
+    end
+  end
+
+  if phase == "flash" then
+    if u >= flD then
+      -- fin : HideBarSpark déclenche la file
+      local q = S._sparkQ
+      S._sparkT, S._sparkPhase = nil, nil
+      if t then
+        if spark and spark.SetAlpha then pcall(spark.SetAlpha, spark, 0) end
+        if spark and spark.Hide then spark:Hide() end
+        if flash and flash.SetAlpha then pcall(flash.SetAlpha, flash, 0) end
+        if flash and flash.Hide then flash:Hide() end
+      end
+      S.HideFlySpark()
+      if q and q[1] then S.FlushSparkQueue() end
+      return
+    end
+    local k = (flD > 0) and (u / flD) or 1
+    if spark and spark.SetAlpha then pcall(spark.SetAlpha, spark, 0) end
+    if spark and spark.Hide then spark:Hide() end
     if flash then
+      local tip = (left or 0) + (inner or 10) * (pct or 1)
       local fw = math.max(6, bh * (1.15 + 0.7 * (1 - k)))
       local fh = math.max(bh, bh * (1.05 + 0.45 * (1 - k)))
-      local fx, fy = tip - fw * 0.5, by + (bh - fh) * 0.5
+      local fx, fy = tip - fw * 0.5, (by or 0) + (bh - fh) * 0.5
       if flash.ClearAllPoints then pcall(flash.ClearAllPoints, flash) end
       if flash.SetPoint then pcall(flash.SetPoint, flash, "BOTTOMLEFT", t, "BOTTOMLEFT", fx, fy) end
       if flash.SetSize then pcall(flash.SetSize, flash, fw, fh) end
@@ -3210,8 +3431,8 @@ function S.TickBarSpark(dt)
       if flash.SetAlpha then pcall(flash.SetAlpha, flash, 0.85 * (1 - k)) end
       if flash.Show then flash:Show() end
     end
-  else
-    S.HideBarSpark(t)
+    S.HideFlySpark()
+    return
   end
 end
 
