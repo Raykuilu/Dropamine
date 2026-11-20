@@ -222,10 +222,13 @@ if Ch then
     elseif ns.UI and ns.UI.DropBgAlpha then
       a = ns.UI:DropBgAlpha()
     end
-    if not a then a = 0.68 end
-    Sk.Paint(c.host, a)
+    if a == nil then a = 0.68 end
+    -- Fond Dialog : le RVB reste (1,1,1) ; l'opacité est SetAlpha du host
+    -- (la texture Dialog ignore souvent l'alpha vertex → noir à 0 %).
+    Sk.Paint(c.host, 1)
     c.host:Show()
     f._osrsNativeBorder = c.mode
+    if ns.UI and ns.UI.ApplyToastLayerAlpha then pcall(ns.UI.ApplyToastLayerAlpha, f, a) end
     if ns.UI and ns.UI.ApplyToastTint then pcall(ns.UI.ApplyToastTint, f, f._tintOpts) end
     return c
   end

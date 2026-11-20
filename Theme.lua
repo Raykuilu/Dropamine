@@ -486,25 +486,23 @@ function Th.ToastLook(f)
   if f._tipChrome then f._tipChrome:Show() end
   local bg = f._toastBg
   -- 3.3.13 : habillage FlareUI (Skin.lua) : même fond / alpha / bord que le panneau
+  local toastA
+  if ns.UI and ns.UI.ToastBgAlpha then toastA = ns.UI.ToastBgAlpha(f) end
+  if toastA == nil then toastA = 0.68 end
   if f._skinHost and ns.Skin then
-    if look then
-      ns.Skin.Paint(f._skinHost, look.bgAlpha, look.border)
-      f._bgAlpha = look.bgAlpha
-      f._thShared = true
-    else
-      f._thShared = nil
-    end
+    -- RVB du fond inchangé ; Fond des toasts = SetAlpha du host (pas l'alpha panneau).
+    ns.Skin.Paint(f._skinHost, 1, look and look.border or nil)
+    f._thShared = look and true or nil
     if bg then bg:Hide() end
     f._thTheme = Th.Mode()
+    if ns.UI and ns.UI.ApplyToastLayerAlpha then pcall(ns.UI.ApplyToastLayerAlpha, f, toastA) end
     if ns.UI and ns.UI.ApplyToastTint then pcall(ns.UI.ApplyToastTint, f, f._tintOpts) end
     return
   end
-  if look and bg then
-    local col = look.bg
-    Solid(bg, { col[1], col[2], col[3], look.bgAlpha })
-    bg:SetAlpha(1)
-    f._bgAlpha = look.bgAlpha
-    f._thShared = true
+  if bg then
+    local col = (look and look.bg) or { 0, 0, 0, 1 }
+    Solid(bg, { col[1], col[2], col[3], 1 })
+    f._thShared = look and true or nil
   else
     f._thShared = nil
   end
@@ -514,10 +512,10 @@ function Th.ToastLook(f)
         -- 3.3.11 : bord par défaut de l'infobulle, sans aucune teinte (ni live, ni palier)
         local bcol = look.border
         if t.SetVertexColor then pcall(t.SetVertexColor, t, bcol[1], bcol[2], bcol[3], 1) end
-        if t.SetAlpha then t:SetAlpha(look.borderAlpha) end
       end
     end
   end
+  if ns.UI and ns.UI.ApplyToastLayerAlpha then pcall(ns.UI.ApplyToastLayerAlpha, f, toastA) end
   Th.ShowFrame(f._thEdge, false)
   if f._thShadow then f._thShadow:Hide() end
   f._thTheme = Th.Mode()

@@ -4733,7 +4733,7 @@ function UI:DropHold()
 end
 function UI:DropBgAlpha()
   local v = ns.db and ns.db.ui and ns.N(ns.db.ui.dropBgAlpha)
-  if not v then v = 0.68 end   -- défaut de l'option « Fond des toasts »
+  if v == nil then v = 0.68 end   -- 0 est une vraie valeur (fond invisible)
   if v > 1 then v = math.min(1, v / 100) end
   return math.max(0, math.min(1, v))
 end
@@ -4898,18 +4898,19 @@ ApplyRestToastChromeRaw = function(frame, tint, noBg)
   local cc = UI:LearnChatChrome()
   local bgc = cc.bgColor
   local ua = UI:DropBgAlpha()
-  if ua then bgc = { bgc[1], bgc[2], bgc[3], ua } end
+  if ua == nil then ua = 0.68 end
+  bgc = { bgc[1], bgc[2], bgc[3], 1 }   -- RVB constant ; l'alpha va sur le calque
   if not noBg then
-  frame._bgAlpha = bgc[4]
+  frame._bgAlpha = ua
   if not frame._toastBg then
     frame._toastBg = frame:CreateTexture(nil, "BACKGROUND")
   end
   frame._toastBg:ClearAllPoints()
   frame._toastBg:SetPoint("TOPLEFT", 3, -3)
   frame._toastBg:SetPoint("BOTTOMRIGHT", -3, 3)
-  FillTexture(frame._toastBg, bgc[1], bgc[2], bgc[3], bgc[4])
-  if frame._toastBg.SetAlpha then pcall(frame._toastBg.SetAlpha, frame._toastBg, 1) end
+  FillTexture(frame._toastBg, bgc[1], bgc[2], bgc[3], 1)
   end
+  if UI.ApplyToastLayerAlpha then UI.ApplyToastLayerAlpha(frame, ua) end
   if next(cc.pieces) then
     frame._chatPieces = frame._chatPieces or {}
     local cw, chh = 16, 16
@@ -5632,15 +5633,58 @@ function UI.EnsureToastFill(frame)
   return fill
 end
 
--- Même opacité que le fond de toast d'avant la teinte (seul le RVB change).
--- Sources identiques à ApplyRestToastChromeRaw / Skin.Ch.Toast / Theme.ToastLook.
+-- Alpha du calque de fond / teinte / bord (Fond des toasts). 0 = invisible.
+-- Jamais l'opacité du panneau, jamais un RVB multiplié.
 function UI.ToastBgAlpha(frame)
-  -- Uniquement « Fond des toasts » (dropBgAlpha), jamais l'opacité du panneau
-  -- ou de l'infobulle (sinon un toast XP rouge reste quasi opaque à 20 %).
-  local a = UI.DropBgAlpha and UI:DropBgAlpha() or 0.68
+  local a = UI.DropBgAlpha and UI:DropBgAlpha()
+  if a == nil then a = 0.68 end
   if a > 1 then a = math.min(1, a / 100) end
   a = math.max(0, math.min(1, a))
   if frame then frame._bgAlpha = a end
+  return a
+end
+
+-- Pose l'opacité sur les calques (SetAlpha), pas sur le RVB.
+-- Avec habillage, le host porte fond + teinte + bord : un seul SetAlpha.
+-- Sans host, chaque texture de fond/bord est réglée séparément.
+-- L'icône et le texte (enfants du cadre toast, hors host) restent à 1.
+function UI.ApplyToastLayerAlpha(frame, a)
+  if not frame then return nil end
+  if a == nil then a = UI.ToastBgAlpha(frame) end
+  a = ns.N(a)
+  if a == nil then a = 0.68 end
+  if a > 1 then a = math.min(1, a / 100) end
+  a = math.max(0, math.min(1, a))
+  frame._bgAlpha = a
+  local function layer(t, aa)
+    if t and t.SetAlpha then pcall(t.SetAlpha, t, aa) end
+  end
+  local host = frame._skinHost
+  if host and host.SetAlpha then
+    pcall(host.SetAlpha, host, a)
+    layer(frame._tintFill, 1)
+    layer(frame._toastBg, 1)
+  else
+    layer(frame._toastBg, a)
+    layer(frame._tintFill, a)
+    if frame._chatPieces then
+      for _, t in pairs(frame._chatPieces) do layer(t, a) end
+    end
+    local chrome = frame._tipChrome
+    if type(chrome) == "table" then
+      if chrome.SetAlpha and chrome ~= frame then pcall(chrome.SetAlpha, chrome, a) end
+      if type(chrome.border) == "table" then
+        for _, t in pairs(chrome.border) do layer(t, a) end
+      end
+      if chrome.center then layer(chrome.center, a) end
+      if type(chrome.pieces) == "table" then
+        for _, t in pairs(chrome.pieces) do layer(t, a) end
+      end
+    end
+    if frame.SetBackdropBorderColor then
+      -- le cadre toast lui-même ne doit pas porter un fond noir opaque
+    end
+  end
   return a
 end
 
@@ -5655,6 +5699,7 @@ function UI.RefreshToastOpacity()
       if f._tintFill then f._tintFill._bgAlpha = nil end
       if ns.Chrome and ns.Chrome.Toast then pcall(ns.Chrome.Toast, f) end
       if UI.ApplyToastTint then pcall(UI.ApplyToastTint, f, f._tintOpts or {}) end
+      if UI.ApplyToastLayerAlpha then pcall(UI.ApplyToastLayerAlpha, f) end
     end
   end
 end
@@ -5671,17 +5716,17 @@ function UI.ApplyToastTint(frame, opts)
     if frame._tintFill and frame._tintFill.Hide then frame._tintFill:Hide() end
     return fam
   end
-  -- Alpha dans la couleur (comme _toastBg) ; SetAlpha reste 1 pour que
-  -- ToastAlpha (fondu du cadre) s'applique sans double multiplication.
+  -- RVB de teinte constant (composante vertex 1). L'opacité est un SetAlpha
+  -- de calque (host ou textures), pour que 0 % soit transparent, pas noir.
   local a = UI.ToastBgAlpha(frame)
   if fill and frame._tintR == c[1] and frame._tintG == c[2] and frame._tintB == c[3]
     and frame._tintA == a and frame._tintFamily == fam and fill._bgAlpha == a then
     if fill.Show then fill:Show() end
+    if UI.ApplyToastLayerAlpha then UI.ApplyToastLayerAlpha(frame, a) end
     return fam
   end
   if fill then
-    FillTexture(fill, c[1], c[2], c[3], a)
-    if fill.SetAlpha then pcall(fill.SetAlpha, fill, 1) end
+    FillTexture(fill, c[1], c[2], c[3], 1)
     fill._bgAlpha = a
     if fill.Show then fill:Show() end
   end
@@ -5691,10 +5736,11 @@ function UI.ApplyToastTint(frame, opts)
     if frame._skinHost then
       if frame._toastBg.Hide then frame._toastBg:Hide() end
     else
-      FillTexture(frame._toastBg, c[1], c[2], c[3], a)
+      FillTexture(frame._toastBg, c[1], c[2], c[3], 1)
       if frame._toastBg.Show then frame._toastBg:Show() end
     end
   end
+  if UI.ApplyToastLayerAlpha then UI.ApplyToastLayerAlpha(frame, a) end
   return fam
 end
 
