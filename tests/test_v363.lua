@@ -2321,16 +2321,30 @@ do
     ok(fam == "prof", "ApplyToastTint : famille prof pour l'objectif métier")
     ok(fr._tintFill and fr._tintFill.shown ~= false, "ApplyToastTint : calque visible sur l'habillage (pas seulement _toastBg)")
     local c = fr._tintFill and fr._tintFill._colorTex
-    ok(c and math.abs((c[4] or 0) - 0.68) < 1e-6,
-      "teinte : même opacité que le fond (0.68), pas alpha 1")
     local prof = UI.TOAST_TINT.prof
     ok(c and math.abs(c[1] - prof[1]) < 1e-6 and math.abs(c[2] - prof[2]) < 1e-6 and math.abs(c[3] - prof[3]) < 1e-6,
       "teinte : RVB conservé, seul l'alpha suit le réglage")
+    ok(c and math.abs((c[4] or 1) - 1) < 1e-6,
+      "teinte : le RVB n'est pas multiplié par l'opacité (vertex alpha 1)")
+    ok(host.alpha and math.abs((host.alpha or 0) - 0.68) < 1e-6,
+      "teinte : SetAlpha du fond = 0.68")
     if ns.db and ns.db.ui then ns.db.ui.dropBgAlpha = 0.20 end
     if UI.RefreshToastOpacity then UI.RefreshToastOpacity() end
     UI.ApplyToastTint(fr, { kind = "goal", skillId = "skinning" })
     c = fr._tintFill and fr._tintFill._colorTex
-    ok(c and math.abs((c[4] or 0) - 0.20) < 1e-6, "teinte : l'opacité suit Fond des toasts (0.20)")
+    ok(c and math.abs(c[1] - prof[1]) < 1e-6 and math.abs(c[2] - prof[2]) < 1e-6 and math.abs(c[3] - prof[3]) < 1e-6,
+      "teinte 20 % : RVB inchangé")
+    ok(c and math.abs((c[4] or 1) - 1) < 1e-6, "teinte 20 % : pas de RVB assombri")
+    ok(host.alpha and math.abs((host.alpha or 0) - 0.20) < 1e-6, "teinte : l'opacité suit Fond des toasts (0.20)")
+    -- 0 % : fond invisible, pas un rectangle noir ; icône/texte intacts
+    if ns.db and ns.db.ui then ns.db.ui.dropBgAlpha = 0 end
+    ok(UI.DropBgAlpha and UI:DropBgAlpha() == 0, "Fond des toasts : 0 % se mémorise (pas 0,68)")
+    UI.ApplyToastTint(fr, { kind = "goal", skillId = "skinning" })
+    c = fr._tintFill and fr._tintFill._colorTex
+    ok(host.alpha == 0, "0 % : calque de fond entièrement transparent")
+    ok(c and math.abs(c[1] - prof[1]) < 1e-6 and math.abs((c[4] or 1) - 1) < 1e-6,
+      "0 % : teinte RVB constante, pas noire")
+    ok((fr.alpha == nil or fr.alpha == 1), "0 % : icône et texte restent visibles")
     -- XP : teinte + icône
     local fr2 = CreateFrame("Frame", "DropamineTintToastXP", UIParent)
     fr2._skinHost = host
@@ -2338,8 +2352,10 @@ do
     UI.ApplyToastTint(fr2, { kind = "xp" })
     local lc = fr2._tintFill and fr2._tintFill._colorTex
     local lv = UI.TOAST_TINT.level
-    ok(lc and math.abs(lc[1] - lv[1]) < 1e-6 and math.abs((lc[4] or 0) - 0.68) < 1e-6,
-      "teinte XP : couleur level, même alpha que le fond")
+    ok(lc and math.abs(lc[1] - lv[1]) < 1e-6 and math.abs((lc[4] or 1) - 1) < 1e-6,
+      "teinte XP : couleur level, RVB non multiplié")
+    ok(host.alpha and math.abs((host.alpha or 0) - 0.68) < 1e-6,
+      "teinte XP : même alpha de calque que le fond")
   end
   ok(UI.TOAST_TINT and UI.TOAST_TINT.level and UI.TOAST_TINT.weapon and UI.TOAST_TINT.prof, "teinte : trois familles")
   local tl = UI.TOAST_TINT.level
@@ -3430,7 +3446,23 @@ do
           ok(math.abs((vc[1] or 0) - g[1]) < 0.01, "fond teinté Cuisine = GAIN_COLORS.green")
         end
       end
+      -- toasts recyclés : le curseur d'opacité s'applique aussi au vivier
       if UI.ReleaseToast then UI:ReleaseToast(f) end
+      if ns.db and ns.db.ui then ns.db.ui.dropBgAlpha = 0 end
+      if UI.RefreshToastOpacity then UI.RefreshToastOpacity() end
+      local f2 = UI:AcquireToast(_G.UIParent)
+      if f2 then
+        UI.ApplyToastTint(f2, { kind = "xp" })
+        local host2 = f2._skinHost
+        local fill2 = f2._tintFill
+        local red = (ns.GAIN_COLORS and ns.GAIN_COLORS.red) or { 0.616, 0.278, 0.227 }
+        ok((host2 and host2.alpha == 0) or (not host2 and fill2 and fill2.alpha == 0),
+          "toast recyclé : 0 % = calque transparent")
+        local c2 = fill2 and (fill2._colorTex or fill2._vcolor)
+        ok(not c2 or (math.abs((c2[1] or 0) - red[1]) < 0.01 and math.abs((c2[4] or 1) - 1) < 1e-6),
+          "toast recyclé : RVB de teinte inchangé à 0 %")
+        if UI.ReleaseToast then UI:ReleaseToast(f2) end
+      end
     end
   end
 
