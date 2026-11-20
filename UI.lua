@@ -4294,6 +4294,21 @@ function UI:RefreshVisibleTiles(wrap, snap)
       d0.apiMax = snap.totalMax or snap.ficMax or d0.apiMax
       return d0
     end
+    -- Case de combat : lier par la ligne réelle (id / skillName), pas seulement
+    -- « Mêlée » — sinon une vieille entrée Épées / 2H peut rester collée.
+    if d0.combatTile or d0.kind == "melee" or d0.kind == "ranged" or d0.kind == "defense" or d0.kind == "feral" then
+      for _, d in ipairs(snap.tiles or {}) do
+        if d and d.kind == d0.kind then
+          if d0.id and d.id == d0.id then return d end
+          if d0.skillName and d.skillName and d.skillName == d0.skillName then return d end
+          if d0.key and d.key == d0.key then return d end
+        end
+      end
+      -- Ré-équipement (épée → mains nues) : une seule case « Mêlée » dans le snap.
+      for _, d in ipairs(snap.tiles or {}) do
+        if d and d.kind == d0.kind and d0.name and d.name == d0.name then return d end
+      end
+    end
     for _, d in ipairs(snap.tiles or {}) do
       if d and ((d0.key and d.key == d0.key) or (d0.kind and d.kind == d0.kind and d0.name and d.name == d0.name)) then
         return d
@@ -4347,13 +4362,25 @@ function UI:Refresh(force)
       self.subtitle:SetText("")
     end
   end
+  local function layoutWrap(wrap, shown)
+    if not (wrap and shown) then return end
+    local prot = (wrap.IsProtected and wrap:IsProtected())
+      or (wrap.child and wrap.child.IsProtected and wrap.child:IsProtected())
+    if prot or (combat and prot) then
+      if self.RefreshVisibleTiles then self:RefreshVisibleTiles(wrap, snap) end
+      return
+    end
+    if combat then
+      -- panneau compact : reflow + hauteur tout de suite (pas protégé).
+      self:LayoutGrid(wrap, snap)
+      if ns.Layout and ns.Layout.Center then pcall(ns.Layout.Center) end
+    else
+      self:LayoutGrid(wrap, snap)
+    end
+  end
   if combat then
-    if self.soloGrid and self.frame and self.frame:IsShown() then
-      self:RefreshVisibleTiles(self.soloGrid, snap)
-    end
-    if self.embed and self.embed:IsShown() then
-      self:RefreshVisibleTiles(self.embed, snap)
-    end
+    layoutWrap(self.soloGrid, self.frame and self.frame:IsShown())
+    layoutWrap(self.embed, self.embed:IsShown())
     self.dirty = true
     return
   end
@@ -4410,7 +4437,9 @@ function UI:RequestRefresh()
   end
   holder:SetScript("OnUpdate", UI._refreshTick)
 end
-UI.REFRESH_WAIT = { idle = 0.10, combat = 0.50, raid = 1.00 }
+-- 3.6.3 : les rescans (compétences, sacs, auras, textes) sont regroupés
+-- toutes les 1–2 s ; les animations (vague, bulles, gouttes) restent à 20 i/s.
+UI.REFRESH_WAIT = { idle = 1.25, combat = 1.50, raid = 2.00 }
 function UI.RefreshWindow()
   local W = UI.REFRESH_WAIT
   local combat = ns.InCombat and ns.InCombat()
@@ -5354,7 +5383,8 @@ end
 function UI.ToastFamily(opts)
   opts = opts or {}
   local kind = opts.kind or (opts.toastData and opts.toastData.kind)
-  if kind == "xp" or kind == "levelup" or kind == "level" or kind == "jalon" or kind == "spells" then
+  if kind == "xp" or kind == "levelup" or kind == "level" or kind == "jalon" or kind == "spells"
+    or kind == "xp-milestone" or kind == "sleepingbag" then
     return "level"
   end
   if kind == "flight-hint" or kind == "bags-full" or kind == "durability" or kind == "pvp" or kind == "weekly"
@@ -5382,17 +5412,8 @@ function UI.ToastFamily(opts)
   return nil
 end
 
-function UI.ResolveToastIcon(path, opts)
+function UI.ProfessionToastIcon(opts)
   opts = opts or {}
-  local fam = UI.ToastFamily(opts)
-  -- Toasts XP / niveau : garder l'icône fiole XP, jamais le fallback vide.
-  if fam == "level" then
-    if IsXpVialIcon(path) then return path end
-    if not IsMissingToastIcon(path) then return path end
-    return ns.LEVEL_ICON or ns.FALLBACK_ICON
-  end
-  -- Métiers : remplacer le fallback ou une fiole XP de substitution par l'icône du métier.
-  if not IsMissingToastIcon(path) and not IsXpVialIcon(path) then return path end
   local e, id, name = UI.CatalogEntry(opts)
   if e and e.icon and not IsMissingToastIcon(e.icon) and not IsXpVialIcon(e.icon) then return e.icon end
   if name and UI.SkillDropIcon then
@@ -5403,6 +5424,30 @@ function UI.ResolveToastIcon(path, opts)
     local ic = ns.ResolveSkillIcon(name or id, opts.header, opts.skillLine)
     if ic and not IsMissingToastIcon(ic) and not IsXpVialIcon(ic) then return ic end
   end
+  return nil
+end
+
+function UI.ResolveToastIcon(path, opts)
+  opts = opts or {}
+  local fam = UI.ToastFamily(opts)
+  -- Toasts XP / niveau : garder l'icône fiole XP, jamais le fallback vide.
+  if fam == "level" then
+    if IsXpVialIcon(path) then return path end
+    if not IsMissingToastIcon(path) then return path end
+    return ns.LEVEL_ICON or ns.FALLBACK_ICON
+  end
+  -- Recettes / métiers : toujours l'icône du métier (ex. Trade_LeatherWorking),
+  -- jamais l'icône d'objet (sac, rouleau de cuir, composant).
+  if fam == "prof" then
+    local prof = UI.ProfessionToastIcon(opts)
+    if prof then return prof end
+    if not IsMissingToastIcon(path) and not IsXpVialIcon(path) then return path end
+    return ns.FALLBACK_ICON
+  end
+  -- Autres familles : remplacer le fallback ou une fiole XP par l'icône du métier si on en a une.
+  if not IsMissingToastIcon(path) and not IsXpVialIcon(path) then return path end
+  local prof = UI.ProfessionToastIcon(opts)
+  if prof then return prof end
   return ns.FALLBACK_ICON
 end
 
@@ -5460,12 +5505,17 @@ function UI.ApplyToastTint(frame, opts)
   -- Alpha dans la couleur (comme _toastBg) ; SetAlpha reste 1 pour que
   -- ToastAlpha (fondu du cadre) s'applique sans double multiplication.
   local a = UI.ToastBgAlpha(frame)
+  if fill and frame._tintR == c[1] and frame._tintG == c[2] and frame._tintB == c[3]
+    and frame._tintA == a and frame._tintFamily == fam and fill._bgAlpha == a then
+    return fam
+  end
   if fill then
     FillTexture(fill, c[1], c[2], c[3], a)
     if fill.SetAlpha then pcall(fill.SetAlpha, fill, 1) end
     fill._bgAlpha = a
     if fill.Show then fill:Show() end
   end
+  frame._tintR, frame._tintG, frame._tintB, frame._tintA = c[1], c[2], c[3], a
   -- L'habillage Skin recouvre _toastBg : le calque _tintFill est sur le host.
   if frame._toastBg and frame._toastBg ~= fill then
     if frame._skinHost then
@@ -5542,6 +5592,7 @@ end
 
 function UI:DismissDrop(f)
   if not f then return end
+  if f._inPool then return end
   if ns.ToastFit and ns.ToastFit.HideTooltip then pcall(ns.ToastFit.HideTooltip, f) end
   if f.SetScript then pcall(f.SetScript, f, "OnUpdate", nil) end
   f._hover = false
@@ -5551,6 +5602,7 @@ function UI:DismissDrop(f)
   end
   self:PackDrops()
   self.dismissed = (self.dismissed or 0) + 1
+  self:ReleaseToast(f)
 end
 
 -- Tuile visée par un drop : XP / niveau → Niveau ; montée de niveau → Niveau
@@ -5662,6 +5714,105 @@ local function StripStrayTimes(s)
   return prefix .. rest
 end
 
+-- 3.6.3 : les toasts sont recyclés. Chaque SpawnDrop créait un Frame (slot,
+-- textures, FontStrings, barre) que Hide ne libère jamais : en quelques
+-- minutes de jeu (toasts d'XP / de compétence) la mémoire grimpait de
+-- ~20 Mo à plus de 80 Mo. Le vivier plafonne au pic simultané (~5).
+UI._toastPool = UI._toastPool or {}
+UI._toastCreated = UI._toastCreated or 0
+
+function UI:AcquireToast(parent)
+  local pool = self._toastPool
+  local f
+  while pool and #pool > 0 do
+    f = table.remove(pool)
+    if f then
+      f._inPool = nil
+      if f.SetParent and parent then pcall(f.SetParent, f, parent) end
+      return f, true
+    end
+  end
+  f = TryCreate("Frame", nil, parent, "BackdropTemplate")
+  if f then
+    f._osrsToast = true
+    self._toastCreated = (self._toastCreated or 0) + 1
+  end
+  return f, false
+end
+
+function UI:ReleaseToast(f)
+  if not f or f._inPool then return end
+  if not f._osrsToast and not f.iconSlot then return end
+  if f.SetScript then pcall(f.SetScript, f, "OnUpdate", nil) end
+  f._dedupeKey, f._acc, f._kills, f._quest = nil, nil, nil, nil
+  f._sticky, f._hover, f._toastAge, f._editPreview = nil, nil, 0, nil
+  f._toastData, f._target, f._kind, f._tintOpts = nil, nil, nil, nil
+  f._fullTitle, f._fullSub, f._hold, f._light = nil, nil, nil, nil
+  f._pileHidden, f._pileFade, f._osrsFly = nil, nil, nil
+  if f.barHold and f.barHold.Hide then pcall(f.barHold.Hide, f.barHold) end
+  if f.Hide then pcall(f.Hide, f) end
+  f._inPool = true
+  f._osrsToast = true
+  self._toastPool = self._toastPool or {}
+  self._toastPool[#self._toastPool + 1] = f
+end
+
+function UI.ToastRestart(frame)
+  if not frame then return end
+  if (frame._toastAge or 0) > TOAST_FADEIN then frame._toastAge = TOAST_FADEIN end
+  ToastAlpha(frame, 1)
+end
+
+function UI.ToastDismissSoon(frame)
+  if not frame then return end
+  frame._hover = nil
+  local h = frame._hold or UI:DropHold()
+  local t = frame._toastAge or 0
+  if t < TOAST_FADEIN + h then frame._toastAge = TOAST_FADEIN + h end
+end
+
+function UI.ToastOnUpdate(self, elapsed)
+  if self._editPreview then
+    ToastAlpha(self, 1)
+    return
+  end
+  if self._pileHidden then
+    ToastAlpha(self, 0)
+    return
+  end
+  local t = self._toastAge or 0
+  if self._hover then
+    if t >= TOAST_FADEIN then ToastAlpha(self, 1)
+    else ToastAlpha(self, math.min(1, t / TOAST_FADEIN)) end
+    return
+  end
+  if self._sticky then
+    if t < TOAST_FADEIN then
+      t = t + (elapsed or 0.03)
+      self._toastAge = t
+      ToastAlpha(self, math.min(1, t / TOAST_FADEIN))
+    else
+      ToastAlpha(self, 1)
+    end
+    return
+  end
+  t = t + (elapsed or 0.03)
+  self._toastAge = t
+  local holdT = self._hold or UI:DropHold()
+  local a = 1
+  if t < TOAST_FADEIN then
+    a = t / TOAST_FADEIN
+  elseif t < TOAST_FADEIN + holdT then
+    a = 1
+  elseif t < TOAST_FADEIN + holdT + TOAST_FADEOUT then
+    a = 1 - ((t - TOAST_FADEIN - holdT) / TOAST_FADEOUT)
+  else
+    if UI.DismissDrop then UI:DismissDrop(self) end
+    return
+  end
+  ToastAlpha(self, a)
+end
+
 function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opts)
   opts = opts or {}
   if type(title) == "string" then title = StripStrayTimes(title) end
@@ -5739,8 +5890,10 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
     if opts.big then fh = math.max(fh, UI.LEVELUP_H) end
   end
   local iconSize = light and 20 or (opts.big and 40 or 32)
-  local f = TryCreate("Frame", nil, parent, "BackdropTemplate")
   local dw = self:DropWidth()
+  local f, reused = self:AcquireToast(parent)
+  if not f then return end
+  f._inPool = nil
   f:SetSize(dw, fh)
   f._h = fh
   f._light = light and true or false
@@ -5753,16 +5906,29 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
 
   -- Icône dans l'anneau rond : masque circulaire + retrait, jamais hors du cercle.
   -- Métiers : icône d'origine du jeu (pas la fiole de repli), sans cadre d'emplacement.
-  local slot = CreateSlotButton(f, iconSize, true)
+  local slot = f.iconSlot
+  if not slot then
+    slot = CreateSlotButton(f, iconSize, true)
+    f.iconSlot, f.icon = slot, slot.iconTex
+  else
+    if slot.SetSize then pcall(slot.SetSize, slot, iconSize, iconSize) end
+    if slot.ClearAllPoints then pcall(slot.ClearAllPoints, slot) end
+  end
   if light then slot:SetPoint("LEFT", f, "LEFT", 4, 0)
   else slot:SetPoint("TOPLEFT", f, "TOPLEFT", 7, -7) end
   local resolved = UI.ResolveToastIcon and UI.ResolveToastIcon(iconPath, opts) or iconPath
   SetTileIcon(slot.iconTex, resolved or ns.LEVEL_ICON or ns.FALLBACK_ICON, slot)
-  f.iconSlot, f.icon = slot, slot.iconTex
+  f.iconSlot, f.icon = slot, slot.iconTex or f.icon
 
-  local titleFS = Text(f, "GameFontNormal", "LEFT")
+  local titleFS = f.titleFS
+  if not titleFS then
+    titleFS = Text(f, "GameFontNormal", "LEFT")
+  elseif titleFS.ClearAllPoints then
+    titleFS:ClearAllPoints()
+  end
   titleFS:SetPoint("TOPLEFT", slot, "TOPRIGHT", 7, 1)
   titleFS:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+  if titleFS.Show then titleFS:Show() end
   if titleFS.SetWordWrap then titleFS:SetWordWrap(false) end
   if type(titleFS.SetMaxLines) == "function" then pcall(titleFS.SetMaxLines, titleFS, 1) end
   titleFS:SetText(title or "")
@@ -5773,15 +5939,26 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
     titleFS.font = "GameFontNormalLarge"
   end
 
-  local subFS = Text(f, "GameFontHighlightSmall", "LEFT")
+  local subFS = f.subFS
+  if not subFS then
+    subFS = Text(f, "GameFontHighlightSmall", "LEFT")
+  elseif subFS.ClearAllPoints then
+    subFS:ClearAllPoints()
+  end
   subFS:SetPoint("TOPLEFT", titleFS, "BOTTOMLEFT", 0, -2)
   subFS:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+  if subFS.Show then subFS:Show() end
   if subFS.SetWordWrap then subFS:SetWordWrap(false) end
   if type(subFS.SetMaxLines) == "function" then pcall(subFS.SetMaxLines, subFS, 1) end
   subFS:SetText(subtitle or "")
   subFS:SetTextColor(1, 1, 1)
 
-  local hintFS = Text(f, "GameFontHighlightSmall", "LEFT")
+  local hintFS = f.hintFS
+  if not hintFS then
+    hintFS = Text(f, "GameFontHighlightSmall", "LEFT")
+  elseif hintFS.ClearAllPoints then
+    hintFS:ClearAllPoints()
+  end
   hintFS:SetPoint("TOPLEFT", subFS, "BOTTOMLEFT", 0, -1)
   hintFS:SetPoint("RIGHT", f, "RIGHT", -8, 0)
   if hintFS.SetWordWrap then hintFS:SetWordWrap(false) end
@@ -5806,20 +5983,27 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   -- Fine barre en bas, alignée sur le texte : elle commence au bord gauche
   -- du titre (jamais sous l'icône ronde) et finit au même retrait droit.
   if maxv and maxv > 0 and not light then
-    local hold = CreateFrame("Frame", nil, f)
+    local hold, sbar = f.barHold, f.bar
+    if not hold then
+      hold = CreateFrame("Frame", nil, f)
+      local okB, sb = pcall(CreateFrame, "StatusBar", nil, hold)
+      sbar = (okB and sb) or CreateFrame("Frame", nil, hold)
+    end
+    if hold.ClearAllPoints then hold:ClearAllPoints() end
     hold:SetPoint("LEFT", titleFS, "LEFT", 0, 0)
     hold:SetPoint("RIGHT", titleFS, "RIGHT", 0, 0)
     hold:SetPoint("BOTTOM", f, "BOTTOM", 0, 6)
+    if hold.Show then hold:Show() end
     local textRight = 8
     local bw = math.max(8, dw - (7 + iconSize + 7) - textRight)
-    local okB, sbar = pcall(CreateFrame, "StatusBar", nil, hold)
-    if not (okB and sbar) then sbar = CreateFrame("Frame", nil, hold) end
     hold._styleSkill = opts.skillId
     SetSkillBarProgress(hold, sbar, barCur, maxv, bw, 4)
     f._bw = bw
     if hold.nbBorder then hold.nbBorder:Hide() end
     if hold.barText then hold.barText:SetText("") hold.barText:Hide() end
     f.barHold, f.bar = hold, sbar
+  elseif f.barHold and f.barHold.Hide then
+    f.barHold:Hide()
   end
   f.titleFS, f.subFS = titleFS, subFS
   f._fullTitle, f._fullSub = title or "", subtitle or ""
@@ -5835,67 +6019,24 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   -- Aperçu d'édition : pas de fondu, on le garde visible.
   if f._editPreview then return f end
 
-  local t = 0
+  f._toastAge = 0
   f._dedupeKey = opts.dedupeKey
   f._acc = opts.accumulate and ns.N(opts.accumulate.delta) or nil
   f._kills = opts.accumulate and opts.accumulate.kills or nil
   f._quest = opts.accumulate and opts.accumulate.quest or nil
   f._target = { kind = opts.kind, skillId = opts.skillId, skillName = opts.skillName }
-  f._restart = function() if t > TOAST_FADEIN then t = TOAST_FADEIN end ToastAlpha(f, 1) end
+  if not f._restart then
+    f._restart = function() UI.ToastRestart(f) end
+  end
+  if not f._dismiss then
+    f._dismiss = function() UI.ToastDismissSoon(f) end
+  end
   f._hold = ns.N(opts.hold)
-  -- 3.3.16 : fermeture anticipée (fondu de sortie immédiat)
-  f._dismiss = function() f._hover = nil local h = f._hold or UI:DropHold() if t < TOAST_FADEIN + h then t = TOAST_FADEIN + h end end
   -- v2.8.1 : survol = drop tenu (minuterie en pause) ; sortie = durée complète
   -- relancée ; clic gauche = onglet Comp. sur la bonne tuile ; clic droit = fermer.
   -- Jamais en mode édition (le déplacement du support reste inchangé).
   self:WireDropMouse(f)
-  f:SetScript("OnUpdate", function(self, elapsed)
-    if self._editPreview then
-      ToastAlpha(self, 1)
-      return
-    end
-    if self._pileHidden then
-      ToastAlpha(self, 0)
-      return
-    end
-    -- Survol : la minuterie et le défilement (ToastFit) sont en pause, repris à la sortie.
-    if self._hover then
-      if t >= TOAST_FADEIN then ToastAlpha(self, 1)
-      else ToastAlpha(self, math.min(1, t / TOAST_FADEIN)) end
-      return
-    end
-    -- Toast « sticky » (astuce premier vol) : reste jusqu'au clic, pas de fondu automatique.
-    if self._sticky then
-      if t < TOAST_FADEIN then
-        t = t + (elapsed or 0.03)
-        ToastAlpha(self, math.min(1, t / TOAST_FADEIN))
-      else
-        ToastAlpha(self, 1)
-      end
-      return
-    end
-    t = t + (elapsed or 0.03)
-    local a = 1
-    local holdT = self._hold or UI:DropHold()   -- 3.3.16 : durée propre (récap de déconnexion)
-    if t < TOAST_FADEIN then
-      a = t / TOAST_FADEIN
-    elseif t < TOAST_FADEIN + holdT then
-      a = 1
-    elseif t < TOAST_FADEIN + holdT + TOAST_FADEOUT then
-      a = 1 - ((t - TOAST_FADEIN - holdT) / TOAST_FADEOUT)
-    else
-      self:SetScript("OnUpdate", nil)
-      if self.Hide then pcall(self.Hide, self) end
-      if UI.dropsActive then
-        for i = #UI.dropsActive, 1, -1 do
-          if UI.dropsActive[i] == self then table.remove(UI.dropsActive, i) end
-        end
-        UI:PackDrops()
-      end
-      return
-    end
-    ToastAlpha(self, a)
-  end)
+  f:SetScript("OnUpdate", UI.ToastOnUpdate)
   return f
 end
 
@@ -6103,15 +6244,18 @@ function UI:NoteXPMessage(event, msg)
   end
   if kind then
     local now = (type(GetTime) == "function" and GetTime()) or 0
-    local lu = self._lastXPUnknown
-    if lu and now - (lu.at or 0) <= 0.5 and lu.f and lu.f.titleFS then
-      self._lastXPUnknown = nil
-      if kind ~= "kill" then
-        lu.f._kills = math.max(0, (lu.f._kills or 1) - 1)
-        if kind == "quest" then lu.f._quest = true end
-        lu.f.titleFS:SetText(UI.XPTitle(lu.f._acc or 0, lu.f))
+    -- Quête arrivée juste après la hausse (pas de toast monstre) : poser le toast quête.
+    local pend = self._pendingXPToast
+    if kind == "quest" and pend and now - (pend.at or 0) <= 2 then
+      self._pendingXPToast = nil
+      self._xpSrc = { kind = "quest", at = now }
+      if ns.Opt("xpDrops") then
+        self:SpawnQuestXPToast(pend.delta, pend.cur, pend.maxxp, pend.level, pend.hint)
       end
       return
+    end
+    if kind == "kill" then
+      self._pendingXPToast = nil
     end
     self._xpSrc = { kind = kind, at = now }
   end
@@ -6125,6 +6269,83 @@ function UI:TakeXPSource()
   return s.kind
 end
 
+UI.XP_MILESTONES = { 25, 50, 75 }
+
+function UI.XPMilestoneTitle(level, th)
+  return string.format(Tr["Niveau %s · %d %%"], tostring(level or 0), th)
+end
+
+function UI:XPMarksFor(level)
+  local c = ns.CharDB and ns.CharDB()
+  if not c then
+    self._xpMarksMem = self._xpMarksMem or {}
+    local key = tostring(level or 0)
+    self._xpMarksMem[key] = self._xpMarksMem[key] or {}
+    return self._xpMarksMem[key]
+  end
+  c.xpMarks = c.xpMarks or {}
+  local key = tostring(level or 0)
+  if type(c.xpMarks[key]) ~= "table" then c.xpMarks[key] = {} end
+  return c.xpMarks[key]
+end
+
+function UI:MarkXPMilestone(rec, th)
+  rec[th] = true
+  rec[tostring(th)] = true
+end
+
+function UI:HasXPMilestone(rec, th)
+  return rec and (rec[th] or rec[tostring(th)]) and true or false
+end
+
+-- Au login : mémoriser les jalons déjà atteints, sans toast rétroactif.
+function UI:SeedXPMilestones(cur, maxxp, level)
+  cur, maxxp, level = ns.N(cur), ns.N(maxxp), ns.N(level)
+  if not level or not maxxp or maxxp <= 0 then
+    self._xpMarksSeeded = true
+    return
+  end
+  local rec = self:XPMarksFor(level)
+  local p = cur / maxxp
+  for _, th in ipairs(UI.XP_MILESTONES) do
+    if p >= (th / 100) then self:MarkXPMilestone(rec, th) end
+  end
+  self._xpMarksSeeded = true
+end
+
+function UI:MaybeXPMilestone(cur, maxxp, level)
+  if not ns.Opt("xpDrops") then return end
+  cur, maxxp, level = ns.N(cur), ns.N(maxxp), ns.N(level)
+  if not level or not maxxp or maxxp <= 0 then return end
+  if not self._xpMarksSeeded then
+    self:SeedXPMilestones(cur, maxxp, level)
+    return
+  end
+  local rec = self:XPMarksFor(level)
+  local p = cur / maxxp
+  local book = ns.LEVEL_ICON or "Interface\\Icons\\INV_Misc_Book_11"
+  for _, th in ipairs(UI.XP_MILESTONES) do
+    if p >= (th / 100) and not self:HasXPMilestone(rec, th) then
+      self:MarkXPMilestone(rec, th)
+      self:SpawnDrop(book, UI.XPMilestoneTitle(level, th), nil, nil, nil, nil, {
+        kind = "xp-milestone", dedupeKey = "xp-m-" .. tostring(level) .. "-" .. tostring(th),
+      })
+    end
+  end
+end
+
+function UI:SpawnQuestXPToast(delta, cur, maxxp, level, hint)
+  local book = ns.LEVEL_ICON or "Interface\\Icons\\INV_Misc_Book_11"
+  maxxp = ns.N(maxxp) or 0
+  cur = ns.N(cur) or 0
+  local pct = (maxxp > 0) and (cur / maxxp * 100) or 0
+  local sub = string.format(Tr["Niveau %s · %.0f %%"], tostring(level or 0), pct)
+  -- Un toast par remise de quête (pas de fusion avec un autre gain).
+  return self:SpawnDrop(book, UI.XPTitle(delta, { _kills = 0, _quest = true }), sub, cur, maxxp, nil, {
+    kind = "xp", hint = hint,
+  })
+end
+
 function UI:OnXPUpdate()
   local cur, maxxp = ns.GetPlayerXPSafe()
   local level = ns.GetPlayerLevel()
@@ -6133,6 +6354,7 @@ function UI:OnXPUpdate()
   if not self._xpSeeded then
     self._prevXP, self._prevXPMax, self._prevLevel = cur, maxxp, level
     self._xpSeeded = true
+    self:SeedXPMilestones(cur, maxxp, level)
     return
   end
   local delta = cur - (self._prevXP or 0)
@@ -6141,22 +6363,27 @@ function UI:OnXPUpdate()
   end
   self._prevXP, self._prevXPMax, self._prevLevel = cur, maxxp, level
   if delta > 0 then
-    local book = ns.LEVEL_ICON or "Interface\\Icons\\INV_Misc_Book_11"
-    maxxp = ns.N(maxxp) or 0
-    cur = ns.N(cur) or 0
-    local pct = (maxxp > 0) and (cur / maxxp * 100) or 0
-    local sub = string.format(Tr["Niveau %s · %.0f %%"], tostring(level or 0), pct)
     self._sessionXP = (self._sessionXP or 0) + delta
     ns.Rate.Note("xp", self._sessionXP)
     local hint = self:XPHint(cur, maxxp, level)
     if ns.Opt("xpDrops") then
       local src = self:TakeXPSource()
-      local acc = { delta = delta, kills = (src ~= "quest" and src ~= "other") and 1 or 0, quest = (src == "quest"), fmt = UI.XPTitle }
-      local xf = self:SpawnDrop(book, UI.XPTitle(delta, { _kills = acc.kills, _quest = acc.quest }), sub, cur, maxxp, nil,
-        { kind = "xp", hint = hint, dedupeKey = "xp", accumulate = acc })
-      -- Message arrivé APRÈS la hausse : reclassé juste après (0,5 s).
-      self._lastXPUnknown = (src == nil and xf) and { f = xf, at = (type(GetTime) == "function" and GetTime()) or 0 } or nil
+      if src == "quest" then
+        self._pendingXPToast = nil
+        self:SpawnQuestXPToast(delta, cur, maxxp, level, hint)
+      elseif src == "kill" or src == "other" then
+        -- Monstre (et exploration) : pas de toast, seulement la vague / le remplissage de la fiole.
+        self._pendingXPToast = nil
+      else
+        -- Source encore inconnue : on attend un message de quête (2 s), sans toast monstre.
+        self._pendingXPToast = {
+          delta = delta, cur = cur, maxxp = maxxp, level = level, hint = hint,
+          at = (type(GetTime) == "function" and GetTime()) or 0,
+        }
+      end
     end
+    -- Les jalons peuvent tomber sur un gain de quête ou de monstre.
+    self:MaybeXPMilestone(cur, maxxp, level)
   end
 end
 
@@ -6214,6 +6441,16 @@ function UI:FlushSkillDiff()
     self._reseeds = (self._reseeds or 0) + 1
     rises = {}
   end
+  -- Après un changement de zone / repos : on met à jour la base, on ne toaste pas
+  -- (une lecture partielle ferait croire à un +1 de métier).
+  local quiet = self._skillQuietUntil and Now() < self._skillQuietUntil
+  if quiet or ((not rises[1]) and fresh == 0) then
+    if quiet then rises = {} end
+    if not rises[1] then
+      -- pas de palier réel : on n'appelle pas Collect (gros paquet de tables).
+      return
+    end
+  end
   self._dropLast = self._dropLast or {}
   local t = Now()
   for _, r in ipairs(rises) do
@@ -6221,7 +6458,9 @@ function UI:FlushSkillDiff()
     local d = cr - pr
     if d > 0 and d < cr then
       local icon, skillId = self:SkillDropIcon(s.name, s.headerName, s.skillID)
-      ns.Rate.Note("skill:" .. tostring(skillId or fold), cr)
+      local catEarly = ns.LookupCatalog and ns.LookupCatalog(s.name)
+      local isWeapon = ns.IsWeaponSkill and ns.IsWeaponSkill(skillId or (catEarly and catEarly.id), catEarly and catEarly.kind, s.name)
+      ns.Rate.Note("skill:" .. tostring(skillId or fold), cr, t, { cap = ns.N(s.max) or 0, weapon = isWeapon and true or false })
       local title = (s.name or "") .. " +" .. tostring(d)
       local maxS = ns.N(s.max) or 0
       local subS = (maxS > 0) and (Tr["Rang "] .. tostring(cr) .. " / " .. tostring(maxS)) or (Tr["Rang "] .. tostring(cr))
@@ -6258,18 +6497,73 @@ function UI:FlushSkillDiff()
     self.snapshot = snap
     self._snapVersion = (self._snapVersion or 0) + 1
     SafeStep("objectifs / paliers", self.CheckMilestones, self, snap)
+    -- 3.6.3 : repeindre les cases d'arme avec le rang du toast, aussi en combat.
+    SafeStep("cases après palier d'arme", self.SyncSkillTiles, self, snap, rises)
+  end
+end
+
+-- Appliquer le rang / plafond du toast à la case de la MÊME ligne (Mains nues, pas une autre arme).
+function UI:SkillLineMatches(d, name, id)
+  if not d or d.placeholder then return false end
+  if id and (d.id == id or d.skillID == id or d.key == id) then return true end
+  local want = name and ns.Fold(name) or ""
+  if want == "" then return false end
+  if ns.Fold(d.skillName or "") == want or ns.Fold(d.catName or "") == want then return true end
+  -- « Mêlée » n'est pas le nom de la ligne : on ne le compare pas au skillName.
+  local e = ns.LookupCatalog and ns.LookupCatalog(name)
+  if e and d.id == e.id then return true end
+  return false
+end
+
+function UI:ApplyToastRankToTiles(name, rank, maxv, skillId)
+  rank, maxv = ns.N(rank), ns.N(maxv)
+  if not rank then return end
+  local C = ns.Compact
+  local function apply(t)
+    local d = t and t.data
+    if not d or not self:SkillLineMatches(d, name, skillId) then return end
+    d.current = rank
+    if maxv and maxv > 0 then d.apiMax = maxv end
+    if C and C.holds and C.HoldKey then C.holds[C.HoldKey(d) or ""] = nil end
+    pcall(self.UpdateTile, self, t, d)
+  end
+  for _, wrap in ipairs({ self.embed, self.soloGrid }) do
+    for _, t in ipairs((wrap and wrap.tiles) or {}) do apply(t) end
+  end
+end
+
+function UI:SyncSkillTiles(snap, rises)
+  if snap then
+    if self.embed then pcall(self.RefreshVisibleTiles, self, self.embed, snap) end
+    if self.soloGrid then pcall(self.RefreshVisibleTiles, self, self.soloGrid, snap) end
+  end
+  for _, r in ipairs(rises or {}) do
+    local s = r and r.s
+    if s and ns.IsWeaponSkill and ns.IsWeaponSkill(nil, nil, s.name) then
+      self:ApplyToastRankToTiles(s.name, r.cr, s.max)
+    end
   end
 end
 
 -- Ligne verte des drops : objectif > rythme mesuré > palier suivant.
 function UI:SkillHint(rateKey, skillId, cur, maxv)
+  local key = "skill:" .. tostring(rateKey)
   local g = skillId and ns.GetGoal(skillId)
+  local weapon = ns.IsWeaponSkill and ns.IsWeaponSkill(skillId, nil, nil)
   if g and g.rank > cur then
-    local eta = ns.FormatDuration(ns.Rate.ETA("skill:" .. tostring(rateKey), cur, g.rank))
+    local eta = ns.FormatDuration(ns.Rate.ETA(key, cur, g.rank, maxv))
+    local tag = weapon and Tr[" (~ estimation)"] or ((eta and (" (" .. tostring(eta) .. ")")) or "")
+    if weapon and eta then
+      return string.format(Tr["Objectif %s : encore %s"], tostring(g.rank), tostring(g.rank - cur)) .. " (" .. eta .. tag .. ")"
+    end
     return string.format(Tr["Objectif %s : encore %s"], tostring(g.rank), tostring(g.rank - cur)) .. (eta and (" (" .. eta .. ")") or "")
   end
-  local spu = ns.Rate.SecondsPerUnit("skill:" .. tostring(rateKey))
-  if spu then return ns.FormatDuration(spu) .. Tr[" par rang (mesuré)"] end
+  if weapon and maxv and maxv > cur then
+    local eta = ns.FormatDuration(ns.Rate.ETA(key, cur, maxv, maxv))
+    if eta then return tostring(maxv) .. Tr[" dans "] .. eta .. Tr[" (~ estimation)"] end
+  end
+  local spu = ns.Rate.SecondsPerUnit(key)
+  if spu and not weapon then return ns.FormatDuration(spu) .. Tr[" par rang (mesuré)"] end
   if maxv and maxv > cur then return string.format(Tr["Palier %s : encore %s"], tostring(maxv), tostring(maxv - cur)) end
   if maxv and maxv > 0 and cur >= maxv then return Tr["Palier atteint"] end
   return nil

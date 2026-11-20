@@ -1,7 +1,9 @@
 -- Dropamine 3.6.3 : toast collant « rang supérieur disponible chez le maître ».
--- Réutilise ns.RankStatus (state == "available", source maître). Affiché en
--- capitale ou en ville de maîtres (IsResting), une fois par entrée, jusqu'au
--- clic ou jusqu'à l'apprentissage du rang. File d'attente en vol et en combat.
+-- Réutilise ns.RankStatus (state == "available", source maître). Affiché
+-- UNIQUEMENT en capitale (pas à une auberge de passage), une fois par visite,
+-- jusqu'au clic ou jusqu'à l'apprentissage du rang. Entrer / sortir de la
+-- même capitale (auberge, subzone) ne relance pas le toast. File d'attente
+-- en vol et en combat.
 local ADDON, ns = ...
 local Tr = ns.L
 local RT = {}
@@ -10,27 +12,34 @@ ns.RankToast = RT
 RT.OPT = "trainerRankToast"
 RT.DEDUPE = "rank-trainer"
 
--- Capitales et villes où l'on trouve des maîtres de métier (FR + EN, déjà pliées).
-local CITY = {
-  -- capitales
+-- Capitales seulement (FR + EN, déjà pliées). Pas les villes / auberges de passage.
+local CAPITALS = {
   ["hurlevent"] = true, ["cite de hurlevent"] = true, ["stormwind"] = true,
   ["stormwind city"] = true, ["stormwind keep"] = true,
   ["forgefer"] = true, ["ironforge"] = true,
-  ["darnassus"] = true, ["teldrassil"] = false,
+  ["darnassus"] = true,
   ["orgrimmar"] = true,
   ["pitons-du-tonnerre"] = true, ["pitons du tonnerre"] = true,
   ["thunder bluff"] = true, ["thunderbluff"] = true,
   ["fossoyeuse"] = true, ["undercity"] = true,
-  -- villes / ports avec maîtres
-  ["baie-du-butin"] = true, ["baie du butin"] = true, ["booty bay"] = true,
-  ["cabestan"] = true, ["ratchet"] = true,
-  ["gadgetzan"] = true,
-  ["theramore"] = true, ["ile de theramore"] = true, ["theramore isle"] = true,
-  ["auberdine"] = true,
-  ["port de menethil"] = true, ["menethil harbor"] = true, ["menethil"] = true,
-  ["long-guet"] = true, ["everlook"] = true,
-  ["mara"] = false,
+  -- TBC / WotLK
+  ["lune-d argent"] = true, ["lune d argent"] = true, ["lune-d'argent"] = true,
+  ["silvermoon"] = true, ["silvermoon city"] = true,
+  ["exodar"] = true, ["l exodar"] = true, ["the exodar"] = true,
+  ["shattrath"] = true, ["cite de shattrath"] = true, ["shattrath city"] = true,
+  ["dalaran"] = true, ["dalaran city"] = true,
 }
+-- uiMapID / GetCurrentMapAreaID (Retail, Classic, WotLK, quelques IDs Forever).
+local CAPITAL_MAPS = {
+  [84] = true, [87] = true, [89] = true, [85] = true, [88] = true, [90] = true,
+  [103] = true, [110] = true, [111] = true, [125] = true, [126] = true,
+  [1453] = true, [1454] = true, [1455] = true, [1456] = true, [1457] = true, [1458] = true,
+  [1947] = true, [1954] = true, [1955] = true,
+  [301] = true, [321] = true, [341] = true, [362] = true, [381] = true, [382] = true,
+  [471] = true, [480] = true, [481] = true, [4395] = true,
+}
+RT.CAPITALS, RT.CAPITAL_MAPS = CAPITALS, CAPITAL_MAPS
+RT.REENTRY_GRACE = 90
 
 local function Call(fn, ...)
   if type(fn) ~= "function" then return nil end
@@ -62,54 +71,82 @@ function RT.SetSim(on, list)
   end
 end
 
-function RT.InCity()
-  if RT._simCity or (ns.Slot and ns.Slot.IsSim and ns.Slot.IsSim("rankup")) then return true end
-  local zones = {
-    Call(GetRealZoneText), Call(GetZoneText), Call(GetSubZoneText), Call(GetMinimapZoneText),
-  }
-  local hit = false
-  for i = 1, #zones do
-    local z = zones[i]
-    if type(z) == "string" and z ~= "" and CITY[Fold(z)] then hit = true break end
+function RT.MapId()
+  local CM = _G.C_Map
+  if type(CM) == "table" and type(CM.GetBestMapForUnit) == "function" then
+    local ok, id = pcall(CM.GetBestMapForUnit, "player")
+    if ok then id = tonumber(id) end
+    if id then return id end
   end
-  if not hit then return false end
-  -- capitale : toujours ; autre ville : seulement si on se repose (auberge / ville)
-  -- Les capitales sont aussi des zones de repos ; IsResting suffit en pratique,
-  -- mais on accepte une capitale même si l'API de repos est muette.
-  if Call(IsResting) then return true end
-  -- capitales sans IsResting (chargement, test)
-  local capitals = {
-    hurlevent = true, ["cite de hurlevent"] = true, stormwind = true, ["stormwind city"] = true,
-    forgefer = true, ironforge = true, darnassus = true, orgrimmar = true,
-    ["pitons-du-tonnerre"] = true, ["pitons du tonnerre"] = true, ["thunder bluff"] = true,
-    thunderbluff = true, fossoyeuse = true, undercity = true,
-  }
-  for i = 1, #zones do
-    local z = zones[i]
-    if type(z) == "string" and capitals[Fold(z)] then return true end
+  if type(_G.GetCurrentMapAreaID) == "function" then
+    local ok, id = pcall(_G.GetCurrentMapAreaID)
+    if ok then id = tonumber(id) end
+    if id then return id end
   end
-  return false
+  return nil
 end
 
+function RT.CapitalKey()
+  local id = RT.MapId()
+  if id and CAPITAL_MAPS[id] then return "map:" .. tostring(id) end
+  local zones = {
+    Call(GetRealZoneText), Call(GetZoneText), Call(GetMinimapZoneText),
+  }
+  for i = 1, #zones do
+    local z = zones[i]
+    if type(z) == "string" and z ~= "" then
+      local f = Fold(z)
+      if CAPITALS[f] then return f end
+    end
+  end
+  return nil
+end
+
+-- Uniquement une capitale (nom ou map ID, ou API du client). Jamais une auberge de passage.
+function RT.InCapital()
+  if RT._simCity or (ns.Slot and ns.Slot.IsSim and ns.Slot.IsSim("rankup")) then return true end
+  if type(_G.IsCapitalCity) == "function" then
+    local ok, v = pcall(_G.IsCapitalCity)
+    if ok and v then return true end
+  end
+  return RT.CapitalKey() ~= nil
+end
+-- Compat : ancien nom.
+function RT.InCity()
+  return RT.InCapital()
+end
+
+-- Jamais ns.Collect ici : une entrée d'auberge ne doit pas reconstruire la grille.
 local function Tiles()
   local ui = ns.UI
   if ui and ui.embed and ui.embed.tiles then return ui.embed.tiles end
   if ui and ui.snapshot and ui.snapshot.tiles then return ui.snapshot.tiles end
-  if type(ns.Collect) == "function" then
-    local ok, snap = pcall(ns.Collect)
-    if ok and snap and snap.tiles then return snap.tiles end
-  end
-  return {}
+  if ui and ui.snapshot and ui.snapshot.allTiles then return ui.snapshot.allTiles end
+  return RT._emptyTiles or {}
 end
+RT._emptyTiles = {}
 
 -- Métiers dont un rang supérieur s'apprend chez le maître (pas livre / quête).
+-- Réutilise le buffer pour ne pas allouer à chaque événement de zone.
 function RT.Available(tiles)
-  if RT._sim and RT._simList then
-    local copy = {}
-    for i = 1, #RT._simList do copy[i] = RT._simList[i] end
-    return copy
+  local out = RT._availBuf
+  if out then
+    for i = #out, 1, -1 do out[i] = nil end
+  else
+    out = {}
+    RT._availBuf = out
   end
-  local out, seen = {}, {}
+  if RT._sim and RT._simList then
+    for i = 1, #RT._simList do out[i] = RT._simList[i] end
+    return out
+  end
+  local seen = RT._availSeen
+  if seen then
+    for k in pairs(seen) do seen[k] = nil end
+  else
+    seen = {}
+    RT._availSeen = seen
+  end
   tiles = tiles or Tiles()
   for i = 1, #tiles do
     local t = tiles[i]
@@ -221,21 +258,56 @@ function RT.Show(list)
   return nil
 end
 
-function RT.Refresh(reason)
-  local inCity = RT.InCity()
-  if inCity and not RT._wasInCity then
-    -- Nouvelle entrée en capitale / ville : le toast peut se relancer.
-    RT._dismissedVisit = nil
-    if RT.Opt() and RT.Available()[1] then RT._queued = true end
+local function Now()
+  if type(GetTime) == "function" then
+    local ok, v = pcall(GetTime)
+    if ok and type(v) == "number" then return v end
   end
-  if not inCity then
-    RT._dismissedVisit = nil
-    RT._queued = nil
+  return 0
+end
+
+function RT.Refresh(reason)
+  reason = reason or ""
+  local here = RT.InCapital()
+  local key = here and (RT.CapitalKey() or (RT._simCity and "sim") or "capital") or nil
+
+  if not here then
     if RT.IsShowing() then RT.Hide("leave") end
+    if RT._wasInCity then
+      RT._leftAt = Now()
+      RT._leftKey = RT._wasKey
+    end
     RT._wasInCity = false
+    RT._wasKey = nil
+    RT._queued = nil
+    -- On oublie le dismiss de visite seulement en quittant vraiment la capitale.
+    RT._dismissedVisit = nil
     return
   end
+
+  local entered = not RT._wasInCity
   RT._wasInCity = true
+  RT._wasKey = key
+
+  -- Auberge / intérieur / repos : pas une nouvelle visite de capitale.
+  local innEvent = reason == "PLAYER_UPDATE_RESTING"
+    or reason == "ZONE_CHANGED_INDOORS"
+    or reason == "ZONE_CHANGED"
+
+  local skipEnter = false
+  if entered then
+    local now = Now()
+    local same = RT._leftKey and key and RT._leftKey == key
+      and RT._leftAt and (now - RT._leftAt) < (RT.REENTRY_GRACE or 90)
+    if same then
+      -- Même capitale récemment quittée : pas de nouveau toast.
+      RT._queued = nil
+      skipEnter = true
+    else
+      RT._dismissedVisit = nil
+      if RT.Opt() and RT.Available()[1] then RT._queued = true end
+    end
+  end
 
   local list = RT.Available()
   if #list == 0 then
@@ -249,7 +321,6 @@ function RT.Refresh(reason)
     if RT.IsShowing() then
       RT._queued = true
       RT.Hide("defer")
-      -- Hide() avec defer ne doit pas compter comme un clic.
       RT._dismissedVisit = nil
     end
     return
@@ -262,27 +333,26 @@ function RT.Refresh(reason)
   end
 
   if RT.IsShowing() then
-    local key = RT.IdsKey(list)
-    if key ~= RT._shownKey then
-      -- Mettre à jour le texte (un métier appris, un autre encore dispo).
+    local ids = RT.IdsKey(list)
+    if ids ~= RT._shownKey then
       local title = RT.Title(list)
       local f = RT._toast
       if f then
         f._fullTitle = title
         if f.titleFS and f.titleFS.SetText then pcall(f.titleFS.SetText, f.titleFS, title) end
-        RT._shownKey = key
+        RT._shownKey = ids
       end
     end
     return
   end
 
-  if RT._queued or reason == "enter" or reason == "test" or reason == "ZONE_CHANGED"
-      or reason == "ZONE_CHANGED_NEW_AREA" or reason == "ZONE_CHANGED_INDOORS"
-      or reason == "PLAYER_ENTERING_WORLD" or reason == "PLAYER_UPDATE_RESTING"
-      or reason == "PLAYER_REGEN_ENABLED" then
-    RT.Show(list)
-  elseif not RT._toast then
-    -- déjà en ville au chargement / test
+  -- Jamais déclenché par le seul passage d'une auberge (repos / intérieur).
+  if innEvent and not entered and not RT._queued then return end
+  if skipEnter and not RT._queued then return end
+
+  if RT._queued or reason == "enter" or reason == "test"
+      or reason == "ZONE_CHANGED_NEW_AREA" or reason == "PLAYER_ENTERING_WORLD"
+      or reason == "PLAYER_REGEN_ENABLED" or entered then
     RT.Show(list)
   end
 end
@@ -292,7 +362,7 @@ RT.OPTION = {
   type = "check", key = "trainerRankToast",
   label = "Toast rang supérieur chez le maître",
   default = true,
-  help = "En capitale ou en ville, un toast reste affiché tant qu'un rang de métier s'apprend chez le maître. Il se ferme au clic ou dès que le rang est appris, et revient à chaque entrée en ville.",
+  help = "En capitale seulement (pas à une auberge de passage), un toast reste affiché tant qu'un rang de métier s'apprend chez le maître. Il se ferme au clic ou dès que le rang est appris. Entrer et sortir de la même capitale ne le relance pas.",
 }
 
 do

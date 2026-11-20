@@ -532,7 +532,7 @@ function ns.SkillRankSnapshot()
         name = s.name,
         rank = ns.N(s.rank) or 0,
         max = ns.N(s.max) or 0,
-        icon = ns.IconForSkillName(s.name, nil, s.headerName, s.skillID),
+        icon = s.icon or ns.IconForSkillName(s.name, nil, s.headerName, s.skillID),
         index = s.index,
       }
     end
@@ -584,6 +584,7 @@ function ns.NormalizeSkillInfo(a, b, c, d, e, f, g, h)
       modifier = ns.N(t.modifier or t.skillModifier) or 0,
       max = ns.N(t.maxRank or t.skillMaxRank or t.maxSkillLevel) or 0,
       skillID = t.skillID or t.skillLine or t.professionID,
+      icon = t.icon or t.iconTexture or t.texture or t.Icon,
       description = (type(t.description) == "string" and t.description) or nil,
       index = t.index,
     }
@@ -597,7 +598,8 @@ function ns.NormalizeSkillInfo(a, b, c, d, e, f, g, h)
       temp = ns.N(e) or 0,
       modifier = ns.N(f) or 0,
       max = ns.N(g) or 0,
-      description = (type(h) == "string" and h) or nil,
+      description = (type(h) == "string" and not tostring(h):find("Interface", 1, true) and h) or nil,
+      icon = (type(h) == "string" and tostring(h):find("Interface", 1, true) and h) or nil,
     }
   end
   return nil
@@ -952,12 +954,15 @@ local function makeCombatTile(label, kind, entry, live, icon)
   }
   local t = makeTile(entry, live and live.rank or 0, live and live.max or 0, extra)
   t.name = label
-  t.skillName = entry and ns.CatalogDisplayName(entry) or label
+  -- Même nom de ligne que l'infobulle / le toast (ex. « Mains nues »).
+  t.skillName = (live and live.name) or (entry and ns.CatalogDisplayName(entry)) or label
   t.kind = kind
-  -- 3.5.18 : jamais de « ? » sur une case de combat
+  -- Icône : API de la ligne de compétence, sinon le catalogue (poing pour Mains nues).
   if ns.IconMissing(icon) then icon = nil end
+  local liveIcon = live and live.icon
+  if ns.IconMissing(liveIcon) then liveIcon = nil end
   local eIcon = entry and not ns.IconMissing(entry.icon) and entry.icon or nil
-  t.icon = icon or eIcon or ns.WEAPON_FALLBACK_ICON
+  t.icon = icon or liveIcon or eIcon or ns.WEAPON_FALLBACK_ICON
   t.inTotal = true
   t.horsTotal = false
   t.learned = (ns.N(t.current) or 0) > 0
@@ -1110,7 +1115,7 @@ function ns.ResolveCombatTiles(byName)
   else
     meleeE = ns.CatalogById("unarmed")
     meleeLive = ns.LiveForEntry(byName, meleeE)
-    meleeIcon = meleeE and meleeE.icon
+    meleeIcon = (meleeLive and meleeLive.icon) or (meleeE and meleeE.icon)
   end
   if meleeE and meleeLive and (ns.N(meleeLive.rank) or 0) > 0 then
     melee = makeCombatTile(Tr["Mêlée"], "melee", meleeE, meleeLive, meleeIcon)
@@ -1589,23 +1594,55 @@ function ns.Now()
   if t then return t end
   return (type(time) == "function" and time()) or 0
 end
-function ns.Rate.Note(key, value, now)
+ns.WEAPON_SKILL_CHANCE_FLOOR = 0.01
+
+-- Chance approx. d'un palier d'arme : (plafond − rang) / plafond, avec un plancher.
+function ns.WeaponSkillChance(current, cap)
+  current, cap = ns.N(current), ns.N(cap)
+  if not current or not cap or cap <= 0 then return nil end
+  if current >= cap then return 0 end
+  local p = (cap - current) / cap
+  local fl = ns.WEAPON_SKILL_CHANCE_FLOOR or 0.01
+  if p < fl then p = fl end
+  return p
+end
+
+-- Somme des 1/p(k) de `from` inclus à `to` exclu (étapes normalisées jusqu'au plafond).
+function ns.WeaponSkillExpectedSteps(from, to, cap)
+  from, to, cap = ns.N(from), ns.N(to), ns.N(cap)
+  if not from or not to or not cap then return nil end
+  if to <= from then return 0 end
+  local s = 0
+  for k = from, to - 1 do
+    local p = ns.WeaponSkillChance(k, cap)
+    if not p or p <= 0 then return nil end
+    s = s + (1 / p)
+  end
+  return s
+end
+
+function ns.Rate.Note(key, value, now, info)
   value = ns.N(value)
   if not key or not value then return end
+  if type(now) == "table" and info == nil then
+    info, now = now, now.now
+  end
   now = now or ns.Now()
+  info = (type(info) == "table") and info or nil
+  local cap = info and ns.N(info.cap) or nil
+  local weapon = info and info.weapon or false
   local s = ns.Rate.samples[key]
-  if not s then
-    ns.Rate.samples[key] = { t0 = now, v0 = value, t1 = now, v1 = value, n = 1 }
-    return
-  end
-  if value < s.v1 then
+  if not s or value < (s.v1 or 0) then
     -- recul (nouveau niveau, réinitialisation) : on repart de ce point
-    ns.Rate.samples[key] = { t0 = now, v0 = value, t1 = now, v1 = value, n = 1 }
+    ns.Rate.samples[key] = { t0 = now, v0 = value, t1 = now, v1 = value, n = 1, cap = cap, weapon = weapon }
     return
   end
+  if cap then s.cap = cap end
+  if weapon then s.weapon = true end
   if value > s.v1 then s.t1, s.v1, s.n = now, value, s.n + 1 end
 end
 -- Secondes par unité (rang, point d'XP) ; nil tant que la mesure est insuffisante.
+-- Pour les armes, c'est le rythme linéaire brut (les ETA d'arme utilisent AttemptRate).
 function ns.Rate.SecondsPerUnit(key)
   local s = ns.Rate.samples[key]
   if not s or s.n < 2 then return nil end
@@ -1613,10 +1650,31 @@ function ns.Rate.SecondsPerUnit(key)
   if dv <= 0 or dt <= 0 then return nil end
   return dt / dv
 end
-function ns.Rate.ETA(key, current, target)
+-- Tentatives par seconde, déduites des gains mesurés normalisés par p(rang).
+function ns.Rate.AttemptRate(key)
+  local s = ns.Rate.samples[key]
+  if not s or s.n < 2 or not s.weapon then return nil end
+  local cap = s.cap
+  if not cap or cap <= 0 then return nil end
+  local steps = ns.WeaponSkillExpectedSteps(s.v0, s.v1, cap)
+  local dt = s.t1 - s.t0
+  if not steps or steps <= 0 or not dt or dt <= 0 then return nil end
+  return steps / dt
+end
+function ns.Rate.ETA(key, current, target, cap)
   current, target = ns.N(current), ns.N(target)
+  if not current or not target or target <= current then return nil end
+  local s = ns.Rate.samples[key]
+  cap = ns.N(cap) or (s and s.cap) or nil
+  if s and s.weapon and cap then
+    local lam = ns.Rate.AttemptRate(key)
+    if not lam or lam <= 0 then return nil end
+    local steps = ns.WeaponSkillExpectedSteps(current, target, cap)
+    if not steps then return nil end
+    return steps / lam
+  end
   local spu = ns.Rate.SecondsPerUnit(key)
-  if not spu or not current or not target or target <= current then return nil end
+  if not spu then return nil end
   return spu * (target - current)
 end
 function ns.FormatDuration(sec)
@@ -1740,10 +1798,21 @@ function ns.SaveActiveProfile()
   local c = db.chars and db.chars[key]
   if not ns.CharUsesProfile(c) then return false end
   c.uiProfile = c.uiProfile or {}
+  local changed = false
   for _, k in ipairs(ns.ProfileKeys(db.ui)) do
-    c.uiProfile[k] = Pack(db.ui[k])
+    local v = Pack(db.ui[k])
+    if c.uiProfile[k] ~= v then
+      -- tables : Pack renvoie une copie ; on n'écrit que si la valeur change vraiment
+      if type(v) == "table" or type(c.uiProfile[k]) == "table" then
+        c.uiProfile[k] = v
+        changed = true
+      else
+        c.uiProfile[k] = v
+        changed = true
+      end
+    end
   end
-  return true
+  return changed and true or false
 end
 
 -- Valeurs du compte mises de côté → remises dans DropamineDB.ui.
@@ -2613,6 +2682,7 @@ do
     { id = "fishing",  label = "Pêche",              tip = "Simule la pêche : hameçon qui tangue dans le puits." },
     { id = "swimming", label = "Nage",               tip = "Simule la nage : bulles dans le puits." },
     { id = "rested",   label = "Repos",              tip = "Simule le repos en auberge : « z » dans le puits de la fiole, dans tous les modes (barre et grilles 1/2/3/5 col.). En barre, les z quittent le portrait Niveau ; en grille, ils restent aussi sur Niveau." },
+    { id = "sleepingbag", label = "Sac de couchage", tip = "Simule le sac de couchage style A (1, 2 ou 3 bandes) dans le puits. /drop test sleepingbag 1|2|3|miss : miss affiche le toast « palier manqué » (teinte XP)." },
     { id = "combat",   label = "Combat",             tip = "Simule le combat selon le style choisi (bulles, épée ou désactivé). Vérifie barre, 1, 2, 3 et 5 colonnes : le liquide rouge + bleu (proportionnel) avec bulles ambre reste dans l'icône de la case total." },
     { id = "trainer",  label = "Maître à proximité", tip = "Simule un maître à proximité : éclat sur les cases de métier." },
     { id = "rankup",   label = "Rang supérieur disponible", tip = "Affiche le toast collant « rang supérieur disponible chez le maître »." },
@@ -2632,6 +2702,8 @@ do
     peche = "fishing", fishing = "fishing",
     nage = "swimming", swim = "swimming", swimming = "swimming",
     repos = "rested", rested = "rested", rest = "rested",
+    sleepingbag = "sleepingbag", ["sleeping-bag"] = "sleepingbag", couchage = "sleepingbag",
+    ["sac"] = "sleepingbag", ["sac-de-couchage"] = "sleepingbag", wellrested = "sleepingbag",
     maitre = "trainer", trainer = "trainer",
     combat = "combat",
     rankup = "rankup", rang = "rankup", palier = "rankup",
@@ -2710,11 +2782,40 @@ do
     return true
   end
 
+  function T.StartSleepingBag(extra)
+    if not T.Enabled() then return nil end
+    extra = tostring(extra or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+    if extra == "" then extra = "1" end
+    T._on = T._on or {}
+    T._on.sleepingbag = true
+    local S = ns.Slot
+    if extra == "miss" or extra == "manque" or extra == "manqué" or extra == "manquee" then
+      if S and S.SetSleepingBagSim then pcall(S.SetSleepingBagSim, 2) end
+      if S and S.Refresh then pcall(S.Refresh, "test") end
+      if S and S.NotifySleepingBagMiss then pcall(S.NotifySleepingBagMiss, 2) end
+      ns.Print(Tr["test : sac de couchage, palier manqué."])
+      return true
+    end
+    local n = tonumber(extra)
+    if n ~= 1 and n ~= 2 and n ~= 3 then
+      ns.Print(Tr["test : usage /drop test sleepingbag 1|2|3|miss"])
+      return nil
+    end
+    if S and S.SetSleepingBagSim then pcall(S.SetSleepingBagSim, n) end
+    if S and S.Refresh then pcall(S.Refresh, "test") end
+    ns.Print(string.format(Tr["test : sac de couchage palier %s."], tostring(n)))
+    return true
+  end
+
   function T.Start(id)
     if not T.Enabled() then return nil end
-    id = Norm(id)
+    local raw = tostring(id or "")
+    local head, extra = raw:match("^(%S+)%s*(.-)%s*$")
+    id = Norm(head)
+    extra = extra or ""
     if id == "off" then return T.StopAll() end
     if id == "toast" then return T.Toast() end
+    if id == "sleepingbag" then return T.StartSleepingBag(extra) end
     if id == "flight" then return T.StartFlight() end
     if id == "transport" then return T.StartTransport() end
     if id == "loading" then return T.StartLoading() end
@@ -2856,7 +2957,17 @@ do
   end
 
   function T.Toggle(id)
-    id = Norm(id)
+    local raw = tostring(id or "")
+    local head, extra = raw:match("^(%S+)%s*(.-)%s*$")
+    head = Norm(head)
+    extra = extra or ""
+    if head == "sleepingbag" then
+      if extra == "off" or extra == "stop" then return T.Stop("sleepingbag") end
+      if extra ~= "" then return T.Start(raw) end
+      if T.IsOn("sleepingbag") then return T.Stop("sleepingbag") end
+      return T.Start(raw)
+    end
+    id = head
     if id == "toast" or id == "off" then return T.Start(id) end
     if T.IsOn(id) then return T.Stop(id) end
     return T.Start(id)
@@ -2893,7 +3004,7 @@ end
 if ns.DEV_TEST then
   ns.SlashExt = ns.SlashExt or {}
   ns.SlashExt.test = function(rest)
-    local arg = (rest or ""):match("^%s*(%S*)") or ""
+    local arg = (rest or ""):match("^%s*(.-)%s*$") or ""
     if arg == "" then
       ns.Print(Tr["/drop test flight|toast|off : simulations (DEV)"])
       return

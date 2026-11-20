@@ -762,11 +762,22 @@ end
 
 function UI:LayoutGrid(wrap, snap)
   if not wrap or not snap then return end
-  -- 3.5.21 : en combat, pas de re-pose (SetPoint / Show / Hide / SetFrameLevel)
-  -- si la grille est déjà en place — le wrap peut être enfant de SkillFrame.
+  -- 3.5.21 / 3.6.3 : SkillFrame protégé → valeurs seulement, mise en page
+  -- après le combat. Le panneau compact (W.frame) n'est pas protégé : on
+  -- relance la grille tout de suite pour recaler la hauteur du fond.
   if ns.InCombat and ns.InCombat() and wrap._layout and wrap.tiles and #wrap.tiles > 0 then
-    if self.RefreshVisibleTiles then self:RefreshVisibleTiles(wrap, snap) end
-    return
+    local prot = (wrap.IsProtected and wrap:IsProtected())
+      or (wrap.child and wrap.child.IsProtected and wrap.child:IsProtected())
+    if prot then
+      if self.RefreshVisibleTiles then self:RefreshVisibleTiles(wrap, snap) end
+      if ns.AfterCombat then
+        ns.AfterCombat("layout-grid", function()
+          if wrap._snap then self:LayoutGrid(wrap, wrap._snap) end
+          if ns.Layout and ns.Layout.Center then pcall(ns.Layout.Center) end
+        end)
+      end
+      return
+    end
   end
   wrap._snap = snap
   local tiles = snap.tiles or {}
@@ -874,6 +885,10 @@ function UI:LayoutGrid(wrap, snap)
   if wrap == self.embed then SafeStep("défilement", self.UpdateGridScrollBar, self, wrap) end
   self:ResolveSelected()
   for i = 1, #wrap.tiles do V.PaintTile(wrap.tiles[i]) end
+  if ns.Window and ns.Window.IsShown and ns.Window.IsShown()
+    and ns.Layout and ns.Layout.Center then
+    pcall(ns.Layout.Center)
+  end
 end
 
 -- Niveaux simples, posés une fois par mise en page : encadré = SkillFrame +

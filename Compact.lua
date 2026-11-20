@@ -268,7 +268,17 @@ function C.HoldKey(d)
   return "s:" .. tostring(d.skillName or d.name or d.id)
 end
 -- Valeur RETENUE (affichée) pour une case, seulement si plus basse que la vraie.
+function C.ShouldHold(d)
+  if not d or d.placeholder then return false end
+  if d.combatTile then return false end
+  if ns.IsWeaponSkill and ns.IsWeaponSkill(d.id or d.skillID, d.kind, d.skillName or d.name) then
+    return false
+  end
+  return true
+end
+
 function I.HeldValue(d)
+  if not C.ShouldHold(d) then return nil end
   local h = C.holds[C.HoldKey(d) or ""]
   if not h then return nil end
   local real = N(d.current) or 0
@@ -307,8 +317,9 @@ function C.TargetsFor(opts, drop)
     local t = C.SkillTile(opts)
     if t then
       local d = acc or 1
-      out[#out + 1] = { key = C.HoldKey(t.data), gain = d, hold = true }
-      if t.data.inTotal or t.data.combatTile then out[#out + 1] = { key = "total", gain = d, hold = true } end
+      local hold = C.ShouldHold(t.data)
+      out[#out + 1] = { key = C.HoldKey(t.data), gain = d, hold = hold }
+      if t.data.inTotal or t.data.combatTile then out[#out + 1] = { key = "total", gain = d, hold = hold } end
     end
   elseif kind == "rankup" then
     local t = C.SkillTile(opts)
@@ -364,7 +375,8 @@ function C.Register(drop, iconPath, opts)
   if not e then
     e = { drop = drop, icon = iconPath, kind = opts.kind, targets = targets, born = Now() }
     drop._osrsFly = e
-    if drop.HookScript then
+    if drop.HookScript and not drop._osrsFlyHooked then
+      drop._osrsFlyHooked = true
       drop:HookScript("OnHide", function(self)
         local en = self._osrsFly
         if not en or en.launched then return end
