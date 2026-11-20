@@ -287,7 +287,7 @@ function L.BuildGrip()
     if GameTooltip then
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
       GameTooltip:SetText(Tr["Disposition : "] .. L.Cols() .. " × " .. L.Rows(), 1, 0.82, 0)
-      GameTooltip:AddLine(Tr["Glisser : 1, 2, 3, 5 ou 10 colonnes · /drop colonnes · /drop taille"], 0.8, 0.8, 0.8)
+      GameTooltip:AddLine(Tr["Glisser : 2, 3, 5 ou 10 colonnes · /drop colonnes · /drop taille"], 0.8, 0.8, 0.8)
       GameTooltip:Show()
     end
   end)

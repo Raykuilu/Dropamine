@@ -252,6 +252,12 @@ function RT.Show(list)
     RT._toast = f
     RT._shownKey = RT.IdsKey(list)
     RT._queued = nil
+    -- Une visite commencée par Show() doit poser la grâce à la sortie
+    -- (même sans Refresh intermédiaire).
+    if RT.InCapital() then
+      RT._wasInCity = true
+      RT._wasKey = RT.CapitalKey() or (RT._simCity and "sim") or "capital"
+    end
     if RT.ApplyBadge then pcall(RT.ApplyBadge, f) end
     return f
   end

@@ -44,8 +44,12 @@ Options.SECTIONS = {
       get = function() return PanelM() and PanelM().BgAlpha() or 45 end,
       set = function(v) if PanelM() then PanelM().SetBgAlpha(v) end end },
     { type = "slider", key = "fadeDelay", label = "Délai avant repos", default = 3, min = 0, max = 60, step = 1, unit = "s", cmd = "/drop fondu <0-60>",
-      help = "Secondes avant que le panneau redevienne discret.",
-      get = function() return PanelM() and PanelM().FadeDelay() or 3 end,
+      help = "Secondes avant que le panneau redevienne discret. 0 = jamais (le repos n'est pas déclenché).",
+      get = function()
+        local Pnl = PanelM()
+        if Pnl then return Pnl.FadeDelay() end
+        return 3
+      end,
       set = function(v) if PanelM() then PanelM().SetFadeDelay(v) end end },
     { type = "radio", key = "colorMode", label = "Couleur des chiffres", default = "palier",
       choices = { { "palier", "Selon le palier" }, { "vert", "Vert" }, { "jaune", "Jaune" } }, cmd = "/drop couleurs palier|vert|jaune",
@@ -81,7 +85,7 @@ Options.SECTIONS = {
       choices = { { "complet", "Complet" }, { "leger", "Une ligne" } }, cmd = "/drop drops style complet|leger",
       help = "Toast complet ou une seule ligne discrète." },
     { type = "check", key = "xpDrops", label = "Gains d'XP", default = true, cmd = "/drop drops xp on|off",
-      help = "Toasts d'XP : remise de quête, jalons discrets à 25, 50 et 75 % du niveau en cours, une fois par palier. Pas de toast à chaque monstre tué (l'animation de la fiole reste). La montée de niveau se règle à part." },
+      help = "Toasts d'XP : remise de quête, jalons discrets à 25, 50 et 75 % du niveau en cours, une fois par palier. Pas de toast à chaque monstre tué. La montée de niveau se règle à part." },
     { type = "check", key = "skillDrops", label = "Gains de compétence", default = true, cmd = "/drop drops comp on|off", help = "Toast à chaque +1 de compétence." },
     { type = "check", key = "flyAnim", label = "Animation vers la case", default = true, cmd = "/drop animation on|off",
       help = "Un éclat vole du toast jusqu'à la case, puis « +N »." },
@@ -259,6 +263,7 @@ function ns.OnOptionChanged(key, value)
   local UI = ns.UI
   if key == "dropsEnabled" and UI and UI.ApplyDropsEnabled then pcall(UI.ApplyDropsEnabled, UI) end
   if (key == "dropDir" or key == "dropStyle" or key == "dropWidth") and UI and UI.ApplyDropsLayout then pcall(UI.ApplyDropsLayout, UI) end
+  if key == "dropBgAlpha" and UI and UI.RefreshToastOpacity then pcall(UI.RefreshToastOpacity, UI) end
   if key == "dropsSnapChat" and UI and UI.SetDropsSnapChat and not Options._snapping then
     Options._snapping = true
     pcall(UI.SetDropsSnapChat, UI, value and true or false)
@@ -389,7 +394,10 @@ function Options.FormatValue(it, v)
   end
   if it.unit == "%" then return tostring(math.floor(v * 100 + 0.5)) .. " %" end
   if it.unit == "pct" then return tostring(math.floor(v + 0.5)) .. " %" end
-  if it.unit == "s" then return tostring(v) .. Tr[" s"] end
+  if it.unit == "s" then
+    if it.key == "fadeDelay" and v <= 0 then return Tr["Jamais"] end
+    return tostring(v) .. Tr[" s"]
+  end
   return tostring(v)
 end
 

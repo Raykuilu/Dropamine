@@ -364,7 +364,7 @@ function R.Apply(t)
   local a = Anchor(t)
   local base = (t.GetFrameLevel and N(t:GetFrameLevel())) or 1
   -- z
-  local stealZ = ns.Slot and ((ns.Slot.StealsLevelZ and ns.Slot.StealsLevelZ()) or (not ns.Slot.StealsLevelZ and ns.Slot.TakesRestedZ and ns.Slot.TakesRestedZ() and ns.Slot.FlaskIsWide and ns.Slot.FlaskIsWide()))
+  local stealZ = false  -- z uniquement sur la case Niveau ; plus sur la fiole
   if st.z > 0 and stealZ then
     if t._rzz then
       for _, f in ipairs(t._rzz.z) do Stop(f.ag) f:Hide() end

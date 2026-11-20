@@ -202,20 +202,20 @@ if Wd then
   Wd.MIN_H = 28
   Wd.MIN_BAR_H = 12
   Wd.MIN_BAR_W = 60
-  Wd.MIN_FONT = 13
+  Wd.MIN_FONT = nil  -- le total suit I.NumberSizes (plus petit que le rang)
   Wd.MIN_ISZ = 24
   -- Référence 100 % (zoom uniforme au-dessus des planchers absolus).
   Wd.REF_BAR_H = 8
   Wd.REF_PAD = 6
   Wd.REF_FONT = 11
-  Wd.TEXT_SIZE = 13
+  Wd.TEXT_SIZE = nil
   Wd.FILL = ns.STYLE.BORDER               -- jeton unique #A67D45 (STYLE.md)
   Wd.SHEEN_A = 0.28                       -- reflet 1 px en haut du remplissage
   Wd.TRACK = { 0.15, 0.15, 0.15, 0.9 }    -- piste FlareUI
   Wd.EDGE_TEX = MEDIA .. "Dropamine-Thin"       -- notre filet fin (même tracé que le bord du panneau)
   Wd.EDGE_SIZE = 8                        -- FlareUI : BorderEdgeSize(Thin, 16) = 8
   Wd.EDGE_OUT = 3                         -- le filet est à 3 px du bord du cadre
-  Wd.TEXT_SIZE = 13
+  Wd.TEXT_SIZE = nil
   local function Edge(t)
     local p = t._wideParts
     if not p then return nil end

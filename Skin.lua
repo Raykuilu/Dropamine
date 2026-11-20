@@ -216,7 +216,13 @@ if Ch then
     local fl = f._flare and f._flare.border
     if fl then for _, t in pairs(fl) do if type(t) == "table" and t.Hide then t:Hide() end end end
     if f._toastBg then f._toastBg:Hide() end          -- le fond plat est recouvert par l'habillage
-    local a = (P and P.tip and P.tip.bgAlpha) or ns.N(f._bgAlpha) or ((P and P.BgAlpha and P.BgAlpha() or 85) / 100)
+    local a
+    if ns.UI and ns.UI.ToastBgAlpha then
+      a = ns.UI.ToastBgAlpha(f)
+    elseif ns.UI and ns.UI.DropBgAlpha then
+      a = ns.UI:DropBgAlpha()
+    end
+    if not a then a = 0.68 end
     Sk.Paint(c.host, a)
     c.host:Show()
     f._osrsNativeBorder = c.mode

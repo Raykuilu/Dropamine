@@ -2780,6 +2780,17 @@ function F.EnsurePoll()
     F._elapsed = (F._elapsed or 0) + dt
     if F._elapsed < F.POLL then return end
     F._elapsed = 0
+    local combat = ns.InCombat and ns.InCombat()
+    -- GC incrémental hors combat (le tas Lua grossit par le churn, pas les tables retenues).
+    if not combat and type(collectgarbage) == "function" then
+      F._gcAcc = (F._gcAcc or 0) + 1
+      if F._gcAcc >= 4 then  -- ~2 s à F.POLL 0,5
+        F._gcAcc = 0
+        pcall(collectgarbage, "step", 200)
+      end
+    end
+    local flying = (ns.Flight and ns.Flight.Paused and ns.Flight.Paused()) or (ns.PausedForFlight and ns.PausedForFlight())
+    if combat and not flying then return end
     F.Sync("poll")
     if ns.Efficiency and ns.Efficiency.Pulse then pcall(ns.Efficiency.Pulse, "poll") end
   end
@@ -3353,6 +3364,7 @@ end)
 -- Fin de combat : toasts de compétence éventuellement manqués (rangs secrets)
 -- puis mise en page structurelle si elle a été reportée.
 ns.On("PLAYER_REGEN_ENABLED", function()
+  if ns.Slot and ns.Slot.FlushDeferred then pcall(ns.Slot.FlushDeferred) end
   if ns.UI and ns.UI._skillDiffAfterCombat and ns.UI.OnSkillDiff then ns.UI._skillDiffAfterCombat = false ns.UI:OnSkillDiff() end
   if ns.UI and ns.UI.dirty and ns.UI.Refresh then ns.UI:Refresh() end
 end)

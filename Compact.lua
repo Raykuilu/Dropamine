@@ -72,9 +72,14 @@ function C.Announce(opts, targets)
     else
       local tile = C.TileByKey and C.TileByKey(tg.key)
       if tile then
-        if C.Pulse then C.Pulse(tile, color) end
-        if tg.gain and tg.gain > 0 and C.Gain then
-          C.Gain(tile, "+" .. tostring(math.floor(tg.gain + 0.5)), color)
+        -- Un seul pop + un seul « +1 » (la pré-sélection reste un liseré, sans +1).
+        local now = (type(GetTime) == "function" and GetTime()) or 0
+        if not (tile._gainPopAt and now > 0 and (now - tile._gainPopAt) < 0.25) then
+          tile._gainPopAt = now
+          if C.Pulse then C.Pulse(tile, color) end
+          if tg.gain and tg.gain > 0 and C.Gain then
+            C.Gain(tile, "+" .. tostring(math.floor(tg.gain + 0.5)), color)
+          end
         end
         if not origin then origin = tile end
       end
@@ -317,7 +322,8 @@ function UI:IsRightPaneVisible() return false end
 C.FLY = 0.55          -- vol de l'éclat (s)
 C.GAIN_TIME = 1.5     -- gain vert : montée + fondu
 C.GAIN_RISE = 14      -- px
-C.PULSE_IN, C.PULSE_OUT = 0.12, 0.35
+C.PULSE_IN, C.PULSE_OUT = 0.08, 0.22   -- pop court
+C.POP_COLOR = { 0.55, 1.00, 0.55 }  -- flash vert clair du vrai +1
 C.FLY_SIZE = 22
 C.holds = {}          -- clé de case → valeur affichée tant que l'éclat vole
 C.flights = 0
@@ -607,8 +613,12 @@ function C.Land(e, quiet)
       if tg.key ~= "total" then
         local tile = C.TileByKey(tg.key)
         if tile then
-          C.Pulse(tile)
-          if tg.gain and tg.gain > 0 then C.Gain(tile, "+" .. tostring(math.floor(tg.gain + 0.5))) end
+          local now = (type(GetTime) == "function" and GetTime()) or 0
+          if not (tile._gainPopAt and now > 0 and (now - tile._gainPopAt) < 0.25) then
+            tile._gainPopAt = now
+            C.Pulse(tile)
+            if tg.gain and tg.gain > 0 then C.Gain(tile, "+" .. tostring(math.floor(tg.gain + 0.5))) end
+          end
         end
       end
     end
@@ -626,14 +636,14 @@ function C.Pulse(t, color)
     p.tex:SetAllPoints(p)
     pcall(p.tex.SetTexture, p.tex, WHITE8)
     if p.tex.SetBlendMode then pcall(p.tex.SetBlendMode, p.tex, "ADD") end
-    local pc = C.SharedGainColor and C.SharedGainColor(color) or color
-    if p.tex.SetVertexColor then pcall(p.tex.SetVertexColor, p.tex, pc[1], pc[2], pc[3], 0.55) end
+    local pc = C.POP_COLOR or { 0.55, 1.00, 0.55 }
+    if p.tex.SetVertexColor then pcall(p.tex.SetVertexColor, p.tex, pc[1], pc[2], pc[3], 0.85) end
     if p.CreateAnimationGroup then
       local ok, ag = pcall(p.CreateAnimationGroup, p)
       if ok and ag then
         p.ag = ag
         local a1 = NewAnim(ag, "Alpha") if a1 then pcall(a1.SetDuration, a1, C.PULSE_IN) AlphaAnim(a1, 0, 1) if a1.SetOrder then pcall(a1.SetOrder, a1, 1) end end
-        local s1 = NewAnim(ag, "Scale") if s1 then pcall(s1.SetDuration, s1, C.PULSE_IN) ScaleAnim(s1, 1.25) if s1.SetOrder then pcall(s1.SetOrder, s1, 1) end end
+        local s1 = NewAnim(ag, "Scale") if s1 then pcall(s1.SetDuration, s1, C.PULSE_IN) ScaleAnim(s1, 1.18) if s1.SetOrder then pcall(s1.SetOrder, s1, 1) end end
         local a2 = NewAnim(ag, "Alpha") if a2 then pcall(a2.SetDuration, a2, C.PULSE_OUT) AlphaAnim(a2, 1, 0) if a2.SetOrder then pcall(a2.SetOrder, a2, 2) end end
         ag:SetScript("OnFinished", function() p:Hide() end)
       end
@@ -642,9 +652,9 @@ function C.Pulse(t, color)
   end
   local base = t.GetFrameLevel and t:GetFrameLevel() or 1
   pcall(p.SetFrameLevel, p, base + 6)
-  color = C.SharedGainColor and C.SharedGainColor(color) or color
-  if color and p.tex and p.tex.SetVertexColor then
-    pcall(p.tex.SetVertexColor, p.tex, color[1], color[2], color[3], 0.55)
+  color = C.POP_COLOR or { 0.55, 1.00, 0.55 }
+  if p.tex and p.tex.SetVertexColor then
+    pcall(p.tex.SetVertexColor, p.tex, color[1], color[2], color[3], 0.85)
   end
   p._color = color
   p:Show()

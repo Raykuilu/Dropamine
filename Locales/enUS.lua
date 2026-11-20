@@ -311,7 +311,7 @@ E["masquées (grille compacte)"] = "hidden (compact grid)"
 
 -- Layout.lua
 E["Disposition : "] = "Layout: "
-E["Glisser : 1, 2, 3, 5 ou 10 colonnes · /drop colonnes · /drop taille"] = "Drag: 1, 2, 3, 5 or 10 columns · /drop columns · /drop size"
+E["Glisser : 2, 3, 5 ou 10 colonnes · /drop colonnes · /drop taille"] = "Drag: 2, 3, 5 or 10 columns · /drop columns · /drop size"
 E["disposition : "] = "layout: "
 E[" colonne"] = " column"
 E[" rangée"] = " row"

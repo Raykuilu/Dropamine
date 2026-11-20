@@ -73,12 +73,14 @@ function Wd.Metrics(tile)
   end
   local minH = Wd.MIN_H or 28
   local minBh = Wd.MIN_BAR_H or 12
-  local minFont = Wd.MIN_FONT or 13
   local minIsz = Wd.MIN_ISZ or 24
   local h = math.max(minH, math.floor(tile * (Wd.SLIM or 0.5) + 0.5))
   local bh = px(Wd.REF_BAR_H or Wd.BAR_H or 5, minBh)
   local pad = px(Wd.REF_PAD or Wd.PAD or 5, Wd.MIN_PAD or 3)
-  local font = px(Wd.REF_FONT or Wd.TEXT_SIZE or 13, minFont)
+  -- Police du total : plus petite que le rang de case, jamais le plancher 13
+  -- qui égalait ou dépassait le rang aux petites tailles.
+  local sizes = I and I.NumberSizes and I.NumberSizes(tile) or nil
+  local font = (sizes and sizes.total) or math.max(8, math.floor((Wd.REF_FONT or 11) * k + 0.5))
   local isz = math.max(minIsz, h - 2)
   -- Si le zoom donnerait une rangée trop basse, on l'agrandit (jamais l'inverse).
   h = math.max(h, isz + 2, bh + 2, font + 4)
@@ -98,9 +100,9 @@ end
 
 -- Réserve de largeur pour « 0000 / 0000 » à la police courante (jamais réduite).
 function Wd.ReserveTextW(font)
-  font = font or Wd.MIN_FONT or 13
+  font = font or 11
   -- Arial Narrow ~0,62 em, 12 glyphes, + 8 px de marge pour ne pas sous-estimer.
-  return math.max(72, math.floor((font or 13) * 12 * 0.62 + 8.5))
+  return math.max(56, math.floor((font or 11) * 12 * 0.62 + 8.5))
 end
 
 -- Largeur minimale de la rangée : fiole | texte (taille pleine) | barre (>= 60 px).
@@ -128,7 +130,7 @@ function Wd.PlanTotalRow(w, m, twOf)
   local slotW = isz + 2
   local pad = m.pad or Wd.MIN_PAD or 3
   local edge = m.edgeOut or 0
-  local font = math.max(m.font or 0, Wd.MIN_FONT or 13)
+  local font = m.font or (I and I.NumberSizes and I.NumberSizes(m.tile).total) or 11
   local bh = math.max(m.bh or 0, Wd.MIN_BAR_H or 12)
   local h = math.max(m.h or 0, Wd.MIN_H or 28)
   local minBar = Wd.MIN_BAR_W or 60
@@ -161,16 +163,17 @@ end
 function Wd.PlaceTotalRow(t, p, m, w, h, cur, max)
   if not (t and p and p.text and p.track) then return nil end
   m = m or Wd.Metrics((ns.Icons and ns.Icons.TILE) or h)
-  local path, flags = m.fontPath, m.fontFlags
-  if p.text.GetFont then
-    local okF, gp, _, gf = pcall(p.text.GetFont, p.text)
-    if okF and gp and gp ~= "" then path, flags = gp, gf or flags end
-  end
+  -- Toujours Arial Narrow + ombre de case, jamais la face du modèle de police.
+  local path = (I and I.COUNT_PATH) or m.fontPath or "Fonts\\ARIALN.TTF"
+  local flags = (I and I.TEXT_FLAGS) or m.fontFlags or ""
   local label = string.format("%d / %d", N(cur) or 0, N(max) or 0)
   if p.text.SetText then p.text:SetText(label) end
   local function twOf(sz)
-    if p.text.SetFont and path then
-      pcall(p.text.SetFont, p.text, path, sz, flags or "")
+    if I and I.ApplyNumberFont then
+      I.ApplyNumberFont(p.text, sz)
+    elseif p.text.SetFont and path then
+      pcall(p.text.SetFont, p.text, path, sz, flags)
+      if I and I.CleanText then I.CleanText(p.text) end
     end
     local okW, tw = pcall(p.text.GetStringWidth, p.text)
     tw = (okW and N(tw)) or 56
@@ -998,13 +1001,16 @@ do
     end
     if not F.Paused() and (F._vis or 0) <= 0 then F._cycle0 = nil end
     local slot = ns.Slot
-    if slot and slot.Tick then pcall(slot.Tick, dt) end
-    local act = (slot and slot.Active and slot.Active()) or "drop"
-    local flightSym = (slot and slot.Want and slot.Want("flight")) or (not slot and F.Paused())
-    if flightSym or (act == "drop" and (F._vis or 0) > 0) then
-      Wd.ApplyHourglass()
-    elseif slot and slot.ApplyTotal then
-      pcall(slot.ApplyTotal)
+    if slot and slot.Tick then
+      pcall(slot.Tick, dt)
+    else
+      local act = (slot and slot.Active and slot.Active()) or "drop"
+      local flightSym = (slot and slot.Want and slot.Want("flight")) or (not slot and F.Paused())
+      if flightSym or (act == "drop" and (F._vis or 0) > 0) then
+        Wd.ApplyHourglass()
+      elseif slot and slot.ApplyTotal then
+        pcall(slot.ApplyTotal)
+      end
     end
     if ns.Panel and ns.Panel.ApplyOpacity then pcall(ns.Panel.ApplyOpacity) end
     local need = ((F._vis or 0) > 0) or F.Paused() or (slot and slot.NeedsDriver and slot.NeedsDriver())

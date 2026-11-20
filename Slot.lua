@@ -38,34 +38,17 @@ S.OPT_KEYS = {
   afk = "slotAfk", bags = "slotBags", fishing = "slotFishing", swimming = "slotSwimming",
   durability = "slotDurability",
   sleepingbag = "slotSleepingBag",
-  rested = "slotRested", trainer = "slotTrainer",
+  trainer = "slotTrainer",
 }
 
+-- Style Bulles / Épée retiré : la fiole ne s'anime plus en combat
+-- (icône d'état statique). Les anciens réglages sont ignorés.
 function S.CombatStyle()
-  local ui = ns.db and ns.db.ui
-  local v = ui and ui.combatStyle
-  if type(v) == "string" then
-    v = v:lower()
-    if v == "sword" or v == "epee" or v == "épée" or v == "c" then return "sword" end
-    if v == "off" or v == "none" or v == "desactive" or v == "désactivé" then return "off" end
-    if v == "bubbles" or v == "bulles" or v == "a" then return "bubbles" end
-  end
-  return "bubbles"
+  return "off"
 end
 
 function S.SetCombatStyle(v)
-  local n = S.CombatStyle()
-  if type(v) == "string" then
-    local k = v:lower()
-    if k == "sword" or k == "epee" or k == "épée" or k == "c" then n = "sword"
-    elseif k == "off" or k == "none" or k == "desactive" or k == "désactivé" then n = "off"
-    elseif k == "bubbles" or k == "bulles" or k == "a" then n = "bubbles"
-    end
-  elseif v == false then
-    n = "off"
-  end
-  if ns.SetOpt then ns.SetOpt("combatStyle", n) end
-  return n
+  return "off"
 end
 
 function S.CombatLiquidOn()
@@ -248,15 +231,7 @@ end
 
 function S.LiveRested()
   if S._sim.rested then return true end
-  local resting = Call(IsResting) and true or false
-  if not resting then return false end
-  if ns.Rested and ns.Rested.State then
-    local st = ns.Rested.State()
-    if st and N(st.z) and st.z > 0 then return true end
-    -- pas de « z » sans XP de repos
-    return false
-  end
-  return resting
+  return Call(IsResting) and true or false
 end
 
 function S.LiveTrainer()
@@ -577,6 +552,10 @@ end
 S.AURA_COALESCE = 0.15
 
 function S.ScanPlayerAuras(force)
+  if S.CombatQuiet and S.CombatQuiet() and not S._flushing then
+    S.Defer("auras")
+    return S._eatName, S._eatSpell
+  end
   if not force and S._auraFresh then return S._eatName, S._eatSpell end
   S._auraFresh = true
   S._auraAt = Now()
@@ -634,6 +613,11 @@ end
 
 function S.OnPlayerAura(reason)
   -- Unité déjà filtrée (player). Regroupe les salves d'UNIT_AURA.
+  if S.CombatQuiet and S.CombatQuiet() and not S._flushing then
+    S.Defer("auras")
+    S._auraFresh = false
+    return
+  end
   S._auraPending = true
   local wait = S.AURA_COALESCE or 0.15
   local C = _G.C_Timer
@@ -1010,18 +994,11 @@ function S.FlaskIsWide(t)
 end
 
 function S.TakesRestedZ()
-  -- z dans la fiole (barre large OU case grille 1/2/3/5 col.) si c'est l'état actif
-  if S.Active() ~= "rested" then return false end
-  local t = S.FlaskTile()
-  return t and t.data and t.data.kind == "total" and true or false
+  return false   -- z sur la fiole retirés : l'état repos remplace l'icône
 end
 
--- En barre large, les z quittent le portrait Niveau (règle historique).
--- En grille, ils s'ajoutent dans la case total sans retirer ceux du portrait
--- (les tests 3.6.2 et la vague de repos restent sur la case Niveau).
 function S.StealsLevelZ()
-  -- z dans la fiole (barre et grille) dès que la case total est visible.
-  return S.TakesRestedZ() and true or false
+  return false
 end
 
 ------------------------------------------------------------------------------
@@ -1353,7 +1330,6 @@ function S.IsCustomIcon(path)
 end
 
 function S.CombatStateOn()
-  if S.CombatStyle and S.CombatStyle() == "off" then return false end
   local act = S.Active and S.Active()
   if act and act ~= "drop" and act ~= "combat" then return false end
   return (S.LiveCombat and S.LiveCombat()) and true or false
@@ -1796,6 +1772,7 @@ function S.EnsureSlotZ(t)
 end
 
 function S.ApplySlotZ(t, on)
+  on = false
   if not t then return end
   if not on then
     if t._slotZ and t._slotZ.Hide then t._slotZ:Hide() end
@@ -1831,6 +1808,9 @@ function S.ApplySlotZ(t, on)
 end
 
 function S.TickSlotZ(dt)
+  return
+end
+function S._TickSlotZRemoved(dt)
   local t = S.FlaskTile and S.FlaskTile() or (ns.Wide and ns.Wide.TotalTile and ns.Wide.TotalTile())
   if not (t and t._slotZ and S.TakesRestedZ()) then return end
   local clip = t._slotZ
@@ -2185,6 +2165,30 @@ function S.StopTipTicker()
   if f and f.Hide then pcall(f.Hide, f) end
 end
 
+function S._onTipUpdate(_, elapsed)
+  if not S._tipOwner or not S._tipRefresh then
+    S.StopTipTicker()
+    return
+  end
+  local o = S._tipOwner
+  if o.IsMouseOver then
+    local ok, over = pcall(o.IsMouseOver, o)
+    if ok and over == false then
+      S.StopTipTicker()
+      local tt = _G.GameTooltip
+      if tt and tt.Hide then
+        if not tt.IsOwned or (select(1, pcall(tt.IsOwned, tt, o))) then pcall(tt.Hide, tt) end
+      end
+      return
+    end
+  end
+  S._tipAcc = (S._tipAcc or 0) + ((ns.N and ns.N(elapsed)) or tonumber(elapsed) or 0)
+  if S._tipAcc >= 0.25 then
+    S._tipAcc = 0
+    pcall(S._tipRefresh)
+  end
+end
+
 function S.StartTipTicker(owner, refresh)
   if not (owner and type(refresh) == "function") then return end
   S._tipOwner, S._tipRefresh, S._tipAcc = owner, refresh, 0
@@ -2198,30 +2202,9 @@ function S.StartTipTicker(owner, refresh)
   end
   local f = S._tipFrame
   if not f then return end
-  if f.SetScript then
-    pcall(f.SetScript, f, "OnUpdate", function(_, elapsed)
-      if not S._tipOwner or not S._tipRefresh then
-        S.StopTipTicker()
-        return
-      end
-      local o = S._tipOwner
-      if o.IsMouseOver then
-        local ok, over = pcall(o.IsMouseOver, o)
-        if ok and over == false then
-          S.StopTipTicker()
-          local tt = _G.GameTooltip
-          if tt and tt.Hide then
-            if not tt.IsOwned or (select(1, pcall(tt.IsOwned, tt, o))) then pcall(tt.Hide, tt) end
-          end
-          return
-        end
-      end
-      S._tipAcc = (S._tipAcc or 0) + (N(elapsed) or 0)
-      if S._tipAcc >= 0.25 then
-        S._tipAcc = 0
-        pcall(S._tipRefresh)
-      end
-    end)
+  if f.SetScript and not f._tipHooked then
+    f._tipHooked = true
+    pcall(f.SetScript, f, "OnUpdate", S._onTipUpdate)
   end
   if f.Show then pcall(f.Show, f) end
 end
@@ -2310,7 +2293,7 @@ function S.ShowExplanation(owner)
       act = "flight"
     end
   end
-  if act == "drop" and S.CombatLiquidOn() and (S.LiveCombat() or ((S.fill and S.fill.p) or 0) > 0.05) then
+  if act == "drop" and ((S.CombatStateOn and S.CombatStateOn()) or (S.LiveCombat and S.LiveCombat())) then
     act = "combat"
   end
   if act == "drop" then return end
@@ -2411,6 +2394,26 @@ function S.TickSheets(dt)
   end
 end
 
+
+S.COMBAT_REFRESH = 0.75
+S.PAINT_WAIT = 0.2
+function S.CombatQuiet()
+  return (ns.InCombat and ns.InCombat()) and true or false
+end
+function S.Defer(kind)
+  S._deferred = S._deferred or {}
+  if kind then S._deferred[kind] = true end
+end
+function S.FlushDeferred()
+  S._flushing = true
+  local d = S._deferred
+  S._deferred = nil
+  if d and d.auras then pcall(S.ScanPlayerAuras, true) end
+  if d and d.bags then pcall(S.CheckBags) end
+  pcall(S.Refresh, "flush")
+  S._flushing = false
+end
+
 function S.Tick(dt)
   dt = N(dt) or 0
   if dt <= 0 then return end
@@ -2436,12 +2439,19 @@ function S.Tick(dt)
   f.grey = Approach(f.grey, f.targetGrey, rate, dt)
   f.drain = Approach(f.drain, f.targetDrain, rate, dt)
   S.TickSheets(dt)
-  S.ApplyTotal()
-  S.ApplyFlaskFill()
   S.ApplyCombatLiq()
   S.ApplyRegenWave(dt)
   S.ApplyTrainerGlints()
   S.TickSlotZ(dt)
+  local quiet = S.CombatQuiet and S.CombatQuiet()
+  local now = Now()
+  if (not quiet) or (not S._paintAt) or (now - S._paintAt) >= (S.PAINT_WAIT or 0.2) then
+    S._paintAt = now
+    S.ApplyTotal()
+    S.ApplyFlaskFill()
+  elseif S.FillBusy and S.FillBusy() then
+    S.ApplyFlaskFill()
+  end
 end
 
 function S.QuietSkills(sec)
@@ -2479,6 +2489,17 @@ end
 
 function S.Refresh(reason)
   reason = reason or ""
+  if S.CombatQuiet and S.CombatQuiet() and reason ~= "flush" and reason ~= "PLAYER_REGEN_ENABLED" and not S._flushing then
+    S.Defer("refresh")
+    if reason == "BAG_UPDATE_DELAYED" or reason == "LOOT_CLOSED" or reason == "UI_ERROR_MESSAGE" then S.Defer("bags") end
+    if S.NeedsDriver() then S.StartDriver() end
+    local now = Now()
+    if not S._paintAt or (now - S._paintAt) >= (S.COMBAT_REFRESH or 0.75) then
+      S._paintAt = now
+      S.ApplyTotal()
+    end
+    return
+  end
   pcall(S.SyncSleepingBag)
   S.SyncFillTargets()
   if S.LiveFishing() then S._fishUntil = Now() + 2 end
@@ -2572,6 +2593,10 @@ function S.BagsLoading()
 end
 
 function S.CheckBags()
+  if S.CombatQuiet and S.CombatQuiet() and not S._flushing then
+    S.Defer("bags")
+    return
+  end
   local now = Now()
   -- simulation DEV : toast immédiat, sans debounce
   if S._sim.bags then
@@ -3455,12 +3480,6 @@ S.OPTIONS = {
     help = "Dans le puits de la fiole : un crâne, fiole vidée et grisée, suivi en pause jusqu'à la résurrection." },
   { type = "check", key = "slotFlight", label = "Sablier pendant le vol", default = true,
     help = "Remplace la goutte par le sablier pendant un trajet aérien. La pause du suivi reste réglée à part." },
-  { type = "radio", key = "combatStyle", label = "Style de combat", default = "bubbles",
-    choices = { { "bubbles", "Bulles" }, { "sword", "Épée" }, { "off", "Désactivé" } },
-    cmd = "/drop combat bulles|epee|off",
-    help = "Bulles (défaut) : la fiole se remplit en rouge et bleu, avec des bulles ambrées. Épée : le même liquide, plus une petite épée de bronze dans le puits. Désactivé : pas d'effet de combat.",
-    get = function() return S.CombatStyle() end,
-    set = function(v) S.SetCombatStyle(v) S.Refresh("option") end },
   { type = "check", key = "slotAfk", label = "Horloge AFK", default = true,
     help = "Une horloge de bronze à aiguille tournante quand tu es absent." },
   { type = "check", key = "slotBags", label = "Sacs pleins", default = true,
@@ -3472,9 +3491,7 @@ S.OPTIONS = {
   { type = "check", key = "slotDurability", label = "Équipement usé", default = false,
     help = "Un bouclier fendu dans le puits et un toast quand une pièce équipée passe sous 20 % de durabilité. Coupé par défaut." },
   { type = "check", key = "slotSleepingBag", label = "Sac de couchage", default = true,
-    help = "Dans le puits de la fiole, le sac de couchage (style A) à 1, 2 ou 3 bandes uniquement pendant la charge (sort Unroll Bag 429961 / canal). Le buff Bien reposé (429959) et les buffs résultants n'entretiennent pas l'icône. Priorité juste avant les z de repos. Si tu pars avant 3 charges, un toast XP indique le palier manqué." },
-  { type = "check", key = "slotRested", label = "« z » de repos sur la fiole", default = true,
-    help = "Les « z » de repos montent dans le puits de la fiole à l'auberge ou en capitale, s'il n'y a pas d'autre symbole." },
+    help = "Dans le puits de la fiole, le sac de couchage (style A) à 1, 2 ou 3 bandes uniquement pendant la charge (sort Unroll Bag 429961 / canal). Le buff Bien reposé (429959) et les buffs résultants n'entretiennent pas l'icône. Si tu pars avant 3 charges, un toast XP indique le palier manqué." },
   { type = "check", key = "slotTrainer", label = "Éclat maître à proximité", default = true,
     help = "Un petit éclat sur la case du métier quand un maître est à proximité (pas dans la fiole)." },
 }
@@ -3515,7 +3532,7 @@ end
 local prevOpt = ns.OnOptionChanged
 function ns.OnOptionChanged(key, value)
   if prevOpt then pcall(prevOpt, key, value) end
-  if type(key) == "string" and (key:find("^slot", 1) or key == "trainerRankToast" or key == "combatStyle" or key == "quietAuto") then
+  if type(key) == "string" and (key:find("^slot", 1) or key == "trainerRankToast" or key == "quietAuto") then
     pcall(S.Refresh, "option")
   end
   -- slotFlight off : cacher le sablier même en vol
@@ -3628,18 +3645,3 @@ if ns.Options then
   if ns.Options.All then ns.Options.ITEMS = ns.Options.All() end
 end
 
-ns.SlashExt = ns.SlashExt or {}
-ns.SlashExt.combat = function(rest)
-  local arg = (rest or ""):match("^%s*(%S*)") or ""
-  if arg == "" then
-    local cur = S.CombatStyle()
-    local label = (cur == "sword" and Tr["Épée"]) or (cur == "off" and Tr["Désactivé"]) or Tr["Bulles"]
-    ns.Print((Tr["style de combat"] or "style de combat") .. " : " .. (label or cur) .. ". /drop combat bulles|epee|off")
-    return
-  end
-  local n = S.SetCombatStyle(arg)
-  S.Refresh("slash")
-  ns.Print((Tr["style de combat"] or "style de combat") .. " : " .. n)
-end
-ns.HelpExt = ns.HelpExt or {}
-ns.HelpExt[#ns.HelpExt + 1] = "/drop combat bulles|epee|off : style de combat"

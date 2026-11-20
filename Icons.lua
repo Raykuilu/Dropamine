@@ -47,7 +47,7 @@ function I.SetMetrics(k)
   I.HGAP = math.max(2, R(B.HGAP))
   I.VGAP = math.max(I.VGAP_MIN, R(B.VGAP))
   I.STEP = I.TILE + I.VGAP
-  I.COUNT_MAX = math.max(8, R(B.COUNT_MAX))
+  I.COUNT_MAX = math.max(I.RANK_MIN or 11, R(B.COUNT_MAX))
   I.COUNT_MIN = math.max(6, math.min(I.COUNT_MAX, R(B.COUNT_MIN)))
   if ns.View then ns.View.ROW_PITCH = I.STEP end
   I.metricsK = k
@@ -191,6 +191,36 @@ function I.CleanText(fs)
 end
 I.COUNT_EM = 0.5
 I.COUNT_MAX, I.COUNT_MIN = I.COUNT_MAX or 13, I.COUNT_MIN or 8
+I.RANK_MIN = 11
+
+function I.ApplyNumberFont(fs, size)
+  if type(fs) ~= "table" then return fs end
+  if size and fs.SetFont then pcall(fs.SetFont, fs, I.COUNT_PATH, size, I.TEXT_FLAGS or "") end
+  I.CleanText(fs)
+  return fs
+end
+
+-- Rang (case) > total (rangée) > « /max », même face / style / ombre,
+-- tous proportionnels à la taille de case. Jamais de police de modèle.
+function I.NumberSizes(tile)
+  tile = tile or I.TILE or 40
+  -- Rang dérivé de CETTE taille de case (pas du COUNT_MAX d'une autre échelle).
+  local B = I.BASE or { TILE = 40, COUNT_MAX = 13 }
+  local refT = B.TILE or 40
+  if refT <= 0 then refT = 40 end
+  local k = (tile or refT) / refT
+  if k <= 0 then k = 1 end
+  local rank = math.max(I.RANK_MIN or 11, math.floor((B.COUNT_MAX or 13) * k + 0.5))
+  local total = math.max(8, math.floor(rank * 0.85 + 0.5))
+  if total >= rank then total = rank - 1 end
+  if total < 8 then total = 8 end
+  local k = (ns.Polish and ns.Polish.MAX_K) or 0.78
+  local maxs = math.max(7, math.floor(rank * k + 0.5))
+  if maxs >= total then maxs = total - 1 end
+  if maxs < 7 then maxs = 7 end
+  return { rank = rank, total = total, max = maxs }
+end
+
 function I.CountSize(longest, avail, availH, lines)
   local size = math.floor(avail / (math.max(1, longest) * I.COUNT_EM))
   if availH and lines then size = math.min(size, math.floor(availH / lines)) end

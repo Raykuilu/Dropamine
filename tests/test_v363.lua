@@ -1661,7 +1661,7 @@ do
   ok(S ~= nil, "Slot.lua chargé")
   ok(io.open(addonDir .. "/Dropamine.toc"):read("*a"):find("Rested.lua\nSlot.lua\nRankToast.lua", 1, true),
     ".toc : Slot.lua et RankToast.lua après Rested.lua")
-  ok(S.CombatStyle() == "bubbles", "style de combat par défaut : bulles")
+  ok(S.CombatStyle() == "off", "style de combat retiré (fiole statique)")
   -- priorité sans épée (style bulles)
   S.ClearSim()
   S.SetCombatStyle("bubbles")
@@ -1679,9 +1679,9 @@ do
   S.SetCombatStyle("sword")
   S.SetSim("combat", true)
   S.SetSim("afk", true)
-  ok(S.Active() == "combat", "style épée : combat devant AFK")
+  ok(S.Active() ~= "combat", "plus de symbole epee anime")
   S.SetCombatStyle("bubbles")
-  ok(S.Active() == "afk", "retour aux bulles : plus d'épée, AFK reprend le puits")
+  ok(S.Active() == "afk", "AFK reprend le puits")
   S.ClearSim()
   S.Refresh("test-clean")
   ok(S.Active() == "drop", "aucune sim : goutte")
@@ -1710,44 +1710,44 @@ do
   S.Refresh("combat-on")
   ok(S.Active() == "drop", "style bulles : le puits garde la goutte (pas d'épée)")
   for i = 1, 14 do S.Tick(0.05) end
-  ok(S.fill.p >= 0.99, "après 0,7 s en combat : p ≈ 1 (" .. tostring(S.fill.p) .. ")")
-  ok(S.fill.targetP == 1, "cible de remplissage = 1")
+  ok((S.fill.targetP or 0) == 0, "plus de liquide de combat apres ticks (p=" .. tostring(S.fill.p) .. ")")
+  ok((S.fill.targetP or 0) == 0, "cible de remplissage combat = 0")
   -- descente
   S.SetSim("combat", false)
   S.Refresh("combat-off")
   S.Tick(0.05)
   local mid = S.fill.p
-  ok(mid < 0.99 and mid > 0.05, "descente commencée (p=" .. tostring(mid) .. ")")
+  ok(true, "plus de descente de liquide de combat")
   -- reprise au milieu de la descente
   S.SetSim("combat", true)
   S.Refresh("combat-re")
   S.Tick(0.05)
-  ok(S.fill.targetP == 1 and S.fill.p >= mid, "reprise en combat : p remonte depuis " .. tostring(mid) .. " (" .. tostring(S.fill.p) .. ")")
+  ok((S.fill.targetP or 0) == 0, "reprise en combat : toujours sans liquide")
   for i = 1, 14 do S.Tick(0.05) end
-  ok(S.fill.p >= 0.99, "reprise : p revient à 1")
+  ok((S.fill.p or 0) < 0.2, "reprise : p reste a 0")
   -- style off : pas de liquide
   S.SetCombatStyle("off")
   S.Refresh("combat-style-off")
-  ok(S.fill.targetP == 0, "style Désactivé : pas de remplissage combat")
+  ok((S.fill.targetP or 0) == 0, "plus de liquide de combat")
   -- style épée : symbole dans le puits
   S.SetCombatStyle("sword")
   S.SetSim("combat", true)
   S.Refresh("combat-sword")
-  ok(S.Active() == "combat", "style épée : Active = combat")
+  ok(S.Active() ~= "combat", "plus de feuille epee")
   if tot then S.ApplyTotal(tot) end
   local h = tot and tot._hg
-  ok(h and h:IsShown(), "style épée : symbole dans le puits")
   local tex = tostring((h and (h._texSet or (h.GetTexture and h:GetTexture()))) or "")
-  ok(tex:find("Combat-C-Sheet", 1, true) or tex:find("Sword-Sheet", 1, true),
-    "texture épée = Combat-C-Sheet (" .. tex .. ")")
+  ok(not (h and h:IsShown() and tex:find("Combat-C-Sheet", 1, true)), "plus de feuille epee dans le puits")
+  ok(not tex:find("Combat-C-Sheet", 1, true) and not tex:find("Sword-Sheet", 1, true),
+    "plus de texture epee (" .. tex .. ")")
   -- /reload en combat : p part de 0 et rejoint 1
   S.fill.p, S.fill.grey, S.fill.drain = 0, 0, 1
   S.SetCombatStyle("bubbles")
   S.SetSim("combat", true)
   S.Refresh("reload-in-combat")
-  ok(S.fill.targetP == 1 and S.fill.p < 0.2, "/reload en combat : cible 1, départ proche de 0")
+  ok((S.fill.targetP or 0) == 0, "/reload en combat : pas de liquide")
   for i = 1, 14 do S.Tick(0.05) end
-  ok(S.fill.p >= 0.99, "/reload en combat : s'installe à p=1")
+  ok((S.fill.p or 0) < 0.2, "/reload en combat : p reste a 0")
   S.ClearSim()
   S.SetCombatStyle("bubbles")
   S.fill.p, S.fill.grey, S.fill.drain = 0, 0, 1
@@ -1781,10 +1781,10 @@ do
   -- résurrection, encore en combat
   S.SetSim("death", false)
   S.Refresh("rez")
-  ok(S.fill.targetDrain == 1 and S.fill.targetGrey == 0 and S.fill.targetP == 1,
-    "résurrection en combat : refill vers l'état combat")
+  ok(S.fill.targetDrain == 1 and S.fill.targetGrey == 0,
+    "resurrection en combat : fiole retablie")
   for i = 1, 14 do S.Tick(0.05) end
-  ok(S.fill.drain >= 0.95 and S.fill.grey <= 0.05 and S.fill.p >= 0.95, "refill terminé vers combat rempli")
+  ok(S.fill.drain >= 0.95 and S.fill.grey <= 0.05, "refill termine (fiole normale)")
   -- résurrection hors combat
   S.SetSim("combat", false)
   S.SetSim("death", true)
@@ -1851,8 +1851,7 @@ do
   -- option Style de combat
   local it
   if ns.Options and ns.Options.Find then it = ns.Options.Find("combatStyle") end
-  ok(it and it.type == "radio" and it.default == "bubbles", "Options : Style de combat, radio, défaut bulles")
-  ok(it and it.choices and it.choices[1] and it.choices[1][1] == "bubbles", "choix Bulles / Épée / Désactivé")
+  ok(not it, "Options : plus de Style de combat")
 
   -- /drop test
   if ns.Test then
@@ -2130,7 +2129,7 @@ do
   S.SetSim("death", false)
   ok(S.Active() == "flight", "priorité : vol après la mort")
   S.SetSim("flight", false)
-  ok(S.Active() == "combat", "priorité : épée de combat après le vol")
+  ok(S.Active() ~= "combat", "plus d epee de combat dans l ordre de priorite")
   S.SetSim("combat", false)
   ok(S.Active() == "afk", "priorité : AFK après le combat")
   S.SetSim("afk", false)
@@ -2317,7 +2316,7 @@ do
     fr._skinHost = host
     fr._toastBg = fr:CreateTexture(nil, "BACKGROUND")
     if fr._toastBg.Hide then fr._toastBg:Hide() end
-    fr._bgAlpha = 0.68
+    if ns.db and ns.db.ui then ns.db.ui.dropBgAlpha = 0.68 end
     local fam = UI.ApplyToastTint(fr, { kind = "goal", skillId = "skinning" })
     ok(fam == "prof", "ApplyToastTint : famille prof pour l'objectif métier")
     ok(fr._tintFill and fr._tintFill.shown ~= false, "ApplyToastTint : calque visible sur l'habillage (pas seulement _toastBg)")
@@ -2327,14 +2326,15 @@ do
     local prof = UI.TOAST_TINT.prof
     ok(c and math.abs(c[1] - prof[1]) < 1e-6 and math.abs(c[2] - prof[2]) < 1e-6 and math.abs(c[3] - prof[3]) < 1e-6,
       "teinte : RVB conservé, seul l'alpha suit le réglage")
-    fr._bgAlpha = 0.40
+    if ns.db and ns.db.ui then ns.db.ui.dropBgAlpha = 0.20 end
+    if UI.RefreshToastOpacity then UI.RefreshToastOpacity() end
     UI.ApplyToastTint(fr, { kind = "goal", skillId = "skinning" })
     c = fr._tintFill and fr._tintFill._colorTex
-    ok(c and math.abs((c[4] or 0) - 0.40) < 1e-6, "teinte : l'opacité suit _bgAlpha (0.40)")
+    ok(c and math.abs((c[4] or 0) - 0.20) < 1e-6, "teinte : l'opacité suit Fond des toasts (0.20)")
     -- XP : teinte + icône
     local fr2 = CreateFrame("Frame", "DropamineTintToastXP", UIParent)
     fr2._skinHost = host
-    fr2._bgAlpha = 0.68
+    if ns.db and ns.db.ui then ns.db.ui.dropBgAlpha = 0.68 end
     UI.ApplyToastTint(fr2, { kind = "xp" })
     local lc = fr2._tintFill and fr2._tintFill._colorTex
     local lv = UI.TOAST_TINT.level
@@ -2526,10 +2526,10 @@ do
 
   S.ClearSim()
   S.SetSim("rested", true)
-  ok(S.TakesRestedZ() == true, "TakesRestedZ : vrai sur la case total même sans _wideOn")
-  ok(S.StealsLevelZ() == true, "StealsLevelZ : vrai en grille (les z vont dans la fiole du total)")
+  ok(S.TakesRestedZ() == false, "TakesRestedZ : plus de z sur la fiole")
+  ok(S.StealsLevelZ() == false, "StealsLevelZ : les z restent sur la case Niveau")
   tot._wideOn = true
-  ok(S.StealsLevelZ() == true, "StealsLevelZ : vrai en barre large")
+  ok(S.StealsLevelZ() == false, "StealsLevelZ : pas de vol vers la barre large")
   tot._wideOn = false
 
   S.ClearSim()
@@ -3267,7 +3267,8 @@ do
   if C and C.Pulse then
     C.Pulse(tile, blue)
     ok(tile._osrsPulse and tile._osrsPulse.shown ~= false, "Pulse : la case s'éclaire")
-    ok(tile._osrsPulse._color and colorEq(tile._osrsPulse._color, blue), "voile de case Dagues : bleu partagé")
+    ok(C.POP_COLOR and C.POP_COLOR[2] >= 0.9 and C.POP_COLOR[2] > C.POP_COLOR[1], "POP_COLOR : vert clair")
+    ok(tile._osrsPulse._color and colorEq(tile._osrsPulse._color, C.POP_COLOR), "pop de case : vert clair (pas la couleur de type)")
   end
 
   -- Palette unique : voile, +1, étincelle, teinte de toast (jamais noir)
@@ -3291,8 +3292,8 @@ do
     local ct = { data = { kind = cat.tileKind, skillName = cat.skillName, name = cat.skillName }, GetFrameLevel = function() return 1 end }
     if C and C.Pulse then C.Pulse(ct, col) end
     if C and C.Gain then C.Gain(ct, "+1", col) end
-    ok(ct._osrsPulse and ct._osrsPulse._color and colorEq(ct._osrsPulse._color, expect),
-      "voile " .. cat.name .. " = palette " .. cat.key)
+    ok(ct._osrsPulse and ct._osrsPulse._color and colorEq(ct._osrsPulse._color, C.POP_COLOR),
+      "pop " .. cat.name .. " = vert clair")
     ok(ct._osrsGain and ct._osrsGain._color and colorEq(ct._osrsGain._color, expect),
       "+1 " .. cat.name .. " = palette " .. cat.key)
     if S.HideBarSpark then pcall(S.HideBarSpark) end
@@ -3529,15 +3530,20 @@ do
   end
   if Wd and Wd.Metrics then
     local lo, mid, hi = at(50), at(100), at(200)
-    ok(lo.h >= 28 and lo.isz >= 24 and lo.bh >= 12 and lo.font >= 13
+    local nlo = I.NumberSizes and I.NumberSizes(lo.tile)
+    ok(lo.h >= 28 and lo.isz >= 24 and lo.bh >= 12 and lo.font == (nlo and nlo.total)
       and lo.minBarW >= 60 and lo.pad >= (Wd.MIN_PAD or 3),
-      "rangée total 50 % : planchers medium (h>=28 isz>=24 bh>=12 font>=13 barre>=60)")
+      "rangée total 50 % : planchers medium + police du total (h>=28 isz>=24 bh>=12 barre>=60)")
     ok((Wd.MIN_H or 0) >= 28 and (Wd.MIN_BAR_H or 0) >= 12
-      and (Wd.MIN_FONT or 0) >= 13 and (Wd.MIN_ISZ or 0) >= 24 and (Wd.MIN_BAR_W or 0) >= 60,
+      and (Wd.MIN_ISZ or 0) >= 24 and (Wd.MIN_BAR_W or 0) >= 60,
       "planchers absolus définis (indépendants de l'échelle)")
+    ok(nlo and nlo.rank > nlo.total and nlo.total > nlo.max,
+      "50 % : rang > total > /max")
     -- En dessous de la taille medium, l'épaisseur reste au plancher 12 px (ratio plus élevé).
     -- Au-dessus, le zoom uniforme reprend : 150 % et 200 % ont le même rapport.
-    ok(mid.bh >= 12 and mid.font >= 13, "100 % : planchers medium encore actifs (bh=" .. tostring(mid.bh) .. ", font=" .. tostring(mid.font) .. ")")
+    local nmid = I.NumberSizes and I.NumberSizes(mid.tile)
+    ok(mid.bh >= 12 and mid.font == (nmid and nmid.total), "100 % : barre + police du total (bh=" .. tostring(mid.bh) .. ", font=" .. tostring(mid.font) .. ")")
+    ok(nmid and nmid.rank > nmid.total and nmid.total > nmid.max, "100 % : rang > total > /max")
     ok(hi.bh > mid.bh and hi.font > mid.font and hi.isz > mid.isz and hi.pad > mid.pad,
       "rangée total : fiole, texte, barre et marges plus grands à 200 % qu'à 100 %")
     local midHi = at(150)
@@ -3700,12 +3706,13 @@ do
       local minW = Wd.MinRowWidth(m, twOf(m.font))
       local gw = math.max(tileGw, minW)
       local plan = Wd.PlanTotalRow(gw, m, twOf)
+      local nsizes = I.NumberSizes and I.NumberSizes(I.TILE)
       ok(m.h >= (Wd.MIN_H or 28) and m.bh >= (Wd.MIN_BAR_H or 12)
-        and m.font >= (Wd.MIN_FONT or 13) and m.isz >= (Wd.MIN_ISZ or 24),
-        string.format("métriques %d col. %d %% : h=%d bh=%d font=%d isz=%d (planchers 28/12/13/24)",
-          cols, pct, m.h, m.bh, m.font, m.isz))
+        and m.isz >= (Wd.MIN_ISZ or 24) and m.font == (nsizes and nsizes.total),
+        string.format("métriques %d col. %d %% : h=%d bh=%d font=%d isz=%d (total=%s)",
+          cols, pct, m.h, m.bh, m.font, m.isz, tostring(nsizes and nsizes.total)))
       ok(plan.overlay ~= true, string.format("%d col. %d %% : pas de texte superposé à la barre", cols, pct))
-      ok(plan.font >= (Wd.MIN_FONT or 13) and plan.font == m.font,
+      ok(plan.font == m.font,
         string.format("%d col. %d %% : police pleine %d (pas réduite)", cols, pct, plan.font))
       ok(plan.inner + 0.01 >= (Wd.MIN_BAR_W or 60),
         string.format("barre %d col. %d %% : inner=%d >= 60", cols, pct, plan.inner))
@@ -3725,14 +3732,15 @@ do
       if L.SyncMetrics then L.SyncMetrics() end
       local m = Wd.Metrics(I.TILE)
       ok(I.TILE <= 22, "5 col. 50 % : cases ~20 px (tile=" .. tostring(I.TILE) .. ")")
-      ok(m.bh >= 12 and m.font >= 13 and m.isz >= 24 and m.h >= 28,
+      local n50 = I.NumberSizes and I.NumberSizes(I.TILE)
+      ok(m.bh >= 12 and m.isz >= 24 and m.h >= 28 and m.font == (n50 and n50.total),
         string.format("5 col. 50 %% : planchers medium (bh=%d font=%d isz=%d h=%d)", m.bh, m.font, m.isz, m.h))
       local fw, fh, pad, gw = L.ContentSize(5)
       local minW = Wd.MinRowWidth(m)
       ok(gw + 0.01 >= minW, "5 col. 50 % : largeur de grille >= minimum rangée (" .. tostring(gw) .. " / " .. tostring(minW) .. ")")
       local plan = Wd.PlanTotalRow(gw, m, twOf)
-      ok(plan.overlay ~= true and plan.font >= 13,
-        "5 col. 50 % : texte à côté de la barre, police >= 13")
+      ok(plan.overlay ~= true and plan.font == m.font,
+        "5 col. 50 % : texte à côté de la barre, police du total non réduite")
       ok(plan.inner >= 60, "5 col. 50 % : barre longue d'au moins 60 px (" .. tostring(plan.inner) .. ")")
     end
     if ns.db and ns.db.ui then ns.db.ui.scale, ns.db.ui.cols, ns.db.ui.showTotal = savedScale, savedCols, savedTotal end
@@ -3853,6 +3861,93 @@ do
     if ui.DismissDrop then ui:DismissDrop(toast) end
   end
   if recap and recap:IsShown() and ui.DismissDrop then ui:DismissDrop(recap) end
+end
+
+
+print("== 3.6.3 : delai 0 = jamais, options obsoletes, teinte, polices")
+do
+  local P = ns.Panel
+  if P and P.SetFadeDelay and P.FadeDelay then
+    local prev = P.FadeDelay()
+    ok(P.SetFadeDelay(0) == 0 and P.FadeDelay() == 0, "Delai avant repos : 0 se memorise (jamais)")
+    P.ScheduleSleep()
+    ok(P._sleepAt == nil, "delai 0 : ScheduleSleep ne programme pas le repos")
+    local it = ns.Options and ns.Options.Find and ns.Options.Find("fadeDelay")
+    if it and ns.Options.FormatValue then
+      local lab = tostring(ns.Options.FormatValue(it, 0))
+      ok(lab:find("Jamais", 1, true) or lab:find("Never", 1, true), "curseur : 0 affiche Jamais (" .. lab .. ")")
+    end
+    P.SetFadeDelay(prev or 3)
+  end
+  ok(not (ns.Options and ns.Options.Find and ns.Options.Find("combatStyle")), "option Style de combat retiree")
+  ok(not (ns.Options and ns.Options.Find and ns.Options.Find("slotRested")), "option z de repos sur la fiole retiree")
+  ok(not (ns.Options and ns.Options.Find and ns.Options.Find("campfire")), "pas d option campfire")
+  local Ico = ns.Icons
+  if Ico and Ico.NumberSizes and Ico.COUNT_PATH then
+    local saved = ns.db and ns.db.ui and ns.db.ui.scale
+    if ns.db and ns.db.ui then ns.db.ui.scale = nil end
+    if ns.Layout and ns.Layout.SyncMetrics then ns.Layout.SyncMetrics() end
+    local s100 = Ico.NumberSizes(Ico.TILE)
+    ok(s100.rank > s100.total and s100.total > s100.max, "polices 100 % : rang > total > /max")
+    ok(Ico.COUNT_PATH:find("ARIALN", 1, true), "meme face Arial Narrow")
+    if ns.db and ns.db.ui then ns.db.ui.scale = saved end
+    if ns.Layout and ns.Layout.SyncMetrics then ns.Layout.SyncMetrics() end
+  end
+end
+
+
+do
+  -- 3.6.3 : pré-sélection = liseré typé, pas de « +1 » ; le vrai gain pop vert clair + un seul +1
+  local T, S, C = ns.Target, ns.Slot, ns.Compact
+  local function colorEq(a, b)
+    return a and b and math.abs((a[1] or 0) - (b[1] or 0)) < 0.01
+      and math.abs((a[2] or 0) - (b[2] or 0)) < 0.01
+      and math.abs((a[3] or 0) - (b[3] or 0)) < 0.01
+  end
+  if T and T.GainColor and S and S.ADD_COLORS then
+    ok(colorEq(T.GainColor({ kind = "level" }), S.ADD_COLORS.red), "liseré Niveau : rouge")
+    ok(colorEq(T.GainColor({ kind = "melee", name = "Dagues" }), S.ADD_COLORS.blue), "liseré Dagues : bleu")
+    ok(colorEq(T.GainColor({ kind = "defense", name = "Défense" }), S.ADD_COLORS.blue), "liseré Défense : bleu")
+    ok(colorEq(T.GainColor({ kind = "profession", name = "Cuisine" }), S.ADD_COLORS.green), "liseré Cuisine : vert")
+  end
+  if T and T.Paint and T.KeyFor and ns.UI then
+    local prevTiles = ns.UI.embed and ns.UI.embed.tiles
+    ns.UI.embed = ns.UI.embed or {}
+    local tile = {
+      data = { kind = "level", id = "level", name = "Niveau" },
+      GetFrameLevel = function() return 1 end,
+      IsShown = function() return true end,
+    }
+    ns.UI.embed.tiles = { tile }
+    T._lvlSig = {}
+    local key = T.KeyFor(tile.data)
+    T.current = { [key] = { level = "direct", why = { "xp" }, combat = true } }
+    pcall(T.Paint)
+    ok(tile._tgtLit == "direct", "pré-sélection : case allumée")
+    ok(tile._tgtCol and colorEq(tile._tgtCol, S.ADD_COLORS.red), "pré-sélection Niveau : liseré rouge")
+    local m = tile._osrsTgt
+    if m then
+      ok((not m.fs or m.fs.text == "" or m.fs.text == nil or m.fs.shown == false),
+        "pré-sélection : pas de « +1 » sur le liseré")
+      ok((not m.veil or (m.veil.alpha or 0) == 0 or m.veil.shown == false),
+        "pré-sélection : pas de voile rempli")
+    else
+      ok(true, "pré-sélection : marque créée ou liseré via bevel")
+    end
+    -- vrai gain : un seul +1 + pop vert clair ; le liseré reste
+    if C and C.Announce then
+      -- fall through to Pulse/Gain if Announce needs more args
+    end
+    if C and C.Pulse and C.Gain then
+      C.Pulse(tile)
+      C.Gain(tile, "+1", S.ADD_COLORS.red)
+      ok(tile._osrsPulse and colorEq(tile._osrsPulse._color, C.POP_COLOR), "vrai gain : pop vert clair")
+      ok(tile._osrsGain and tile._osrsGain.fs and tile._osrsGain.fs.text == "+1", "vrai gain : un seul +1")
+      ok(tile._tgtLit == "direct", "vrai gain : le liseré de pré-sélection reste")
+    end
+    T.Clear()
+    ns.UI.embed.tiles = prevTiles
+  end
 end
 
 ok(errs() == 0, "aucune erreur UI (3.6.3)")

@@ -216,7 +216,17 @@ end
 function Th.BevelColor(t)
   local e = t and t._bevel
   if not e then return nil end
-  local c = (t._tgtLit and ((ns.Target and ns.Target.GREEN) or { 0.25, 1, 0.25 })) or (t._flSelOn and ns.STYLE.SELECT) or ns.STYLE.BORDER
+  local c
+  if t._tgtLit then
+    c = t._tgtCol
+    if not c and ns.Target and ns.Target.GainColor then c = ns.Target.GainColor(t.data) end
+    if not c then
+      local G = ns.GAIN_COLORS
+      c = (G and G.green) or { 0.310, 0.498, 0.243 }
+    end
+  else
+    c = (t._flSelOn and ns.STYLE.SELECT) or ns.STYLE.BORDER
+  end
   local a = ((t._tgtLit == "indirect") and Th.SUBTLE_A or 1) * Th.EDGE_LINE_A
   for side = 1, 4 do
     local sh, li, inn = e.strips[side][3], e.strips[side][2], e.strips[side][1]

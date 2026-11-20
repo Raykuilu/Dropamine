@@ -1717,7 +1717,6 @@ end
 
 function PU.SelectChar(key)
   PU.charSel = key
-  if PU.RefreshChars then PU.RefreshChars() end
 end
 
 function PU.BuildChars(f)
