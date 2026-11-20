@@ -1484,14 +1484,33 @@ do
   F.Sync("hard-done")
 end
 
+print("== 3.6.3 : build publique sans section Test")
+do
+  ok(ns.DEV_TEST ~= true, "build publique : ns.DEV_TEST éteint")
+  ok(not (ns.SlashExt and ns.SlashExt.test), "build publique : pas de /drop test")
+  if ns.Options and ns.Options.Build then pcall(ns.Options.Build) end
+  ok(not (ns.Options and ns.Options.devTestBox), "build publique : pas de section Test dans les Options")
+end
+
+-- Le reste de la suite exerce encore le module de simulation (API interne).
+ns.DEV_TEST = true
+ns.SlashExt = ns.SlashExt or {}
+ns.SlashExt.test = function(rest)
+  local arg = (rest or ""):match("^%s*(.-)%s*$") or ""
+  if arg == "" then
+    ns.Print("/drop test flight|toast|off : simulations (DEV)")
+    return
+  end
+  if ns.Test and ns.Test.Toggle then ns.Test.Toggle(arg) end
+end
+
 print("== 3.6.3 : section Test (DEV) + /drop test")
 do
   local T = ns.Test
   local F = ns.Flight
-  ok(ns.DEV_TEST == true, "ns.DEV_TEST = true (un seul drapeau)")
+  ok(ns.DEV_TEST == true, "suite : ns.DEV_TEST réactivé pour les simulations")
   ok(T and T.Enabled and T.Enabled(), "module ns.Test actif")
-  if ns.Options and ns.Options.Build then pcall(ns.Options.Build) end
-  ok(ns.Options and ns.Options.devTestBox, "panneau Options : section Test (DEV) construite")
+  -- Options.Build est à usage unique : le panneau public a déjà été construit sans section Test.
   local f = T.Toast()
   ok(f and f.titleFS and tostring(f.titleFS:GetText()):find(T.LONG_NAME, 1, true), "bouton Toast : toast au nom long")
   if ns.ToastFit and ns.ToastFit.Fit then pcall(ns.ToastFit.Fit, f) end
