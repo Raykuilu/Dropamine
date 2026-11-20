@@ -10,8 +10,8 @@ local Tr = ns.L
 local S = {}
 ns.Slot = S
 
-S.ORDER_SWORD   = { "death", "flight", "combat", "afk", "bags", "fishing", "swimming", "durability", "sleepingbag", "rested" }
-S.ORDER_DEFAULT = { "death", "flight", "afk", "bags", "fishing", "swimming", "durability", "sleepingbag", "rested" }
+S.ORDER_SWORD   = { "death", "flight", "combat", "afk", "bags", "fishing", "swimming", "durability", "sleepingbag", "campfire", "rested" }
+S.ORDER_DEFAULT = { "death", "flight", "afk", "bags", "fishing", "swimming", "durability", "sleepingbag", "campfire", "rested" }
 
 local MEDIA = "Interface\\AddOns\\Dropamine\\Media\\"
 S.SHEETS = {
@@ -36,6 +36,7 @@ S.OPT_KEYS = {
   afk = "slotAfk", bags = "slotBags", fishing = "slotFishing", swimming = "slotSwimming",
   durability = "slotDurability",
   sleepingbag = "slotSleepingBag",
+  campfire = "slotCampfire",
   rested = "slotRested", trainer = "slotTrainer", eating = "slotEating",
 }
 
@@ -133,6 +134,38 @@ function S.SetSim(id, on)
     S._simBagStacks = nil
     S._bagBuilding, S._bagPeak = false, 0
   end
+  if id == "campfire" and not on then
+    S._simCamp = nil
+  end
+  if id == "eating" and not on then
+    S._simEat = nil
+  end
+end
+
+function S.SetCampfireSim(state)
+  -- near | charge | burst  (ou 1 | 2 | 3)
+  state = tostring(state or "near"):lower()
+  if state == "1" or state == "ember" or state == "proximite" or state == "proximité" then state = "near" end
+  if state == "2" or state == "flame" or state == "charge" then state = "charge" end
+  if state == "3" or state == "spark" or state == "burst" or state == "buff" then state = "burst" end
+  if state ~= "near" and state ~= "charge" and state ~= "burst" then state = "near" end
+  S._simCamp = state
+  S.SetSim("campfire", true)
+  if state == "burst" then
+    S._campBurstUntil = Now() + 0.45
+  end
+  return state
+end
+
+function S.SetEatSim(kind)
+  kind = tostring(kind or ""):lower()
+  if kind == "food" or kind == "nourriture" or kind == "manger" then kind = "food"
+  elseif kind == "drink" or kind == "boisson" or kind == "boire" then kind = "drink"
+  elseif kind == "both" or kind == "lesdeux" or kind == "les deux" or kind == "all" then kind = "both"
+  else kind = "both" end
+  S._simEat = kind
+  S.SetSim("eating", true)
+  return kind
 end
 
 function S.SetSleepingBagSim(stacks)
@@ -153,6 +186,8 @@ function S.ClearSim()
   S._fishUntil = 0
   S._simBagStacks = nil
   S._bagBuilding, S._bagPeak = false, 0
+  S._simCamp, S._simEat = nil, nil
+  S._campBurstUntil, S._campChargeAt, S._fireUntil = nil, nil, nil
 end
 
 function S.IsSim(id)
@@ -382,6 +417,17 @@ S.EAT_SPELLS = {
   [58503] = true, [58511] = true, [59230] = true, [61828] = true, [65418] = true, [65419] = true,
   [65420] = true, [65421] = true, [65422] = true,
 }
+-- Boissons (le reste de EAT_SPELLS est de la nourriture, sauf nom « les deux »).
+S.DRINK_SPELLS = {
+  [430] = true, [431] = true, [432] = true, [1133] = true, [1135] = true, [1137] = true,
+  [22734] = true, [24355] = true, [25696] = true, [26261] = true, [26402] = true, [26475] = true,
+  [27089] = true, [29007] = true, [34291] = true, [43182] = true, [43183] = true, [52911] = true,
+  [57085] = true, [61827] = true, [64356] = true, [66041] = true, [80167] = true,
+  [44107] = true, [53270] = true, [53373] = true,
+}
+S.COZY_FIRE = 7353
+S.CAMPFIRE_SPELLS = { [818] = true, [6196] = true, [5265] = true, [4470] = true }
+S.CAMPFIRE_CHARGE = 60
 S.NOT_EAT_SPELLS = {
   [19705] = true, [19706] = true, [19708] = true, [19709] = true, [19710] = true, [19711] = true,
   [24799] = true, [24870] = true, [25661] = true, [33254] = true, [33255] = true, [33256] = true,
@@ -431,6 +477,29 @@ local function IsFoodDrink(name, spellId)
   local fold = SafeFold(name)
   if IsWellFed(fold, spellId) then return false end
   return IsFoodName(fold)
+end
+
+-- "food" | "drink" | "both" | nil
+function S.ClassifyEat(name, spellId)
+  spellId = N(spellId)
+  if spellId and S.NOT_EAT_SPELLS[spellId] then return nil end
+  local fold = SafeFold(name)
+  if IsWellFed(fold, spellId) then return nil end
+  local both = fold:find("et boisson", 1, true) or fold:find("and drink", 1, true)
+    or fold:find("food & drink", 1, true) or fold:find("food and drink", 1, true)
+    or fold:find("nourriture et boisson", 1, true) or fold:find("boisson et nourriture", 1, true)
+    or fold == "refreshment" or fold == "restauration"
+  if both then return "both" end
+  local drink = (spellId and S.DRINK_SPELLS[spellId])
+    or (fold:find("boisson", 1, true) or fold:find("drink", 1, true) or fold:find("drinking", 1, true)
+        or fold:find("en train de boire", 1, true)) and true
+  local food = (spellId and S.EAT_SPELLS[spellId] and not S.DRINK_SPELLS[spellId])
+    or (fold:find("nourriture", 1, true) or (fold:find("food", 1, true) and not fold:find("foodbuff", 1, true))
+        or fold:find("eating", 1, true) or fold:find("en train de manger", 1, true)) and true
+  if food and drink then return "both" end
+  if drink then return "drink" end
+  if food or IsFoodDrink(name, spellId) then return "food" end
+  return nil
 end
 
 -- Un index d'aura : nom + spellId, via C_UnitAuras, UnitAura/UnitBuff, AuraUtil.
@@ -540,12 +609,36 @@ function S.ScanPlayerAuras(force)
   else
     S._eatName, S._eatSpell = nil, nil
   end
+  local food, drink = false, false
+  local kind0 = S.ClassifyEat and S.ClassifyEat(S._eatName, S._eatSpell)
+  if kind0 == "both" then food, drink = true, true
+  elseif kind0 == "food" then food = true
+  elseif kind0 == "drink" then drink = true end
+  -- Second passage : une aura nourriture ET une aura boisson en même temps.
+  if not (food and drink) then
+    local holes = 0
+    for i = 1, 40 do
+      local n, sid, present = AuraAt(i)
+      if not present then
+        holes = holes + 1
+        if holes >= 3 then break end
+      else
+        holes = 0
+        local k = S.ClassifyEat and S.ClassifyEat(n, sid)
+        if k == "food" or k == "both" then food = true end
+        if k == "drink" or k == "both" then drink = true end
+      end
+    end
+  end
+  S._eatFood, S._eatDrink = food, drink
   local okR, stacks = pcall(S.WellRestedAura)
   S._restedStacks = (okR and stacks) or 0
   local okF, fish = pcall(S.RawFishing)
   S._fishOn = okF and fish and true or false
   local okB, using = pcall(S.SleepingBagUsing)
   S._bagUsing = okB and using and true or false
+  local okC, cozy = pcall(S.CozyFireAura)
+  S._cozyFire = okC and cozy and true or false
   return S._eatName, S._eatSpell
 end
 
@@ -587,6 +680,16 @@ function S.LiveEating()
   if S._sim.eating or S._sim.eat or S._sim.repas then return true end
   if not S._auraFresh then S.ScanPlayerAuras(true) end
   return S._eatName and true or false
+end
+
+function S.EatKind()
+  if S._simEat == "food" or S._simEat == "drink" or S._simEat == "both" then return S._simEat end
+  if not S._auraFresh then S.ScanPlayerAuras(true) end
+  if S._eatFood and S._eatDrink then return "both" end
+  if S._eatDrink then return "drink" end
+  if S._eatFood or S._eatName then return "food" end
+  local k = S.ClassifyEat and S.ClassifyEat(S._eatName, S._eatSpell)
+  return k or "food"
 end
 
 -- Aura « Bien reposé » / Well-Rested (sort 429959), 1 à 3 charges.
@@ -786,6 +889,140 @@ function S.SyncSleepingBag()
   end
 end
 
+local CAMP_NAMES = {
+  campfire = true, ["basic campfire"] = true, ["journeyman campfire"] = true,
+  ["expert campfire"] = true, bonfire = true, brazier = true, ["fire pit"] = true,
+  ["feu de camp"] = true, ["feu de camp basique"] = true, ["feu de camp de compagnon"] = true,
+  ["feu de camp de specialiste"] = true, ["feu de camp de spécialiste"] = true,
+  ["feu de joie"] = true, brasero = true, ["feu douillet"] = true,
+  ["cozy fire"] = true, ["cozy-fire"] = true,
+}
+
+local function FoldName(v)
+  if type(v) ~= "string" or v == "" then return "" end
+  if ns.IsSecret and ns.IsSecret(v) then return "" end
+  local ok, f = pcall(function() return (ns.Fold and ns.Fold(v)) or v:lower() end)
+  return (ok and type(f) == "string" and f) or ""
+end
+
+function S.IsCampfireName(name)
+  local fold = FoldName(name)
+  if fold == "" then return false end
+  if CAMP_NAMES[fold] then return true end
+  if fold:find("campfire", 1, true) or fold:find("feu de camp", 1, true) then return true end
+  if fold:find("cozy fire", 1, true) or fold:find("feu douillet", 1, true) then return true end
+  return false
+end
+
+function S.CozyFireAura()
+  if S._simCamp then return S._simCamp == "burst" or S._simCamp == "charge" end
+  local C = _G.C_UnitAuras
+  if type(C) == "table" and type(C.GetPlayerAuraBySpellID) == "function" then
+    local ok, data = pcall(C.GetPlayerAuraBySpellID, S.COZY_FIRE or 7353)
+    if ok and type(data) == "table" then return true end
+  end
+  local holes = 0
+  for i = 1, 40 do
+    local name, spellId, present = AuraAt(i)
+    if not present then
+      holes = holes + 1
+      if holes >= 3 then break end
+    else
+      holes = 0
+      if (spellId and (spellId == (S.COZY_FIRE or 7353))) or S.IsCampfireName(name) then
+        -- « Feu douillet » / Cozy Fire seulement, pas le nom d'un objet proche.
+        if spellId == (S.COZY_FIRE or 7353) or FoldName(name):find("cozy", 1, true)
+          or FoldName(name):find("douillet", 1, true) then
+          return true
+        end
+      end
+    end
+  end
+  return false
+end
+
+function S.NoteCampfireSpell(spellId, name)
+  spellId = N(spellId)
+  if (spellId and S.CAMPFIRE_SPELLS[spellId]) or S.IsCampfireName(name) then
+    S._fireUntil = Now() + 300
+    return true
+  end
+  return false
+end
+
+function S.NearCampfire()
+  if S._simCamp then return true end
+  if (S._fireUntil or 0) > Now() then return true end
+  if S._cozyFire then return true end
+  for _, unit in ipairs({ "target", "mouseover", "focus" }) do
+    local n = Call(_G.UnitName, unit) or Call(_G.GetUnitName, unit)
+    if S.IsCampfireName(n) then return true end
+  end
+  return false
+end
+
+function S.CampfireStationary()
+  if type(_G.IsSitting) == "function" and Call(_G.IsSitting) then return true end
+  if type(_G.IsPlayerMoving) == "function" then
+    local moving = Call(_G.IsPlayerMoving)
+    if moving == false then return true end
+    if moving == true then return false end
+  end
+  -- Repli : pas de PLAYER_STARTED_MOVING récent.
+  return not S._campMoving
+end
+
+-- near | charge | burst | nil  (nil = retour à la goutte)
+function S.CampfireState()
+  if S._simCamp == "near" or S._simCamp == "charge" then return S._simCamp end
+  if S._simCamp == "burst" then
+    if (S._campBurstUntil or 0) > Now() then return "burst" end
+    return "burst"  -- tenu tant que la sim est active
+  end
+  local now = Now()
+  if (S._campBurstUntil or 0) > now then return "burst" end
+  local near = S.NearCampfire()
+  local cozy = S._cozyFire or S.CozyFireAura()
+  S._cozyFire = cozy and true or false
+  -- Buff déjà là depuis un moment (login) : pas d'ember, on reste sur la goutte.
+  if cozy and not S._campSawBuff then
+    -- première détection : étincelles, puis goutte
+    S._campSawBuff = true
+    S._campBurstUntil = now + 0.45
+    S._campChargeAt = nil
+    return "burst"
+  end
+  if cozy and S._campSawBuff then
+    -- buff déjà pris : on revient à la goutte (pas d'ember tant que le buff tient).
+    S._campChargeAt = nil
+    return nil
+  end
+  if not cozy then S._campSawBuff = nil end
+  if not near then
+    S._campChargeAt = nil
+    return nil
+  end
+  if S.CampfireStationary() then
+    S._campChargeAt = S._campChargeAt or now
+    local elapsed = now - S._campChargeAt
+    if elapsed >= (S.CAMPFIRE_CHARGE or 60) and not cozy then
+      S._campBurstUntil = now + 0.45
+      S._campChargeAt = nil
+      return "burst"
+    end
+    return "charge"
+  end
+  S._campChargeAt = nil
+  return "near"
+end
+
+function S.LiveCampfire()
+  if S._sim.campfire or S._simCamp then return true end
+  if S.Opt and not S.Opt("slotCampfire") then return false end
+  local st = S.CampfireState()
+  return st == "near" or st == "charge" or st == "burst"
+end
+
 function S.LiveSleepingBag()
   if S._sim.sleepingbag then return true end
   if S.Opt and not S.Opt("slotSleepingBag") then return false end
@@ -812,6 +1049,7 @@ function S.Want(id)
   if id == "trainer" then return S.LiveTrainer() end
   if id == "eating" then return S.LiveEating() end
   if id == "sleepingbag" then return S.LiveSleepingBag() end
+  if id == "campfire" then return S.LiveCampfire() end
   return false
 end
 
@@ -1643,6 +1881,11 @@ function S.ApplyTotal(t)
     S.ApplySlotZ(t, false)
     HideSymbol(t)
     S.ApplySleepingBag(t)
+  elseif act == "campfire" then
+    S.ApplySlotZ(t, false)
+    HideSymbol(t)
+    if t.icon and t.icon.Show then t.icon:Show() end
+    S.ApplyCampfire(t)
   elseif act == "rested" then
     HideSymbol(t)
     S.ApplySlotZ(t, true)
@@ -1654,6 +1897,7 @@ function S.ApplyTotal(t)
     S.ApplySlotZ(t, false)
     HideSymbol(t)
   end
+  if act ~= "campfire" then S.HideCampfire(t) end
   if Wd and Wd.SyncFlaskHit then Wd.SyncFlaskHit(t) end
 end
 
@@ -1722,6 +1966,7 @@ S.TIPS = {
   swimming  = { "À la nage", "Tu nages." },
   durability= { "Équipement usé", "Une pièce d'équipement est sous 20 %." },
   eating    = { "En train de manger ou de boire", "La fiole se remplit doucement." },
+  campfire  = { "Feu de camp", "Braise près du feu, puis flamme pendant la charge, étincelles au buff." },
   rested    = { "Au repos", "Tu te reposes à l'auberge ou en capitale." },
 }
 S.COMBAT_TIP = "En combat : XP et armes en cours"
@@ -1778,8 +2023,8 @@ end
 ------------------------------------------------------------------------------
 function S.RestedOnly()
   -- z + vague de repos : pas besoin de repeindre tout le puits à 20 i/s.
-  if S.Want("trainer") or S.Want("eating") or S.FillBusy() then return false end
-  if (S._jolt or 0) > 0 or S._eatOn then return false end
+  if S.Want("trainer") or S.Want("eating") or S.Want("campfire") or S.FillBusy() then return false end
+  if (S._jolt or 0) > 0 or S._eatOn or S._addT or S._lvlT then return false end
   local F = ns.Flight
   if F and (F.Paused and F.Paused() or (F._vis or 0) > 0) then return false end
   return S.Active() == "rested"
@@ -1791,9 +2036,10 @@ function S.NeedsDriver()
   if act and act ~= "drop" and act ~= "sleepingbag" then return true end
   if S.Want("trainer") then return true end
   if S.Want("eating") then return true end
+  if S.Want("campfire") then return true end
   if S.FillBusy() then return true end
   if (S._jolt or 0) > 0 then return true end
-  if S._eatOn then return true end
+  if S._eatOn or S._addT or S._lvlT then return true end
   local F = ns.Flight
   if F and (F.Paused and F.Paused() or (F._vis or 0) > 0) then return true end
   return false
@@ -1838,6 +2084,11 @@ function S.Tick(dt)
   S._jolt = math.max(0, (S._jolt or 0) - dt * 4)
   S._phase = (S._phase or 0) + dt * 0.7
   if S._phase > 1 then S._phase = S._phase - math.floor(S._phase) end
+  if S._addT ~= nil then S.TickTotalAdd(dt) end
+  if S._lvlT ~= nil then S.TickLevelUp(dt) end
+  if S.Active and S.Active() == "campfire" then
+    S.ApplyCampfire()
+  end
   if S.RestedOnly and S.RestedOnly() then
     S.TickSlotZ(dt)
     S.TickFlaskWave(dt)
@@ -2053,27 +2304,31 @@ function S.EnsureRegenWave(t)
     if parent then
       if t._eat.body and t._eat.body.SetParent then pcall(t._eat.body.SetParent, t._eat.body, parent) end
       if t._eat.wave and t._eat.wave.SetParent then pcall(t._eat.wave.SetParent, t._eat.wave, parent) end
+      if t._eat.wave2 and t._eat.wave2.SetParent then pcall(t._eat.wave2.SetParent, t._eat.wave2, parent) end
     end
+    -- le corps n'est plus peint (le vrai remplissage reste) ; on le garde caché
+    if t._eat.body and t._eat.body.Hide then t._eat.body:Hide() end
     return t._eat
   end
   if not (parent and type(parent.CreateTexture) == "function") then return nil end
-  local body = parent:CreateTexture(nil, "ARTWORK", nil, 3)
-  local wave = parent:CreateTexture(nil, "ARTWORK", nil, 4)
-  if not (body and wave) then return nil end
-  if body.SetColorTexture then pcall(body.SetColorTexture, body, 0.60, 0.80, 1.00, 0.36)
-  elseif body.SetTexture then
-    pcall(body.SetTexture, body, "Interface\\Buttons\\WHITE8X8")
-    if body.SetVertexColor then pcall(body.SetVertexColor, body, 0.60, 0.80, 1.00, 0.36) end
+  local function mk(layer)
+    local wave = parent:CreateTexture(nil, layer or "ARTWORK", nil, 4)
+    if not wave then return nil end
+    local tex = (ns.Rested and ns.Rested.WAVE_TEX) or (MEDIA .. "Dropamine-Wave")
+    if wave.SetTexture then pcall(wave.SetTexture, wave, tex) end
+    S.PlaceClippedTex(wave, parent, w or 16, 1, 0, 0)
+    if wave.Hide then wave:Hide() end
+    return wave
   end
-  local tex = (ns.Rested and ns.Rested.WAVE_TEX) or (MEDIA .. "Dropamine-Wave")
-  if wave.SetTexture then pcall(wave.SetTexture, wave, tex) end
-  if wave.SetVertexColor then pcall(wave.SetVertexColor, wave, 0.60, 0.80, 1.00, 0.80) end
-  -- Taille initiale dans le clip, jamais la taille par défaut du client.
-  S.PlaceClippedTex(body, parent, w or 16, 1, 0, 0)
-  S.PlaceClippedTex(wave, parent, w or 16, 1, 0, 0)
-  if body.Hide then body:Hide() end
-  if wave.Hide then wave:Hide() end
-  t._eat = { body = body, wave = wave, u = 0 }
+  local body = parent:CreateTexture(nil, "ARTWORK", nil, 3)
+  if body then
+    if body.SetTexture then pcall(body.SetTexture, body, "Interface\\Buttons\\WHITE8X8") end
+    S.PlaceClippedTex(body, parent, w or 16, 1, 0, 0)
+    if body.Hide then body:Hide() end
+  end
+  local wave, wave2 = mk("ARTWORK"), mk("OVERLAY")
+  if not wave then return nil end
+  t._eat = { body = body, wave = wave, wave2 = wave2, u = 0 }
   return t._eat
 end
 
@@ -2082,7 +2337,28 @@ function S.HideRegenWave(t)
   if not e then return end
   if e.body and e.body.Hide then e.body:Hide() end
   if e.wave and e.wave.Hide then e.wave:Hide() end
+  if e.wave2 and e.wave2.Hide then e.wave2:Hide() end
   S._eatOn = false
+end
+
+S.EAT_WAVE = {
+  food  = { 0.90, 0.58, 0.18, 0.92 },
+  drink = { 0.35, 0.58, 0.92, 0.90 },
+}
+
+function S.FillSurfaceY(t, h)
+  -- Hauteur de la surface du vrai remplissage, dans le puits (px depuis le bas).
+  h = h or 16
+  local baseY = math.max(0, h * 0.10)
+  local bodyH = h * 0.72
+  local out, p, grey, drain = S.FillRatios and S.FillRatios(t)
+  if not out then return baseY + bodyH * 0.55 end
+  local last = ns.Wide and ns.Wide.last
+  local denom = (last and last.track and last.track > 0 and last.track) or 100
+  local track = 0
+  for i = 1, 3 do track = track + (out[i] or 0) end
+  local frac = math.max(0.08, math.min(1, (track / denom) * (N(drain) or 1)))
+  return math.min(h * 0.82, baseY + bodyH * frac)
 end
 
 function S.ApplyRegenWave(dt)
@@ -2097,29 +2373,373 @@ function S.ApplyRegenWave(dt)
   end
   local e = S.EnsureRegenWave(t)
   if not e then return end
+  -- Le corps du remplissage reste celui de la fiole (vrai niveau) : on ne
+  -- recolore que la vague de surface (ambre nourriture, bleu boisson).
+  if e.body and e.body.Hide then e.body:Hide() end
   local clip, content, w, H = S.PlaceIconClip(t)
   w, H = w or 16, H or 16
   local a = content or clip or t.icon or t
-  local L = math.min(H * 0.55, H)
-  S.PlaceClippedTex(e.body, a, w, L, 0, 0)
-  if e.body.Show then e.body:Show() end
   local R = ns.Rested
   e.u = (e.u or 0) + dt / ((R and R.LIQ and R.LIQ.charge and R.LIQ.charge.period) or 2.4)
   if e.u > 1 then e.u = e.u - math.floor(e.u) end
-  local wh, wy = math.min(8, H), math.max(0, L - 5)
+  local surf = S.FillSurfaceY(t, H)
+  local wh = math.max(2, math.min(8, H * 0.14))
+  local wy = math.max(0, surf - wh * 0.65)
   if wy + wh > H then wy = math.max(0, H - wh) end
-  S.PlaceClippedTex(e.wave, a, w, wh, 0, wy)
-  if e.wave.SetTexCoord then
-    local u = e.u * ((R and R.WAVE_U) or 0.5)
-    pcall(e.wave.SetTexCoord, e.wave, u, 0, u + ((R and R.WAVE_U) or 0.5), 1)
+  local kind = S.EatKind and S.EatKind() or "food"
+  local foodCol, drinkCol = S.EAT_WAVE.food, S.EAT_WAVE.drink
+  local function paint(tex, col, phase, yoff)
+    if not tex or not col then
+      if tex and tex.Hide then tex:Hide() end
+      return
+    end
+    S.PlaceClippedTex(tex, a, w, wh, 0, math.max(0, wy + (yoff or 0)))
+    if tex.SetVertexColor then pcall(tex.SetVertexColor, tex, col[1], col[2], col[3], col[4] or 0.9) end
+    if tex.SetTexCoord then
+      local span = (R and R.WAVE_U) or 0.5
+      local u = ((e.u or 0) + (phase or 0))
+      u = (u - math.floor(u)) * span
+      pcall(tex.SetTexCoord, tex, u, 0, u + span, 1)
+    end
+    if tex.Show then tex:Show() end
   end
-  if e.wave.Show then e.wave:Show() end
+  if kind == "both" then
+    paint(e.wave, foodCol, 0, 0)
+    paint(e.wave2, drinkCol, 0.18, math.max(1, H * 0.04))
+  elseif kind == "drink" then
+    paint(e.wave, drinkCol, 0, 0)
+    if e.wave2 and e.wave2.Hide then e.wave2:Hide() end
+  else
+    paint(e.wave, foodCol, 0, 0)
+    if e.wave2 and e.wave2.Hide then e.wave2:Hide() end
+  end
   local mask = S.IconMaskFor(t)
   if mask then
-    if e.body and e.body.AddMaskTexture then pcall(e.body.AddMaskTexture, e.body, mask) end
     if e.wave and e.wave.AddMaskTexture then pcall(e.wave.AddMaskTexture, e.wave, mask) end
+    if e.wave2 and e.wave2.AddMaskTexture then pcall(e.wave2.AddMaskTexture, e.wave2, mask) end
   end
   S._eatOn = true
+end
+
+------------------------------------------------------------------------------
+-- Feu de camp (un seul glyphe) + goutte qui tombe + débordement de niveau
+------------------------------------------------------------------------------
+function S.EnsureCampfire(t)
+  if not t then return nil end
+  local _, content, w, h = S.PlaceIconClip(t)
+  local parent = content or t.icon or t
+  if t._camp then
+    if t._camp.SetParent and parent and t._camp.GetParent and t._camp:GetParent() ~= parent then
+      pcall(t._camp.SetParent, t._camp, parent)
+    end
+    return t._camp
+  end
+  local ok, f = pcall(CreateFrame, "Frame", nil, parent)
+  if not (ok and f) then return nil end
+  if f.EnableMouse then pcall(f.EnableMouse, f, false) end
+  local function tex(layer)
+    if type(f.CreateTexture) ~= "function" then return nil end
+    return f:CreateTexture(nil, layer or "ARTWORK")
+  end
+  -- Un seul glyphe : braise / flamme (disque orangé + pointe), pas de fumée.
+  f.ember = tex("ARTWORK")
+  f.tip = tex("ARTWORK")
+  f.sparks = { tex("OVERLAY"), tex("OVERLAY"), tex("OVERLAY") }
+  for _, sp in ipairs(f.sparks) do
+    if sp then
+      if sp.SetTexture then pcall(sp.SetTexture, sp, "Interface\\Buttons\\WHITE8X8") end
+      if sp.SetVertexColor then pcall(sp.SetVertexColor, sp, 1, 0.85, 0.45, 0.9) end
+      if sp.Hide then sp:Hide() end
+    end
+  end
+  t._camp = f
+  return f
+end
+
+function S.HideCampfire(t)
+  t = t or S.FlaskTile and S.FlaskTile()
+  if t and t._camp and t._camp.Hide then t._camp:Hide() end
+end
+
+function S.ApplyCampfire(t)
+  t = t or S.FlaskTile and S.FlaskTile()
+  if not t then return end
+  local st = S.CampfireState and S.CampfireState()
+  if not st then
+    S.HideCampfire(t)
+    return
+  end
+  local f = S.EnsureCampfire(t)
+  if not f then return end
+  local clip, content, w, h = S.PlaceIconClip(t)
+  w, h = w or 16, h or 16
+  if f.SetParent and content then pcall(f.SetParent, f, content) end
+  if S.SetSizeIf(f, w, h) or f._clipParent ~= (content or clip) then
+    if f.ClearAllPoints then pcall(f.ClearAllPoints, f) end
+    if f.SetPoint then pcall(f.SetPoint, f, "BOTTOMLEFT", content or clip, "BOTTOMLEFT", 0, 0) end
+    f._clipParent = content or clip
+  end
+  -- Taille du glyphe : braise petite (near), grandit jusqu'à une flamme (charge).
+  local grow = 0.32
+  if st == "charge" then
+    local now = Now()
+    local at = S._campChargeAt or now
+    grow = 0.32 + 0.58 * math.max(0, math.min(1, (now - at) / (S.CAMPFIRE_CHARGE or 60)))
+    if S._simCamp == "charge" then grow = 0.85 end
+  elseif st == "burst" then
+    grow = 1
+  end
+  local gw = math.max(3, w * 0.42 * grow)
+  local gh = math.max(3, h * 0.50 * grow)
+  local x = (w - gw) / 2
+  local y = h * 0.14
+  if f.ember then
+    S.PlaceClippedTex(f.ember, f, gw, gw * 0.72, x, y)
+    if f.ember.SetTexture then pcall(f.ember.SetTexture, f.ember, "Interface\\Buttons\\WHITE8X8") end
+    local a = (st == "near") and 0.75 or 0.92
+    if f.ember.SetVertexColor then pcall(f.ember.SetVertexColor, f.ember, 0.92, 0.38 + 0.22 * grow, 0.10, a) end
+    if f.ember.Show then f.ember:Show() end
+  end
+  if f.tip then
+    -- Pointe de flamme au-dessus de la braise, plus visible en charge / burst.
+    if st == "near" then
+      if f.tip.Hide then f.tip:Hide() end
+    else
+      local tw, th = gw * 0.55, gh * 0.55
+      S.PlaceClippedTex(f.tip, f, tw, th, x + (gw - tw) / 2, y + gw * 0.50)
+      if f.tip.SetTexture then pcall(f.tip.SetTexture, f.tip, "Interface\\Buttons\\WHITE8X8") end
+      if f.tip.SetVertexColor then pcall(f.tip.SetVertexColor, f.tip, 1, 0.72, 0.22, 0.85) end
+      if f.tip.Show then f.tip:Show() end
+    end
+  end
+  if st == "burst" then
+    local life = math.max(0, (S._campBurstUntil or Now()) - Now())
+    local u = 1 - math.max(0, math.min(1, life / 0.45))
+    for i, sp in ipairs(f.sparks or {}) do
+      if sp then
+        local ang = (i / 3) * 6.2832 + u * 2
+        local rad = (6 + u * 10) * (w / 32)
+        local sx = w / 2 + math.cos(ang) * rad - 1.5
+        local sy = y + gh * 0.5 + math.sin(ang) * rad
+        S.PlaceClippedTex(sp, f, math.max(1, 2.2 * (1 - u * 0.4)), math.max(1, 2.2 * (1 - u * 0.4)), sx, sy)
+        if sp.SetAlpha then pcall(sp.SetAlpha, sp, 1 - u) end
+        if sp.Show then sp:Show() end
+      end
+    end
+  else
+    for _, sp in ipairs(f.sparks or {}) do
+      if sp and sp.Hide then sp:Hide() end
+    end
+  end
+  if t.icon and t.icon.Show then t.icon:Show() end
+  if f.Show then f:Show() end
+end
+
+-- Goutte qui tombe dans la fiole officielle, puis vague + bulles.
+function S.EnsureTotalAdd(t)
+  if not t then return nil end
+  local _, content = S.PlaceIconClip(t)
+  local parent = content or t
+  if t._add then
+    if t._add.SetParent and parent then pcall(t._add.SetParent, t._add, parent) end
+    return t._add
+  end
+  local ok, f = pcall(CreateFrame, "Frame", nil, parent)
+  if not (ok and f) then return nil end
+  if f.EnableMouse then pcall(f.EnableMouse, f, false) end
+  local function tex(layer)
+    if type(f.CreateTexture) ~= "function" then return nil end
+    return f:CreateTexture(nil, layer or "OVERLAY")
+  end
+  f.drop = tex("OVERLAY")
+  if f.drop and f.drop.SetTexture then
+    pcall(f.drop.SetTexture, f.drop, ns.LEVEL_ICON or (MEDIA .. "XP-Icon"))
+  end
+  f.wave = tex("ARTWORK")
+  if f.wave and f.wave.SetTexture then
+    pcall(f.wave.SetTexture, f.wave, (ns.Rested and ns.Rested.WAVE_TEX) or (MEDIA .. "Dropamine-Wave"))
+  end
+  f.bubbles = { tex("OVERLAY"), tex("OVERLAY"), tex("OVERLAY") }
+  t._add = f
+  return f
+end
+
+function S.PlayTotalAdd(gain)
+  local t = S.FlaskTile and S.FlaskTile()
+  if not t then return end
+  S._addT = 0
+  S._addGain = N(gain) or 1
+  S.StartDriver()
+  S.EnsureTotalAdd(t)
+end
+
+function S.TickTotalAdd(dt)
+  local t = S.FlaskTile and S.FlaskTile()
+  if not t then S._addT = nil return end
+  if S._addT == nil then
+    if t._add and t._add.Hide then t._add:Hide() end
+    return
+  end
+  S._addT = (S._addT or 0) + (N(dt) or 0)
+  local u = S._addT
+  local f = S.EnsureTotalAdd(t)
+  if not f then S._addT = nil return end
+  local clip, content, w, h = S.PlaceIconClip(t)
+  w, h = w or 16, h or 16
+  if f.SetParent and content then pcall(f.SetParent, f, content) end
+  if S.SetSizeIf(f, w, h) or f._clipParent ~= (content or clip) then
+    if f.ClearAllPoints then pcall(f.ClearAllPoints, f) end
+    if f.SetPoint then pcall(f.SetPoint, f, "BOTTOMLEFT", content or clip, "BOTTOMLEFT", 0, 0) end
+    f._clipParent = content or clip
+  end
+  if f.Show then f:Show() end
+  -- 0–0.40 s : la goutte tombe dans le puits. 0.40–0.95 s : vague + bulles.
+  local fall, rest = 0.40, 0.55
+  if u < fall then
+    local k = u / fall
+    k = 1 - (1 - k) * (1 - k)
+    local dw = math.max(4, w * 0.42)
+    local x = (w - dw) / 2
+    local y = h + 2 - k * (h * 0.78 + 2)
+    if f.drop then
+      S.PlaceClippedTex(f.drop, f, dw, dw, x, y)
+      if f.drop.SetAlpha then pcall(f.drop.SetAlpha, f.drop, 1) end
+      if f.drop.Show then f.drop:Show() end
+    end
+    if f.wave and f.wave.Hide then f.wave:Hide() end
+    for _, b in ipairs(f.bubbles or {}) do if b and b.Hide then b:Hide() end end
+  elseif u < fall + rest then
+    local k = (u - fall) / rest
+    if f.drop and f.drop.Hide then f.drop:Hide() end
+    local surf = S.FillSurfaceY and S.FillSurfaceY(t, h) or (h * 0.55)
+    local wh = math.max(2, h * 0.12)
+    if f.wave then
+      S.PlaceClippedTex(f.wave, f, w, wh, 0, math.max(0, surf - wh * 0.4 + math.sin(k * 6.28) * 1.2))
+      if f.wave.SetVertexColor then pcall(f.wave.SetVertexColor, f.wave, 0.85, 0.45, 0.35, 0.85 * (1 - k)) end
+      if f.wave.SetTexCoord then
+        local span = 0.5
+        local uu = k * span
+        pcall(f.wave.SetTexCoord, f.wave, uu, 0, uu + span, 1)
+      end
+      if f.wave.Show then f.wave:Show() end
+    end
+    for i, b in ipairs(f.bubbles or {}) do
+      if b then
+        local bx = w * (0.28 + (i - 1) * 0.18)
+        local by = (h * 0.18) + k * (h * 0.45)
+        local bs = math.max(1, 2.2 * (1 - k * 0.5))
+        S.PlaceClippedTex(b, f, bs, bs, bx, by)
+        if b.SetTexture then pcall(b.SetTexture, b, "Interface\\Buttons\\WHITE8X8") end
+        if b.SetVertexColor then pcall(b.SetVertexColor, b, 0.95, 0.78, 0.45, 0.8 * (1 - k)) end
+        if b.Show then b:Show() end
+      end
+    end
+  else
+    if f.Hide then f:Hide() end
+    S._addT = nil
+  end
+end
+
+-- Débordement de niveau : le liquide dépasse, anneau bronze pulse, vague de reset.
+function S.EnsureLevelUp(t)
+  if not t then return nil end
+  local _, content = S.PlaceIconClip(t)
+  local parent = content or t
+  if t._lvl then
+    if t._lvl.SetParent and parent then pcall(t._lvl.SetParent, t._lvl, parent) end
+    return t._lvl
+  end
+  local ok, f = pcall(CreateFrame, "Frame", nil, parent)
+  if not (ok and f) then return nil end
+  if f.EnableMouse then pcall(f.EnableMouse, f, false) end
+  local function tex(layer)
+    if type(f.CreateTexture) ~= "function" then return nil end
+    return f:CreateTexture(nil, layer or "OVERLAY")
+  end
+  f.spill = tex("ARTWORK")
+  f.ring = tex("OVERLAY")
+  f.wave = tex("ARTWORK")
+  if f.wave and f.wave.SetTexture then
+    pcall(f.wave.SetTexture, f.wave, (ns.Rested and ns.Rested.WAVE_TEX) or (MEDIA .. "Dropamine-Wave"))
+  end
+  if f.spill and f.spill.SetTexture then pcall(f.spill.SetTexture, f.spill, "Interface\\Buttons\\WHITE8X8") end
+  if f.ring and f.ring.SetTexture then
+    -- Anneau : filet bronze, ou disque teinté si pas de texture dédiée.
+    pcall(f.ring.SetTexture, f.ring, "Interface\\Minimap\\MiniMap-TrackingBorder")
+  end
+  t._lvl = f
+  return f
+end
+
+function S.PlayLevelUp()
+  local t = S.FlaskTile and S.FlaskTile()
+  if not t then return end
+  S._lvlT = 0
+  S.StartDriver()
+  S.EnsureLevelUp(t)
+end
+
+function S.TickLevelUp(dt)
+  local t = S.FlaskTile and S.FlaskTile()
+  if not t then S._lvlT = nil return end
+  if S._lvlT == nil then
+    if t._lvl and t._lvl.Hide then t._lvl:Hide() end
+    return
+  end
+  S._lvlT = (S._lvlT or 0) + (N(dt) or 0)
+  local u = S._lvlT
+  local f = S.EnsureLevelUp(t)
+  if not f then S._lvlT = nil return end
+  local clip, content, w, h = S.PlaceIconClip(t)
+  w, h = w or 16, h or 16
+  if f.SetParent and content then pcall(f.SetParent, f, content) end
+  if S.SetSizeIf(f, w, h) or f._clipParent ~= (content or clip) then
+    if f.ClearAllPoints then pcall(f.ClearAllPoints, f) end
+    if f.SetPoint then pcall(f.SetPoint, f, "BOTTOMLEFT", content or clip, "BOTTOMLEFT", 0, 0) end
+    f._clipParent = content or clip
+  end
+  if f.Show then f:Show() end
+  -- 0–0.35 débordement, 0.35–0.75 pulse de l'anneau, 0.75–1.25 vague de reset.
+  if u < 0.35 then
+    local k = u / 0.35
+    if f.spill then
+      local sh = h * (0.72 + 0.28 * k)
+      S.PlaceClippedTex(f.spill, f, math.max(1, w * 0.62), sh, w * 0.19, 0)
+      if f.spill.SetVertexColor then pcall(f.spill.SetVertexColor, f.spill, 0.72, 0.32, 0.24, 0.55 * k) end
+      if f.spill.Show then f.spill:Show() end
+    end
+    if f.ring and f.ring.Hide then f.ring:Hide() end
+    if f.wave and f.wave.Hide then f.wave:Hide() end
+  elseif u < 0.75 then
+    local k = (u - 0.35) / 0.40
+    if f.spill and f.spill.SetAlpha then pcall(f.spill.SetAlpha, f.spill, 0.45 * (1 - k)) end
+    if f.ring then
+      local rw = w * (1.05 + 0.18 * math.sin(k * 3.14))
+      local rh = h * (1.05 + 0.18 * math.sin(k * 3.14))
+      S.PlaceClippedTex(f.ring, f, rw, rh, (w - rw) / 2, (h - rh) / 2)
+      if f.ring.SetVertexColor then pcall(f.ring.SetVertexColor, f.ring, 0.65, 0.49, 0.27, 0.9 * (1 - math.abs(2 * k - 1))) end
+      if f.ring.Show then f.ring:Show() end
+    end
+    if f.wave and f.wave.Hide then f.wave:Hide() end
+  elseif u < 1.25 then
+    local k = (u - 0.75) / 0.50
+    if f.spill and f.spill.Hide then f.spill:Hide() end
+    if f.ring and f.ring.Hide then f.ring:Hide() end
+    if f.wave then
+      local surf = S.FillSurfaceY and S.FillSurfaceY(t, h) or (h * 0.5)
+      local wh = math.max(2, h * 0.14)
+      S.PlaceClippedTex(f.wave, f, w, wh, 0, math.max(0, surf - wh * 0.4))
+      if f.wave.SetVertexColor then pcall(f.wave.SetVertexColor, f.wave, 0.80, 0.42, 0.32, 0.85 * (1 - k)) end
+      if f.wave.SetTexCoord then
+        local span, uu = 0.5, k * 0.5
+        pcall(f.wave.SetTexCoord, f.wave, uu, 0, uu + span, 1)
+      end
+      if f.wave.Show then f.wave:Show() end
+    end
+  else
+    if f.Hide then f:Hide() end
+    S._lvlT = nil
+  end
 end
 
 S.OPTIONS = {
@@ -2144,7 +2764,9 @@ S.OPTIONS = {
   { type = "check", key = "slotDurability", label = "Équipement usé", default = false,
     help = "Un bouclier fendu dans le puits et un toast quand une pièce équipée passe sous 20 % de durabilité. Coupé par défaut." },
   { type = "check", key = "slotEating", label = "Vague au repas", default = true,
-    help = "Une vague douce dans la fiole pendant que tu manges ou bois (régénération)." },
+    help = "Une vague douce à la surface pendant que tu manges ou bois. Le niveau de remplissage reste le vrai : seule la vague est colorée (ambre nourriture, bleu boisson, les deux = deux vagues)." },
+  { type = "check", key = "slotCampfire", label = "Feu de camp", default = true,
+    help = "Près d'un feu de camp, une petite braise s'affiche dans le puits. Elle grandit en flamme pendant la minute de charge. Quand le buff est pris, une courte gerbe d'étincelles, puis retour à la goutte (pas de fumée)." },
   { type = "check", key = "slotSleepingBag", label = "Sac de couchage", default = true,
     help = "Dans le puits de la fiole, le sac de couchage (style A) à 1, 2 ou 3 bandes pendant que l'aura Bien reposé (429959) se construit. Priorité juste avant les z de repos. Si tu pars avant 3 charges, un toast XP indique le palier manqué." },
   { type = "check", key = "slotRested", label = "« z » de repos sur la fiole", default = true,
@@ -2209,7 +2831,8 @@ if ns.On then
     "BAG_UPDATE", "BAG_UPDATE_DELAYED", "CHAT_MSG_LOOT", "LOOT_CLOSED",
     "UPDATE_INVENTORY_DURABILITY", "PLAYER_EQUIPMENT_CHANGED",
     "UNIT_AURA", "UI_ERROR_MESSAGE",
-    "PLAYER_ENTERING_WORLD", "PLAYER_UPDATE_RESTING", "PLAYER_STARTED_MOVING",
+    "PLAYER_ENTERING_WORLD", "PLAYER_UPDATE_RESTING", "PLAYER_STARTED_MOVING", "PLAYER_STOPPED_MOVING",
+    "UNIT_SPELLCAST_SUCCEEDED",
     "TRAINER_SHOW", "TRAINER_CLOSED", "GOSSIP_SHOW", "GOSSIP_CLOSED",
     "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT",
     "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA",
@@ -2246,6 +2869,23 @@ if ns.On then
       end
       if ev == "UI_ERROR_MESSAGE" then
         pcall(S.OnInvFullError, ...)
+      end
+      if ev == "PLAYER_STARTED_MOVING" then
+        S._campMoving = true
+      elseif ev == "PLAYER_STOPPED_MOVING" then
+        S._campMoving = nil
+      end
+      if ev == "UNIT_SPELLCAST_SUCCEEDED" then
+        local unit, _, spellId, spellName = select(2, ...)
+        if type(unit) ~= "string" then unit = select(1, ...) end
+        if type(spellId) ~= "number" then
+          spellId = select(5, ...) or select(3, ...)
+        end
+        if type(spellName) ~= "string" then spellName = select(2, ...) end
+        if (not unit or unit == "player") and S.NoteCampfireSpell then
+          pcall(S.NoteCampfireSpell, spellId, spellName)
+        end
+        if unit and unit ~= "player" then return end
       end
       if ev == "PLAYER_UPDATE_RESTING" or ev == "ZONE_CHANGED"
         or ev == "ZONE_CHANGED_INDOORS" or ev == "ZONE_CHANGED_NEW_AREA" then

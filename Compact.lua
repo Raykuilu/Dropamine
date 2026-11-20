@@ -487,7 +487,23 @@ end
 function C.Launch(e)
   if e.launched or e.released then return end
   e.launched = true
-  local main = e.targets[1] and C.TileByKey(e.targets[1].key)
+  -- Ajout au total : la goutte tombe dans la fiole officielle (vague + bulles),
+  -- plus d'éclat qui vole vers la case total. Le level-up a son propre débordement.
+  local main, mainTg
+  for _, tg in ipairs(e.targets or {}) do
+    if tg.key == "total" then
+      if e.kind ~= "levelup" and ns.Slot and ns.Slot.PlayTotalAdd then
+        pcall(ns.Slot.PlayTotalAdd, tg.gain)
+      end
+    elseif not main then
+      main, mainTg = C.TileByKey(tg.key), tg
+    end
+  end
+  if not main then
+    -- seulement le total : pas de vol, on libère à l'arrivée de la goutte.
+    if not After(0.45, function() C.Land(e) end) then C.Land(e) end
+    return
+  end
   if not (W.IsShown() and main) then C.Release(e) e.skipped = true return end
   local sx, sy = Center(e.drop)
   local ex, ey = Center(main.icon or main)
@@ -521,10 +537,14 @@ function C.Land(e, quiet)
   C.landed = C.landed + 1
   if P.Wake then P.Wake("éclat") end
   for _, tg in ipairs(e.targets) do
-    local t = C.TileByKey(tg.key)
-    if t then
-      C.Pulse(t)
-      if tg.gain and tg.gain > 0 then C.Gain(t, "+" .. tostring(math.floor(tg.gain + 0.5))) end
+    if tg.key == "total" then
+      -- remplacé par S.PlayTotalAdd (goutte dans la fiole)
+    else
+      local t = C.TileByKey(tg.key)
+      if t then
+        C.Pulse(t)
+        if tg.gain and tg.gain > 0 then C.Gain(t, "+" .. tostring(math.floor(tg.gain + 0.5))) end
+      end
     end
   end
 end
