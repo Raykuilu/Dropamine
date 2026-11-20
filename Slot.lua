@@ -1521,6 +1521,10 @@ function S.IconInnerSize(t)
   -- Repli : barre large = petite goutte ; grille = icône de case.
   if aw < 2 then aw = (t._wideOn and 14) or 32 end
   if ah < 2 then ah = aw end
+  -- Jamais la largeur de la case : ça poserait le clip sur « 85/2460 ».
+  local cap = t._wideOn and math.max(14, N(t._wideH) or 16) or ((ns.View and ns.View.ICON_SIZE) or 32)
+  if aw > cap + 0.5 then aw = cap end
+  if ah > cap + 0.5 then ah = cap end
   local inset = 0
   local slot = t.iconSlot or t
   if slot then inset = N(slot._ringInset) or 0 end
@@ -2359,7 +2363,9 @@ end
 function S.EnsureRegenWave(t)
   if not t then return nil end
   local _, content, w, h = S.PlaceIconClip(t)
-  local parent = content or t
+  -- Uniquement dans le clip de l'icône : jamais sur la case (ça recouvrirait le compteur).
+  local parent = content
+  if not parent then return t._eat end
   if t._eat then
     if parent then
       if t._eat.body and t._eat.body.SetParent then pcall(t._eat.body.SetParent, t._eat.body, parent) end
@@ -2410,6 +2416,10 @@ local function HideOverlay(frame)
   if frame.wave then HideTex(frame.wave) end
   if frame.wave2 then HideTex(frame.wave2) end
   if frame.body then HideTex(frame.body) end
+  if frame.icon then HideTex(frame.icon) end
+  if frame.glyph then HideTex(frame.glyph) end
+  if frame.food then HideTex(frame.food) end
+  if frame.drink then HideTex(frame.drink) end
   if frame.drop then HideTex(frame.drop) end
   if frame.spill then HideTex(frame.spill) end
   if frame.bubbles then
@@ -2473,24 +2483,34 @@ function S.ApplyRegenWave(dt)
   if not t then return end
   local inCombatFill = S.CombatLiquidOn() and ((S.fill and S.fill.p) or 0) > 0.05
   local show = S.Want("eating") and not inCombatFill and not (S.Opt("slotDeath") and S.LiveDeath())
+  -- Pas de vague ni de glyphe par-dessus un état qui remplace la fiole (sac de couchage).
+  if show and S.ReplacesFlaskIcon and S.ReplacesFlaskIcon(t) then show = false end
   if not show then
     S.HideRegenWave(t)
     return
   end
   local e = S.EnsureRegenWave(t)
   if not e then return end
-  -- Le corps du remplissage reste celui de la fiole (vrai niveau) : on ne
-  -- recolore que la vague de surface (ambre nourriture, bleu boisson).
-  if e.body and e.body.Hide then e.body:Hide() end
+  -- Aucun glyphe nourriture/boisson devant la fiole ou le compteur :
+  -- seulement la vague colorée, à l'intérieur de la silhouette.
+  if e.icon then HideTex(e.icon) end
+  if e.glyph then HideTex(e.glyph) end
+  if e.food then HideTex(e.food) end
+  if e.drink then HideTex(e.drink) end
+  if e.body then HideTex(e.body) end
+  if t.icon and t.icon.Show then t.icon:Show() end
   local clip, content, w, H = S.PlaceIconClip(t)
   w, H = w or 16, H or 16
-  local a = content or clip or t.icon or t
+  -- Jamais sur la case entière (ça passerait devant « 85/2460 »).
+  local a = content or clip
+  if not a then return end
   local R = ns.Rested
   e.u = (e.u or 0) + dt / ((R and R.LIQ and R.LIQ.charge and R.LIQ.charge.period) or 2.4)
   if e.u > 1 then e.u = e.u - math.floor(e.u) end
   local surf = S.FillSurfaceY(t, H)
-  -- À ~14 px (barre), une bande de 2–3 px bien opaque, animée, au niveau réel.
-  local wh = math.max(3, math.min(8, math.max(H * 0.22, 3)))
+  -- Vague bien visible dans le corps de la fiole, pas un filet coincé au fond.
+  if surf < H * 0.40 then surf = H * 0.40 end
+  local wh = math.max(3, math.min(8, math.max(H * 0.28, 3)))
   local wy = math.max(0, surf - wh * 0.65)
   if wy + wh > H then wy = math.max(0, H - wh) end
   local kind = S.EatKind and S.EatKind() or "food"
@@ -2516,10 +2536,10 @@ function S.ApplyRegenWave(dt)
     paint(e.wave2, drinkCol, 0.18, math.max(1, H * 0.04))
   elseif kind == "drink" then
     paint(e.wave, drinkCol, 0, 0)
-    if e.wave2 and e.wave2.Hide then e.wave2:Hide() end
+    if e.wave2 then HideTex(e.wave2) end
   else
     paint(e.wave, foodCol, 0, 0)
-    if e.wave2 and e.wave2.Hide then e.wave2:Hide() end
+    if e.wave2 then HideTex(e.wave2) end
   end
   local mask = S.IconMaskFor(t)
   if mask then
