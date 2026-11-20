@@ -784,6 +784,11 @@ function UI:LayoutGrid(wrap, snap)
   local child = wrap.child
   child:ClearAllPoints()
   local compact = ns.Panel and ns.Panel.IsExpanded and not ns.Panel.IsExpanded()
+  local tileHGap = TILE_HGAP
+  if compact then
+    if ns.Layout and ns.Layout.SyncMetrics then pcall(ns.Layout.SyncMetrics) end
+    tileHGap = (ns.Icons and ns.Icons.HGAP) or TILE_HGAP
+  end
   local ins = (wrap == self.embed) and self:ListInsets() or nil
   -- Le cadre compact a déjà la même marge des 4 côtés : plus d'inset interne
   -- (20 px à droite pour une barre de défilement cachée, 6+2 en haut/bas)
@@ -826,7 +831,7 @@ function UI:LayoutGrid(wrap, snap)
     return wrap.tiles[ti]
   end
   local y, rowsUsed, cells = 0, 0, {}
-  local hx = math.floor(TILE_HGAP / 2)
+  local hx = math.floor(tileHGap / 2)
   local hy = math.max(0, math.floor((step - th) / 2))
   local limit = (availH or 1e9) + 0.5
   -- un élément n'est montré que s'il tient ENTIER dans la fenêtre visible
@@ -838,7 +843,7 @@ function UI:LayoutGrid(wrap, snap)
     h:ClearAllPoints()
     h:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -math.floor(y - off))
     local cw = select(1, SizeOf(child))
-    h:SetSize((cw and cw > 40) and cw or (cols * tw + (cols - 1) * TILE_HGAP), UI.HEADER_H)
+    h:SetSize((cw and cw > 40) and cw or (cols * tw + (cols - 1) * tileHGap), UI.HEADER_H)
     h.text:SetText(g.title)
     h.groupKey = g.title
     self:SkinGroupHeader(h)
@@ -852,14 +857,26 @@ function UI:LayoutGrid(wrap, snap)
       -- En compact, le cadre est calé sur rows×case + (rows-1)×écart : on
       -- n'ajoute pas (step-th)/2, qui poussait la dernière rangée hors vue.
       local compact = ns.Panel and ns.Panel.IsExpanded and not ns.Panel.IsExpanded()
+      local data = g.tiles[k]
+      local placeH = th
+      local Wd, Lyt = ns.Wide, ns.Layout
+      if compact and data and data.kind == "total" and Wd and Wd.ShouldWiden then
+        local nTot = (Lyt and Lyt.TileCount and select(1, Lyt.TileCount())) or 0
+        if Wd.ShouldWiden(cols, nTot) then
+          local tileH = (ns.Icons and ns.Icons.TILE) or th
+          placeH = math.max(Wd.MIN_H or 14, math.floor(tileH * (Wd.SLIM or 0.45) + 0.5))
+        end
+      end
       local cyAbs = math.floor(y + row * step + (compact and 0 or (step - th) / 2))
-      if inView(cyAbs, th) then
+      -- Ne pas masquer le total (barre fine) : inView avec une hauteur de case
+      -- pleine le faisait tomber hors cadre.
+      if (compact and data and data.kind == "total") or inView(cyAbs, placeH) then
         local t = nextTile()
         local cy = cyAbs - math.floor(off)
         t:ClearAllPoints()
-        t:SetPoint("TOPLEFT", child, "TOPLEFT", col * (tw + TILE_HGAP), -cy)
-        cells[#cells + 1] = { x = col * (tw + TILE_HGAP), y = cy, w = tw, h = th }
-        self:ResizeTile(t, tw, th)
+        t:SetPoint("TOPLEFT", child, "TOPLEFT", col * (tw + tileHGap), -cy)
+        cells[#cells + 1] = { x = col * (tw + tileHGap), y = cy, w = tw, h = placeH }
+        self:ResizeTile(t, tw, placeH)
         self:UpdateTile(t, g.tiles[k])
         t._cell = { x = cells[#cells].x - hx, y = cy - hy, w = tw + 2 * hx, h = th + 2 * hy }
         if t.SetHitRectInsets then t:SetHitRectInsets(-hx, -hx, -hy, -hy) end

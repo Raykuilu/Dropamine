@@ -2525,8 +2525,8 @@ do
   ok(not tot._cLiq or tot._cLiq.shown == false, "combat grille : plus de bandes liquide")
   ok(tot._stIcon and tot._stIcon.shown ~= false, "combat grille : icône de jeu visible")
   local ctex = tot._stIcon and (tot._stIcon._texSet or tot._stIcon._tex)
-  ok(type(ctex) == "string" and ctex:find("Ability_DualWield", 1, true),
-    "combat grille : Ability_DualWield (" .. tostring(ctex) .. ")")
+  ok(type(ctex) == "string" and ctex:find("INV_Sword_04", 1, true),
+    "combat grille : INV_Sword_04 (" .. tostring(ctex) .. ")")
   if tot.icon then
     ok(tot.icon.shown == false, "combat grille : la fiole officielle est remplacée")
   end
@@ -2891,7 +2891,7 @@ do
     if tot.icon then ok(tot.icon.shown ~= false, label .. " : fiole restaurée") end
   end
   S.SetCombatStyle("bubbles")
-  after("combat", "Ability_DualWield", "combat")
+  after("combat", "INV_Sword_04", "combat")
   after("campfire", "Spell_Fire_Fire", "feu de camp")
 
   -- Repas : disque fourchette / tasse remplace la fiole
@@ -2920,10 +2920,11 @@ do
   ok(tot._restZ and tot._restZ.shown ~= false, "repos : icône Z visible")
   ok(tot._restZ and tot._restZ.fs and (tot._restZ.fs._txt == "Z" or (tot._restZ.fs.GetText and tot._restZ.fs:GetText() == "Z")),
     "repos : glyphe Z")
+  ok(tot._restZ and tot._restZ.disc, "repos : disque sombre guideline (pas une lettre nue)")
   if tot.icon then ok(tot.icon.shown == false, "repos : fiole officielle remplacée") end
   ok(not tot._cLiq or tot._cLiq.shown == false, "repos grille : pas de bandes")
   if tot._slotZ then ok(tot._slotZ.shown == false, "repos : pas de z superposés, un seul Z") end
-  -- barre large : bandes cachées
+  -- barre large : visible dans tous les états (seule l'icône change)
   tot._wideOn, tot._wideH, tot._wideW = true, 16, 200
   tot._wideParts = tot._wideParts or {}
   local segs = {}
@@ -2932,13 +2933,47 @@ do
     if segs[i].Show then segs[i]:Show() end
   end
   tot._wideParts.segs = segs
+  tot._wideParts.track = tot:CreateTexture(nil, "ARTWORK")
+  tot._wideParts.track:Show()
+  tot._wideParts.text = tot:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  if tot._wideParts.text.Show then tot._wideParts.text:Show() end
+  tot._wideParts.text:SetText("85 / 2460")
   tot._pseg = tot._wideParts
-  pcall(S.ApplyFlaskFill, tot)
+  local function barVisible(label)
+    pcall(S.ApplyFlaskFill, tot)
+    pcall(S.ApplyTotal)
+    local anySeg
+    for i = 1, 3 do if segs[i].shown ~= false then anySeg = true end end
+    ok(anySeg, label .. " : barre (segments) toujours visible")
+    ok(tot._wideParts.track and tot._wideParts.track.shown ~= false, label .. " : piste visible")
+    ok(tot._wideParts.text and tot._wideParts.text.shown ~= false, label .. " : texte 85/2460 visible")
+  end
   pcall(S.ApplyRestIcon, tot)
-  local anySeg
-  for i = 1, 3 do if segs[i].shown ~= false then anySeg = true end end
-  ok(not anySeg, "repos barre : bandes rouge/bleu/vert cachées")
+  barVisible("repos barre")
   if tot.icon then ok(tot.icon.shown == false, "repos barre : fiole remplacée par le Z") end
+  -- mêmes états : la barre ne disparaît jamais
+  local stateBar = {
+    { "combat", function() S.SetSim("combat", true) pcall(S.ApplyCombatLiq, tot) end },
+    { "campfire", function() if S.SetCampfireSim then S.SetCampfireSim("near") end pcall(S.ApplyCampfire, tot) end },
+    { "fishing", function() S.SetSim("fishing", true) pcall(S.ApplySheet, tot, "fishing") end },
+    { "eating", function() if S.SetEatSim then S.SetEatSim("food") end pcall(S.ApplyEatDisc, tot) end },
+    { "flight", function() S.SetSim("flight", true) pcall(S.ApplyTotal) end },
+  }
+  for _, st in ipairs(stateBar) do
+    S.ClearSim()
+    if S.SetCampfireSim then S.SetCampfireSim(nil) end
+    for i = 1, 3 do if segs[i].Show then segs[i]:Show() end end
+    if tot._wideParts.track.Show then tot._wideParts.track:Show() end
+    if tot._wideParts.text.Show then tot._wideParts.text:Show() end
+    tot._wideOn = true
+    st[2]()
+    barVisible(st[1])
+  end
+  -- une seule épée (pas Dual Wield)
+  S.ClearSim()
+  S.SetSim("combat", true)
+  pcall(S.ApplyCombatLiq, tot)
+  ok(not tot._stIconR or tot._stIconR.shown == false, "combat : une seule épée, pas d'icône double")
   tot._wideOn = false
   S.ClearSim()
   pcall(S.ApplyTotal)
@@ -2975,6 +3010,99 @@ do
   if P.ApplyMode then pcall(P.ApplyMode) end
   if L.SnapToContent then pcall(L.SnapToContent) end
 
+  -- Défaut et plusieurs tailles : le cadre = cols×case courante + écarts + 12 px.
+  local savedScale, savedCols, savedTotal
+  if ns.db and ns.db.ui then savedScale, savedCols, savedTotal = ns.db.ui.scale, ns.db.ui.cols, ns.db.ui.showTotal end
+  local function assertFit(cols, scalePct, skills, withTotal, label)
+    if ns.db and ns.db.ui then
+      ns.db.ui.scale = (scalePct ~= 100) and scalePct or nil
+      ns.db.ui.cols = (cols ~= (L.BASE_COLS or 5)) and cols or nil
+      ns.db.ui.showTotal = withTotal and true or nil
+    end
+    if ns.Wide then ns.Wide.forceShown = withTotal and true or false end
+    local snap = {}
+    for i = 1, skills do snap[i] = { id = i } end
+    UI.snapshot = UI.snapshot or {}
+    UI.snapshot.tiles = snap
+    if L.SyncMetrics then L.SyncMetrics() end
+    local fw, fh, pad, gw, gh, c, r = L.ContentSize(cols)
+    local tile, hg, vg, M = I.TILE, I.HGAP, I.VGAP, L.MARGIN
+    ok(c == cols, label .. " : colonnes " .. tostring(c) .. " (attendu " .. cols .. ")")
+    ok(gw == cols * tile + math.max(0, cols - 1) * hg,
+      label .. " : largeur grille " .. tostring(gw) .. " = " .. cols .. "×" .. tile .. "+" .. (cols-1) .. "×" .. hg)
+    ok(fw == gw + 2 * M, label .. " : cadre = grille + 2×12 (pas de largeur 262 périmée)")
+    local rightPad = fw - gw - M
+    ok(rightPad == M, label .. " : dernière case ne dépasse pas le bord (marge droite " .. tostring(rightPad) .. ")")
+    if withTotal and ns.Wide and ns.Wide.ShouldWiden and ns.Wide.ShouldWiden(cols, skills + 1) then
+      local slim = math.max((ns.Wide.MIN_H or 14), math.floor(tile * (ns.Wide.SLIM or 0.45) + 0.5))
+      local skillRows = math.max(1, math.ceil(skills / cols))
+      local expectH = skillRows * tile + math.max(0, skillRows - 1) * vg + vg + slim
+      ok(gh == expectH, label .. " : hauteur 12 px sous la barre (" .. tostring(gh) .. " attendu " .. expectH .. ")")
+      ok(fh == gh + 2 * M, label .. " : cadre = contenu + 2×marge")
+    end
+  end
+  -- défauts : 5 col., taille 100 %, 9 compétences
+  assertFit(5, 100, 9, false, "défaut 5 col. 100 %")
+  assertFit(5, 100, 9, true, "défaut 5 col. + barre")
+  assertFit(10, 100, 9, true, "10 col. 100 %")
+  assertFit(5, 80, 9, true, "5 col. taille 80 %")
+  assertFit(10, 80, 9, true, "10 col. taille 80 %")
+  assertFit(5, 150, 9, true, "5 col. taille 150 %")
+  assertFit(10, 150, 9, true, "10 col. taille 150 %")
+  assertFit(3, 80, 9, true, "3 col. taille 80 %")
+  if ns.db and ns.db.ui then ns.db.ui.scale, ns.db.ui.cols, ns.db.ui.showTotal = savedScale, savedCols, savedTotal end
+  if L.SyncMetrics then L.SyncMetrics() end
+  -- La case total de ce bloc (et FlaskTile) doit rester visible pour goutte / étincelle.
+  if ns.Wide then ns.Wide.forceShown = true end
+  if tot.Show then tot:Show() end
+  tot.data = tot.data or { kind = "total" }
+
+  -- Gouttes colorées + étincelle de barre
+  local function colorEq(a, b)
+    return a and b and math.abs((a[1] or 0) - (b[1] or 0)) < 0.01
+      and math.abs((a[2] or 0) - (b[2] or 0)) < 0.01
+      and math.abs((a[3] or 0) - (b[3] or 0)) < 0.01
+  end
+  ok(colorEq(S.AddColor("red"), S.ADD_COLORS.red), "AddColor red")
+  ok(colorEq(S.AddColor("blue"), S.ADD_COLORS.blue), "AddColor blue")
+  ok(colorEq(S.AddColor("green"), S.ADD_COLORS.green), "AddColor green")
+  ok(not colorEq(S.ADD_COLORS.red, S.ADD_COLORS.blue), "red ≠ blue")
+  ok(not colorEq(S.ADD_COLORS.red, S.ADD_COLORS.green), "red ≠ green")
+  if ns.Test and ns.Test.Toggle then
+    pcall(ns.Test.Toggle, "totaladd blue")
+    ok(colorEq(S._addColor, S.ADD_COLORS.blue), " /drop test totaladd blue : couleur bleue (pas rouge)")
+    if ns.Test.Stop then pcall(ns.Test.Stop, "totaladd") end
+    pcall(ns.Test.Toggle, "totaladd green")
+    ok(colorEq(S._addColor, S.ADD_COLORS.green), " /drop test totaladd green : couleur verte (pas rouge)")
+    if ns.Test.Stop then pcall(ns.Test.Stop, "totaladd") end
+  end
+  tot._wideOn, tot._wideH, tot._wideW = true, 16, 200
+  ns.Wide = ns.Wide or {}
+  ns.Wide.last = { left = 40, inner = 140, by = 4, bh = 8, pct = 0.4 }
+  for _, pair in ipairs({ {"red", S.ADD_COLORS.red}, {"blue", S.ADD_COLORS.blue}, {"green", S.ADD_COLORS.green} }) do
+    pcall(S.PlayTotalAdd, 1, pair[1])
+    ok(colorEq(S._addColor, pair[2]), "PlayTotalAdd " .. pair[1] .. " : S._addColor")
+    if tot._add and tot._add.drop and tot._add.drop._vcolor then
+      local vc = tot._add.drop._vcolor
+      ok(math.abs((vc[1] or 0) - pair[2][1]) < 0.01, "goutte " .. pair[1] .. " teinte réelle")
+    end
+  end
+  -- étincelle : créée une fois, voyage, flash, alpha 0, pas de nouvelle texture au 2e gain
+  pcall(S.PlayTotalAdd, 1, "blue")
+  ok(tot._barSpark, "étincelle de barre : texture poolée")
+  -- S.Tick plafonne dt à 0,25 s : on avance par pas, comme en jeu.
+  if S.Tick then for i = 1, 10 do pcall(S.Tick, 0.05) end end  -- 0,50 s, après l'impact
+  ok(tot._barSpark and tot._barSpark.shown ~= false, "étincelle visible après l'impact de la goutte")
+  if S.Tick then for i = 1, 16 do pcall(S.Tick, 0.05) end end  -- +0,80 s, au-delà de 0,40+0,55+0,15
+  ok(not tot._barSpark or tot._barSpark.shown == false or (tot._barSpark.GetAlpha and tot._barSpark:GetAlpha() == 0),
+    "étincelle : alpha 0 à la fin")
+  local spark1, flash1 = tot._barSpark, tot._barFlash
+  pcall(S.PlayTotalAdd, 1, "green")
+  ok(tot._barSpark == spark1 and tot._barFlash == flash1, "étincelle : réutilisée, pas de nouvelle texture")
+  if S.HideBarSpark then pcall(S.HideBarSpark, tot) end
+  if S.HideTotalAdd then pcall(S.HideTotalAdd, tot) end
+  tot._wideOn = false
+
   -- Fuite : 500 transitions d'état, aucun nouveau cadre / texture, croissance mémoire bornée.
   S.ClearSim()
   pcall(S.ApplyTotal)
@@ -2990,7 +3118,19 @@ do
     if S.SetCampfireSim then S.SetCampfireSim(nil) end
     pcall(S.ApplyTotal)
   end
-  if S.PlayTotalAdd then pcall(S.PlayTotalAdd, 1, "red") if S.Tick then pcall(S.Tick, 0.05) end if S.HideTotalAdd then pcall(S.HideTotalAdd) end end
+  tot._wideOn = true
+  if S.PlayTotalAdd then
+    pcall(S.PlayTotalAdd, 1, "red")
+    if S.Tick then pcall(S.Tick, 0.05) end
+    pcall(S.PlayTotalAdd, 1, "blue")
+    if S.Tick then pcall(S.Tick, 0.50) pcall(S.Tick, 0.70) end
+    pcall(S.PlayTotalAdd, 1, "green")
+    if S.Tick then pcall(S.Tick, 0.50) pcall(S.Tick, 0.70) end
+    if S.HideTotalAdd then pcall(S.HideTotalAdd) end
+    if S.HideBarSpark then pcall(S.HideBarSpark, tot) end
+  end
+  if S.ApplyRestIcon then pcall(S.SetSim, "rested", true) pcall(S.ApplyRestIcon, tot) S.ClearSim() pcall(S.ApplyTotal) end
+  tot._wideOn = false
   local nCF, nTex, nFS = 0, 0, 0
   local baseCF = _G.CreateFrame
   _G.CreateFrame = function(...)
