@@ -1067,16 +1067,25 @@ function S.DeathPause()
   return S.Opt("slotDeath") and S.LiveDeath()
 end
 
+local function FlaskVisible(t)
+  if not (t and t.data and t.data.kind == "total") then return false end
+  -- masquée par option : pas de fiole cible (les z restent sur Niveau).
+  local Wd = ns.Wide
+  if Wd and Wd.Shown and not Wd.Shown() then return false end
+  if type(t.IsShown) == "function" then return t:IsShown() and true or false end
+  return true
+end
+
 function S.FlaskTile()
   local Wd = ns.Wide
   local t = Wd and Wd.TotalTile and Wd.TotalTile()
-  if t and t.data and t.data.kind == "total" then return t end
+  if FlaskVisible(t) then return t end
   local ui = ns.UI
   local tiles = ui and ui.embed and ui.embed.tiles
   if tiles then
     for i = 1, #tiles do
       local tt = tiles[i]
-      if tt and tt.data and tt.data.kind == "total" then return tt end
+      if FlaskVisible(tt) then return tt end
     end
   end
   return nil
@@ -1098,7 +1107,8 @@ end
 -- En grille, ils s'ajoutent dans la case total sans retirer ceux du portrait
 -- (les tests 3.6.2 et la vague de repos restent sur la case Niveau).
 function S.StealsLevelZ()
-  return S.TakesRestedZ() and S.FlaskIsWide()
+  -- z dans la fiole (barre et grille) dès que la case total est visible.
+  return S.TakesRestedZ() and true or false
 end
 
 ------------------------------------------------------------------------------
@@ -1206,13 +1216,14 @@ function S.EnsureGridFill(t)
   end
   local ok, f = pcall(CreateFrame, "Frame", nil, parent)
   if not (ok and f) then return nil end
+  S.SetSizeIf(f, 1, 1)
   if f.EnableMouse then pcall(f.EnableMouse, f, false) end
   local function tex(layer)
     if type(f.CreateTexture) ~= "function" then return nil end
     return f:CreateTexture(nil, layer or "ARTWORK")
   end
   f.red, f.blue, f.green, f.wave = tex("ARTWORK"), tex("ARTWORK"), tex("ARTWORK"), tex("OVERLAY")
-  local waveTex = (ns.Rested and ns.Rested.WAVE_TEX) or "Interface\AddOns\Dropamine\Media\Dropamine-Wave"
+  local waveTex = (ns.Rested and ns.Rested.WAVE_TEX) or (MEDIA .. "Dropamine-Wave")
   if f.wave and f.wave.SetTexture then pcall(f.wave.SetTexture, f.wave, waveTex) end
   t._gFill = f
   return f
@@ -1288,7 +1299,7 @@ function S.ApplyGridFill(t)
     else
       local tw = math.max(1, w - inset * 2)
       S.PlaceClippedTex(tex, gf, tw, hh, inset, y)
-      if tex.SetTexture then pcall(tex.SetTexture, tex, "Interface\Buttons\WHITE8X8") end
+      if tex.SetTexture then pcall(tex.SetTexture, tex, "Interface\\Buttons\\WHITE8X8") end
       if tex.SetVertexColor then pcall(tex.SetVertexColor, tex, r, g, b, a) end
       if tex.Show then tex:Show() end
       y = y + hh
@@ -1309,7 +1320,9 @@ function S.ApplyGridFill(t)
     end
     maskTex(gf.red) maskTex(gf.blue) maskTex(gf.green) maskTex(gf.wave)
   end
-  if t.icon and t.icon.Show then t.icon:Show() end
+  if not S.ReplacesFlaskIcon(t) then
+    if t.icon and t.icon.Show then t.icon:Show() end
+  end
   if gf.Show then gf:Show() end
 end
 
@@ -1404,12 +1417,20 @@ function S.ApplySheet(t, id)
   if h.SetTexture then pcall(h.SetTexture, h, sh.tex) end
   local fi = S._frame[id] or 1
   if h.SetTexCoord then pcall(h.SetTexCoord, h, TexCoord(fi, sh.frames)) end
-  if h.SetAllPoints and t.icon then pcall(h.SetAllPoints, h, t.icon) end
-  if h.SetSize and t.icon and t.icon.GetWidth then
-    local w = N(t.icon:GetWidth()) or 16
-    local ht = N(t.icon:GetHeight()) or w
-    pcall(h.SetSize, h, w, ht)
+  -- Ancrer sur le puits (iconSlot / case), pas sur t.icon : cacher l'icône
+  -- ensuite ne doit pas emporter le glyphe d'état.
+  local iw, ih, anchor = 16, 16, (t.iconSlot or t.icon or t)
+  if S.IconInnerSize then
+    local w2, h2, a2 = S.IconInnerSize(t)
+    iw, ih, anchor = w2 or iw, h2 or ih, a2 or anchor
+  elseif t.icon and t.icon.GetWidth then
+    iw = N(t.icon:GetWidth()) or iw
+    ih = N(t.icon:GetHeight()) or iw
   end
+  if h.ClearAllPoints then pcall(h.ClearAllPoints, h) end
+  if h.SetSize then pcall(h.SetSize, h, math.max(8, iw), math.max(8, ih)) end
+  if h.SetPoint and anchor then pcall(h.SetPoint, h, "CENTER", anchor, "CENTER", 0, 0) end
+  if h.SetParent and t then pcall(h.SetParent, h, t) end
   if id == "fishing" and (S._jolt or 0) > 0 and t.icon and h.ClearAllPoints and h.SetPoint then
     local j = S._jolt
     local ox = math.sin(j * 42) * 2.2 * j
@@ -1467,6 +1488,14 @@ function S.IconAnchor(t)
   return t.icon or t.iconSlot or t.slotBorder or t
 end
 
+-- États qui remplacent le glyphe de la goutte (pas une couche par-dessus).
+function S.ReplacesFlaskIcon(t)
+  local act = S.Active and S.Active()
+  if act == "sleepingbag" then return true end
+  if act and act ~= "drop" and S.SHEETS and S.SHEETS[act] then return true end
+  return false
+end
+
 -- Taille intérieure de l'icône (goutte en barre ~14 px, case grille ~32 px).
 -- Ne jamais se fier à GetWidth d'un cadre seulement ancré : avant le layout
 -- (et dans le harnais) ça rend souvent 0 ou la taille par défaut (100).
@@ -1507,17 +1536,29 @@ end
 
 function S.EnsureIconClip(t)
   if not t then return nil end
-  if t._iconClip and t._iconClip._content then return t._iconClip, t._iconClip._content end
-  local ok, clip = pcall(CreateFrame, "ScrollFrame", nil, t)
+  local parent = t.iconSlot or t
+  if t._iconClip and t._iconClip._content then
+    if t._iconClip.SetParent and parent and t._iconClip.GetParent
+        and t._iconClip:GetParent() ~= parent then
+      pcall(t._iconClip.SetParent, t._iconClip, parent)
+    end
+    return t._iconClip, t._iconClip._content
+  end
+  local ok, clip = pcall(CreateFrame, "ScrollFrame", nil, parent)
   if not (ok and clip) then
-    ok, clip = pcall(CreateFrame, "Frame", nil, t)
+    ok, clip = pcall(CreateFrame, "Frame", nil, parent)
     if not (ok and clip) then return nil end
   end
+  -- Jamais laisser le défaut 100×50 : ça recouvre la fiole et peut gonfler le panneau.
+  S.SetSizeIf(clip, 1, 1)
   if clip.EnableMouse then pcall(clip.EnableMouse, clip, false) end
   if clip.SetClipsChildren then pcall(clip.SetClipsChildren, clip, true) end
   local okC, content = pcall(CreateFrame, "Frame", nil, clip)
   if okC and content then
+    S.SetSizeIf(content, 1, 1)
     if clip.SetScrollChild then pcall(clip.SetScrollChild, clip, content) end
+    if content.ClearAllPoints then pcall(content.ClearAllPoints, content) end
+    if content.SetPoint then pcall(content.SetPoint, content, "TOPLEFT", clip, "TOPLEFT", 0, 0) end
     if content.EnableMouse then pcall(content.EnableMouse, content, false) end
     if content.SetClipsChildren then pcall(content.SetClipsChildren, content, true) end
     clip._content = content
@@ -1568,8 +1609,19 @@ function S.PlaceIconClip(t)
   end
   if clip.SetHorizontalScroll then pcall(clip.SetHorizontalScroll, clip, 0) end
   if clip.SetVerticalScroll then pcall(clip.SetVerticalScroll, clip, 0) end
+  if content then
+    if clip.SetScrollChild then pcall(clip.SetScrollChild, clip, content) end
+    if content.ClearAllPoints then pcall(content.ClearAllPoints, content) end
+    if content.SetPoint then pcall(content.SetPoint, content, "TOPLEFT", clip, "TOPLEFT", 0, 0) end
+    S.SetSizeIf(content, w, h)
+  end
+  if clip.SetFrameLevel then
+    local base = (t.iconSlot and t.iconSlot.GetFrameLevel and t.iconSlot:GetFrameLevel())
+      or (t.GetFrameLevel and t:GetFrameLevel()) or 1
+    pcall(clip.SetFrameLevel, clip, (base or 1) + 3)
+  end
   if clip.Show then clip:Show() end
-  if t.SetClipsChildren then pcall(t.SetClipsChildren, t, true) end
+  if content and content.Show then content:Show() end
   if t.icon and t.icon.SetClipsChildren then pcall(t.icon.SetClipsChildren, t.icon, true) end
   return clip, content, w, h
 end
@@ -1703,7 +1755,7 @@ function S.IconMaskFor(t)
   if not (ok and m) then return nil end
   local path = (ns.STYLE and ns.STYLE.FLARE and ns.STYLE.FLARE.mask)
     or (ns.Style and ns.Style.FLARE and ns.Style.FLARE.mask)
-    or "Interface\CharacterFrame\TempPortraitAlphaMask"
+    or "Interface\\CharacterFrame\\TempPortraitAlphaMask"
   pcall(m.SetTexture, m, path, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
   if m.SetAllPoints and slot then pcall(m.SetAllPoints, m, slot) end
   t._flareMask = m
@@ -1747,6 +1799,7 @@ function S.EnsureCombatLiq(t)
   end
   local ok, f = pcall(CreateFrame, "Frame", nil, parent)
   if not (ok and f) then return nil end
+  S.SetSizeIf(f, 1, 1)
   if f.EnableMouse then pcall(f.EnableMouse, f, false) end
   local function tex(layer)
     if type(f.CreateTexture) ~= "function" then return nil end
@@ -1972,6 +2025,7 @@ S.TIPS = {
 S.COMBAT_TIP = "En combat : XP et armes en cours"
 
 function S.ShowExplanation(owner)
+  if S._suppressTip then return end
   local act = S.Active()
   if act == "flight" then
     local F = ns.Flight
@@ -2342,8 +2396,8 @@ function S.HideRegenWave(t)
 end
 
 S.EAT_WAVE = {
-  food  = { 0.90, 0.58, 0.18, 0.92 },
-  drink = { 0.35, 0.58, 0.92, 0.90 },
+  food  = { 0.98, 0.62, 0.16, 1.00 },
+  drink = { 0.32, 0.62, 1.00, 1.00 },
 }
 
 function S.FillSurfaceY(t, h)
@@ -2383,7 +2437,8 @@ function S.ApplyRegenWave(dt)
   e.u = (e.u or 0) + dt / ((R and R.LIQ and R.LIQ.charge and R.LIQ.charge.period) or 2.4)
   if e.u > 1 then e.u = e.u - math.floor(e.u) end
   local surf = S.FillSurfaceY(t, H)
-  local wh = math.max(2, math.min(8, H * 0.14))
+  -- À ~14 px (barre), une bande de 2–3 px bien opaque, animée, au niveau réel.
+  local wh = math.max(3, math.min(8, math.max(H * 0.22, 3)))
   local wy = math.max(0, surf - wh * 0.65)
   if wy + wh > H then wy = math.max(0, H - wh) end
   local kind = S.EatKind and S.EatKind() or "food"
@@ -2436,6 +2491,7 @@ function S.EnsureCampfire(t)
   end
   local ok, f = pcall(CreateFrame, "Frame", nil, parent)
   if not (ok and f) then return nil end
+  S.SetSizeIf(f, 1, 1)
   if f.EnableMouse then pcall(f.EnableMouse, f, false) end
   local function tex(layer)
     if type(f.CreateTexture) ~= "function" then return nil end
@@ -2546,6 +2602,7 @@ function S.EnsureTotalAdd(t)
   end
   local ok, f = pcall(CreateFrame, "Frame", nil, parent)
   if not (ok and f) then return nil end
+  S.SetSizeIf(f, 1, 1)
   if f.EnableMouse then pcall(f.EnableMouse, f, false) end
   local function tex(layer)
     if type(f.CreateTexture) ~= "function" then return nil end
@@ -2651,6 +2708,7 @@ function S.EnsureLevelUp(t)
   end
   local ok, f = pcall(CreateFrame, "Frame", nil, parent)
   if not (ok and f) then return nil end
+  S.SetSizeIf(f, 1, 1)
   if f.EnableMouse then pcall(f.EnableMouse, f, false) end
   local function tex(layer)
     if type(f.CreateTexture) ~= "function" then return nil end

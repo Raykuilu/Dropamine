@@ -141,9 +141,24 @@ local function FitLine(f, fs)
     end
     return
   end
+  -- Replacer le FS dans le toast avant de recopier les ancres (vivier :
+  -- le texte était déjà dans le clip, souvent déjà décalé).
+  if fs._mq and fs._mq.clip and HasFn(fs, "SetParent") then
+    pcall(fs.SetParent, fs, f)
+  end
   local mq = EnsureClip(f, fs)
+  -- Recopie les ancres à chaque Fit : la colonne commence à droite de l'icône.
+  if mq and mq.clip then
+    if not CopyPoints(fs, mq.clip) then
+      mq.clip:SetPoint("TOPLEFT", fs, "TOPLEFT", 0, 0)
+      mq.clip:SetPoint("RIGHT", f, "RIGHT", f._light and -6 or -8, 0)
+    end
+    if HasFn(fs, "SetParent") then pcall(fs.SetParent, fs, mq.child) end
+    if HasFn(fs, "ClearAllPoints") then fs:ClearAllPoints() end
+    if HasFn(fs, "SetPoint") then fs:SetPoint("LEFT", mq.child, "LEFT", 0, 0) end
+  end
   local lh = LineHeight(fs)
-  mq.need, mq.room = need, room
+  mq.need, mq.room, mq.t, mq.off = need, room, 0, 0
   if HasFn(mq.clip, "SetHeight") then pcall(mq.clip.SetHeight, mq.clip, lh) end
   if HasFn(mq.clip, "SetWidth") then pcall(mq.clip.SetWidth, mq.clip, room) end
   if HasFn(mq.child, "SetHeight") then pcall(mq.child.SetHeight, mq.child, lh) end
@@ -151,6 +166,27 @@ local function FitLine(f, fs)
   if HasFn(fs, "SetWidth") then pcall(fs.SetWidth, fs, need) end
   if HasFn(fs, "SetHeight") then pcall(fs.SetHeight, fs, lh) end
   if HasFn(mq.clip, "SetHorizontalScroll") then pcall(mq.clip.SetHorizontalScroll, mq.clip, mq.off or 0) end
+end
+
+-- Repose le texte dans le toast et remet le défilement à 0 (vivier).
+function TF.Reset(f)
+  if not f then return end
+  f._tfBaseH = nil
+  local list = f._mqList
+  if not list then return end
+  for i = 1, #list do
+    local mq = list[i]
+    if mq then
+      mq.t, mq.off, mq.need, mq.room = 0, 0, 0, 0
+      if mq.clip and HasFn(mq.clip, "SetHorizontalScroll") then
+        pcall(mq.clip.SetHorizontalScroll, mq.clip, 0)
+      end
+      local fs = mq.fs
+      if fs and HasFn(fs, "SetParent") then
+        pcall(fs.SetParent, fs, f)
+      end
+    end
+  end
 end
 
 function TF.Fit(f)

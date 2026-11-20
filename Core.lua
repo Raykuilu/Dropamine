@@ -1793,7 +1793,7 @@ end
 -- des SavedVariables. Rien n'est perdu : sans profil perso, rien ne bouge ;
 -- à l'activation, le profil perso part des réglages actuels du compte.
 ns.DISPLAY_KEYS = { "theme", "cols", "scale", "opacity", "bgAlpha", "fadeDelay", "iconAlpha", "colorMode",
-  "showTotal", "locked", "winPos", "notifMode", "dropsPos", "dropDir", "dropStyle", "dropBgAlpha", "dropDuration",
+  "showTotal", "locked", "winPos", "notifMode", "dropsPos", "dropDir", "dropStyle", "dropWidth", "dropBgAlpha", "dropDuration",
   "minimapAngle", "seasonal", "smartSort", "expanded" }
 local NIL = "\001nil"
 local function Pack(v) if v == nil then return NIL end return DeepCopy(v) end
@@ -2854,6 +2854,19 @@ do
     return true
   end
 
+  local function DriveFlask()
+    local S = ns.Slot
+    local tt = _G.GameTooltip
+    if tt and tt.Hide then pcall(tt.Hide, tt) end
+    if S then
+      S._suppressTip = true
+      if S.Refresh then pcall(S.Refresh, "test") end
+      if S.StartDriver then pcall(S.StartDriver) end
+      if S.Tick then pcall(S.Tick, 0.05) end
+      S._suppressTip = nil
+    end
+  end
+
   function T.StartSleepingBag(extra)
     if not T.Enabled() then return nil end
     extra = tostring(extra or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
@@ -2874,7 +2887,7 @@ do
       return nil
     end
     if S and S.SetSleepingBagSim then pcall(S.SetSleepingBagSim, n) end
-    if S and S.Refresh then pcall(S.Refresh, "test") end
+    DriveFlask()
     ns.Print(string.format(Tr["test : sac de couchage palier %s."], tostring(n)))
     return true
   end
@@ -2891,7 +2904,7 @@ do
     T._on = T._on or {}
     T._on.eating = true
     if S and S.SetEatSim then pcall(S.SetEatSim, kind) elseif S and S.SetSim then pcall(S.SetSim, "eating", true) end
-    if S and S.Refresh then pcall(S.Refresh, "test") end
+    DriveFlask()
     ns.Print(string.format(Tr["test : repas (%s)."], kind))
     return true
   end
@@ -2912,8 +2925,7 @@ do
     end
     T._on = T._on or {}
     T._on.campfire = true
-    if S.Refresh then pcall(S.Refresh, "test") end
-    if S.StartDriver then pcall(S.StartDriver) end
+    DriveFlask()
     ns.Print(string.format(Tr["test : feu de camp (%s)."], st))
     return true
   end
@@ -2923,6 +2935,7 @@ do
     T._on = T._on or {}
     T._on.totaladd = true
     if ns.Slot and ns.Slot.PlayTotalAdd then pcall(ns.Slot.PlayTotalAdd, 1) end
+    DriveFlask()
     ns.Print(Tr["test : goutte dans la fiole (ajout au total)."])
     return true
   end
@@ -2935,6 +2948,7 @@ do
     local lvl = (ns.GetPlayerLevel and ns.GetPlayerLevel()) or 2
     if ui and ui.PlayLevelUp then pcall(ui.PlayLevelUp, ui, lvl)
     elseif ns.Slot and ns.Slot.PlayLevelUp then pcall(ns.Slot.PlayLevelUp) end
+    DriveFlask()
     ns.Print(Tr["test : montée de niveau (débordement de la fiole)."])
     return true
   end
@@ -2975,7 +2989,7 @@ do
     if ns.Slot and ns.Slot.SetSim then pcall(ns.Slot.SetSim, id, true) end
     if id == "bags" and ns.Slot and ns.Slot.NotifyBags then pcall(ns.Slot.NotifyBags, true) end
     if id == "durability" and ns.Slot and ns.Slot.NotifyDurability then pcall(ns.Slot.NotifyDurability, true) end
-    if ns.Slot and ns.Slot.Refresh then pcall(ns.Slot.Refresh, "test") end
+    DriveFlask()
     ns.Print(string.format(Tr["test : %s simulé."], Tr[known.label] or known.label))
     return true
   end

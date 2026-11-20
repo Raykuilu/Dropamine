@@ -4668,7 +4668,7 @@ end
 -- v2.7.1 : 56 = hauteur d'un drop complet type (titre 12 + ligne 14 + marges 12
 -- + astuce 11 + barre 7) ; c'est aussi la taille du support en mode édition.
 local TOAST_W, TOAST_H = 260, 56
-local TOAST_GAP = 4
+local TOAST_GAP = 6
 local TOAST_FADEIN, TOAST_HOLD, TOAST_FADEOUT = 0.15, 2.6, 0.70
 UI.TOAST_SLIDE = 7  -- px : glissement court à l'apparition / à la disparition
 local TOAST_BG_A = 0.35   -- v2.7.1 : un peu plus translucide, comme le chat
@@ -5133,9 +5133,54 @@ function UI:DropSnappedToChat()
   return math.abs(l - cl) <= UI.SNAP_PX and b >= ct - UI.SNAP_PX and b <= ct + UI.SNAP_PX * 3
 end
 
+function UI:PanelWidth()
+  local W = ns.Window
+  local f = W and W.frame
+  if f and f.GetWidth then
+    local w = ns.N(f:GetWidth())
+    if w and w > 0 then return w end
+  end
+  return nil
+end
+
+-- Auto : largeur du panneau, minimum lisible 260 px × échelle.
+-- Manuel : db.ui.dropWidth >= 200.
 function UI:DropWidth()
   if self.dropsFrame and self.dropsFrame._snapW then return self.dropsFrame._snapW end
-  return TOAST_W
+  local ui = ns.db and ns.db.ui
+  local manual = ns.N(ui and ui.dropWidth)
+  if manual and manual >= 200 then return math.floor(manual + 0.5) end
+  local scale = (ns.Layout and ns.Layout.Scale and ns.Layout.Scale()) or 100
+  local minW = math.floor(260 * (scale / 100) + 0.5)
+  if minW < 160 then minW = 160 end
+  local pw = self.PanelWidth and self:PanelWidth()
+  return math.max(minW, math.floor((pw or 0) + 0.5))
+end
+
+-- Si le toast est plus large que le panneau, l'aligner sur le bord du panneau
+-- du côté de l'écran, pour ne pas dépasser vers le bord de l'écran.
+function UI:AlignDropsToPanel()
+  local f = self.dropsFrame
+  local W = ns.Window
+  local panel = W and W.frame
+  if not (f and panel and UIParent) then return end
+  if f._osrsMoving or f._osrsEditMoving then return end
+  if ns.db and ns.db.ui and ns.db.ui.dropsSnapChat then return end
+  if not (f.GetTop and panel.GetLeft and panel.GetRight and UIParent.GetWidth) then return end
+  local pl, pr, top = ns.N(panel:GetLeft()), ns.N(panel:GetRight()), ns.N(f:GetTop())
+  if not (pl and pr and top) then return end
+  local tw = self:DropWidth()
+  local pw = pr - pl
+  if tw <= pw + 1 then return end
+  local sw = ns.N(UIParent:GetWidth()) or 0
+  local leftSide = ((pl + pr) / 2) < (sw / 2)
+  if f.ClearAllPoints then f:ClearAllPoints() end
+  if leftSide then
+    f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", pl, top)
+  else
+    f:SetPoint("TOPRIGHT", UIParent, "BOTTOMLEFT", pr, top)
+  end
+  if f.SetClampedToScreen then pcall(f.SetClampedToScreen, f, true) end
 end
 
 -- Après un déplacement : aimante le support au chat (même largeur, sans décalage).
@@ -5228,6 +5273,7 @@ function UI:ApplyDropsLayout()
   end
   f:SetSize(self:DropWidth() + extra, newH + extra)
   f._osrsHeight, f._osrsPile = newH, extra
+  if self.AlignDropsToPanel then pcall(self.AlignDropsToPanel, self) end
   self:PlaceDropsHandle()
   self:PackDrops()
 end
@@ -5775,6 +5821,8 @@ function UI:AcquireToast(parent)
     if f then
       f._inPool = nil
       if f.SetParent and parent then pcall(f.SetParent, f, parent) end
+      f._tfBaseH, f._h, f.font = nil, nil, nil
+      if ns.ToastFit and ns.ToastFit.Reset then pcall(ns.ToastFit.Reset, f) end
       return f, true
     end
   end
@@ -5794,6 +5842,8 @@ function UI:ReleaseToast(f)
   f._sticky, f._hover, f._toastAge, f._editPreview = nil, nil, 0, nil
   f._toastData, f._target, f._kind, f._tintOpts = nil, nil, nil, nil
   f._fullTitle, f._fullSub, f._hold, f._light = nil, nil, nil, nil
+  f._tfBaseH = nil
+  if ns.ToastFit and ns.ToastFit.Reset then pcall(ns.ToastFit.Reset, f) end
   f._pileHidden, f._pileFade, f._osrsFly = nil, nil, nil
   if f.barHold and f.barHold.Hide then pcall(f.barHold.Hide, f.barHold) end
   if f.Hide then pcall(f.Hide, f) end
@@ -5947,6 +5997,7 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   f._inPool = nil
   f:SetSize(dw, fh)
   f._h = fh
+  f._tfBaseH = fh
   f._light = light and true or false
   f._variant = opts.variant
   f._kind = opts.kind
@@ -5985,9 +6036,20 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   titleFS:SetText(title or "")
   local tc = (variant and variant.title) or GOLD
   titleFS:SetTextColor(tc[1], tc[2], tc[3])
-  if opts.big and not light then
-    if titleFS.SetFontObject and _G.GameFontNormalLarge then pcall(titleFS.SetFontObject, titleFS, _G.GameFontNormalLarge) end
-    titleFS.font = "GameFontNormalLarge"
+  -- Vivier : toujours remettre la police (un level-up laissait GameFontNormalLarge).
+  do
+    local font
+    if opts.big and not light then
+      font = _G.GameFontNormalLarge or "GameFontNormalLarge"
+      titleFS.font = "GameFontNormalLarge"
+    elseif light then
+      font = _G.GameFontNormalSmall or "GameFontNormalSmall"
+      titleFS.font = "GameFontNormalSmall"
+    else
+      font = _G.GameFontNormal or "GameFontNormal"
+      titleFS.font = "GameFontNormal"
+    end
+    if titleFS.SetFontObject then pcall(titleFS.SetFontObject, titleFS, font) end
   end
 
   local subFS = f.subFS

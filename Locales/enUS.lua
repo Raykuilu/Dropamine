@@ -1450,3 +1450,6 @@ E["Simule le feu de camp (un glyphe, pas de fumée). /drop test campfire near|ch
 E["Une goutte tombe dans la fiole officielle, puis vague et bulles."] = "A drop falls into the official flask, then a wave and bubbles."
 E["La fiole déborde, l'anneau bronze pulse, puis se remet avec une vague. Le toast de niveau reste."] = "The flask overflows, the bronze ring pulses, then it resets with a wave. The level-up toast stays."
 E["Une vague douce à la surface pendant que tu manges ou bois. Le niveau de remplissage reste le vrai : seule la vague est colorée (ambre nourriture, bleu boisson, les deux = deux vagues)."] = "A gentle wave at the surface while you eat or drink. The fill level stays real: only the wave is coloured (amber for food, blue for drink, both = two layered waves)."
+E["Largeur des notifs"] = "Notification width"
+E["Auto"] = "Auto"
+E["Auto : suit la largeur du panneau, avec un minimum lisible (260 px à l'échelle). Une valeur fixe impose la largeur. Si le toast est plus large que le panneau, il s'aligne sur le bord du panneau du côté de l'écran, sans dépasser."] = "Auto: follow the panel width, with a readable minimum (260 px at scale). A fixed value sets the width. If the toast is wider than the panel, it aligns to the panel edge on the screen side so it never runs off."
