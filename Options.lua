@@ -689,6 +689,66 @@ local function MakeTestButton(parent, it, x, y)
   return b
 end
 
+function Options.BuildDevTest(content, y, boxW)
+  if ns.DEV_TEST ~= true then return y end
+  local L = Options.LAYOUT
+  local T = ns.Test
+  local h = Label(content, Tr["Test (DEV)"], "GameFontNormal")
+  h:SetPoint("TOPLEFT", content, "TOPLEFT", L.MARGIN, -y)
+  if h.SetJustifyH then h:SetJustifyH("LEFT") end
+  y = y + L.TITLE_H
+  local box = CreateFrame("Frame", "DropamineOptSec_devtest", content)
+  box:SetPoint("TOPLEFT", content, "TOPLEFT", L.MARGIN, -y)
+  box:SetWidth(boxW)
+  box.header = h
+  local desc = Label(box, Tr["Simulations temporaires, retirées avant la version publique. /drop test <état>|off"], "GameFontHighlightSmall")
+  desc:SetPoint("TOPLEFT", box, "TOPLEFT", 0, 0)
+  if desc.SetWidth then desc:SetWidth(boxW) end
+  if desc.SetJustifyH then desc:SetJustifyH("LEFT") end
+  local by = L.DESC_H + 8
+  local function MakeBtn(name, text, tip, click, w)
+    local b = TryCreate("Button", name, box, { "UIPanelButtonTemplate" })
+    b:SetSize(w or 130, 22)
+    b:SetText(Tr[text] or text)
+    b:SetScript("OnClick", click)
+    TipOn(b, Tr[text] or text, Tr[tip] or tip)
+    return b
+  end
+  local btns = {}
+  if T and T.STATES then
+    for _, s in ipairs(T.STATES) do
+      local id, label, tip = s.id, s.label, s.tip
+      tip = tip or (s.stub and "Pas encore simulable." or "")
+      btns[#btns + 1] = { id = id, label = label, tip = tip }
+    end
+  end
+  btns[#btns + 1] = { id = "toast", label = "Toast", tip = "Affiche un toast de recette au nom très long (défilement + infobulle)." }
+  btns[#btns + 1] = { id = "off", label = "Tout arrêter", tip = "Arrête toutes les simulations en cours." }
+  local col, rowH, x, bw, gap = 0, 0, 0, 130, 8
+  local cols = 4
+  for i, info in ipairs(btns) do
+    if col == 0 then x = 0 end
+    local b = MakeBtn("DropamineDevTest_" .. info.id, info.label, info.tip, function()
+      if ns.Test and ns.Test.Toggle then pcall(ns.Test.Toggle, info.id) end
+    end, (info.id == "off" or info.id == "trainer") and 160 or bw)
+    b:SetPoint("TOPLEFT", box, "TOPLEFT", x, -by)
+    local w = b:GetWidth() or bw
+    x = x + w + gap
+    col = col + 1
+    rowH = 26
+    if col >= cols or info.id == "off" then
+      by = by + rowH
+      col, x = 0, 0
+    end
+  end
+  if col > 0 then by = by + rowH end
+  box:SetHeight(by)
+  Options.boxes = Options.boxes or {}
+  Options.boxes[#Options.boxes + 1] = box
+  Options.devTestBox = box
+  return y + by + L.SECTION_GAP
+end
+
 function Options.Build()
   if Options.panel then return Options.panel end
   local panel = CreateFrame("Frame", "DropamineOptionsPanel", UIParent)
@@ -914,6 +974,9 @@ function Options.Build()
       Options.boxes[#Options.boxes + 1] = box
       y = y + by + L.SECTION_GAP
     end
+  end
+  if ns.DEV_TEST and Options.BuildDevTest then
+    y = Options.BuildDevTest(content, y, boxW) or y
   end
   content:SetHeight(y + L.MARGIN)
   panel:SetScript("OnShow", function()
