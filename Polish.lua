@@ -199,19 +199,23 @@ if Wd then
   Wd.BAR_H = 8
   Wd.PAD = 6
   Wd.SLIM = 0.5
-  Wd.MIN_H = 20
-  -- Référence 100 % (zoom uniforme au-dessus des planchers).
+  Wd.MIN_H = 28
+  Wd.MIN_BAR_H = 12
+  Wd.MIN_BAR_W = 60
+  Wd.MIN_FONT = 13
+  Wd.MIN_ISZ = 24
+  -- Référence 100 % (zoom uniforme au-dessus des planchers absolus).
   Wd.REF_BAR_H = 8
   Wd.REF_PAD = 6
   Wd.REF_FONT = 11
-  Wd.TEXT_SIZE = 11
+  Wd.TEXT_SIZE = 13
   Wd.FILL = ns.STYLE.BORDER               -- jeton unique #A67D45 (STYLE.md)
   Wd.SHEEN_A = 0.28                       -- reflet 1 px en haut du remplissage
   Wd.TRACK = { 0.15, 0.15, 0.15, 0.9 }    -- piste FlareUI
   Wd.EDGE_TEX = MEDIA .. "Dropamine-Thin"       -- notre filet fin (même tracé que le bord du panneau)
   Wd.EDGE_SIZE = 8                        -- FlareUI : BorderEdgeSize(Thin, 16) = 8
   Wd.EDGE_OUT = 3                         -- le filet est à 3 px du bord du cadre
-  Wd.TEXT_SIZE = 11
+  Wd.TEXT_SIZE = 13
   local function Edge(t)
     local p = t._wideParts
     if not p then return nil end
@@ -237,7 +241,7 @@ if Wd then
     local p = t._wideParts
     local m = Wd.Metrics and Wd.Metrics() or {}
     local h = N(t._wideH) or m.h or 20
-    local isz = m.isz or math.max(Wd.MIN_ISZ or 14, h - 2)
+    local isz = m.isz or math.max(Wd.MIN_ISZ or 24, h - 2)
     local slotW = isz + 2
     if t.icon and t.icon.SetSize then
       t.icon:ClearAllPoints()

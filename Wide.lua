@@ -15,7 +15,7 @@ ns.Wide = Wd
 Wd.BAR_H = 4
 Wd.PAD = 5
 Wd.SLIM = 0.50      -- hauteur de la rangée = 50 % d'une case
-Wd.MIN_H = 16
+Wd.MIN_H = 28
 -- Référence à 40 px (100 %) : tout zoome uniformément avec la taille de case.
 -- Polish.lua peut relever la référence (barre Flare 8, police 11, min 20).
 Wd.REF_TILE  = 40
@@ -23,11 +23,11 @@ Wd.REF_BAR_H = 5          -- 0.125 × case (entre 0,12 et 0,15)
 Wd.REF_PAD   = 5
 Wd.REF_FONT  = 13         -- même rapport que le chiffre de case (COUNT_MAX)
 Wd.REF_EDGE  = 3
-Wd.MIN_BAR_H = 4
-Wd.MIN_BAR_W = 24
-Wd.MIN_FONT  = 10
+Wd.MIN_BAR_H = 12
+Wd.MIN_BAR_W = 60
+Wd.MIN_FONT  = 13
 Wd.MIN_PAD   = 3
-Wd.MIN_ISZ   = 14
+Wd.MIN_ISZ   = 24
 Wd.FILL = ns.STYLE.BORDER   -- #A67D45 (palette FlareUI, voir STYLE.md) — filet de la jauge
 Wd.TRACK = { 0, 0, 0, 0.55 }
 Wd.TEX = "Interface\\TargetingFrame\\UI-StatusBar"
@@ -58,9 +58,11 @@ end
 
 local function N(v) return ns.N and ns.N(v) or tonumber(v) end
 
--- Mesures de la rangée total : zoom uniforme depuis la référence 40 px,
--- avec planchers pour rester lisible à 50 %. La barre occupe le reste en largeur.
--- Les polices sont posées en px (SetFont), jamais étirées par SetScale.
+-- Mesures de la rangée total : zoom uniforme au-dessus de planchers ABSOLUS
+-- (référence « medium » : barre 12 px, texte 13 px, fiole 24 px, rangée 28 px,
+-- barre longue d'au moins 60 px). On ne réduit jamais la barre ni la police
+-- pour les faire tenir dans une case trop petite : la rangée (et le cadre)
+-- grandit. Polices posées en px (SetFont), jamais étirées par SetScale.
 function Wd.Metrics(tile)
   tile = N(tile) or (ns.Icons and ns.Icons.TILE) or Wd.REF_TILE or 40
   local refT = Wd.REF_TILE or 40
@@ -69,18 +71,23 @@ function Wd.Metrics(tile)
   local function px(ref, minv)
     return math.max(minv or 0, math.floor((ref or 0) * k + 0.5))
   end
-  local h = math.max(Wd.MIN_H or 16, math.floor(tile * (Wd.SLIM or 0.5) + 0.5))
-  local bh = px(Wd.REF_BAR_H or Wd.BAR_H or 5, Wd.MIN_BAR_H or 4)
-  if bh > math.max(Wd.MIN_BAR_H or 4, h - 2) then bh = math.max(Wd.MIN_BAR_H or 4, h - 2) end
+  local minH = Wd.MIN_H or 28
+  local minBh = Wd.MIN_BAR_H or 12
+  local minFont = Wd.MIN_FONT or 13
+  local minIsz = Wd.MIN_ISZ or 24
+  local h = math.max(minH, math.floor(tile * (Wd.SLIM or 0.5) + 0.5))
+  local bh = px(Wd.REF_BAR_H or Wd.BAR_H or 5, minBh)
   local pad = px(Wd.REF_PAD or Wd.PAD or 5, Wd.MIN_PAD or 3)
-  local font = px(Wd.REF_FONT or Wd.TEXT_SIZE or 13, Wd.MIN_FONT or 10)
-  if font > math.max(Wd.MIN_FONT or 10, h - 4) then font = math.max(Wd.MIN_FONT or 10, h - 4) end
-  local isz = math.max(Wd.MIN_ISZ or 14, h - 2)
+  local font = px(Wd.REF_FONT or Wd.TEXT_SIZE or 13, minFont)
+  local isz = math.max(minIsz, h - 2)
+  -- Si le zoom donnerait une rangée trop basse, on l'agrandit (jamais l'inverse).
+  h = math.max(h, isz + 2, bh + 2, font + 4)
+  isz = math.max(minIsz, h - 2)
   local edge = px(Wd.REF_EDGE or Wd.EDGE_OUT or 3, 2)
   local I = ns.Icons
   return {
     tile = tile, k = k, h = h, bh = bh, pad = pad, font = font, isz = isz,
-    minBarW = Wd.MIN_BAR_W or 24, edgeOut = edge,
+    minBarW = Wd.MIN_BAR_W or 60, edgeOut = edge,
     fontPath = (I and I.COUNT_PATH) or "Fonts\\ARIALN.TTF",
     fontFlags = (I and I.TEXT_FLAGS) or "",
   }
@@ -89,72 +96,65 @@ function Wd.RowHeight(tile)
   return Wd.Metrics(tile).h
 end
 
--- Après la fiole : barre >= max(MIN_BAR_W, 40 % de la bande utile).
--- Si le texte ne rentre pas, on réduit la police jusqu'à MIN_FONT, sinon
--- on le pose sur la barre (overlay) pour ne jamais écraser la jauge.
--- twOf(font) : largeur mesurée du libellé à cette taille (optionnel).
-function Wd.PlanTotalRow(w, m, twOf)
+-- Réserve de largeur pour « 0000 / 0000 » à la police courante (jamais réduite).
+function Wd.ReserveTextW(font)
+  font = font or Wd.MIN_FONT or 13
+  -- Arial Narrow ~0,62 em, 12 glyphes, + 8 px de marge pour ne pas sous-estimer.
+  return math.max(72, math.floor((font or 13) * 12 * 0.62 + 8.5))
+end
+
+-- Largeur minimale de la rangée : fiole | texte (taille pleine) | barre (>= 60 px).
+-- Le cadre doit atteindre au moins cette largeur (il grandit si les cases sont petites).
+function Wd.MinRowWidth(m, tw)
   m = m or (Wd.Metrics and Wd.Metrics()) or {}
-  w = math.max(0, math.floor((w or 0) + 0.5))
-  local isz = math.max(m.isz or 14, Wd.MIN_ISZ or 14)
+  local isz = math.max(m.isz or 24, Wd.MIN_ISZ or 24)
   local slotW = isz + 2
   local pad = m.pad or Wd.MIN_PAD or 3
   local edge = m.edgeOut or 0
-  local font = m.font or Wd.MIN_FONT or 10
-  local minFont = Wd.MIN_FONT or 10
-  local bh = m.bh or Wd.MIN_BAR_H or 4
-  local h = m.h or (Wd.MIN_H or 16)
-  local after = w - slotW - 2 * pad - edge
-  if after < 0 then after = 0 end
-  local minBar = math.max(Wd.MIN_BAR_W or 24, math.floor(0.40 * after + 0.5))
-  if minBar > after then minBar = after end
-  local gap = pad + edge
-  local function width(sz)
-    if type(twOf) == "function" then
-      local tw = N(twOf(sz)) or 0
-      if tw < 0 then tw = 0 end
-      return tw
-    end
-    return 56
+  local minBar = Wd.MIN_BAR_W or 60
+  if type(tw) ~= "number" or tw <= 0 then
+    tw = Wd.ReserveTextW(m.font)
   end
-  local tw = width(font)
-  local function fits(twv)
-    return (after - twv - gap) + 0.01 >= minBar
-  end
-  if not fits(tw) and font > minFont then
-    for sz = font - 1, minFont, -1 do
-      local tw2 = width(sz)
-      if fits(tw2) then
-        font, tw = sz, tw2
-        break
-      end
-      font, tw = sz, tw2
-    end
-  end
-  local overlay, left, inner
-  if not fits(tw) then
-    overlay = true
-    left = slotW + pad
-    inner = after
+  return slotW + 3 * pad + 2 * edge + tw + minBar
+end
+
+-- Disposition fixe : fiole | texte à la police de référence (jamais réduite) |
+-- barre d'au moins MIN_BAR_W. Pas de superposition, pas de texte tassé.
+-- Si w est trop étroit, le plan utilise minW (le cadre doit avoir grandi).
+function Wd.PlanTotalRow(w, m, twOf)
+  m = m or (Wd.Metrics and Wd.Metrics()) or {}
+  w = math.max(0, math.floor((w or 0) + 0.5))
+  local isz = math.max(m.isz or 24, Wd.MIN_ISZ or 24)
+  local slotW = isz + 2
+  local pad = m.pad or Wd.MIN_PAD or 3
+  local edge = m.edgeOut or 0
+  local font = math.max(m.font or 0, Wd.MIN_FONT or 13)
+  local bh = math.max(m.bh or 0, Wd.MIN_BAR_H or 12)
+  local h = math.max(m.h or 0, Wd.MIN_H or 28)
+  local minBar = Wd.MIN_BAR_W or 60
+  local tw
+  if type(twOf) == "function" then
+    tw = N(twOf(font)) or 0
   else
-    overlay = false
-    left = slotW + pad + tw + gap
-    inner = after - tw - gap
+    tw = N(twOf) or 0
   end
-  if inner < 0 then inner = 0 end
+  if tw <= 0 then tw = Wd.ReserveTextW(font) end
+  local minW = Wd.MinRowWidth(m, tw)
+  local used = w
+  if used < minW then used = minW end
+  local gap = pad + edge
+  local left = slotW + pad + tw + gap
+  local inner = used - left - pad - edge
+  if inner < minBar then inner = minBar end
   left = math.floor(left + 0.5)
   inner = math.floor(inner + 0.5)
   local by = math.floor((h - bh) / 2 + 0.5)
-  local textX
-  if overlay then
-    textX = math.floor(left + inner * 0.5 + 0.5)
-  else
-    textX = slotW + pad
-  end
+  local textX = slotW + pad
   return {
     isz = isz, slotW = slotW, pad = pad, edge = edge, font = font, tw = tw,
-    left = left, inner = inner, overlay = overlay, minBar = minBar, after = after,
-    bh = bh, by = by, h = h, w = w, textX = textX,
+    left = left, inner = inner, overlay = false, minBar = minBar, minW = minW,
+    after = used - slotW - 2 * pad - edge, bh = bh, by = by, h = h, w = used,
+    textX = textX,
   }
 end
 
@@ -185,11 +185,8 @@ function Wd.PlaceTotalRow(t, p, m, w, h, cur, max)
   end
   p._fontH = plan.font
   if p.text.ClearAllPoints then p.text:ClearAllPoints() end
-  if plan.overlay then
-    p.text:SetPoint("CENTER", t, "LEFT", plan.textX, 0)
-  else
-    p.text:SetPoint("LEFT", t, "LEFT", plan.textX, 0)
-  end
+  -- Texte à gauche de la barre, jamais superposé, à la police planifiée (plancher 13 px).
+  p.text:SetPoint("LEFT", t, "LEFT", plan.textX, 0)
   if p.track.ClearAllPoints then p.track:ClearAllPoints() end
   p.track:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", plan.left, plan.by)
   p.track:SetSize(plan.inner, plan.bh)
