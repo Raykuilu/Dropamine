@@ -2789,6 +2789,9 @@ function F.EnsurePoll()
         pcall(collectgarbage, "step", 200)
       end
     end
+    if not combat and ns.Watchdog and ns.Watchdog.Tick then
+      pcall(ns.Watchdog.Tick, dt)
+    end
     local flying = (ns.Flight and ns.Flight.Paused and ns.Flight.Paused()) or (ns.PausedForFlight and ns.PausedForFlight())
     if combat and not flying then return end
     F.Sync("poll")
@@ -4057,7 +4060,7 @@ function ns.MemBreakdown()
   add("ScannerDB (base)", ns.ScannerDB)
   add("index noms PNJ", ns.Scanner and ns.Scanner._npcNames)
   add("recettes par composant", ns.Craft and ns.Craft._byReagent)
-  add("locales", ns.L)
+  add("locales", ns.LOCALES)
   add("catalogue", ns.CATALOG)
   add("snapshot UI", ns.UI and ns.UI.snapshot)
   add("échantillons rythme", ns.Rate and ns.Rate.samples)
@@ -4080,6 +4083,13 @@ function ns.AddonMemoryKB()
   return nil
 end
 
+function ns.StepGC(work)
+  if ns.InCombat and ns.InCombat() then return false end
+  if type(collectgarbage) ~= "function" then return false end
+  pcall(collectgarbage, "step", work or 400)
+  return true
+end
+
 function ns.PruneRetained()
   local db = ns.EnsureDB and ns.EnsureDB() or ns.db
   local n = 0
@@ -4094,7 +4104,139 @@ function ns.PruneRetained()
     end
   end
   if ns.Scanner and ns.Scanner.PruneLearned then pcall(ns.Scanner.PruneLearned) end
+  if ns.StepGC then pcall(ns.StepGC, 400) end
   return n
+end
+
+-- Chien de garde conservateur : seulement des objets clairement coincés, dans
+-- les viviers de l'addon (pas d'énumération globale). Jamais en combat, jamais
+-- une animation visible encore dans sa durée, jamais une fenêtre ouverte.
+ns.Watchdog = ns.Watchdog or {}
+local WD = ns.Watchdog
+WD.INTERVAL = 8
+WD.TOAST_GRACE = 5
+
+local function wdNow()
+  if type(GetTime) == "function" then
+    local ok, v = pcall(GetTime)
+    if ok and type(v) == "number" then return v end
+  end
+  return 0
+end
+
+local function wdShown(f)
+  if not f then return false end
+  if f.IsShown then
+    local ok, v = pcall(f.IsShown, f)
+    if ok then return v and true or false end
+  end
+  return f.shown ~= false
+end
+
+local function wdClearOnUpdate(f)
+  if f and f.SetScript and not wdShown(f) then
+    local ok, s = pcall(f.GetScript, f, "OnUpdate")
+    if ok and s then pcall(f.SetScript, f, "OnUpdate", nil) return true end
+  end
+  return false
+end
+
+local function wdAnimMax(ag)
+  if not ag or not ag.anims then
+    -- WoW AnimationGroup : parcourir les enfants n'est pas possible ici ;
+    -- on s'appuie sur _wdMax / _wdStart posés à la lecture.
+    return ag and ag._wdMax
+  end
+  local d = 0
+  for _, a in ipairs(ag.anims) do
+    d = d + (tonumber(a.duration) or 0) + (tonumber(a.delay) or 0)
+  end
+  return d > 0 and d or ag._wdMax
+end
+
+local function wdStopStuckAnim(host, ag)
+  if not ag then return false end
+  local playing = false
+  if ag.IsPlaying then
+    local ok, v = pcall(ag.IsPlaying, ag)
+    playing = ok and v and true or false
+  else
+    playing = ag.playing and true or false
+  end
+  if not playing then return false end
+  local hidden = host and not wdShown(host)
+  if hidden then
+    if ag.Stop then pcall(ag.Stop, ag) end
+    return true
+  end
+  -- visible : seulement si la durée a dépassé 2× le maximum connu
+  local maxd = ag._wdMax or wdAnimMax(ag)
+  local start = ag._wdStart
+  local now = wdNow()
+  if maxd and start and now > 0 and (now - start) > (2 * maxd) then
+    if ag.Stop then pcall(ag.Stop, ag) end
+    return true
+  end
+  return false
+end
+
+function WD.Sweep()
+  if ns.InCombat and ns.InCombat() then return 0 end
+  local n, UI, C, S = 0, ns.UI, ns.Compact, ns.Slot
+  local function one(f)
+    if type(f) ~= "table" then return end
+    local ok, err = pcall(function()
+      if wdClearOnUpdate(f) then n = n + 1 end
+      if wdStopStuckAnim(f, f.ag) then n = n + 1 end
+      if wdStopStuckAnim(f, f._bumpAG) then n = n + 1 end
+      if f.tex and wdStopStuckAnim(f, f.ag) then end
+      -- toast clairement hors délai (âge ou horloge), pas en survol / ancré / aperçu
+      if f._osrsToast or f.iconSlot then
+        if f._hover or f._sticky or f._editPreview then return end
+        local hold = f._hold
+        if hold == nil and UI and UI.DropHold then hold = UI:DropHold() end
+        hold = tonumber(hold) or 2.6
+        local life = 0.15 + hold + 0.70
+        local age = tonumber(f._toastAge) or 0
+        local born = tonumber(f._toastBorn)
+        local now = wdNow()
+        local wall = (born and now > 0) and (now - born) or 0
+        if age > life + (WD.TOAST_GRACE or 5) or wall > life + (WD.TOAST_GRACE or 5) then
+          if UI and UI.DismissDrop then pcall(UI.DismissDrop, UI, f) n = n + 1 end
+        end
+      end
+    end)
+    if not ok then n = n end
+  end
+  if UI then
+    for _, f in ipairs(UI.dropsActive or {}) do one(f) end
+    for _, f in ipairs(UI._toastPool or {}) do one(f) end
+  end
+  if C then
+    for _, f in ipairs(C.pool or {}) do one(f) end
+    if C.Tiles then
+      local ok, tiles = pcall(C.Tiles)
+      if ok and type(tiles) == "table" then
+        for _, tile in ipairs(tiles) do
+          if tile then
+            one(tile._osrsPulse)
+            one(tile._osrsGain)
+          end
+        end
+      end
+    end
+  end
+  -- étincelle volante poolée (pas le driver de barre, qui est volontairement actif)
+  if S and S._flySpark then one(S._flySpark) end
+  return n
+end
+
+function WD.Tick(dt)
+  if ns.InCombat and ns.InCombat() then return end
+  WD._acc = (WD._acc or 0) + (tonumber(dt) or 0)
+  if WD._acc < (WD.INTERVAL or 8) then return end
+  WD._acc = 0
+  pcall(WD.Sweep)
 end
 
 function ns.MemReport()

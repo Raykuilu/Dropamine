@@ -203,6 +203,7 @@ function Scanner.NpcNameIndex()
   end
   for _, l in pairs(idx) do table.sort(l, function(x, y) return x.id < y.id end) end
   Scanner._npcNames = idx
+  if ns.StepGC then pcall(ns.StepGC, 400) end
   return idx
 end
 function Scanner.NpcByName(name, level)
@@ -764,7 +765,9 @@ function Scanner.ReadRecipes()
       end
     end
   end
-  return Scanner.CommitTradeList(list, partial, lineName, lineSrc, source)
+  local ret, why = Scanner.CommitTradeList(list, partial, lineName, lineSrc, source)
+  if ns.StepGC then pcall(ns.StepGC, 400) end
+  return ret, why
 end
 
 -- Meilleure difficulté utile d'une créature pour une compétence (recettes connues).

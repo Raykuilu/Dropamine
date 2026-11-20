@@ -148,12 +148,24 @@ function Q.OnSnapshot(snap)
 end
 
 Q.HISTORY_DAYS = 35   -- 3.6.0 : 35 jours (fenêtre Progression : 30 jours + marge)
+-- Journée d'historique : agrégats seulement (pts, cat, skills, total, ranks, xp).
+function Q.SlimHistoryDay(h)
+  if type(h) ~= "table" then return h end
+  h.events, h.log, h.raw, h.curve, h.hour, h.samples = nil, nil, nil, nil, nil, nil
+  return h
+end
 function Q.PruneHistory(c)
+  if type(c) ~= "table" or type(c.history) ~= "table" then return 0 end
   local keys = {}
-  for k in pairs(c.history) do keys[#keys + 1] = k end
-  if #keys <= Q.HISTORY_DAYS then return end
+  for k, h in pairs(c.history) do
+    keys[#keys + 1] = k
+    Q.SlimHistoryDay(h)
+  end
+  if #keys <= Q.HISTORY_DAYS then return 0 end
   table.sort(keys)
-  while #keys > Q.HISTORY_DAYS do c.history[table.remove(keys, 1)] = nil end
+  local n = 0
+  while #keys > Q.HISTORY_DAYS do c.history[table.remove(keys, 1)] = nil n = n + 1 end
+  return n
 end
 
 -- Série des 7 derniers jours connus (valeur du total ou d'une compétence).

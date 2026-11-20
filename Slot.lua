@@ -2412,6 +2412,7 @@ function S.FlushDeferred()
   if d and d.bags then pcall(S.CheckBags) end
   pcall(S.Refresh, "flush")
   S._flushing = false
+  if ns.StepGC then pcall(ns.StepGC, 400) end
 end
 
 function S.Tick(dt)

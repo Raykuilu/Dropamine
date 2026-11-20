@@ -673,7 +673,14 @@ function P.Context()
   local p = P.C()
   local s = P.Session()
   local snap = ns.UI and ns.UI.snapshot
-  local ranks, maxProf = {}, 0
+  local ranks = P._ctxRanks
+  if type(ranks) == "table" then
+    for k in pairs(ranks) do ranks[k] = nil end
+  else
+    ranks = {}
+    P._ctxRanks = ranks
+  end
+  local maxProf = 0
   local cap = ns.PROF_FINAL_CAP or 300
   for _, d in ipairs((snap and (snap.allTiles or snap.tiles)) or {}) do
     if d.id and not d.placeholder and N(d.current) then
@@ -684,23 +691,30 @@ function P.Context()
   local dr = ns.Dopamine and ns.Dopamine.C and ns.Dopamine.C().records or {}
   local dc = ns.Dopamine and ns.Dopamine.C and ns.Dopamine.C().bestCombo
   local lvl, lcap = N(ns.GetPlayerLevel and ns.GetPlayerLevel()) or 0, N(ns.GetLevelCap and ns.GetLevelCap()) or 60
-  return {
-    snap = snap, ranks = ranks, maxProf = maxProf,
-    total = N(snap and snap.total) or N(ns.CharDB().lastTotal) or 0,
-    bestSession = math.max(N(p.records.bestSession) or 0, N(s.pts) or 0, N(dr.bestSession) or 0),
-    bestHour = math.max(N(p.records.bestHour) or 0, N(dr.bestHour) or 0),
-    combo = math.max(N(p.records.longestCombo) or 0, N(dc) or 0),
-    streak = math.max(P.Streak().n, 0),
-    goalsHit = N(p.records.goalsHit) or 0,
-    zones = P.SpotZoneCount(),
-    levelMax = lvl > 0 and lvl >= lcap,
-  }
+  local ctx = P._ctxBuf
+  if type(ctx) ~= "table" then ctx = {} P._ctxBuf = ctx end
+  ctx.snap, ctx.ranks, ctx.maxProf = snap, ranks, maxProf
+  ctx.total = N(snap and snap.total) or N(ns.CharDB().lastTotal) or 0
+  ctx.bestSession = math.max(N(p.records.bestSession) or 0, N(s.pts) or 0, N(dr.bestSession) or 0)
+  ctx.bestHour = math.max(N(p.records.bestHour) or 0, N(dr.bestHour) or 0)
+  ctx.combo = math.max(N(p.records.longestCombo) or 0, N(dc) or 0)
+  ctx.streak = math.max(P.Streak().n, 0)
+  ctx.goalsHit = N(p.records.goalsHit) or 0
+  ctx.zones = P.SpotZoneCount()
+  ctx.levelMax = lvl > 0 and lvl >= lcap
+  ctx.levelMaxN = nil
+  return ctx
 end
 -- why : « seed » (silencieux), sinon toast pour chaque nouveau succès.
 function P.CheckAchievements(why)
   local p = P.C()
   if why ~= "seed" and not p.achSeeded then return {} end
   if P._checking then return {} end
+  if why ~= "seed" then
+    local now = Wall()
+    if P._achAt and now - P._achAt < 1 then return P._achNew or {} end
+    P._achAt = now
+  end
   P._checking = true
   local ok, ctx = pcall(P.Context)
   local new = {}
@@ -716,6 +730,7 @@ function P.CheckAchievements(why)
     end
   end
   P._checking = nil
+  P._achNew = new
   if why == "seed" then
     p.achSeeded = true
     P.seededSilently = #new
