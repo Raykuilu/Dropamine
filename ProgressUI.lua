@@ -43,6 +43,17 @@ PU.TABS = {
   { id = "spots", label = "Spots de farm" },
   { id = "weekly", label = "Récap hebdo" },
   { id = "efficiency", label = "Efficacité" },
+  { id = "chars", label = "Personnages" },
+}
+PU.CHAR_MAX = 16
+PU.CHAR_COLS = {
+  { id = "name",     label = "Personnage",  w = 112 },
+  { id = "level",    label = "Niveau",      w = 50 },
+  { id = "xp",       label = "XP",          w = 88 },
+  { id = "gold",     label = "Or",          w = 78 },
+  { id = "profs",    label = "Métiers",     w = 128 },
+  { id = "weapons",  label = "Armes",       w = 110 },
+  { id = "playtime", label = "Temps de jeu", w = 82 },
 }
 PU.PERIODS = { { id = "session", label = "Session" }, { id = "d7", label = "7 j" }, { id = "d30", label = "30 j" } }
 
@@ -79,7 +90,7 @@ local function UIDB()
 end
 local function State()
   local s = UIDB()
-  if s.tab ~= "overview" and s.tab ~= "charts" and s.tab ~= "ach" and s.tab ~= "spots" and s.tab ~= "weekly" and s.tab ~= "efficiency" then s.tab = "overview" end
+  if s.tab ~= "overview" and s.tab ~= "charts" and s.tab ~= "ach" and s.tab ~= "spots" and s.tab ~= "weekly" and s.tab ~= "efficiency" and s.tab ~= "chars" then s.tab = "overview" end
   if s.effPeriod ~= "session" and s.effPeriod ~= "d7" and s.effPeriod ~= "d30" then s.effPeriod = "session" end
   if s.period ~= "session" and s.period ~= "d7" and s.period ~= "d30" then s.period = "d7" end
   if s.metric ~= "total" and s.metric ~= "xph" and s.metric ~= "cat" then s.metric = "cat" end
@@ -1606,6 +1617,157 @@ function PU.RefreshRecap(p)
   p.tip._fullText = snap.tip or ""
 end
 
+function PU.ListJoin(items, n)
+  if type(items) ~= "table" or #items == 0 then return "—" end
+  n = n or 3
+  local parts = {}
+  for i = 1, math.min(n, #items) do
+    local it = items[i]
+    if type(it) == "table" then
+      local name = it.name or "?"
+      local rk = tonumber(it.rank)
+      parts[#parts + 1] = rk and (name .. " " .. tostring(rk)) or name
+    else
+      parts[#parts + 1] = tostring(it)
+    end
+  end
+  if #items > n then parts[#parts + 1] = "…" end
+  return table.concat(parts, ", ")
+end
+
+function PU.CharSortValue(s, key)
+  s = s or {}
+  if key == "name" then return string.lower(tostring(s.name or s.key or "")) end
+  if key == "level" then return N(s.level) or 0 end
+  if key == "xp" then return N(s.xp) or 0 end
+  if key == "gold" then return N(s.gold) or 0 end
+  if key == "playtime" then return N(s.playtime) or 0 end
+  if key == "profs" then return PU.ListJoin(s.professions) end
+  if key == "weapons" then return PU.ListJoin(s.weapons) end
+  return ""
+end
+
+function PU.SetCharSort(id)
+  PU.charSort = PU.charSort or { key = "name", asc = true }
+  if PU.charSort.key == id then
+    PU.charSort.asc = not PU.charSort.asc
+  else
+    PU.charSort.key, PU.charSort.asc = id, (id == "name")
+  end
+  PU.Refresh()
+end
+
+function PU.BuildChars(f)
+  local p = Page(f, "chars")
+  local card = PU.Card(p, 0, 0, PU.CONTENT_W, PU.CONTENT_H, Tr["Personnages"])
+  p.card = card
+  card.hint = FS(card, "GameFontHighlightSmall", "sub")
+  card.hint:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -6)
+  if card.hint.SetWidth then card.hint:SetWidth(PU.CONTENT_W - 20) end
+  local y, x = 24, 8
+  p.headers = {}
+  for _, col in ipairs(PU.CHAR_COLS) do
+    local btn = PU.Button(card, col.w, 16, Tr[col.label] or col.label, "small", function() PU.SetCharSort(col.id) end)
+    btn:ClearAllPoints()
+    btn:SetPoint("TOPLEFT", card, "TOPLEFT", x, -y)
+    btn.colId = col.id
+    p.headers[#p.headers + 1] = btn
+    x = x + col.w + 2
+  end
+  p.rows = {}
+  local rowY = y + 20
+  for i = 1, PU.CHAR_MAX do
+    local row = CreateFrame("Frame", nil, card)
+    Place(row, card, 6, rowY, PU.CONTENT_W - 12, 16)
+    row.bg = Tex(row, "BACKGROUND", 1)
+    row.bg:SetAllPoints(row)
+    row.cells = {}
+    local cx = 2
+    for _, col in ipairs(PU.CHAR_COLS) do
+      local fs = FS(row, "GameFontHighlightSmall", "text")
+      fs:SetPoint("LEFT", row, "LEFT", cx, 0)
+      if fs.SetWidth then fs:SetWidth(col.w - 2) end
+      if fs.SetJustifyH then fs:SetJustifyH((col.id == "level" or col.id == "xp" or col.id == "gold" or col.id == "playtime") and "RIGHT" or "LEFT") end
+      row.cells[col.id] = fs
+      cx = cx + col.w + 2
+    end
+    row:Hide()
+    p.rows[i] = row
+    rowY = rowY + 17
+  end
+  p.more = FS(card, "GameFontDisableSmall", "sub")
+  p.more:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 10, 6)
+  return p
+end
+
+function PU.RefreshChars(p)
+  p = p or (PU.frame and PU.frame.pages.chars)
+  if not p then return end
+  if ns.CaptureCharSheet then pcall(ns.CaptureCharSheet) end
+  local rows = ns.AllCharSheets and ns.AllCharSheets() or {}
+  local sort = PU.charSort or { key = "name", asc = true }
+  table.sort(rows, function(a, b)
+    local va, vb = PU.CharSortValue(a, sort.key), PU.CharSortValue(b, sort.key)
+    if va == vb then
+      va, vb = PU.CharSortValue(a, "name"), PU.CharSortValue(b, "name")
+    end
+    if sort.asc then return va < vb end
+    return va > vb
+  end)
+  if p.card and p.card.hint then
+    local n = #rows
+    p.card.hint:SetText(string.format(Tr["%d personnage(s) sur ce compte — clique une colonne pour trier."], n))
+  end
+  local me = ns.CharKey and ns.CharKey()
+  local money = ns.Efficiency and ns.Efficiency.FormatMoney
+  local shown = 0
+  for i = 1, PU.CHAR_MAX do
+    local row, s = p.rows[i], rows[i]
+    if not s then
+      if row then row:Hide() end
+    else
+      shown = shown + 1
+      local xp
+      if (N(s.xpMax) or 0) > 0 then
+        xp = tostring(s.xp or 0) .. " / " .. tostring(s.xpMax)
+      else
+        xp = (s.xp and s.xp > 0) and tostring(s.xp) or "—"
+      end
+      local gold = (money and money(s.gold or 0, false)) or tostring(s.gold or 0)
+      local cells = {
+        name = s.name or s.key or "?",
+        level = tostring(s.level or 0),
+        xp = xp,
+        gold = gold,
+        profs = PU.ListJoin(s.professions, 3),
+        weapons = PU.ListJoin(s.weapons, 3),
+        playtime = Dur(s.playtime or 0),
+      }
+      for id, fs in pairs(row.cells) do
+        local txt = cells[id] or "—"
+        fs:SetText(txt)
+        fs._fullText = txt
+      end
+      local mine = me and s.key == me
+      if row.bg then
+        if mine then Paint(row.bg, { 0.42, 0.32, 0.16 }, 0.35)
+        elseif i % 2 == 0 then Paint(row.bg, { 0.12, 0.10, 0.08 }, 0.25)
+        else Paint(row.bg, { 0, 0, 0 }, 0) end
+      end
+      row:Show()
+    end
+  end
+  if p.more then
+    if #rows > PU.CHAR_MAX then
+      p.more:SetText(string.format(Tr["… et %d de plus"], #rows - PU.CHAR_MAX))
+      p.more:Show()
+    else
+      p.more:SetText("")
+      p.more:Hide()
+    end
+  end
+end
+
 function PU.Build()
   if PU.frame then return PU.frame end
   if InCombat() then return nil end
@@ -1641,6 +1803,7 @@ function PU.Build()
   PU.BuildSpots(f)
   PU.BuildWeekly(f)
   PU.BuildEfficiency(f)
+  PU.BuildChars(f)
   PU.BuildRecap(f)
   f.foot = FS(f, "GameFontDisableSmall", "sub", "CENTER")
   f.foot:SetPoint("BOTTOM", f, "BOTTOM", 0, 9)
@@ -2265,7 +2428,7 @@ function PU.RefreshEfficiency(p)
   p.tip._fullText = rep.tip or ""
 end
 
-PU.REFRESHERS = { overview = "RefreshOverview", charts = "RefreshCharts", ach = "RefreshAch", spots = "RefreshSpots", weekly = "RefreshWeekly", efficiency = "RefreshEfficiency" }
+PU.REFRESHERS = { overview = "RefreshOverview", charts = "RefreshCharts", ach = "RefreshAch", spots = "RefreshSpots", weekly = "RefreshWeekly", efficiency = "RefreshEfficiency", chars = "RefreshChars" }
 function PU.Refresh()
   local f = PU.frame
   if not (f and f:IsShown()) then return false end

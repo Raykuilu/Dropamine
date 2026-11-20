@@ -50,6 +50,14 @@
 - Unarmed / Mains nues: the tile is bound to the same skill line as the tooltip (API name/id, not a generic “Melee” match). Weapon/combat tiles are no longer frozen by `C.holds`, so the painted rank follows the toast in combat too. The unarmed icon is the skill-line icon, else `INV_Gauntlets_04` (fist), not a sword.
 - Weapon time-to-cap uses a degressive chance ≈ (cap − current) / cap with a floor, normalizes measured gains, and sums expected time point-by-point. The label is `~ estimation` (not a linear “~4 min” near cap). The same math is used in the tooltip ETA line.
 
+- Official XP / level-up vial icon redrawn from the exact Dropamine drop silhouette (bronze rim, official flask shape). Red liquid and a surface wave, no chemistry flask, no extra drop on top, no splash, legible at 64×64 (toast and tile size).
+- Toasts use a short 7 px slide plus fade (in and out), sober, on the pooled frames (no per-frame allocation).
+- Adding to the total: a drop falls into the official flask, then a wave and bubbles. This replaces the old fly-to-total spark on the total tile.
+- Level-up: the flask overflows, the bronze ring pulses, then the fill resets with a wave (the real level-up toast is unchanged).
+- Campfire, one glyph, no smoke: a small static ember when you are near the fire, the ember grows into a flame over the charge minute, then a short spark burst when the buff is taken and the well goes back to the drop. `/drop test campfire near|charge|burst`.
+- Eating and drinking keep the real fill level: only the surface wave is coloured (amber for food, blue for drink, both = two layered waves). `/drop test eating food|drink|both`.
+- Progression window: **Personnages** tab, a sortable table of every character on the account (level, XP, gold, professions, weapons, playtime). No completion % yet (3.6.4). Snapshots are stored on the character (`c.sheet`) at logout and on the 2-minute progress tick.
+
 ---
 
 - Sac de couchage, style A : pendant que l'aura Bien reposé (sort 429959, 1 à 3 charges, +1 % d'XP gagnée par charge) se construit hors combat, le puits de la fiole affiche l'icône style A à 1, 2 ou 3 bandes, cadrée dans l'icône en barre et en grille. Priorité juste avant les z de repos. Si tu pars avant 3 charges, un toast teinté XP : « Sac de couchage : 2/3 % », « 1 % manqué », astuce « Bien reposé », avec l'icône du palier atteint. À 3/3, pas de toast d'échec ni de confirmation. `/drop test sleepingbag 1|2|3|miss` (DEV).
@@ -102,6 +110,14 @@
 - Redimensionnement en combat : le panneau compact n'est pas protégé, la grille est donc relancée tout de suite et la hauteur du fond est recalculée (`Layout.Center`). Si un encapsuleur est vraiment protégé (fiche des compétences), la mise en page est reportée à `PLAYER_REGEN_ENABLED`.
 - Mains nues : la case est liée à la même ligne de compétence que l'infobulle (nom / id API, pas un rapprochement générique « Mêlée »). Les cases d'arme / de combat ne sont plus figées par `C.holds` : le rang peint suit le toast, aussi en combat. L'icône est celle de la ligne, sinon `INV_Gauntlets_04` (poing), pas une épée.
 - Le temps restant jusqu'au plafond d'arme utilise une chance dégressive ≈ (plafond − rang) / plafond (avec un plancher), normalise les gains mesurés, et additionne le temps attendu point par point. Libellé `~ estimation` (plus un « ~4 min » linéaire près du plafond). La même formule sert à la ligne d'estimation de l'infobulle.
+
+- Icône officielle de la fiole XP / montée de niveau redessinée à partir de la silhouette exacte de la goutte Dropamine (filet bronze, forme officielle). Liquide rouge et vague de surface, pas de fiole de chimie, pas de goutte en plus au-dessus, pas d'éclaboussure, lisible en 64×64 (toast et case).
+- Les toasts ont un court glissement de 7 px plus un fondu (à l'apparition et à la disparition), sobre, sur les cadres du vivier (rien n'est alloué par image).
+- Ajout au total : une goutte tombe dans la fiole officielle, puis vague et bulles. Cela remplace l'ancien éclat qui volait vers la case total.
+- Montée de niveau : la fiole déborde, l'anneau bronze pulse, puis le remplissage se remet avec une vague (le vrai toast de niveau est inchangé).
+- Feu de camp, un seul glyphe, pas de fumée : petite braise statique près du feu, elle grandit en flamme pendant la minute de charge, puis une courte gerbe d'étincelles quand le buff est pris et retour à la goutte. `/drop test campfire near|charge|burst`.
+- Repas et boisson : le niveau de remplissage reste le vrai ; seule la vague de surface est colorée (ambre nourriture, bleu boisson, les deux = deux vagues superposées). `/drop test eating food|drink|both`.
+- Fenêtre Progression : onglet **Personnages**, table triable de tous les personnages du compte (niveau, XP, or, métiers, armes, temps de jeu). Pas encore de % de complétion (3.6.4). Les instantanés sont enregistrés sur le personnage (`c.sheet`) à la déconnexion et au tick de progression (2 min).
 
 ## 3.6.2
 - Weapon skill tooltips (tile and native skill list row): hit, crit and glancing values are back, in a short two-tone block ("Hit & crit (same lvl): 4.04% · 5.00%", boss line, "Glancing: 40% · -35% dmg"). The values are read from the game's skill detail pane, never computed; lines that cannot be read are left out. Root cause: the pane reader had been stubbed since 3.2.0, and cached values were looked up under the wrong key (and EN headers were not recognised). The parser now works by position, so colour-split text (Polearms, Feral Combat) reads correctly. The native description is no longer shown twice.

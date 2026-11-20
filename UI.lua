@@ -4670,6 +4670,7 @@ end
 local TOAST_W, TOAST_H = 260, 56
 local TOAST_GAP = 4
 local TOAST_FADEIN, TOAST_HOLD, TOAST_FADEOUT = 0.15, 2.6, 0.70
+UI.TOAST_SLIDE = 7  -- px : glissement court à l'apparition / à la disparition
 local TOAST_BG_A = 0.35   -- v2.7.1 : un peu plus translucide, comme le chat
 local TOAST_LIGHT_H = 26
 
@@ -5231,6 +5232,45 @@ function UI:ApplyDropsLayout()
   self:PackDrops()
 end
 
+function UI.ToastSlideAmount(frame)
+  if not frame or frame._pileHidden then return 0 end
+  if frame._editPreview then return 0 end
+  local t = frame._toastAge or 0
+  local holdT = frame._hold or (UI.DropHold and UI:DropHold()) or TOAST_HOLD
+  local dist = UI.TOAST_SLIDE or 7
+  if frame._sticky then
+    if t < TOAST_FADEIN then return dist * (1 - t / TOAST_FADEIN) end
+    return 0
+  end
+  if t < TOAST_FADEIN then
+    return dist * (1 - t / TOAST_FADEIN)
+  elseif t < TOAST_FADEIN + holdT then
+    return 0
+  elseif t < TOAST_FADEIN + holdT + TOAST_FADEOUT then
+    local k = (t - TOAST_FADEIN - holdT) / TOAST_FADEOUT
+    return dist * k
+  end
+  return dist
+end
+
+function UI.ApplyToastPoint(frame, slide)
+  if not frame then return end
+  local pt, rel, rp = frame._packPt, frame._packRel, frame._packRP
+  local x, y = frame._packX, frame._packY
+  if not pt then return end
+  slide = slide or 0
+  if frame._slideApplied == slide and frame._packApplied then return end
+  local oy = y or 0
+  if pt == "BOTTOMLEFT" or pt == "BOTTOMRIGHT" or pt == "BOTTOM" then
+    oy = (y or 0) - slide
+  else
+    oy = (y or 0) + slide
+  end
+  if frame.ClearAllPoints then pcall(frame.ClearAllPoints, frame) end
+  if frame.SetPoint then pcall(frame.SetPoint, frame, pt, rel, rp, x or 0, oy) end
+  frame._slideApplied, frame._packApplied = slide, true
+end
+
 function UI:PackDrops()
   local parent = self.dropsStack or self.dropsFrame
   if not parent or not self.dropsActive then return end
@@ -5255,7 +5295,9 @@ function UI:PackDrops()
         else
           t._pileHidden, t._pileFade = nil, fades[depth + 1] or 0.5
           if t.Show then pcall(t.Show, t) end
-          t:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", depth * off, depth * off)
+          t._packPt, t._packRel, t._packRP = "BOTTOMLEFT", parent, "BOTTOMLEFT"
+          t._packX, t._packY, t._packApplied = depth * off, depth * off, nil
+          UI.ApplyToastPoint(t, (depth == 0) and UI.ToastSlideAmount(t) or 0)
           if t.SetFrameLevel then pcall(t.SetFrameLevel, t, baseLvl + (maxv - depth) + 1) end
           if depth > 0 then
             local sh = EnsurePileShade(t)
@@ -5284,7 +5326,9 @@ function UI:PackDrops()
         if t._shade then t._shade:Hide() end
         t:ClearAllPoints()
         if t.Show then pcall(t.Show, t) end
-        t:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 0, y)
+        t._packPt, t._packRel, t._packRP = "BOTTOMLEFT", parent, "BOTTOMLEFT"
+        t._packX, t._packY, t._packApplied = 0, y, nil
+        UI.ApplyToastPoint(t, UI.ToastSlideAmount(t))
         y = y + (t._h or TOAST_H) + TOAST_GAP
         ToastAlpha(t, 1)
       end
@@ -5298,7 +5342,9 @@ function UI:PackDrops()
         if t._shade then t._shade:Hide() end
         t:ClearAllPoints()
         if t.Show then pcall(t.Show, t) end
-        t:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -y)
+        t._packPt, t._packRel, t._packRP = "TOPLEFT", parent, "TOPLEFT"
+        t._packX, t._packY, t._packApplied = 0, -y, nil
+        UI.ApplyToastPoint(t, UI.ToastSlideAmount(t))
         y = y + (t._h or TOAST_H) + TOAST_GAP
         ToastAlpha(t, 1)
       end
@@ -5784,6 +5830,7 @@ function UI.ToastOnUpdate(self, elapsed)
   if self._hover then
     if t >= TOAST_FADEIN then ToastAlpha(self, 1)
     else ToastAlpha(self, math.min(1, t / TOAST_FADEIN)) end
+    UI.ApplyToastPoint(self, UI.ToastSlideAmount(self))
     return
   end
   if self._sticky then
@@ -5794,6 +5841,7 @@ function UI.ToastOnUpdate(self, elapsed)
     else
       ToastAlpha(self, 1)
     end
+    UI.ApplyToastPoint(self, UI.ToastSlideAmount(self))
     return
   end
   t = t + (elapsed or 0.03)
@@ -5811,6 +5859,9 @@ function UI.ToastOnUpdate(self, elapsed)
     return
   end
   ToastAlpha(self, a)
+  if not self._pileHidden then
+    UI.ApplyToastPoint(self, UI.ToastSlideAmount(self))
+  end
 end
 
 function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opts)
@@ -6155,6 +6206,7 @@ function UI:PlayLevelUp(level)
       self._lastLevelUpSound = kit or "aucun kit"
     end
   end
+  if ns.Slot and ns.Slot.PlayLevelUp then pcall(ns.Slot.PlayLevelUp) end
   self:PulseLevelTile()
   -- 3.5.4 : niveaux pairs = nouveaux sorts chez le maître de classe (notif sous le level-up + son)
   if f and level and level >= 2 and level % 2 == 0 then

@@ -1067,6 +1067,7 @@ end
 function P.Tick()
   pcall(P.AccountTime)
   pcall(P.Sample)
+  if ns.CaptureCharSheet then pcall(ns.CaptureCharSheet) end
   P.Notify("tick")
 end
 function P.TickStep(_, elapsed)
@@ -1328,7 +1329,11 @@ if ns.On then
   for _, ev in ipairs({ "ZONE_CHANGED_NEW_AREA", "GROUP_ROSTER_UPDATE", "PARTY_MEMBERS_CHANGED", "RAID_ROSTER_UPDATE" }) do
     ns.On(ev, function() pcall(P.AutoQuietSync) pcall(P.RecomputeQuiet) end)
   end
-  ns.On("PLAYER_LOGOUT", function() pcall(P.AccountTime) pcall(P.Sample, nil, true) end)
+  ns.On("PLAYER_LOGOUT", function()
+    pcall(P.AccountTime)
+    pcall(P.Sample, nil, true)
+    if ns.CaptureCharSheet then pcall(ns.CaptureCharSheet) end
+  end)
 end
 
 ns.DebugExt = ns.DebugExt or {}

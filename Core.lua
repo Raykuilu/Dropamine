@@ -1719,6 +1719,71 @@ function ns.CharDB()
   return c
 end
 
+-- Instantané du personnage (onglet Progression › Personnages). Pas de %
+-- de complétion (3.6.4). Mis à jour hors cadence (logout, tick 2 min, refresh).
+function ns.CaptureCharSheet()
+  local c = ns.CharDB and ns.CharDB()
+  if not c then return nil end
+  local name = (ns.GetPlayerName and ns.GetPlayerName()) or Call(UnitName, "player") or "?"
+  local realm = Call(GetRealmName) or ""
+  local level = (ns.GetPlayerLevel and ns.GetPlayerLevel()) or Call(UnitLevel, "player")
+  local xp, xpMax
+  if ns.GetPlayerXPSafe then xp, xpMax = ns.GetPlayerXPSafe() end
+  xp, xpMax = ns.N(xp), ns.N(xpMax)
+  local gold = ns.N(Call(GetMoney)) or 0
+  local class = Call(UnitClass, "player")
+  local profs, weapons = {}, {}
+  local snap = ns.UI and ns.UI.snapshot
+  local tiles = (snap and (snap.allTiles or snap.tiles)) or {}
+  for _, d in ipairs(tiles) do
+    if d and not d.placeholder then
+      local rec = { name = d.skillName or d.catName or d.name, rank = ns.N(d.current) or 0, max = ns.N(d.apiMax) or 0, id = d.id }
+      if d.kind == "profession" or d.kind == "secondary" then
+        profs[#profs + 1] = rec
+      elseif ns.IsWeaponSkill and ns.IsWeaponSkill(d.id or d.skillID, d.kind, rec.name) then
+        weapons[#weapons + 1] = rec
+      end
+    end
+  end
+  local playtime = 0
+  if c.progress and c.progress.records then playtime = ns.N(c.progress.records.playtime) or 0 end
+  if playtime == 0 and ns.Progress and ns.Progress.Records then
+    playtime = ns.N(ns.Progress.Records().playtime) or 0
+  end
+  c.sheet = {
+    key = ns.CharKey and ns.CharKey() or (name .. "-" .. realm),
+    name = name, realm = realm, class = class,
+    level = ns.N(level) or 0, xp = xp or 0, xpMax = xpMax or 0,
+    gold = gold, professions = profs, weapons = weapons,
+    playtime = playtime, updated = (type(time) == "function" and time()) or 0,
+  }
+  c.level = c.sheet.level
+  return c.sheet
+end
+
+function ns.AllCharSheets()
+  local db = (ns.EnsureDB and ns.EnsureDB()) or ns.db or _G.DropamineDB
+  local out = {}
+  if not (db and type(db.chars) == "table") then return out end
+  for key, c in pairs(db.chars) do
+    if type(c) == "table" then
+      local s = c.sheet
+      if type(s) ~= "table" then
+        local name, realm = tostring(key):match("^(.*)%-(.*)$")
+        s = {
+          key = key, name = name or key, realm = realm or "",
+          level = ns.N(c.level) or 0, xp = 0, xpMax = 0, gold = 0,
+          professions = {}, weapons = {},
+          playtime = (c.progress and c.progress.records and ns.N(c.progress.records.playtime)) or 0,
+        }
+      end
+      s.key = s.key or key
+      out[#out + 1] = s
+    end
+  end
+  return out
+end
+
 -- 3.6.0 : profil d'affichage par personnage --------------------------------
 -- DropamineDB.ui reste LA table de réglages (tout le code la lit en direct).
 -- Quand un personnage choisit son propre profil, ses valeurs d'affichage
@@ -2689,7 +2754,10 @@ do
     { id = "bags",     label = "Sacs pleins",               tip = "Simule les sacs pleins : signal dans la fiole et un toast." },
     { id = "transport",label = "Bateau / zeppelin",         tip = "Simule un trajet en bateau ou zeppelin : sablier et pause, comme en vol." },
     { id = "loading",  label = "Chargement",                tip = "Simule un écran de chargement : pause silencieuse, sans sablier ni file de toasts." },
-    { id = "eating",   label = "Repas",                     tip = "Simule un repas ou une boisson : vague de régénération dans la fiole (barre et grilles 1/2/3/5 col.)." },
+    { id = "eating",   label = "Repas",                     tip = "Simule un repas ou une boisson : vague colorée à la surface (ambre nourriture, bleu boisson, les deux = deux vagues), le niveau de remplissage reste le vrai. /drop test eating food|drink|both." },
+    { id = "campfire", label = "Feu de camp",               tip = "Simule le feu de camp (un glyphe, pas de fumée). /drop test campfire near|charge|burst (1|2|3) : braise, flamme qui grandit, gerbe d'étincelles puis retour à la goutte." },
+    { id = "totaladd", label = "Ajout au total",            tip = "Une goutte tombe dans la fiole officielle, puis vague et bulles." },
+    { id = "levelup",  label = "Montée de niveau",          tip = "La fiole déborde, l'anneau bronze pulse, puis se remet avec une vague. Le toast de niveau reste." },
     { id = "dungeon",  label = "Donjon",                    tip = "Simule l'entrée en donjon : le mode calme instance s'active tout seul." },
     { id = "durability", label = "Équipement usé",          tip = "Simule un équipement sous 20 % : signal dans la fiole et un toast." },
     { id = "efficiency", label = "Efficacité",              tip = "Charge un jeu de mesures d'efficacité (temps actif, morts, sacs, spots) pour l'onglet Progression." },
@@ -2712,6 +2780,10 @@ do
     transport = "transport", bateau = "transport", boat = "transport", zeppelin = "transport", zep = "transport",
     loading = "loading", chargement = "loading", cinema = "loading", cinematic = "loading",
     eating = "eating", eat = "eating", repas = "eating", boire = "eating", drink = "eating",
+    food = "eating", nourriture = "eating",
+    campfire = "campfire", feu = "campfire", camp = "campfire", braise = "campfire",
+    totaladd = "totaladd", add = "totaladd", ajout = "totaladd", goutte = "totaladd",
+    levelup = "levelup", niveau = "levelup", ding = "levelup",
     dungeon = "dungeon", donjon = "dungeon", instance = "dungeon",
     durability = "durability", durabilite = "durability", usure = "durability",
     efficiency = "efficiency", efficacite = "efficiency", eff = "efficiency",
@@ -2807,6 +2879,66 @@ do
     return true
   end
 
+  function T.StartEating(extra)
+    if not T.Enabled() then return nil end
+    extra = tostring(extra or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+    local S = ns.Slot
+    local kind = "both"
+    if extra == "food" or extra == "nourriture" or extra == "manger" then kind = "food"
+    elseif extra == "drink" or extra == "boisson" or extra == "boire" then kind = "drink"
+    elseif extra == "both" or extra == "lesdeux" or extra == "all" or extra == "" then kind = "both"
+    end
+    T._on = T._on or {}
+    T._on.eating = true
+    if S and S.SetEatSim then pcall(S.SetEatSim, kind) elseif S and S.SetSim then pcall(S.SetSim, "eating", true) end
+    if S and S.Refresh then pcall(S.Refresh, "test") end
+    ns.Print(string.format(Tr["test : repas (%s)."], kind))
+    return true
+  end
+
+  function T.StartCampfire(extra)
+    if not T.Enabled() then return nil end
+    extra = tostring(extra or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+    if extra == "" then extra = "near" end
+    local S = ns.Slot
+    if not (S and S.SetCampfireSim) then
+      ns.Print(Tr["test : feu de camp indisponible."])
+      return nil
+    end
+    local st = S.SetCampfireSim(extra)
+    if not st then
+      ns.Print(Tr["test : usage /drop test campfire near|charge|burst"])
+      return nil
+    end
+    T._on = T._on or {}
+    T._on.campfire = true
+    if S.Refresh then pcall(S.Refresh, "test") end
+    if S.StartDriver then pcall(S.StartDriver) end
+    ns.Print(string.format(Tr["test : feu de camp (%s)."], st))
+    return true
+  end
+
+  function T.StartTotalAdd()
+    if not T.Enabled() then return nil end
+    T._on = T._on or {}
+    T._on.totaladd = true
+    if ns.Slot and ns.Slot.PlayTotalAdd then pcall(ns.Slot.PlayTotalAdd, 1) end
+    ns.Print(Tr["test : goutte dans la fiole (ajout au total)."])
+    return true
+  end
+
+  function T.StartLevelUp()
+    if not T.Enabled() then return nil end
+    T._on = T._on or {}
+    T._on.levelup = true
+    local ui = ns.UI
+    local lvl = (ns.GetPlayerLevel and ns.GetPlayerLevel()) or 2
+    if ui and ui.PlayLevelUp then pcall(ui.PlayLevelUp, ui, lvl)
+    elseif ns.Slot and ns.Slot.PlayLevelUp then pcall(ns.Slot.PlayLevelUp) end
+    ns.Print(Tr["test : montée de niveau (débordement de la fiole)."])
+    return true
+  end
+
   function T.Start(id)
     if not T.Enabled() then return nil end
     local raw = tostring(id or "")
@@ -2816,6 +2948,10 @@ do
     if id == "off" then return T.StopAll() end
     if id == "toast" then return T.Toast() end
     if id == "sleepingbag" then return T.StartSleepingBag(extra) end
+    if id == "eating" then return T.StartEating(extra) end
+    if id == "campfire" then return T.StartCampfire(extra) end
+    if id == "totaladd" then return T.StartTotalAdd() end
+    if id == "levelup" then return T.StartLevelUp() end
     if id == "flight" then return T.StartFlight() end
     if id == "transport" then return T.StartTransport() end
     if id == "loading" then return T.StartLoading() end
