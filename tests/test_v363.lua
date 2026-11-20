@@ -3283,8 +3283,11 @@ do
   if C and C.Pulse then
     C.Pulse(tile, blue)
     ok(tile._osrsPulse and tile._osrsPulse.shown ~= false, "Pulse : la case s'éclaire")
-    ok(C.POP_COLOR and C.POP_COLOR[2] >= 0.9 and C.POP_COLOR[2] > C.POP_COLOR[1], "POP_COLOR : vert clair")
-    ok(tile._osrsPulse._color and colorEq(tile._osrsPulse._color, C.POP_COLOR), "pop de case : vert clair (pas la couleur de type)")
+    local popBlue = C.PopColor and C.PopColor(blue, tile)
+    ok(popBlue and popBlue[3] > blue[3] and popBlue[1] > blue[1] - 1e-6,
+      "PopColor Dagues : bleu éclairci")
+    ok(tile._osrsPulse._color and colorEq(tile._osrsPulse._color, popBlue),
+      "pop de case Dagues : bleu plus clair (couleur de type)")
   end
 
   -- Palette unique : voile, +1, étincelle, teinte de toast (jamais noir)
@@ -3308,8 +3311,12 @@ do
     local ct = { data = { kind = cat.tileKind, skillName = cat.skillName, name = cat.skillName }, GetFrameLevel = function() return 1 end }
     if C and C.Pulse then C.Pulse(ct, col) end
     if C and C.Gain then C.Gain(ct, "+1", col) end
-    ok(ct._osrsPulse and ct._osrsPulse._color and colorEq(ct._osrsPulse._color, C.POP_COLOR),
-      "pop " .. cat.name .. " = vert clair")
+    local pop = C.PopColor and C.PopColor(expect, ct)
+    ok(ct._osrsPulse and ct._osrsPulse._color and colorEq(ct._osrsPulse._color, pop),
+      "pop " .. cat.name .. " = " .. cat.key .. " éclairci")
+    ok(pop and pop[1] >= expect[1] - 1e-6 and pop[2] >= expect[2] - 1e-6 and pop[3] >= expect[3] - 1e-6
+      and not colorEq(pop, expect),
+      "pop " .. cat.name .. " : plus clair que la palette, même teinte")
     ok(ct._osrsGain and ct._osrsGain._color and colorEq(ct._osrsGain._color, expect),
       "+1 " .. cat.name .. " = palette " .. cat.key)
     if S.HideBarSpark then pcall(S.HideBarSpark) end
@@ -3929,7 +3936,7 @@ end
 
 
 do
-  -- 3.6.3 : pré-sélection = liseré typé, pas de « +1 » ; le vrai gain pop vert clair + un seul +1
+  -- 3.6.3 : pré-sélection = liseré typé, pas de « +1 » ; le vrai gain pop dans la couleur de type + un seul +1
   local T, S, C = ns.Target, ns.Slot, ns.Compact
   local function colorEq(a, b)
     return a and b and math.abs((a[1] or 0) - (b[1] or 0)) < 0.01
@@ -3966,14 +3973,15 @@ do
     else
       ok(true, "pré-sélection : marque créée ou liseré via bevel")
     end
-    -- vrai gain : un seul +1 + pop vert clair ; le liseré reste
+    -- vrai gain : un seul +1 + pop dans la couleur de type (rouge XP éclairci) ; le liseré reste
     if C and C.Announce then
       -- fall through to Pulse/Gain if Announce needs more args
     end
     if C and C.Pulse and C.Gain then
       C.Pulse(tile)
       C.Gain(tile, "+1", S.ADD_COLORS.red)
-      ok(tile._osrsPulse and colorEq(tile._osrsPulse._color, C.POP_COLOR), "vrai gain : pop vert clair")
+      local popRed = C.PopColor and C.PopColor(S.ADD_COLORS.red, tile)
+      ok(tile._osrsPulse and colorEq(tile._osrsPulse._color, popRed), "vrai gain : pop rouge XP éclairci")
       ok(tile._osrsGain and tile._osrsGain.fs and tile._osrsGain.fs.text == "+1", "vrai gain : un seul +1")
       ok(tile._tgtLit == "direct", "vrai gain : le liseré de pré-sélection reste")
     end
