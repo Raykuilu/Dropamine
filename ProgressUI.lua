@@ -200,6 +200,27 @@ local function Width(fs, fallback)
 end
 PU.Width = Width
 
+-- Texte le plus long qui tient dans maxW (sans retour à la ligne, sans
+-- déborder sur ce qui est à droite : pastilles, bord de carte…).
+function PU.SetFittedText(fs, texts, maxW)
+  if not fs then return nil end
+  if type(texts) == "string" then texts = { texts } end
+  maxW = N(maxW) or 0
+  local chosen = texts[1] or ""
+  if fs.SetWordWrap then pcall(fs.SetWordWrap, fs, false) end
+  if fs.SetMaxLines then pcall(fs.SetMaxLines, fs, 1) end
+  if maxW > 0 then
+    for i = 1, #texts do
+      fs:SetText(texts[i] or "")
+      if Width(fs, maxW + 1) <= maxW then chosen = texts[i] break end
+      chosen = texts[i]
+    end
+  end
+  fs:SetText(chosen or "")
+  if maxW > 0 and fs.SetWidth then fs:SetWidth(maxW) end
+  return chosen
+end
+
 function PU.Card(parent, x, y, w, h, title)
   local c = CreateFrame("Frame", nil, parent)
   Place(c, parent, x, y, w, h)
@@ -580,8 +601,8 @@ function PU.NewCurve(parent, x, y, w, h)
   local c = CreateFrame("Frame", nil, parent)
   Place(c, parent, x, y, w, h)
   c.w, c.h = w, h
-  c.plotL, c.plotB, c.plotT = 24, 12, 6
-  c.plotW = w - c.plotL - 2
+  c.plotL, c.plotB, c.plotT, c.plotR = 24, 12, 6, 8
+  c.plotW = w - c.plotL - c.plotR
   c.plotH = h - c.plotB - c.plotT
   c.cols = math.min(PU.CURVE_COLS, math.floor(c.plotW / 2))
   c.fill, c.l1, c.l2 = {}, {}, {}
@@ -720,10 +741,21 @@ function PU.RenderCurve(c, pts)
   c.base:Show()
   local mins = { 0, (t1 - t0) / 2, t1 - t0 }
   local anchors = { 0, 0.5, 1 }
+  local plotRight = c.plotL + c.cols * 2
   for k = 1, 3 do
     local lab = c.xlab[k]
     lab:ClearAllPoints()
-    lab:SetPoint("TOP", c, "BOTTOMLEFT", c.plotL + math.floor((c.cols * 2 - 2) * anchors[k] + 0.5), c.plotB - 1)
+    local x = c.plotL + math.floor((c.cols * 2 - 2) * anchors[k] + 0.5)
+    if k == 1 then
+      if lab.SetJustifyH then lab:SetJustifyH("LEFT") end
+      lab:SetPoint("TOPLEFT", c, "BOTTOMLEFT", c.plotL, c.plotB - 1)
+    elseif k == 3 then
+      if lab.SetJustifyH then lab:SetJustifyH("RIGHT") end
+      lab:SetPoint("TOPRIGHT", c, "BOTTOMLEFT", math.min(c.w - 2, plotRight), c.plotB - 1)
+    else
+      if lab.SetJustifyH then lab:SetJustifyH("CENTER") end
+      lab:SetPoint("TOP", c, "BOTTOMLEFT", x, c.plotB - 1)
+    end
     lab:SetText(string.format(Tr["%d min"], math.floor(mins[k] / 60 + 0.5)))
     TextColor(lab, pal.sub)
     lab:Show()
@@ -1293,7 +1325,10 @@ function PU.RefreshOverview(p)
   local st = P.Streak()
   local R = P.Records()
   k[3].value:SetText(string.format(st.n == 1 and Tr["%d jour d'affilée"] or Tr["%d jours d'affilée"], st.n))
-  k[3].sub:SetText(string.format(Tr["Max session +%d · Max heure +%d"], R.bestSession, R.bestHour))
+  PU.SetFittedText(k[3].sub, {
+    string.format(Tr["Max session +%d · Max heure +%d"], R.bestSession, R.bestHour),
+    string.format(Tr["Sess. +%d · Heure +%d"], R.bestSession, R.bestHour),
+  }, (k[3]._w or 0) - 16)
   -- 4. Objectif
   local g = P.Goal()
   k[4].value:SetText(string.format(Tr["+%d / +%d pts"], g.pts, g.target))
@@ -1302,8 +1337,12 @@ function PU.RefreshOverview(p)
   -- histogramme
   local stt = State()
   local items = PU.Items(stt.period)
-  local titles = { session = Tr["Progression de la session"], d7 = Tr["Progression sur 7 jours"], d30 = Tr["Progression sur 30 jours"] }
-  p.left.title:SetText(titles[stt.period] or "")
+  local titleMax = ((p.left.period and p.left.period.left) or 80) - 12
+  PU.SetFittedText(p.left.title, ({
+    session = { Tr["Progression de la session"], Tr["Session"] },
+    d7 = { Tr["Progression sur 7 jours"], Tr["7 jours"] },
+    d30 = { Tr["Progression sur 30 jours"], Tr["30 jours"] },
+  })[stt.period] or { "" }, titleMax)
   PU.RenderChart(p.left.chart, items, stt.metric, (stt.metric == "xph") and Tr["Pas encore d'XP mesurée sur cette période."] or nil)
   -- courbe
   PU.RenderCurve(p.right.curve, PU.CurvePoints())

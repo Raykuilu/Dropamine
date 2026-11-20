@@ -222,6 +222,7 @@ function Wd.OnBarClick(self, button)
     return false
   end
   HideTip(self)
+  if t and t._wideOn then Wd.MuteBarHighlight(t) end
   if ns.ProgressUI and ns.ProgressUI.OnTotalClick then return ns.ProgressUI.OnTotalClick(self, "LeftButton") end
   return false
 end
@@ -359,6 +360,38 @@ end
 
 local ICON_PARTS = { "slotBg", "icon", "slotBorder", "hoverTex", "checkTex" }
 
+-- 3.6.1 : en barre, aucun lavis blanc (icône, texte, jauge, fond).
+-- Deux sources : hlTex (aplat ADD sur toute la case, posé au survol / à la
+-- sélection) et hoverTex (strate HIGHLIGHT, que le client réaffiche tout
+-- seul au survol d'un Button — Hide() ne suffit pas). Réservé à la case
+-- carrée ; la barre garde son aspect normal, l'infobulle reste.
+function Wd.MuteBarHighlight(t)
+  if not t then return end
+  if t.hlTex then t.hlTex:Hide() end
+  if t.checkTex then t.checkTex:Hide() end
+  local hi = t.hoverTex
+  if hi then
+    if hi.SetDrawLayer then pcall(hi.SetDrawLayer, hi, "ARTWORK", 0) end
+    if hi.SetAlpha then pcall(hi.SetAlpha, hi, 0) end
+    hi:Hide()
+  end
+  t._hlAlpha = nil
+  if t.UnlockHighlight then pcall(t.UnlockHighlight, t) end
+  if t.SetButtonState then pcall(t.SetButtonState, t, "NORMAL") end
+end
+
+function Wd.RestoreTileHighlight(t)
+  if not t then return end
+  local hi = t.hoverTex
+  if hi then
+    if hi.SetDrawLayer then pcall(hi.SetDrawLayer, hi, "HIGHLIGHT", 0) end
+    if hi.SetAlpha then pcall(hi.SetAlpha, hi, 1) end
+    hi:Hide()
+  end
+  if t.UnlockHighlight then pcall(t.UnlockHighlight, t) end
+  if t.SetButtonState then pcall(t.SetButtonState, t, "NORMAL") end
+end
+
 function Wd.Paint(t)
   if not (t and t._wideOn and t.data) then return end
   local p = Parts(t)
@@ -394,6 +427,7 @@ function Wd.Paint(t)
   p.track:Show() p.text:Show()
   Wd.last = { w = w, h = h, cur = cur, max = max, pct = pct, inner = inner }
   Wd.LayoutSegments(t, left, by, inner, bh, cur, max)
+  Wd.MuteBarHighlight(t)
 end
 
 local function Unwide(t)
@@ -410,7 +444,10 @@ local function Unwide(t)
   end
   if t.countFS then t.countFS:Show() end
   if t.countFS2 then t.countFS2:Show() end
+  Wd.RestoreTileHighlight(t)
+  if ns.View and ns.View.PaintTile then pcall(ns.View.PaintTile, t) end
 end
+Wd.Unwide = Unwide
 
 -- après la mise en page : étire la case total si elle est seule sur sa rangée
 function Wd.Apply(wrap)
@@ -562,4 +599,18 @@ do
     local function apply() if Wd.Shown() then pcall(Wd.SetShown, true) end end
     if C_Timer and C_Timer.After then C_Timer.After(1, apply) C_Timer.After(3, apply) else apply() end
   end)
+end
+
+-- Dernier mot : même si une surbrillance est reposée après Paint (survol,
+-- sélection, clic), la barre ne la garde pas.
+do
+  local V = ns.View
+  if V and V.PaintTile then
+    local base = V.PaintTile
+    function V.PaintTile(t, ...)
+      local r = { base(t, ...) }
+      if t and t._wideOn then Wd.MuteBarHighlight(t) end
+      return unpack(r)
+    end
+  end
 end
