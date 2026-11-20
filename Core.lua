@@ -10,6 +10,9 @@ _G.Dropamine = ns
 ns.ADDON = ADDON
 local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 ns.VERSION = "3.6.3"
+-- DEV ONLY : une seule ligne à passer à false (ou à retirer) avant la version publique.
+-- La section Options « Test » et /drop test n'existent que si ce drapeau est vrai.
+ns.DEV_TEST = true
 
 
 -- v2.5.0 : valeurs « secrètes » de Forever (UnitStat, UnitXP… en combat).
@@ -2016,6 +2019,7 @@ function F.OptionOn()
 end
 
 function F.OnTaxi()
+  if F._simTaxi then return true end
   if type(_G.UnitOnTaxi) == "function" then
     local ok, v = pcall(_G.UnitOnTaxi, "player")
     if ok and v then return true end
@@ -2024,6 +2028,7 @@ function F.OnTaxi()
 end
 
 function F.Paused()
+  if F._simTaxi then return true end
   return F.OptionOn() and F.OnTaxi() and true or false
 end
 function ns.PausedForFlight()
@@ -2038,15 +2043,14 @@ end
 function F.HideActiveToasts()
   local ui = ns.UI
   if not (ui and ui.dropsActive) then return end
-  -- 3.6.3 : le toast d'astuce « premier vol » reste jusqu'au clic.
-  for i = #ui.dropsActive, 1, -1 do
+  for i = 1, #ui.dropsActive do
     local f = ui.dropsActive[i]
-    if f and not f._sticky then
+    if f then
       if f.Hide then pcall(f.Hide, f) end
       if f.SetScript then pcall(f.SetScript, f, "OnUpdate", nil) end
-      table.remove(ui.dropsActive, i)
     end
   end
+  ui.dropsActive = {}
   if ui.PackDrops then pcall(ui.PackDrops, ui) end
 end
 
@@ -2057,10 +2061,11 @@ end
 
 -- Premier trajet aérien de ce personnage : un toast explicatif (force = true,
 -- seule exception à « pas de toast en vol »). Une fois par personnage.
-function F.MaybeShowHint()
+function F.MaybeShowHint(force)
   if not F.Paused() then return nil end
   local ch = ns.CharDB and ns.CharDB()
-  if not ch or ch.flightPauseHint then return nil end
+  if not ch then return nil end
+  if not force and ch.flightPauseHint then return nil end
   local ui = ns.UI
   if not (ui and ui.SpawnDrop) then return nil end
   local icon = "Interface\\AddOns\\Dropamine\\Media\\Hourglass"
@@ -2068,10 +2073,9 @@ function F.MaybeShowHint()
     Tr["Suivi en pause pendant le vol."],
     Tr["Le scan reprend dès l'atterrissage."],
     nil, nil, nil,
-    { force = true, sticky = true, kind = "flight-hint", dedupeKey = "flight-hint",
-      hint = Tr["Clic pour fermer"] })
+    { force = true, kind = "flight-hint", dedupeKey = "flight-hint" })
   if ok and f then
-    ch.flightPauseHint = true
+    if not force then ch.flightPauseHint = true end
     return f
   end
   return nil
@@ -2079,7 +2083,9 @@ end
 
 function F.OnBegin()
   F._silentLand = false
-  F.HideActiveToasts()
+  -- Sablier d'abord : un échec du toast d'astuce ne doit jamais bloquer l'animation.
+  if F.BeginVisual then pcall(F.BeginVisual) end
+  pcall(F.HideActiveToasts)
   if ns.Scanner and ns.Scanner.HideAll then pcall(ns.Scanner.HideAll) end
   if ns.Gather then
     if ns.Gather.queue then
@@ -2097,7 +2103,7 @@ function F.OnBegin()
     end
   end
   if ns.Target and ns.Target.Clear then pcall(ns.Target.Clear) end
-  F.MaybeShowHint()
+  pcall(F.MaybeShowHint)
 end
 
 function F.OnEnd()
@@ -2136,6 +2142,11 @@ function F.SetTaxi(on, why)
 end
 
 function F.Sync(why)
+  -- Une simulation /drop test ne doit pas être annulée par le sondage UnitOnTaxi.
+  if F._simTaxi then
+    F.EnsurePoll()
+    return F.Paused()
+  end
   local taxi = F.OnTaxi()
   if F.OptionOn() then
     F.SetTaxi(taxi, why or "sync")
@@ -2260,6 +2271,152 @@ end
 ns.HelpExt = ns.HelpExt or {}
 ns.HelpExt[#ns.HelpExt + 1] = "/drop vol on|off : pause du suivi et des toasts sur un trajet aérien"
 ns.HelpExt[#ns.HelpExt + 1] = "/drop reset-hints : réafficher les astuces (sablier en vol, …)"
+
+
+-- Simulations DEV (Options › Test, /drop test). Retiré avant la version publique.
+do
+  local T = {}
+  ns.Test = T
+  T.STATES = {
+    { id = "flight",   label = "Vol",                tip = "Démarre ou arrête la pause en vol (sablier + toast d'astuce)." },
+    { id = "death",    label = "Mort",               stub = true },
+    { id = "afk",      label = "AFK",                stub = true },
+    { id = "fishing",  label = "Pêche",              stub = true },
+    { id = "swimming", label = "Nage",               stub = true },
+    { id = "trainer",  label = "Maître à proximité", stub = true },
+    { id = "combat",   label = "Combat",             stub = true },
+  }
+  T.ALIASES = {
+    vol = "flight", fly = "flight", flight = "flight",
+    mort = "death", death = "death",
+    afk = "afk",
+    peche = "fishing", fishing = "fishing",
+    nage = "swimming", swim = "swimming", swimming = "swimming",
+    maitre = "trainer", trainer = "trainer",
+    combat = "combat",
+    toast = "toast", drop = "toast",
+    off = "off", stop = "off", tout = "off",
+  }
+  T.LONG_NAME = "Palourdes bouillies aux herbes du jardin de Westfall et un nom volontairement trop long pour le défilement"
+
+  function T.Enabled()
+    return ns.DEV_TEST == true
+  end
+
+  local function Norm(id)
+    id = tostring(id or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+    return T.ALIASES[id] or id
+  end
+
+  function T.IsOn(id)
+    id = Norm(id)
+    return T._on and T._on[id] and true or false
+  end
+
+  function T.Toast()
+    if not T.Enabled() then return nil end
+    local ui = ns.UI
+    if not (ui and ui.SpawnDrop) then return nil end
+    local recipe = {
+      name = T.LONG_NAME, req = 50, itemID = 5525,
+      reagents = {
+        { id = 159, name = "Eau de source", count = 1 },
+        { id = 2678, name = "Épices douces", count = 1 },
+      },
+    }
+    local icon = "Interface\\Icons\\INV_Misc_Food_15"
+    local ok, f = pcall(ui.SpawnDrop, ui, icon,
+      T.LONG_NAME, "1 × possible", nil, nil, nil, {
+        force = true, kind = "craft",
+        toastData = {
+          kind = "craft", skill = "cooking", recipe = recipe,
+          n = 0, diff = "optimal", item = 5525,
+        },
+      })
+    if ok and f then
+      T._toast = f
+      ns.Print(Tr["test : toast de recette (nom long)."])
+      return f
+    end
+    return nil
+  end
+
+  function T.StartFlight()
+    if not T.Enabled() then return nil end
+    T._on = T._on or {}
+    T._on.flight = true
+    F._simTaxi = true
+    if F.SetTaxi then pcall(F.SetTaxi, true, "test") end
+    if F.MaybeShowHint then pcall(F.MaybeShowHint, true) end
+    ns.Print(Tr["test : vol simulé (sablier + toast)."])
+    return true
+  end
+
+  function T.StopFlight()
+    T._on = T._on or {}
+    T._on.flight = nil
+    F._simTaxi = nil
+    if F.SetTaxi then pcall(F.SetTaxi, false, "test-off") end
+    if F.Sync then pcall(F.Sync, "test-off") end
+    return true
+  end
+
+  function T.Start(id)
+    if not T.Enabled() then return nil end
+    id = Norm(id)
+    if id == "off" then return T.StopAll() end
+    if id == "toast" then return T.Toast() end
+    if id == "flight" then return T.StartFlight() end
+    local known
+    for _, s in ipairs(T.STATES) do if s.id == id then known = s break end end
+    if not known then
+      ns.Print(Tr["test : état inconnu. Usage : /drop test flight|toast|off"])
+      return nil
+    end
+    T._on = T._on or {}
+    T._on[id] = true
+    ns.Print(string.format(Tr["test : %s (pas encore simulable)."], Tr[known.label] or known.label))
+    return "stub"
+  end
+
+  function T.Stop(id)
+    id = Norm(id)
+    if id == "flight" then return T.StopFlight() end
+    if T._on then T._on[id] = nil end
+    return true
+  end
+
+  function T.Toggle(id)
+    id = Norm(id)
+    if id == "toast" or id == "off" then return T.Start(id) end
+    if T.IsOn(id) then return T.Stop(id) end
+    return T.Start(id)
+  end
+
+  function T.StopAll()
+    if T._on and T._on.flight then T.StopFlight() end
+    T._on = {}
+    F._simTaxi = nil
+    if T._toast and ns.UI and ns.UI.DismissDrop then pcall(ns.UI.DismissDrop, ns.UI, T._toast) end
+    T._toast = nil
+    ns.Print(Tr["test : tout arrêté."])
+    return true
+  end
+end
+
+if ns.DEV_TEST then
+  ns.SlashExt = ns.SlashExt or {}
+  ns.SlashExt.test = function(rest)
+    local arg = (rest or ""):match("^%s*(%S*)") or ""
+    if arg == "" then
+      ns.Print(Tr["/drop test flight|toast|off : simulations (DEV)"])
+      return
+    end
+    if ns.Test and ns.Test.Toggle then ns.Test.Toggle(arg) end
+  end
+  ns.HelpExt = ns.HelpExt or {}
+  ns.HelpExt[#ns.HelpExt + 1] = "/drop test flight|toast|off : simulations (DEV)"
+end
 
 ns.DebugExt = ns.DebugExt or {}
 ns.DebugExt[#ns.DebugExt + 1] = function()

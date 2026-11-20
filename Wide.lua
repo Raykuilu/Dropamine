@@ -198,6 +198,7 @@ function Wd.ShowBarTip(owner, noMini)
   tt:AddDoubleLine(Tr["Total"], string.format("%d / %d", cur or 0, mx or 0), 1, 0.93, 0.80, 1, 0.93, 0.80)
   if ns.Flight and ns.Flight.ShowPauseTip and ns.Flight.ShowPauseTip() then
     tt:AddLine(Tr["En pause pendant le vol"], 1, 0.82, 0)
+    tt:AddLine(Tr["Le scan reprend dès l'atterrissage."], 1, 1, 1)
   end
   if not noMini and ns.ProgressUI then
     tt:AddLine(Tr["Clic : fenêtre Progression"], 0.6, 0.8, 1)
@@ -442,6 +443,7 @@ local function Unwide(t)
     if p.fill then p.fill:Hide() end
     if p.segs then for i = 1, #p.segs do p.segs[i]:Hide() end end
     if p.hit then p.hit:Hide() end
+    if t._hgHit and t._hgHit.Hide then pcall(t._hgHit.Hide, t._hgHit) end
     if p.sheen then p.sheen:Hide() end
     p.text:Hide()
   end
@@ -735,6 +737,7 @@ do
       if t.icon and t.icon.SetAlpha then pcall(t.icon.SetAlpha, t.icon, 1) end
       if t._hgIconHidden and t.icon and t.icon.Show then pcall(t.icon.Show, t.icon) end
       t._hgIconHidden = nil
+      Wd.SyncFlaskHit(t, vis)
       return h
     end
     PlaceOnIcon(h, t)
@@ -753,6 +756,7 @@ do
     end
     if h.Show then h:Show() end
     h._idx = idx
+    Wd.SyncFlaskHit(t, vis)
     return h
   end
 
@@ -825,13 +829,91 @@ do
     F.StartVisualDriver()
   end
 
+  function F.ShowPauseExplanation(owner)
+    local tt = _G.GameTooltip
+    if not (tt and owner) then return end
+    if type(tt.SetOwner) == "function" then pcall(tt.SetOwner, tt, owner, "ANCHOR_RIGHT") end
+    if type(tt.ClearLines) == "function" then pcall(tt.ClearLines, tt) end
+    if type(tt.SetText) == "function" then
+      pcall(tt.SetText, tt, Tr["En pause pendant le vol"], 1, 0.82, 0)
+    elseif type(tt.AddLine) == "function" then
+      pcall(tt.AddLine, tt, Tr["En pause pendant le vol"], 1, 0.82, 0, true)
+    end
+    if type(tt.AddLine) == "function" then
+      pcall(tt.AddLine, tt, Tr["Le scan reprend dès l'atterrissage."], 1, 1, 1, true)
+    end
+    if type(tt.Show) == "function" then pcall(tt.Show, tt) end
+  end
+
+  function Wd.EnsureFlaskHit(t)
+    if not t then return nil end
+    if t._hgHit then return t._hgHit end
+    local ok, hit = pcall(CreateFrame, "Frame", nil, t)
+    if not (ok and hit) then return nil end
+    if type(hit.EnableMouse) == "function" then pcall(hit.EnableMouse, hit, true) end
+    hit:SetScript("OnEnter", function(self)
+      if F.ShowPauseExplanation then pcall(F.ShowPauseExplanation, self) end
+    end)
+    hit:SetScript("OnLeave", function(self)
+      local tt = _G.GameTooltip
+      if not tt then return end
+      if type(tt.IsOwned) == "function" then
+        local okO, owned = pcall(tt.IsOwned, tt, self)
+        if okO and not owned then return end
+      end
+      if type(tt.Hide) == "function" then pcall(tt.Hide, tt) end
+    end)
+    -- le survol capte la souris ; le clic est renvoyé à la case ( Progressive / partage ).
+    hit:SetScript("OnMouseUp", function(self, button)
+      local fn = t.GetScript and (t:GetScript("OnMouseUp") or t:GetScript("OnClick"))
+      if fn then pcall(fn, t, button) end
+    end)
+    t._hgHit = hit
+    return hit
+  end
+
+  function Wd.SyncFlaskHit(t, vis)
+    if not t then return nil end
+    local want = F.Paused() or ((vis or F._vis or 0) > 0.01)
+    local hit = t._hgHit or (want and Wd.EnsureFlaskHit(t))
+    if not hit then return nil end
+    if not want then
+      if type(hit.Hide) == "function" then pcall(hit.Hide, hit) end
+      local tt = _G.GameTooltip
+      if tt and type(tt.IsOwned) == "function" then
+        local okO, owned = pcall(tt.IsOwned, tt, hit)
+        if okO and owned and type(tt.Hide) == "function" then pcall(tt.Hide, tt) end
+      end
+      return hit
+    end
+    if type(hit.ClearAllPoints) == "function" then pcall(hit.ClearAllPoints, hit) end
+    local anchor = t.slotBorder or t.icon or t
+    if type(hit.SetAllPoints) == "function" then pcall(hit.SetAllPoints, hit, anchor) end
+    if type(hit.SetPoint) == "function" then pcall(hit.SetPoint, hit, "CENTER", anchor, "CENTER", 0, 0) end
+    local w, ht = IconWH(t)
+    if t.slotBorder and type(t.slotBorder.GetWidth) == "function" then
+      w = N(t.slotBorder:GetWidth()) or (w * 1.6)
+      ht = N(t.slotBorder:GetHeight()) or w
+    else
+      w, ht = w * 1.6, ht * 1.6
+    end
+    if type(hit.SetSize) == "function" then pcall(hit.SetSize, hit, math.max(8, w), math.max(8, ht)) end
+    if type(hit.SetFrameLevel) == "function" and type(t.GetFrameLevel) == "function" then
+      pcall(hit.SetFrameLevel, hit, (t:GetFrameLevel() or 1) + 6)
+    end
+    if type(hit.EnableMouse) == "function" then pcall(hit.EnableMouse, hit, true) end
+    if type(hit.Show) == "function" then pcall(hit.Show, hit) end
+    return hit
+  end
+
   local baseBegin, baseEnd = F.OnBegin, F.OnEnd
   function F.OnBegin()
-    if baseBegin then baseBegin() end
-    F.BeginVisual()
+    -- Sablier d'abord, puis le reste (toasts / astuce) sous pcall.
+    pcall(F.BeginVisual)
+    if baseBegin then pcall(baseBegin) end
   end
   function F.OnEnd()
-    if baseEnd then baseEnd() end
-    F.EndVisual()
+    if baseEnd then pcall(baseEnd) end
+    pcall(F.EndVisual)
   end
 end

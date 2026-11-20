@@ -9,17 +9,21 @@ TF.MQ_WAIT  = 1.2   -- pause avant le défilement (s)
 TF.MQ_SPEED = 36    -- pixels / s
 TF.MQ_END   = 1.0   -- pause en fin de course (s)
 
+local function HasFn(obj, name)
+  return type(obj) == "table" and type(obj[name]) == "function"
+end
+
 local function LineHeight(fs)
   if not fs then return 12 end
-  if fs.GetLineHeight then
+  if HasFn(fs, "GetLineHeight") then
     local ok, h = pcall(fs.GetLineHeight, fs)
     if ok and type(h) == "number" and h > 0 then return h end
   end
-  if fs.GetFont then
+  if HasFn(fs, "GetFont") then
     local ok, _, size = pcall(fs.GetFont, fs)
     if ok and type(size) == "number" and size > 0 then return size + 2 end
   end
-  if fs.GetHeight then
+  if HasFn(fs, "GetHeight") then
     local ok, h = pcall(fs.GetHeight, fs)
     if ok and type(h) == "number" and h > 0 then return h end
   end
@@ -28,11 +32,11 @@ end
 
 local function TextWidth(fs)
   if not fs then return 0 end
-  if fs.GetUnboundedStringWidth then
+  if HasFn(fs, "GetUnboundedStringWidth") then
     local ok, w = pcall(fs.GetUnboundedStringWidth, fs)
     if ok and type(w) == "number" then return w end
   end
-  if fs.GetStringWidth then
+  if HasFn(fs, "GetStringWidth") then
     local ok, w = pcall(fs.GetStringWidth, fs)
     if ok and type(w) == "number" then return w end
   end
@@ -47,7 +51,7 @@ function TF.Avail(f, fs)
   local rightPad = (f._light and 6) or 8
   local dw = (ns.UI and ns.UI.DropWidth and ns.UI:DropWidth()) or (f.GetWidth and f:GetWidth()) or 260
   local icon = 32
-  if f.iconSlot and f.iconSlot.GetWidth then
+  if f.iconSlot and HasFn(f.iconSlot, "GetWidth") then
     local ok, w = pcall(f.iconSlot.GetWidth, f.iconSlot)
     if ok and type(w) == "number" and w > 0 then icon = w end
   end
@@ -55,7 +59,7 @@ function TF.Avail(f, fs)
   local fallback = math.max(8, (tonumber(dw) or 260) - left - rightPad)
   local probe = fs
   if fs and fs._mq and fs._mq.clip then probe = fs._mq.clip end
-  if probe and f.GetRight and probe.GetLeft then
+  if probe and HasFn(f, "GetRight") and HasFn(probe, "GetLeft") then
     local okR, r = pcall(f.GetRight, f)
     local okL, l = pcall(probe.GetLeft, probe)
     if okR and okL and type(r) == "number" and type(l) == "number" then
@@ -68,16 +72,16 @@ end
 
 local function SingleLine(fs)
   if not fs then return end
-  if fs.SetWordWrap then pcall(fs.SetWordWrap, fs, false) end
-  if fs.SetMaxLines then pcall(fs.SetMaxLines, fs, 1) end
-  if fs.SetNonSpaceWrap then pcall(fs.SetNonSpaceWrap, fs, false) end
+  if HasFn(fs, "SetWordWrap") then pcall(fs.SetWordWrap, fs, false) end
+  if HasFn(fs, "SetMaxLines") then pcall(fs.SetMaxLines, fs, 1) end
+  if HasFn(fs, "SetNonSpaceWrap") then pcall(fs.SetNonSpaceWrap, fs, false) end
 end
 
 -- Copie les ancres d'une FontString vers le ScrollFrame de clip.
 -- Si le référent a déjà été déplacé dans un clip, on ancre sur ce clip.
 local function CopyPoints(src, dst)
   dst:ClearAllPoints()
-  local n = (src.GetNumPoints and src:GetNumPoints()) or 0
+  local n = HasFn(src, "GetNumPoints") and src:GetNumPoints() or 0
   if n <= 0 then return false end
   for i = 1, n do
     local p, rel, rp, x, y = src:GetPoint(i)
@@ -97,9 +101,11 @@ end
 
 local function EnsureClip(f, fs)
   if fs._mq and fs._mq.clip then return fs._mq end
-  local clip = CreateFrame("ScrollFrame", nil, f)
-  local child = CreateFrame("Frame", nil, clip)
-  if clip.SetScrollChild then pcall(clip.SetScrollChild, clip, child) end
+  local okC, clip = pcall(CreateFrame, "ScrollFrame", nil, f)
+  if not (okC and clip) then return nil end
+  local okH, child = pcall(CreateFrame, "Frame", nil, clip)
+  if not (okH and child) then return nil end
+  if HasFn(clip, "SetScrollChild") then pcall(clip.SetScrollChild, clip, child) end
   if not CopyPoints(fs, clip) then
     clip:SetPoint("TOPLEFT", fs, "TOPLEFT", 0, 0)
     clip:SetPoint("RIGHT", f, "RIGHT", f._light and -6 or -8, 0)
@@ -107,7 +113,7 @@ local function EnsureClip(f, fs)
   fs:SetParent(child)
   fs:ClearAllPoints()
   fs:SetPoint("LEFT", child, "LEFT", 0, 0)
-  if fs.SetJustifyH then pcall(fs.SetJustifyH, fs, "LEFT") end
+  if HasFn(fs, "SetJustifyH") then pcall(fs.SetJustifyH, fs, "LEFT") end
   local mq = { clip = clip, child = child, fs = fs, t = 0, off = 0, need = 0, room = 0 }
   fs._mq = mq
   f._mqList = f._mqList or {}
@@ -122,7 +128,7 @@ local function FitLine(f, fs)
   if text == "" then
     if fs._mq then
       fs._mq.need, fs._mq.room, fs._mq.t, fs._mq.off = 0, 0, 0, 0
-      if fs._mq.clip.SetHorizontalScroll then pcall(fs._mq.clip.SetHorizontalScroll, fs._mq.clip, 0) end
+      if HasFn(fs._mq.clip, "SetHorizontalScroll") then pcall(fs._mq.clip.SetHorizontalScroll, fs._mq.clip, 0) end
     end
     return
   end
@@ -131,20 +137,20 @@ local function FitLine(f, fs)
   if need <= room + 0.5 then
     if fs._mq then
       fs._mq.need, fs._mq.room, fs._mq.t, fs._mq.off = need, room, 0, 0
-      if fs._mq.clip.SetHorizontalScroll then pcall(fs._mq.clip.SetHorizontalScroll, fs._mq.clip, 0) end
+      if HasFn(fs._mq.clip, "SetHorizontalScroll") then pcall(fs._mq.clip.SetHorizontalScroll, fs._mq.clip, 0) end
     end
     return
   end
   local mq = EnsureClip(f, fs)
   local lh = LineHeight(fs)
   mq.need, mq.room = need, room
-  if mq.clip.SetHeight then pcall(mq.clip.SetHeight, mq.clip, lh) end
-  if mq.clip.SetWidth then pcall(mq.clip.SetWidth, mq.clip, room) end
-  if mq.child.SetHeight then pcall(mq.child.SetHeight, mq.child, lh) end
-  if mq.child.SetWidth then pcall(mq.child.SetWidth, mq.child, need + 4) end
-  if fs.SetWidth then pcall(fs.SetWidth, fs, need) end
-  if fs.SetHeight then pcall(fs.SetHeight, fs, lh) end
-  if mq.clip.SetHorizontalScroll then pcall(mq.clip.SetHorizontalScroll, mq.clip, mq.off or 0) end
+  if HasFn(mq.clip, "SetHeight") then pcall(mq.clip.SetHeight, mq.clip, lh) end
+  if HasFn(mq.clip, "SetWidth") then pcall(mq.clip.SetWidth, mq.clip, room) end
+  if HasFn(mq.child, "SetHeight") then pcall(mq.child.SetHeight, mq.child, lh) end
+  if HasFn(mq.child, "SetWidth") then pcall(mq.child.SetWidth, mq.child, need + 4) end
+  if HasFn(fs, "SetWidth") then pcall(fs.SetWidth, fs, need) end
+  if HasFn(fs, "SetHeight") then pcall(fs.SetHeight, fs, lh) end
+  if HasFn(mq.clip, "SetHorizontalScroll") then pcall(mq.clip.SetHorizontalScroll, mq.clip, mq.off or 0) end
 end
 
 function TF.Fit(f)
@@ -189,7 +195,7 @@ function TF.Tick(f, elapsed)
         mq.off = maxOff
       end
     end
-    if mq.clip and mq.clip.SetHorizontalScroll then
+    if mq.clip and HasFn(mq.clip, "SetHorizontalScroll") then
       pcall(mq.clip.SetHorizontalScroll, mq.clip, mq.off or 0)
     end
   end
@@ -200,14 +206,14 @@ function TF.HookUpdate(f)
   f._tfHooked = true
   local prev = f:GetScript("OnUpdate")
   f:SetScript("OnUpdate", function(self, elapsed)
-    TF.Tick(self, elapsed)
+    pcall(TF.Tick, self, elapsed)
     if prev then prev(self, elapsed) end
   end)
 end
 
 -- Infobulle : texte intégral, puis détails de recette le cas échéant.
 local function AddLine(tt, text, r, g, b)
-  if not tt or not text or text == "" or not tt.AddLine then return end
+  if not tt or not text or text == "" or not HasFn(tt, "AddLine") then return end
   pcall(tt.AddLine, tt, text, r or 1, g or 1, b or 1, true)
 end
 
@@ -234,17 +240,17 @@ end
 function TF.ShowTooltip(f)
   local tt = _G.GameTooltip
   if not tt or not f then return end
-  if tt.SetOwner then pcall(tt.SetOwner, tt, f, "ANCHOR_RIGHT") end
-  if tt.ClearLines then pcall(tt.ClearLines, tt) end
+  if HasFn(tt, "SetOwner") then pcall(tt.SetOwner, tt, f, "ANCHOR_RIGHT") end
+  if HasFn(tt, "ClearLines") then pcall(tt.ClearLines, tt) end
   local info = f._toastData
   local item = ToastItemId(info)
   local usedItem = false
   if item then
-    if tt.SetItemByID then
+    if HasFn(tt, "SetItemByID") then
       local ok = pcall(tt.SetItemByID, tt, item)
       usedItem = ok and true or false
     end
-    if not usedItem and tt.SetHyperlink then
+    if not usedItem and HasFn(tt, "SetHyperlink") then
       usedItem = pcall(tt.SetHyperlink, tt, "item:" .. item) and true or false
     end
   end
@@ -253,7 +259,7 @@ function TF.ShowTooltip(f)
   local sub = f._fullSub
   if sub == nil and f.subFS and f.subFS.GetText then sub = f.subFS:GetText() end
   if not usedItem then
-    if tt.SetText then pcall(tt.SetText, tt, title or "", 1, 1, 1, 1, true) end
+    if HasFn(tt, "SetText") then pcall(tt.SetText, tt, title or "", 1, 1, 1, 1, true) end
   else
     AddLine(tt, title, 1, 1, 1)
   end
@@ -261,25 +267,25 @@ function TF.ShowTooltip(f)
   if info and ns.Craft and ns.Craft.FillToastTooltip then
     pcall(ns.Craft.FillToastTooltip, ns.Craft, tt, info)
   end
-  if tt.Show then pcall(tt.Show, tt) end
+  if HasFn(tt, "Show") then pcall(tt.Show, tt) end
 end
 
 function TF.HideTooltip(f)
   local tt = _G.GameTooltip
   if not tt then return end
-  if tt.IsOwned then
+  if HasFn(tt, "IsOwned") then
     local ok, owned = pcall(tt.IsOwned, tt, f)
     if ok and not owned then return end
   end
-  if tt.Hide then pcall(tt.Hide, tt) end
+  if HasFn(tt, "Hide") then pcall(tt.Hide, tt) end
 end
 
 function TF.FitSoon(f)
   if not f then return end
-  TF.Fit(f)
-  TF.HookUpdate(f)
+  pcall(TF.Fit, f)
+  pcall(TF.HookUpdate, f)
   if type(_G.C_Timer) == "table" and type(_G.C_Timer.After) == "function" then
-    _G.C_Timer.After(0, function() if f and f.titleFS then TF.Fit(f) end end)
+    _G.C_Timer.After(0, function() if f and f.titleFS then pcall(TF.Fit, f) end end)
   end
 end
 
@@ -288,7 +294,7 @@ if UI and UI.SpawnDrop then
   local spawn = UI.SpawnDrop
   function UI:SpawnDrop(...)
     local f = spawn(self, ...)
-    if f then TF.FitSoon(f) end
+    if f then pcall(TF.FitSoon, f) end
     return f
   end
 end
@@ -296,6 +302,6 @@ if UI and UI.BumpDropTitle then
   local bump = UI.BumpDropTitle
   function UI:BumpDropTitle(f)
     bump(self, f)
-    if f then TF.FitSoon(f) end
+    if f then pcall(TF.FitSoon, f) end
   end
 end

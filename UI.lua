@@ -5524,7 +5524,7 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   titleFS:SetPoint("TOPLEFT", slot, "TOPRIGHT", 7, 1)
   titleFS:SetPoint("RIGHT", f, "RIGHT", -8, 0)
   if titleFS.SetWordWrap then titleFS:SetWordWrap(false) end
-  if titleFS.SetMaxLines then titleFS:SetMaxLines(1) end
+  if type(titleFS.SetMaxLines) == "function" then pcall(titleFS.SetMaxLines, titleFS, 1) end
   titleFS:SetText(title or "")
   local tc = (variant and variant.title) or GOLD
   titleFS:SetTextColor(tc[1], tc[2], tc[3])
@@ -5537,7 +5537,7 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   subFS:SetPoint("TOPLEFT", titleFS, "BOTTOMLEFT", 0, -2)
   subFS:SetPoint("RIGHT", f, "RIGHT", -8, 0)
   if subFS.SetWordWrap then subFS:SetWordWrap(false) end
-  if subFS.SetMaxLines then subFS:SetMaxLines(1) end
+  if type(subFS.SetMaxLines) == "function" then pcall(subFS.SetMaxLines, subFS, 1) end
   subFS:SetText(subtitle or "")
   subFS:SetTextColor(1, 1, 1)
 
@@ -5545,7 +5545,7 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   hintFS:SetPoint("TOPLEFT", subFS, "BOTTOMLEFT", 0, -1)
   hintFS:SetPoint("RIGHT", f, "RIGHT", -8, 0)
   if hintFS.SetWordWrap then hintFS:SetWordWrap(false) end
-  if hintFS.SetMaxLines then hintFS:SetMaxLines(1) end
+  if type(hintFS.SetMaxLines) == "function" then pcall(hintFS.SetMaxLines, hintFS, 1) end
   hintFS:SetText(hint or "")
   hintFS:SetTextColor(0.25, 1.00, 0.25)
   if not hint or hint == "" then hintFS:Hide() end

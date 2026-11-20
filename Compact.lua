@@ -87,6 +87,7 @@ function C.TooltipModel(d)
     if hl then add(hl, 0.8, 0.8, 0.8) end
     if ns.Flight and ns.Flight.ShowPauseTip and ns.Flight.ShowPauseTip() then
       add(Tr["En pause pendant le vol"], 1, 0.82, 0)
+      add(Tr["Le scan reprend dès l'atterrissage."], 1, 1, 1)
     end
     return m
   end
