@@ -1,4 +1,4 @@
--- Tests hors jeu 3.6.3 : noms d'objets sans « objet 159 », pause en vol.
+-- Tests hors jeu 3.7.0 : noms d'objets sans « objet 159 », pause en vol.
 -- Harnais repris de test_v362.lua (lignes 8-745).
 -- /tmp/lua-5.1.5/src/lua tests/test_v363.lua
 
@@ -2624,14 +2624,16 @@ do
     assertInside("icône combat grille", tot._stIcon, iw, ih)
   end
 
-  -- Barre large : petite goutte 14×14, même chemin de clip (pas un pavé 100×50).
+  -- Barre large : glyphe ~85 % de la case, sans cadre, pas un pavé 100×50.
   local bar = CreateFrame("Button", "DropamineTestBarTotal", UIParent)
   bar.data = { kind = "total" }
   bar._wideOn = true
-  bar._wideH = 16
-  bar:SetSize(220, 16)
+  local tileSz = (I and I.TILE) or (ns.Icons and ns.Icons.TILE) or 40
+  local iconSz = (ns.Wide and ns.Wide.IconSize and ns.Wide.IconSize(tileSz)) or math.floor(tileSz * 0.85 + 0.5)
+  bar._wideH = tileSz
+  bar:SetSize(220, tileSz)
   bar.icon = bar:CreateTexture(nil, "ARTWORK")
-  if bar.icon.SetSize then bar.icon:SetSize(14, 14) end
+  if bar.icon.SetSize then bar.icon:SetSize(iconSz, iconSz) end
   function bar:SetClipsChildren(v) self.clipsChildren = v and true or false end
   if ns.Wide then ns.Wide.TotalTile = function() return bar end end
   ns.UI.embed.tiles = { bar }
@@ -2641,7 +2643,8 @@ do
   local okBar = pcall(S.ApplyRegenWave, 0.16)
   ok(okBar, "repas en barre : no-op (état retiré)")
   local bw, bh = S.IconInnerSize(bar)
-  ok(bw <= 14 and bw >= 6, "barre : intérieur de la goutte ≤ 14 px (pas 32 ni 100)")
+  ok(bw == iconSz and bh == iconSz,
+    "barre : goutte = 85 % de la case (" .. tostring(bw) .. "×" .. tostring(bh) .. ", attendu " .. tostring(iconSz) .. ")")
   -- Combat en barre : icône de jeu à la place de la goutte, pas de bandes.
   S.ClearSim()
   S.SetCombatStyle("bubbles")
@@ -3083,7 +3086,8 @@ do
     local rightPad = fw - gw - M
     ok(rightPad == M, label .. " : dernière case ne dépasse pas le bord (marge droite " .. tostring(rightPad) .. ")")
     if withTotal and ns.Wide and ns.Wide.ShouldWiden and ns.Wide.ShouldWiden(cols, skills + 1) then
-      local slim = math.max((ns.Wide.MIN_H or 14), math.floor(tile * (ns.Wide.SLIM or 0.45) + 0.5))
+      local slim = (ns.Wide.RowHeight and ns.Wide.RowHeight(tile))
+        or math.max((ns.Wide.MIN_H or 36), math.floor(tile * (ns.Wide.SLIM or 0.5) + 0.5))
       local skillRows = math.max(1, math.ceil(skills / cols))
       local expectH = skillRows * tile + math.max(0, skillRows - 1) * vg + vg + slim
       ok(gh == expectH, label .. " : hauteur 12 px sous la barre (" .. tostring(gh) .. " attendu " .. expectH .. ")")
@@ -3094,12 +3098,12 @@ do
   assertFit(5, 100, 9, false, "défaut 5 col. 100 %")
   assertFit(5, 100, 9, true, "défaut 5 col. + barre")
   assertFit(10, 100, 9, true, "10 col. 100 %")
-  assertFit(5, 80, 9, true, "5 col. taille 80 %")
-  assertFit(10, 80, 9, true, "10 col. taille 80 %")
+  assertFit(5, 90, 9, true, "5 col. taille 90 %")
+  assertFit(10, 90, 9, true, "10 col. taille 90 %")
   assertFit(5, 150, 9, true, "5 col. taille 150 %")
   assertFit(10, 150, 9, true, "10 col. taille 150 %")
-  assertFit(3, 80, 9, true, "3 col. taille 80 %")
-  assertFit(5, 50, 9, true, "5 col. taille 50 %")
+  assertFit(3, 90, 9, true, "3 col. taille 90 %")
+  assertFit(5, 90, 9, true, "5 col. taille plancher 90 %")
   assertFit(5, 200, 9, true, "5 col. taille 200 %")
   assertFit(2, 100, 9, true, "2 col. 100 %")
   if ns.db and ns.db.ui then ns.db.ui.scale, ns.db.ui.cols, ns.db.ui.showTotal = savedScale, savedCols, savedTotal end
@@ -3434,12 +3438,12 @@ do
     -- compare ratios
     if ns.db and ns.db.ui then ns.db.ui.scale = nil end
     local mid = UI.ToastMetrics({})
-    if ns.db and ns.db.ui then ns.db.ui.scale = 50 end
+    if ns.db and ns.db.ui then ns.db.ui.scale = 90 end
     local lo = UI.ToastMetrics({})
     if ns.db and ns.db.ui then ns.db.ui.scale = 200 end
     local hi = UI.ToastMetrics({})
-    ok(lo.icon < mid.icon and mid.icon < hi.icon, "icône toast proportionnelle (50 < 100 < 200)")
-    ok(lo.fh < mid.fh and mid.fh < hi.fh, "hauteur toast proportionnelle (50 < 100 < 200)")
+    ok(lo.icon < mid.icon and mid.icon < hi.icon, "icône toast proportionnelle (90 < 100 < 200)")
+    ok(lo.fh < mid.fh and mid.fh < hi.fh, "hauteur toast proportionnelle (90 < 100 < 200)")
     ok(lo.titleSize <= mid.titleSize and mid.titleSize <= hi.titleSize, "police toast proportionnelle")
     if ns.db and ns.db.ui then ns.db.ui.scale = saved end
   end
@@ -3579,16 +3583,19 @@ do
     return Wd.Metrics(I.TILE)
   end
   if Wd and Wd.Metrics then
-    local lo, mid, hi = at(50), at(100), at(200)
+    local lo, mid, hi = at(90), at(100), at(200)
     local nlo = I.NumberSizes and I.NumberSizes(lo.tile)
-    ok(lo.h >= 28 and lo.isz >= 24 and lo.bh >= 12 and lo.font == (nlo and nlo.total)
-      and lo.minBarW >= 60 and lo.pad >= (Wd.MIN_PAD or 3),
-      "rangée total 50 % : planchers medium + police du total (h>=28 isz>=24 bh>=12 barre>=60)")
-    ok((Wd.MIN_H or 0) >= 28 and (Wd.MIN_BAR_H or 0) >= 12
-      and (Wd.MIN_ISZ or 0) >= 24 and (Wd.MIN_BAR_W or 0) >= 60,
-      "planchers absolus définis (indépendants de l'échelle)")
+    local wantLo = (Wd.IconSize and Wd.IconSize(lo.tile)) or math.floor((lo.tile or 36) * 0.85 + 0.5)
+    ok(lo.h >= 36 and lo.isz == wantLo and lo.bh >= 12 and lo.font == (nlo and nlo.total)
+      and lo.minBarW >= 100 and lo.pad >= (Wd.MIN_PAD or 3)
+      and math.abs((lo.isz or 0) - (lo.tile or 0) * 0.85) <= 1.5,
+      "rangée total 90 % : plancher 36 px, fiole 85 % de la case, barre>=100")
+    ok((Wd.MIN_H or 0) >= 36 and (Wd.MIN_BAR_H or 0) >= 12
+      and (Wd.MIN_BAR_W or 0) >= 100 and (Wd.ICON_K or 0) >= 0.84
+      and (I.TILE_MIN or 0) >= 36 and (L.SCALE_MIN or 0) >= 90,
+      "planchers : case 36 px, barre 100, fiole 85 %, échelle 90 %")
     ok(nlo and nlo.rank > nlo.total and nlo.total > nlo.max,
-      "50 % : rang > total > /max")
+      "90 % : rang > total > /max")
     -- En dessous de la taille medium, l'épaisseur reste au plancher 12 px (ratio plus élevé).
     -- Au-dessus, le zoom uniforme reprend : 150 % et 200 % ont le même rapport.
     local nmid = I.NumberSizes and I.NumberSizes(mid.tile)
@@ -3600,7 +3607,7 @@ do
     local r150, r200 = midHi.bh / midHi.tile, hi.bh / hi.tile
     ok(math.abs(r150 - r200) < 0.03, "épaisseur barre : même ratio à 150 % et 200 % (" .. string.format("%.3f/%.3f", r150, r200) .. ")")
     ok(mid.font == mid.font and hi.font >= mid.font, "police total posée en px, pas étirée")
-    ok((Wd.MIN_ISZ or 24) >= 24, "fiole : taille minimale 24 px")
+    ok((Wd.ICON_K or 0) == 0.85, "fiole : glyphe à 85 % de la case, sans cadre")
   end
   if ns.db and ns.db.ui then ns.db.ui.scale = savedScale end
   if L and L.SyncMetrics then L.SyncMetrics() end
@@ -3767,40 +3774,116 @@ do
       local plan = Wd.PlanTotalRow(gw, m, twOf)
       local nsizes = I.NumberSizes and I.NumberSizes(I.TILE)
       ok(m.h >= (Wd.MIN_H or 28) and m.bh >= (Wd.MIN_BAR_H or 12)
-        and m.isz >= (Wd.MIN_ISZ or 24) and m.font == (nsizes and nsizes.total),
+        and m.isz == ((Wd.IconSize and Wd.IconSize(m.tile or I.TILE)) or m.isz)
+        and m.font == (nsizes and nsizes.total),
         string.format("métriques %d col. %d %% : h=%d bh=%d font=%d isz=%d (total=%s)",
           cols, pct, m.h, m.bh, m.font, m.isz, tostring(nsizes and nsizes.total)))
       ok(plan.overlay ~= true, string.format("%d col. %d %% : pas de texte superposé à la barre", cols, pct))
       ok(plan.font == m.font,
         string.format("%d col. %d %% : police pleine %d (pas réduite)", cols, pct, plan.font))
-      ok(plan.inner + 0.01 >= (Wd.MIN_BAR_W or 60),
-        string.format("barre %d col. %d %% : inner=%d >= 60", cols, pct, plan.inner))
+      ok(plan.inner + 0.01 >= (Wd.MIN_BAR_W or 100),
+        string.format("barre %d col. %d %% : inner=%d >= 100", cols, pct, plan.inner))
       ok(plan.left + plan.inner <= plan.w + 0.01,
         string.format("rangée %d col. %d %% : barre dans le cadre (%d+%d <= %d)", cols, pct, plan.left, plan.inner, plan.w))
       return plan, gw, m, tileGw, minW
     end
     for _, cols in ipairs({ 2, 3, 5, 10 }) do
-      for _, pct in ipairs({ 50, 100, 200 }) do
+      for _, pct in ipairs({ 90, 100, 200 }) do
         planAt(cols, pct)
       end
     end
-    -- 5 col. ~20 px : le cadre s'élargit pour fiole + « 1169 / 2460 » 13 px + barre 60 px
+    -- Plancher Arnaud : cases 36 px, 5 col., fiole ~ case, barre ~100 px, cadre = contenu.
     do
-      if ns.db and ns.db.ui then ns.db.ui.scale = 50 ns.db.ui.cols = nil ns.db.ui.showTotal = true end
+      if ns.db and ns.db.ui then ns.db.ui.scale = 90 ns.db.ui.cols = nil ns.db.ui.showTotal = true end
       if ns.Wide then ns.Wide.forceShown = true end
       if L.SyncMetrics then L.SyncMetrics() end
       local m = Wd.Metrics(I.TILE)
-      ok(I.TILE <= 22, "5 col. 50 % : cases ~20 px (tile=" .. tostring(I.TILE) .. ")")
-      local n50 = I.NumberSizes and I.NumberSizes(I.TILE)
-      ok(m.bh >= 12 and m.isz >= 24 and m.h >= 28 and m.font == (n50 and n50.total),
-        string.format("5 col. 50 %% : planchers medium (bh=%d font=%d isz=%d h=%d)", m.bh, m.font, m.isz, m.h))
+      ok(I.TILE >= 36, "5 col. 90 % : cases >= 36 px (tile=" .. tostring(I.TILE) .. ")")
+      ok(I.TILE <= 36, "5 col. 90 % : cases = 36 px au plancher (tile=" .. tostring(I.TILE) .. ")")
+      local n90 = I.NumberSizes and I.NumberSizes(I.TILE)
+      local wantI = (Wd.IconSize and Wd.IconSize(I.TILE)) or math.floor(I.TILE * 0.85 + 0.5)
+      ok(m.bh >= 12 and m.isz == wantI and m.h >= 36 and m.font == (n90 and n90.total),
+        string.format("5 col. 90 %% : fiole 85 %% (bh=%d font=%d isz=%d h=%d tile=%d)", m.bh, m.font, m.isz, m.h, I.TILE))
+      ok(n90 and n90.rank >= 11 and n90.rank > n90.total and n90.total > n90.max,
+        "5 col. 90 % : rang / max lisibles, rang > total > /max")
       local fw, fh, pad, gw = L.ContentSize(5)
       local minW = Wd.MinRowWidth(m)
-      ok(gw + 0.01 >= minW, "5 col. 50 % : largeur de grille >= minimum rangée (" .. tostring(gw) .. " / " .. tostring(minW) .. ")")
+      ok(gw + 0.01 >= minW, "5 col. 90 % : largeur de grille >= minimum rangée (" .. tostring(gw) .. " / " .. tostring(minW) .. ")")
       local plan = Wd.PlanTotalRow(gw, m, twOf)
       ok(plan.overlay ~= true and plan.font == m.font,
-        "5 col. 50 % : texte à côté de la barre, police du total non réduite")
-      ok(plan.inner >= 60, "5 col. 50 % : barre longue d'au moins 60 px (" .. tostring(plan.inner) .. ")")
+        "5 col. 90 % : texte à côté de la barre, police du total non réduite")
+      ok(plan.inner >= 100, "5 col. 90 % : barre longue d'au moins 100 px (" .. tostring(plan.inner) .. ")")
+      -- Une ancienne taille 50 % est relevée au plancher ; SetScale(50) rend 90.
+      if ns.db and ns.db.ui then ns.db.ui.scale = 50 end
+      ok(L.Scale() == 90 and ns.db.ui.scale == 90, "échelle sauvée 50 % relevée à 90 % au chargement")
+      ok(L.SetScale(50) == 90, "SetScale(50) bloque à 90")
+      if L.SyncMetrics then L.SyncMetrics() end
+      ok(I.TILE >= 36, "après clamp : case toujours >= 36 px")
+      local minFw, minFh = L.MinContentSize(5)
+      local cfw, cfh = L.ContentSize(5)
+      ok(minFw == cfw and minFh == cfh,
+        "MinContentSize = ContentSize au plancher (" .. tostring(minFw) .. "×" .. tostring(minFh) .. ")")
+      local Win = ns.Window
+      if Win and Win.frame then
+        if not Win.frame.SetMinResize then
+          function Win.frame:SetMinResize(w, h) self._minRW, self._minRH = w, h end
+          function Win.frame:SetResizeBounds(a, b, c, d) self._minRW, self._minRH = a, b end
+          function Win.frame:SetResizable(v) self._resizable = v end
+          function Win.frame:SetMaxResize(w, h) self._maxRW, self._maxRH = w, h end
+        end
+        local aw, ah = L.ApplyMinResize()
+        ok(aw == minFw and ah == minFh, "ApplyMinResize pose le plancher du contenu")
+        ok((Win.frame._minRW or 0) + 0.01 >= minFw and (Win.frame._minRH or 0) + 0.01 >= minFh,
+          "SetMinResize / SetResizeBounds = contenu au plancher (cadre, tuiles et barre s'arrêtent ensemble)")
+      end
+      -- Cadre plus petit que le plancher : SnapToContent remonte.
+      if Win and Win.frame and Win.frame.SetSize then
+        Win.frame:SetSize(minFw - 40, minFh - 20)
+        pcall(L.SnapToContent)
+        pcall(L.ApplyMinResize)
+        local cw = (Win.frame.GetWidth and Win.frame:GetWidth()) or Win.frame.width or 0
+        local ch = (Win.frame.GetHeight and Win.frame:GetHeight()) or Win.frame.height or 0
+        ok(cw + 0.5 >= minFw and ch + 0.5 >= minFh,
+          "cadre trop petit remonte au plancher (" .. tostring(cw) .. "×" .. tostring(ch) .. ")")
+      end
+      -- 54 : fiole = glyphe seul (~85 % de la case), centré sur la 1re colonne, pas de cadre.
+      do
+        local tile = I.TILE or 36
+        local want = (Wd.IconSize and Wd.IconSize(tile)) or math.floor(tile * 0.85 + 0.5)
+        local cx = (Wd.ColCenter and Wd.ColCenter(tile)) or math.floor(tile / 2 + 0.5)
+        ok(want == math.floor(tile * 0.85 + 0.5), "taille fiole = 85 % de la case (" .. tostring(want) .. ")")
+        local dummy = { _wideOn = true, icon = { shown = true, w = 0, h = 0, pts = {} },
+          slotBg = { shown = true }, slotBorder = { shown = true }, bg333 = { shown = true },
+          _flareRing = { shown = true }, _restZ = { disc = { shown = true } } }
+        function dummy.icon:ClearAllPoints() self.pts = {} end
+        function dummy.icon:SetPoint(p, rel, rp, x, y) self.pts = { p, rel, rp, x, y } end
+        function dummy.icon:SetSize(w, h) self.w, self.h = w, h end
+        function dummy.slotBg:Hide() self.shown = false end
+        function dummy.slotBg:SetAlpha(a) self.a = a end
+        function dummy.slotBorder:Hide() self.shown = false end
+        function dummy.slotBorder:SetAlpha(a) self.a = a end
+        function dummy.bg333:Hide() self.shown = false end
+        function dummy.bg333:SetAlpha(a) self.a = a end
+        function dummy._flareRing:Hide() self.shown = false end
+        function dummy._flareRing:SetAlpha(a) self.a = a end
+        function dummy._restZ.disc:Hide() self.shown = false end
+        function dummy._restZ.disc:SetAlpha(a) self.a = a end
+        if Wd.PlaceVialIcon then Wd.PlaceVialIcon(dummy, { tile = tile, isz = want }) end
+        ok(dummy.icon.w == want and dummy.icon.h == want,
+          "PlaceVialIcon : glyphe " .. tostring(dummy.icon.w) .. "×" .. tostring(dummy.icon.h) .. " (85 %)")
+        ok(dummy.icon.pts and dummy.icon.pts[1] == "CENTER" and dummy.icon.pts[4] == cx,
+          "PlaceVialIcon : centré sur la 1re colonne (x=" .. tostring(dummy.icon.pts and dummy.icon.pts[4]) .. ")")
+        ok(dummy.slotBg.shown == false and dummy.slotBorder.shown == false
+          and dummy.bg333.shown == false and dummy._flareRing.shown == false,
+          "fiole : pas de fond, de filet ni d'anneau")
+        ok(dummy._restZ.disc.shown == false, "icône d'état : pas de disque derrière le glyphe")
+        if tot then
+          tot._wideOn = true
+          if Wd.PlaceVialIcon then Wd.PlaceVialIcon(tot, Wd.Metrics(tile)) end
+          if tot.slotBg then ok(tot.slotBg.shown == false or (tot.slotBg.IsShown and not tot.slotBg:IsShown()), "case total : slotBg caché") end
+          if tot.slotBorder then ok(tot.slotBorder.shown == false or (tot.slotBorder.IsShown and not tot.slotBorder:IsShown()), "case total : slotBorder caché") end
+        end
+      end
     end
     if ns.db and ns.db.ui then ns.db.ui.scale, ns.db.ui.cols, ns.db.ui.showTotal = savedScale, savedCols, savedTotal end
     if L.SyncMetrics then L.SyncMetrics() end
@@ -4362,6 +4445,6 @@ do
   ok(mem1 <= mem0 + 128, "Tester 3× : mémoire revenue au socle (" .. string.format("%.1f", mem1) .. " / " .. string.format("%.1f", mem0) .. " Ko)")
 end
 
-ok(errs() == 0, "aucune erreur UI (3.6.3)")
+ok(errs() == 0, "aucune erreur UI (3.7.0)")
 print(failures == 0 and "\n3.6.3 : TOUS LES TESTS PASSENT" or ("\n3.6.3 : " .. failures .. " ÉCHEC(S)"))
 os.exit(failures == 0 and 0 or 1)

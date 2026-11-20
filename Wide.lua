@@ -15,7 +15,7 @@ ns.Wide = Wd
 Wd.BAR_H = 4
 Wd.PAD = 5
 Wd.SLIM = 0.50      -- hauteur de la rangée = 50 % d'une case
-Wd.MIN_H = 28
+Wd.MIN_H = 36
 -- Référence à 40 px (100 %) : tout zoome uniformément avec la taille de case.
 -- Polish.lua peut relever la référence (barre Flare 8, police 11, min 20).
 Wd.REF_TILE  = 40
@@ -24,10 +24,19 @@ Wd.REF_PAD   = 5
 Wd.REF_FONT  = 13         -- même rapport que le chiffre de case (COUNT_MAX)
 Wd.REF_EDGE  = 3
 Wd.MIN_BAR_H = 12
-Wd.MIN_BAR_W = 60
+Wd.MIN_BAR_W = 100
 Wd.MIN_FONT  = 13
 Wd.MIN_PAD   = 3
-Wd.MIN_ISZ   = 24
+Wd.MIN_ISZ   = 31   -- 85 % de la case plancher 36 px
+Wd.ICON_K    = 0.85 -- glyphe seul, sans cadre, ~85 % de la hauteur de case
+function Wd.IconSize(tile)
+  tile = (ns.N and ns.N(tile)) or tonumber(tile) or (ns.Icons and ns.Icons.TILE) or Wd.REF_TILE or 40
+  return math.max(1, math.floor(tile * (Wd.ICON_K or 0.85) + 0.5))
+end
+function Wd.ColCenter(tile)
+  tile = (ns.N and ns.N(tile)) or tonumber(tile) or (ns.Icons and ns.Icons.TILE) or Wd.REF_TILE or 40
+  return math.floor(tile / 2 + 0.5)
+end
 Wd.FILL = ns.STYLE.BORDER   -- #A67D45 (palette FlareUI, voir STYLE.md) — filet de la jauge
 Wd.TRACK = { 0, 0, 0, 0.55 }
 Wd.TEX = "Interface\\TargetingFrame\\UI-StatusBar"
@@ -71,25 +80,22 @@ function Wd.Metrics(tile)
   local function px(ref, minv)
     return math.max(minv or 0, math.floor((ref or 0) * k + 0.5))
   end
-  local minH = Wd.MIN_H or 28
+  local minH = Wd.MIN_H or 36
   local minBh = Wd.MIN_BAR_H or 12
-  local minIsz = Wd.MIN_ISZ or 24
-  local h = math.max(minH, math.floor(tile * (Wd.SLIM or 0.5) + 0.5))
+  local minIsz = Wd.MIN_ISZ or 36
+  -- Rangée ~ hauteur de case ; glyphe de fiole ~ 85 % (pas de cadre).
+  local h = math.max(minH, tile, math.floor(tile * (Wd.SLIM or 0.5) + 0.5))
   local bh = px(Wd.REF_BAR_H or Wd.BAR_H or 5, minBh)
   local pad = px(Wd.REF_PAD or Wd.PAD or 5, Wd.MIN_PAD or 3)
-  -- Police du total : plus petite que le rang de case, jamais le plancher 13
-  -- qui égalait ou dépassait le rang aux petites tailles.
   local sizes = I and I.NumberSizes and I.NumberSizes(tile) or nil
   local font = (sizes and sizes.total) or math.max(8, math.floor((Wd.REF_FONT or 11) * k + 0.5))
-  local isz = math.max(minIsz, h - 2)
-  -- Si le zoom donnerait une rangée trop basse, on l'agrandit (jamais l'inverse).
-  h = math.max(h, isz + 2, bh + 2, font + 4)
-  isz = math.max(minIsz, h - 2)
+  local isz = math.max(minIsz, Wd.IconSize(tile))
+  h = math.max(h, tile, isz, bh + 2, font + 4)
   local edge = px(Wd.REF_EDGE or Wd.EDGE_OUT or 3, 2)
   local I = ns.Icons
   return {
     tile = tile, k = k, h = h, bh = bh, pad = pad, font = font, isz = isz,
-    minBarW = Wd.MIN_BAR_W or 60, edgeOut = edge,
+    minBarW = Wd.MIN_BAR_W or 100, edgeOut = edge,
     fontPath = (I and I.COUNT_PATH) or "Fonts\\ARIALN.TTF",
     fontFlags = (I and I.TEXT_FLAGS) or "",
   }
@@ -105,15 +111,15 @@ function Wd.ReserveTextW(font)
   return math.max(56, math.floor((font or 11) * 12 * 0.62 + 8.5))
 end
 
--- Largeur minimale de la rangée : fiole | texte (taille pleine) | barre (>= 60 px).
+-- Largeur minimale de la rangée : fiole | texte (taille pleine) | barre (>= 100 px).
 -- Le cadre doit atteindre au moins cette largeur (il grandit si les cases sont petites).
 function Wd.MinRowWidth(m, tw)
   m = m or (Wd.Metrics and Wd.Metrics()) or {}
-  local isz = math.max(m.isz or 24, Wd.MIN_ISZ or 24)
-  local slotW = isz + 2
+  local tile = m.tile or (ns.Icons and ns.Icons.TILE) or Wd.REF_TILE or 40
+  local slotW = tile
   local pad = m.pad or Wd.MIN_PAD or 3
   local edge = m.edgeOut or 0
-  local minBar = Wd.MIN_BAR_W or 60
+  local minBar = Wd.MIN_BAR_W or 100
   if type(tw) ~= "number" or tw <= 0 then
     tw = Wd.ReserveTextW(m.font)
   end
@@ -126,14 +132,15 @@ end
 function Wd.PlanTotalRow(w, m, twOf)
   m = m or (Wd.Metrics and Wd.Metrics()) or {}
   w = math.max(0, math.floor((w or 0) + 0.5))
-  local isz = math.max(m.isz or 24, Wd.MIN_ISZ or 24)
-  local slotW = isz + 2
+  local isz = m.isz or (Wd.IconSize and Wd.IconSize(m.tile)) or 31
+  local tile = m.tile or (ns.Icons and ns.Icons.TILE) or Wd.REF_TILE or 40
+  local slotW = tile
   local pad = m.pad or Wd.MIN_PAD or 3
   local edge = m.edgeOut or 0
   local font = m.font or (I and I.NumberSizes and I.NumberSizes(m.tile).total) or 11
   local bh = math.max(m.bh or 0, Wd.MIN_BAR_H or 12)
-  local h = math.max(m.h or 0, Wd.MIN_H or 28)
-  local minBar = Wd.MIN_BAR_W or 60
+  local h = math.max(m.h or 0, Wd.MIN_H or 36)
+  local minBar = Wd.MIN_BAR_W or 100
   local tw
   if type(twOf) == "function" then
     tw = N(twOf(font)) or 0
@@ -530,6 +537,56 @@ end
 
 local ICON_PARTS = { "slotBg", "icon", "slotBorder", "hoverTex", "checkTex" }
 
+-- Fiole / icônes d'état : glyphe seul, sans fond, sans filet, ni disque.
+function Wd.HideVialChrome(t)
+  if not t then return end
+  for _, k in ipairs({ "slotBg", "slotBorder", "hoverTex", "checkTex", "bg333" }) do
+    local r = t[k]
+    if r then
+      if r.Hide then r:Hide() end
+      if r.SetAlpha then pcall(r.SetAlpha, r, 0) end
+    end
+  end
+  local slot = t.iconSlot
+  if slot then
+    if slot.SetBackdrop then pcall(slot.SetBackdrop, slot, nil) end
+    local ring = slot._flareRing or t._flareRing
+    if ring then
+      if ring.Hide then ring:Hide() end
+      if ring.SetAlpha then pcall(ring.SetAlpha, ring, 0) end
+    end
+  elseif t._flareRing then
+    if t._flareRing.Hide then t._flareRing:Hide() end
+    if t._flareRing.SetAlpha then pcall(t._flareRing.SetAlpha, t._flareRing, 0) end
+  end
+  if t._bevel and ns.Theme and ns.Theme.ShowBevel then
+    pcall(ns.Theme.ShowBevel, t, false)
+  elseif t._bevel then
+    local e = t._bevel
+    for _, side in ipairs(e.strips or {}) do
+      for _, x in ipairs(side) do if x and x.Hide then x:Hide() end end
+    end
+    for _, x in ipairs(e.corners or {}) do if x and x.Hide then x:Hide() end end
+  end
+  if t._restZ and t._restZ.disc then
+    if t._restZ.disc.Hide then t._restZ.disc:Hide() end
+    if t._restZ.disc.SetAlpha then pcall(t._restZ.disc.SetAlpha, t._restZ.disc, 0) end
+  end
+end
+function Wd.PlaceVialIcon(t, m)
+  if not t then return end
+  local tile = (m and m.tile) or (ns.Icons and ns.Icons.TILE) or 40
+  local isz = Wd.IconSize and Wd.IconSize(tile) or math.floor(tile * (Wd.ICON_K or 0.85) + 0.5)
+  local cx = Wd.ColCenter and Wd.ColCenter(tile) or math.floor(tile / 2 + 0.5)
+  Wd.HideVialChrome(t)
+  if t.icon and t.icon.ClearAllPoints then
+    t.icon:ClearAllPoints()
+    t.icon:SetPoint("CENTER", t, "LEFT", cx, 0)
+    if t.icon.SetSize then t.icon:SetSize(isz, isz) end
+  end
+  return isz, cx
+end
+
 -- 3.6.1 : en barre, aucun lavis blanc (icône, texte, jauge, fond).
 -- Deux sources : hlTex (aplat ADD sur toute la case, posé au survol / à la
 -- sélection) et hoverTex (strate HIGHLIGHT, que le client réaffiche tout
@@ -570,16 +627,8 @@ function Wd.Paint(t)
   local w, h = N(t._wideW) or (t.GetWidth and N(t:GetWidth())) or 0, N(t._wideH) or (t.GetHeight and N(t:GetHeight())) or 0
   local m = Wd.Metrics((ns.Icons and ns.Icons.TILE) or h)
   if (N(t._wideH) or 0) > 0 then h = N(t._wideH) end
+  Wd.PlaceVialIcon(t, m)
   local isz = m.isz
-  local slotW = isz + 2
-  local iconX = math.floor(slotW / 2 + 0.5)
-  for _, k in ipairs(ICON_PARTS) do
-    local r = t[k]
-    if r and r.ClearAllPoints then
-      r:ClearAllPoints() r:SetPoint("CENTER", t, "LEFT", iconX, 0)
-      if r.SetSize then r:SetSize(k == "slotBorder" and math.floor(isz * 1.6 + 0.5) or isz, k == "slotBorder" and math.floor(isz * 1.6 + 0.5) or isz) end
-    end
-  end
   -- 3.3.14 : textes du mode case (rang + « /max ») cachés en mode barre
   if t.countFS then t.countFS:Hide() end
   if t.countFS2 then t.countFS2:Hide() end
@@ -611,6 +660,7 @@ function Wd.Paint(t)
   local S = ns.Slot
   if not (t and S and S.ReplacesFlaskIcon and S.ReplacesFlaskIcon(t)) then return end
   if t.icon and t.icon.Hide then t.icon:Hide() end
+  Wd.HideVialChrome(t)
   if S.Active and S.Active() == "rested" and S.ApplyRestIcon then
     S.ApplyRestIcon(t)
   end

@@ -199,11 +199,12 @@ if Wd then
   Wd.BAR_H = 8
   Wd.PAD = 6
   Wd.SLIM = 0.5
-  Wd.MIN_H = 28
+  Wd.MIN_H = 36
   Wd.MIN_BAR_H = 12
-  Wd.MIN_BAR_W = 60
+  Wd.MIN_BAR_W = 100
   Wd.MIN_FONT = nil  -- le total suit I.NumberSizes (plus petit que le rang)
-  Wd.MIN_ISZ = 24
+  Wd.MIN_ISZ = 31    -- 85 % de la case plancher 36 px
+  Wd.ICON_K = 0.85
   -- Référence 100 % (zoom uniforme au-dessus des planchers absolus).
   Wd.REF_BAR_H = 8
   Wd.REF_PAD = 6
@@ -241,13 +242,8 @@ if Wd then
     local p = t._wideParts
     local m = Wd.Metrics and Wd.Metrics() or {}
     local h = N(t._wideH) or m.h or 20
-    local isz = m.isz or math.max(Wd.MIN_ISZ or 24, h - 2)
-    local slotW = isz + 2
-    if t.icon and t.icon.SetSize then
-      t.icon:ClearAllPoints()
-      t.icon:SetPoint("CENTER", t, "LEFT", math.floor(slotW / 2 + 0.5), 0)
-      t.icon:SetSize(isz, isz)
-    end
+    if Wd.PlaceVialIcon then Wd.PlaceVialIcon(t, m) end
+    local isz = m.isz or (Wd.IconSize and Wd.IconSize(m.tile or h)) or math.max(Wd.MIN_ISZ or 31, math.floor((m.tile or h) * 0.85 + 0.5))
     -- police et placement : Wd.PlaceTotalRow (déjà appelé par la peinture de base).
     -- On ne recalcule pas left/inner ici, pour ne pas écraser le plancher 40 % / overlay.
     I.CleanText(p.text)

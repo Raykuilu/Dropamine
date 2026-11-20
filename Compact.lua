@@ -648,6 +648,9 @@ function C.Pulse(t, color)
   if type(peak) ~= "number" then peak = 0.5 end
   local tin, tout = C.PULSE_IN or 0.08, C.PULSE_OUT or 0.32
   local p = t._osrsPulse
+  C._pulseByKey = C._pulseByKey or {}
+  local pkey = (t.data and C.HoldKey and C.HoldKey(t.data)) or tostring(t)
+  p = p or C._pulseByKey[pkey]
   if not p then
     p = CreateFrame("Frame", nil, t)
     p._osrsOwn = true
@@ -661,6 +664,8 @@ function C.Pulse(t, color)
     end
     t._osrsPulse = p
   end
+  t._osrsPulse = p
+  if pkey then C._pulseByKey[pkey] = p end
   -- case poolée : rattacher le voile, au-dessus de l'icône, sans masque ni alpha 0.
   if p.SetParent then pcall(p.SetParent, p, t) end
   if p.ClearAllPoints then pcall(p.ClearAllPoints, p) end
@@ -728,6 +733,9 @@ end
 function C.Gain(t, text, color)
   color = C.SharedGainColor and C.SharedGainColor(color) or color
   local g = t._osrsGain
+  C._gainByKey = C._gainByKey or {}
+  local gkey = (t.data and C.HoldKey and C.HoldKey(t.data)) or tostring(t)
+  g = g or C._gainByKey[gkey]
   if not g then
     g = CreateFrame("Frame", nil, t)
     g._osrsOwn = true
@@ -755,6 +763,11 @@ function C.Gain(t, text, color)
     end
     t._osrsGain = g
   end
+  t._osrsGain = g
+  if gkey then C._gainByKey[gkey] = g end
+  if g.SetParent then pcall(g.SetParent, g, t) end
+  if g.ClearAllPoints then pcall(g.ClearAllPoints, g) end
+  if g.SetPoint then pcall(g.SetPoint, g, "CENTER", t.icon or t, "CENTER", 0, 4) end
   local base = t.GetFrameLevel and t:GetFrameLevel() or 1
   pcall(g.SetFrameLevel, g, base + 8)
   g.fs:SetText(text)

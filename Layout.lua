@@ -5,7 +5,7 @@
 --   * poignée de redimensionnement (coin bas-droit, NOTRE cadre) : en la
 --     glissant, le panneau saute à la disposition valide la plus proche ;
 --     inactive et cachée quand le panneau est verrouillé (/drop verrou on) ;
---   * /drop taille <50-200> : échelle du panneau (%, au pour cent près) ;
+--   * /drop taille <90-200> : échelle du panneau (%, plancher = case 36 px) ;
 --   * mémorisé (SavedVariables) ; le coin HAUT-GAUCHE du panneau reste en place.
 -- Coût : rien au repos ; l'OnUpdate de la poignée n'existe que pendant le
 -- glissement (retiré au relâchement).
@@ -21,7 +21,7 @@ ns.Layout = L
 L.stats = { checks = 0, restored = 0, pinned = 0 }
 L.VALID = { 2, 3, 5, 10 }   -- 3.6.3 : plus de mode 1 colonne
 L.BASE_COLS, L.BASE_W = 5, 262          -- largeur de liste historique (5 colonnes)
-L.SCALE_MIN, L.SCALE_MAX = 50, 200   -- 3.3.12 : plage élargie, pas de 1 %
+L.SCALE_MIN, L.SCALE_MAX = 90, 200   -- 3.6.3 : plancher = case 36 px (bouton d'action)
 local function DB() ns.db.ui = ns.db.ui or {} return ns.db.ui end
 local function say(m) print(Tr["|cffffd100Dropamine|r : "] .. m) end
 local function IsValid(n) for _, v in ipairs(L.VALID) do if v == n then return true end end return false end
@@ -50,7 +50,22 @@ function L.Cols()
   if c and IsValid(c) then return c end
   return L.BASE_COLS
 end
-function L.Scale() local s = N(DB().scale) if not s then return 100 end return math.max(L.SCALE_MIN, math.min(L.SCALE_MAX, math.floor(s + 0.5))) end
+function L.ClampSaved()
+  local ui = DB()
+  local s = N(ui.scale)
+  if s and s < L.SCALE_MIN then
+    ui.scale = L.SCALE_MIN
+    if ns.SaveActiveProfile then pcall(ns.SaveActiveProfile) end
+    return true
+  end
+  return false
+end
+function L.Scale()
+  L.ClampSaved()
+  local s = N(DB().scale)
+  if not s then return 100 end
+  return math.max(L.SCALE_MIN, math.min(L.SCALE_MAX, math.floor(s + 0.5)))
+end
 -- Largeur / hauteur de la GRILLE seule : colonnes×case + (n-1)×écarts.
 -- Pas de marge historique (22 px issus de la grille 5 col.) ni d'écart fantôme
 -- à droite / en bas (cols×HGAP et rows×STEP en ajoutaient un).
@@ -103,11 +118,91 @@ function L.ContentSize(cols, rows)
   local gw, gh, c, r = L.GridSize(cols, rows)
   return gw + 2 * pad, gh + 2 * pad, pad, gw, gh, c, r
 end
+-- Plancher unique : cases 36 px, fiole ~ case, barre ~100 px, 5 col. en référence.
+-- Le cadre, les tuiles et la barre s'arrêtent au même point.
+function L.MinMetrics()
+  local B = I.BASE or { TILE = 40, ICON = 36, HGAP = 8, VGAP = 12 }
+  local k = (L.SCALE_MIN or 90) / 100
+  local function R(v) return math.floor((v or 0) * k + 0.5) end
+  local tile = math.max(I.TILE_MIN or 36, R(B.TILE or 40))
+  local hg = math.max(2, R(B.HGAP or 8))
+  local vg = math.max(I.VGAP_MIN or 12, R(B.VGAP or 12))
+  return tile, hg, vg
+end
+function L.MinContentSize(cols)
+  local tile, hg, vg = L.MinMetrics()
+  cols = cols or L.Cols()
+  local n = L.TileCount()
+  local Wd = ns.Wide
+  local gw = cols * tile + math.max(0, cols - 1) * hg
+  local barOn = Wd and Wd.ShouldWiden and Wd.ShouldWiden(cols, n)
+  local gh, rows
+  if barOn then
+    rows = math.max(1, math.ceil(math.max(0, n - 1) / cols))
+    local slim = (Wd.RowHeight and Wd.RowHeight(tile)) or math.max(tile, Wd.MIN_H or 36)
+    if Wd.MinRowWidth and Wd.Metrics then
+      local need = Wd.MinRowWidth(Wd.Metrics(tile))
+      if need and gw < need then gw = need end
+    end
+    gh = rows * tile + math.max(0, rows - 1) * vg + vg + slim
+  else
+    rows = L.Rows(cols)
+    gh = rows * tile + math.max(0, rows - 1) * vg
+  end
+  local pad = L.MARGIN or 12
+  return gw + 2 * pad, gh + 2 * pad, pad, gw, gh, cols, rows
+end
+function L.ApplyMinResize()
+  local f = W and W.frame
+  if not f then return end
+  local fw, fh = L.MinContentSize()
+  L.minW, L.minH = fw, fh
+  local locked = DB().locked
+  if f.SetResizable then pcall(f.SetResizable, f, not locked) end
+  if f.SetResizeBounds then
+    pcall(f.SetResizeBounds, f, fw, fh, 4000, 4000)
+  else
+    if f.SetMinResize then pcall(f.SetMinResize, f, fw, fh) end
+    if f.SetMaxResize then pcall(f.SetMaxResize, f, 4000, 4000) end
+  end
+  f._minRW, f._minRH = fw, fh
+  local cw = N(f.GetWidth and f:GetWidth()) or N(f.width)
+  local ch = N(f.GetHeight and f:GetHeight()) or N(f.height)
+  if (cw and cw + 0.5 < fw) or (ch and ch + 0.5 < fh) then
+    local okSnap = L.SnapToContent and L.SnapToContent()
+    if not okSnap and f.SetSize then
+      pcall(f.SetSize, f, fw, fh)
+    end
+  end
+  return fw, fh
+end
+function L.HookMinResize(f)
+  f = f or (W and W.frame)
+  if not f or f._dropMinHook then return end
+  f._dropMinHook = true
+  if f.HookScript then
+    pcall(f.HookScript, f, "OnSizeChanged", function(self, w, h)
+      if L._sizing then return end
+      local mw, mh = L.minW, L.minH
+      if not (mw and mh) then return end
+      w = N(w) or N(self.GetWidth and self:GetWidth()) or N(self.width)
+      h = N(h) or N(self.GetHeight and self:GetHeight()) or N(self.height)
+      if (w and w + 0.5 < mw) or (h and h + 0.5 < mh) then
+        L._sizing = true
+        pcall(L.SnapToContent)
+        L._sizing = nil
+      end
+    end)
+  end
+end
 function L.SnapToContent()
   local f, list = W.frame, W.list
   if not (f and list and P.IsExpanded and not P.IsExpanded()) then return nil end
   local fw, fh, pad, gw, gh = L.ContentSize()
   if not (fw and fh and fw > 0 and fh > 0) then return nil end
+  local minW, minH = L.MinContentSize()
+  if minW and fw < minW then fw = minW end
+  if minH and fh < minH then fh = minH end
   fw, fh, pad, gw, gh = L.Px(fw, f), L.Px(fh, f), L.Px(pad, f), L.Px(gw, f), L.Px(gh, f)
   local cw = N(f.GetWidth and f:GetWidth()) or 0
   local ch = N(f.GetHeight and f:GetHeight()) or 0
@@ -175,6 +270,7 @@ function L.Apply(keep)
   P.ApplyMode()
   if W.IsShown() then pcall(W.Layout) if UI.ApplyView then pcall(UI.ApplyView, UI) end end
   if keep ~= false then Anchor(f, l, t) end
+  pcall(L.ApplyMinResize)
   if L.grip then L.PlaceGrip() end
   if ns.Chrome and ns.Chrome.RescaleAll then pcall(ns.Chrome.RescaleAll) end   -- 3.3.9 : coins à taille native
   L.applied = { cols = L.Cols(), rows = L.Rows(), w = SizeOf(f), scale = L.Scale() }
@@ -246,15 +342,36 @@ function L.DragStep()
   local d = L.drag
   if not d then return end
   local x, y = Cursor()
-  local c = L.Nearest(d.w + (x - d.x), d.h + (d.y - y))
-  if c and c.cols ~= L.Cols() then L.SetCols(c.cols) end
+  local nw = d.w + (x - d.x)
+  local nh = d.h + (d.y - y)
+  local alt = d.alt or (type(_G.IsAltKeyDown) == "function" and _G.IsAltKeyDown())
+  if alt then
+    local c = L.Nearest(nw, nh)
+    if c and c.cols ~= L.Cols() then L.SetCols(c.cols) end
+    return
+  end
+  -- Poignée = taille : l'échelle suit le curseur, bloquée au plancher 36 px.
+  local minW, minH = L.MinContentSize()
+  if minW and nw < minW then nw = minW end
+  if minH and nh < minH then nh = minH end
+  local s0 = d.scale or L.Scale()
+  local w0 = d.w or 0
+  local s
+  if w0 > 0 then
+    s = s0 * (nw / w0)
+  else
+    s = s0
+  end
+  s = math.max(L.SCALE_MIN, math.min(L.SCALE_MAX, math.floor(s + 0.5)))
+  if s ~= L.Scale() then L.SetScale(s) end
 end
 function L.StartDrag()
   if DB().locked then return false end
   local f = W.frame
   local w, h = SizeOf(f)
   local x, y = Cursor()
-  L.drag = { x = x, y = y, w = w or 0, h = h or 0 }
+  local alt = type(_G.IsAltKeyDown) == "function" and _G.IsAltKeyDown() or false
+  L.drag = { x = x, y = y, w = w or 0, h = h or 0, scale = L.Scale(), alt = alt }
   L.grip:SetScript("OnUpdate", function() L.DragStep() end)
   return true
 end
@@ -393,6 +510,8 @@ function W.Build(...)
     if W.frame.SetScale then pcall(W.frame.SetScale, W.frame, 1) end
     if I.SetMetrics then I.SetMetrics(L.Scale() / 100) end
     L.BuildGrip()
+    pcall(L.HookMinResize, W.frame)
+    pcall(L.ApplyMinResize)
   end
   return unpack(r)
 end
@@ -411,12 +530,18 @@ function L.Drift()
   if math.abs((I.metricsK or 1) - want) > 0.001 then why[#why + 1] = string.format("cases %.2f au lieu de %.2f", I.metricsK or 1, want) end
   if L.applied and L.applied.cols ~= L.Cols() then why[#why + 1] = "colonnes " .. tostring(L.applied.cols) .. " au lieu de " .. tostring(L.Cols()) end
   if W.LIST_W ~= L.ListW() then why[#why + 1] = "largeur de liste" end
+  local mw, mh = L.MinContentSize()
+  local cw, ch = SizeOf(f)
+  if cw and mw and cw + 0.5 < mw then why[#why + 1] = "cadre plus étroit que le plancher" end
+  if ch and mh and ch + 0.5 < mh then why[#why + 1] = "cadre plus bas que le plancher" end
   return (#why > 0) and table.concat(why, ", ") or nil
 end
 function L.EnsureSaved(reason)
   if ns.InCombat and ns.InCombat() then return false end
+  local bumped = L.ClampSaved and L.ClampSaved()
   L.stats.checks = L.stats.checks + 1
   local d = L.Drift()
+  if bumped and not d then d = "échelle sous le plancher" end
   if not d then return false end
   L.stats.restored = L.stats.restored + 1
   L.lastRestore = tostring(reason) .. " : " .. d
@@ -448,10 +573,10 @@ ns.SlashExt.colonnes = function(rest)
 end
 ns.SlashExt.taille = function(rest)
   local v = L.SetScale((rest or ""):match("^%s*(%d+)"))
-  if v then say(Tr["taille du panneau : "] .. v .. " %") else say(Tr["taille : "] .. L.Scale() .. Tr[" % (usage : /drop taille 50-200)"]) end
+  if v then say(Tr["taille du panneau : "] .. v .. " %") else say(Tr["taille : "] .. L.Scale() .. Tr[" % (usage : /drop taille 90-200)"]) end
 end
 ns.HelpExt = ns.HelpExt or {}
-ns.HelpExt[#ns.HelpExt + 1] = "/drop colonnes 2|3|5|10 : disposition (poignée du coin bas-droit) · /drop taille 50-200 : échelle (%) ; poignée = taille (Alt+glisser = colonnes)"
+ns.HelpExt[#ns.HelpExt + 1] = "/drop colonnes 2|3|5|10 : disposition (poignée du coin bas-droit) · /drop taille 90-200 : échelle (%) ; poignée = taille (Alt+glisser = colonnes)"
 local baseDebug = W.DebugLines
 W.DebugLines = function()
   local out = baseDebug()

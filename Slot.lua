@@ -1502,7 +1502,10 @@ function S.EnsureRestIcon(t)
     if t._restZ.SetParent and parent and t._restZ.GetParent and t._restZ:GetParent() ~= parent then
       pcall(t._restZ.SetParent, t._restZ, parent)
     end
-    ensure_disc(t._restZ)
+    if t._restZ.disc then
+      if t._restZ.disc.Hide then t._restZ.disc:Hide() end
+      if t._restZ.disc.SetAlpha then pcall(t._restZ.disc.SetAlpha, t._restZ.disc, 0) end
+    end
     return t._restZ, w, h
   end
   if type(parent.CreateFontString) ~= "function" and type(parent.CreateFrame) ~= "function" then
@@ -1513,7 +1516,6 @@ function S.EnsureRestIcon(t)
   S.SetSizeIf(holder, 1, 1)
   if holder.EnableMouse then pcall(holder.EnableMouse, holder, false) end
   if holder.Hide then holder:Hide() end
-  ensure_disc(holder)
   local fs = holder.CreateFontString and holder:CreateFontString(nil, "OVERLAY")
   style_fs(fs)
   holder.fs = fs
@@ -1585,6 +1587,14 @@ end
 -- (et dans le harnais) ça rend souvent 0 ou la taille par défaut (100).
 function S.IconInnerSize(t)
   if not t then return 16, 16, nil, 2 end
+  -- En barre : glyphe seul à ~85 % de la case, centré sur la 1re colonne, sans filet.
+  if t._wideOn then
+    local tile = (ns.Icons and ns.Icons.TILE) or (ns.N and ns.N(t._wideH)) or t._wideH or 40
+    tile = (ns.N and ns.N(tile)) or tonumber(tile) or 40
+    local s = (ns.Wide and ns.Wide.IconSize and ns.Wide.IconSize(tile)) or math.max(1, math.floor(tile * ((ns.Wide and ns.Wide.ICON_K) or 0.85) + 0.5))
+    local anchor = t.icon or t.iconSlot or t
+    return s, s, anchor, 0, s, s
+  end
   local anchor = S.IconAnchor(t)
   local aw, ah = 0, 0
   local function take(obj)

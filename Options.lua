@@ -31,7 +31,7 @@ Options.SECTIONS = {
       help = "Nombre de cases par rangée (aussi : poignée du coin, Alt+glisser).",
       get = function() return LayoutM() and LayoutM().Cols() or 5 end,
       set = function(v) if LayoutM() then LayoutM().SetCols(v) end end },
-    { type = "slider", key = "scale", label = "Taille", default = 100, min = 50, max = 200, step = 1, unit = "pct", cmd = "/drop taille <50-200>",
+    { type = "slider", key = "scale", label = "Taille", default = 100, min = 90, max = 200, step = 1, unit = "pct", cmd = "/drop taille <90-200>",
       help = "Taille du panneau ; les cases restent nettes.",
       get = function() return LayoutM() and LayoutM().Scale() or 100 end,
       set = function(v) if LayoutM() then LayoutM().SetScale(v) end end },
