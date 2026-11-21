@@ -814,51 +814,47 @@ local okLeak, okChurn = (b - a) < 256, churn < 4096
 io.stdout:write((okLeak and "  OK  " or "  FAIL  ") .. "15 min au repos : mémoire retenue stable\n")
 io.stdout:write((okChurn and "  OK  " or "  FAIL  ") .. "churn au repos < 4 Mo/min (3.7.0 : ~140 Mo/min)\n")
 
--- 3.7.2 : sac de couchage actif => icône sac, jamais le Z (avec le cache d'auras)
+-- 3.7.2 : suivi du sac de couchage retiré (aucun état, icône, toast, option ni test)
 local bagFails = 0
 local function bok(c, m) io.stdout:write((c and "  OK  " or "  FAIL  ") .. m .. "\n") if not c then bagFails = bagFails + 1 end end
 do
   local S = ns.Slot
-  local bb = { { name = "Bien reposé", spellId = 429959, applications = 1 }, { name = "Esprit", spellId = 1001, applications = 0 } }
+  local function has(list, v) for _, x in ipairs(list or {}) do if x == v then return true end end return false end
+  bok(not has(S.ORDER_DEFAULT, "sleepingbag") and not has(S.ORDER_SWORD, "sleepingbag"), "sac : plus dans l'ordre des états")
+  bok(S.OPT_KEYS.sleepingbag == nil, "sac : plus d'option slotSleepingBag")
+  bok(S.BAG_ICONS == nil and S.UNROLL_BAG_SPELL == nil, "sac : plus d'icônes ni de sort de charge")
+  local gone = true
+  for _, k in ipairs({ "LiveSleepingBag", "SyncSleepingBag", "SleepingBagStacks", "SleepingBagCharging", "SleepingBagUsing",
+    "SleepingBagCasting", "UnrollBagAura", "NotifySleepingBagMiss", "EndSleepingBag", "ApplySleepingBag", "SetSleepingBagSim", "EnsureBagIcon" }) do
+    if S[k] ~= nil then gone = false io.stdout:write("    reste : S." .. k .. "\n") end
+  end
+  bok(gone, "sac : aucune fonction de suivi restante")
+  bok(S.Want("sleepingbag") == false, "sac : l'état n'est jamais voulu")
+  local T = ns.Test
+  bok(not (T and T.StartSleepingBag), "sac : plus de /drop test sleepingbag")
+  -- canal « Unroll Bag » + Bien reposé au repos : c'est le Z, rien d'autre
+  local bb = { { name = "Bien reposé", spellId = 429959, applications = 2 }, { name = "Unroll Bag", spellId = 429961, applications = 0 } }
   local function mk(i) local b = bb[i] if not b then return nil end return { name = b.name, spellId = b.spellId, applications = b.applications } end
-  local bySpell = function(id) for i, b in ipairs(bb) do if b.spellId == id then return mk(i) end end end
-  _G.C_UnitAuras = { GetAuraDataByIndex = function(u, i) return mk(i) end, GetPlayerAuraBySpellID = bySpell }
-  _G.UnitAura = function(u, i) local b = bb[i] if not b then return nil end return b.name, 1, b.applications, nil, 0, 0, "player", false, false, b.spellId end
-  _G.UnitBuff = _G.UnitAura
+  _G.C_UnitAuras = { GetAuraDataByIndex = function(u, i) return mk(i) end,
+    GetPlayerAuraBySpellID = function(id) for i, b in ipairs(bb) do if b.spellId == id then return mk(i) end end end }
   _G.IsResting = function() return true end
-  _G.UnitChannelInfo = function() return nil end
-  _G.UnitCastingInfo = function() return nil end
-  _G.GetUnitSpeed = function() return 0 end
-  S.ClearSim()
-  S._bagBuilding, S._bagSession, S._bagStartedAt, S._bagUsing, S._bagPeak = false, nil, nil, nil, 0
-  fire("UNIT_AURA", "player") run(0.1)
-  bok(S.Active() == "rested", "repos sans sac : Z (cache d'auras amorcé)")
-  -- 1) aura 429961 posée SANS UNIT_AURA (cache encore valide) : le sac gagne
-  bb[3] = { name = "Unroll Bag", spellId = 429961, applications = 0 }
-  bok(S.LiveSleepingBag() == true, "aura 429961 sans UNIT_AURA : sac détecté malgré le cache")
-  bok(S.Active() == "sleepingbag", "sac actif : icône sac, pas le Z")
-  bb[1].applications = 2 fire("UNIT_AURA", "player") run(0.5)
-  bok(S.Active() == "sleepingbag", "Bien reposé 2/3 pendant la charge : toujours le sac")
-  bok(S.SleepingBagStacks() == 2, "sac : 2 bandes (Bien reposé 2)")
-  -- 2) repli par nom (pas de recherche par sort) après UNIT_AURA
-  bb[3] = nil S._bagBuilding, S._bagSession = false, nil
-  fire("UNIT_AURA", "player") run(0.5)
-  bok(S.Active() == "rested", "aura retirée, debout : retour au Z")
-  _G.C_UnitAuras.GetPlayerAuraBySpellID = nil
-  bb[3] = { name = "Sac de couchage", spellId = 0, applications = 0 }
-  fire("UNIT_AURA", "player") run(0.2)
-  bok(S.Active() == "sleepingbag", "aura « Sac de couchage » (repli par nom) : icône sac")
-  bb[3] = nil S._bagBuilding, S._bagSession = false, nil
-  fire("UNIT_AURA", "player") run(0.2)
-  _G.C_UnitAuras.GetPlayerAuraBySpellID = bySpell
-  -- 3) canal de déploiement, cache amorcé juste avant
-  S.Active()
   _G.UnitChannelInfo = function() return "Unroll Bag", "", 1, 0, 15000, false, false, 429961 end
-  fire("UNIT_SPELLCAST_CHANNEL_START", "player") run(0.5)
-  bok(S.Active() == "sleepingbag", "canal Unroll Bag : icône sac, pas le Z")
+  S.ClearSim()
+  local toasts = 0
+  local UI = ns.UI
+  local spawn = UI and UI.SpawnDrop
+  if spawn then UI.SpawnDrop = function(self, icon, ...) if tostring(icon):find("SleepingBag", 1, true) then toasts = toasts + 1 end return spawn(self, icon, ...) end end
+  fire("UNIT_SPELLCAST_CHANNEL_START", "player") fire("UNIT_AURA", "player") run(1)
+  bok(S.Active() == "rested", "canal Unroll Bag au repos : le Z reste affiché")
   _G.UnitChannelInfo = function() return nil end
-  fire("UNIT_SPELLCAST_CHANNEL_STOP", "player") run(0.5)
-  bok(S.Active() == "sleepingbag", "fin du jet de 15 s, toujours dans le sac : icône sac")
+  fire("UNIT_SPELLCAST_CHANNEL_STOP", "player") _G.GetUnitSpeed = function() return 7 end fire("PLAYER_STARTED_MOVING") run(1)
+  _G.GetUnitSpeed = function() return 0 end
+  bok(toasts == 0, "sac : aucun toast « palier manqué »")
+  if spawn then UI.SpawnDrop = spawn end
+  local tiles = UI and UI.embed and UI.embed.tiles or {}
+  local icon = false
+  for _, t in ipairs(tiles) do if t._bagIcon then icon = true end end
+  bok(not icon, "sac : aucune icône de sac créée")
   S.ClearSim()
 end
 if not (okLeak and okChurn) or bagFails > 0 then os.exit(1) end

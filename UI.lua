@@ -5558,7 +5558,7 @@ function UI.ToastFamily(opts)
   opts = opts or {}
   local kind = opts.kind or (opts.toastData and opts.toastData.kind)
   if kind == "xp" or kind == "levelup" or kind == "level" or kind == "jalon" or kind == "spells"
-    or kind == "xp-milestone" or kind == "sleepingbag" then
+    or kind == "xp-milestone" then
     return "level"
   end
   if kind == "flight-hint" or kind == "bags-full" or kind == "durability" or kind == "pvp" or kind == "weekly"

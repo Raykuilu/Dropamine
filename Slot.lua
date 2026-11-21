@@ -10,8 +10,8 @@ local Tr = ns.L
 local S = {}
 ns.Slot = S
 
-S.ORDER_SWORD   = { "death", "flight", "combat", "afk", "bags", "fishing", "swimming", "durability", "sleepingbag", "rested" }
-S.ORDER_DEFAULT = { "death", "flight", "afk", "bags", "fishing", "swimming", "durability", "sleepingbag", "rested" }
+S.ORDER_SWORD   = { "death", "flight", "combat", "afk", "bags", "fishing", "swimming", "durability", "rested" }
+S.ORDER_DEFAULT = { "death", "flight", "afk", "bags", "fishing", "swimming", "durability", "rested" }
 
 local MEDIA = "Interface\\AddOns\\Dropamine\\Media\\"
 S.SHEETS = {
@@ -26,18 +26,10 @@ S.SHEETS = {
 S.TRAINER_SHEET = MEDIA .. "Trainer-Sheet"
 S.COMBAT_A_SHEET = MEDIA .. "Combat-A-Sheet"
 S.WELL_RESTED_SPELL = 429959  -- buff résultant (Bien reposé / Well-Rested), pas la charge
-S.UNROLL_BAG_SPELL = 429961  -- sort « Unroll Bag » : déploiement / phase de charge (20 min)
-S.BAG_TIER_SEC = 60          -- une charge de Bien reposé par minute dans le sac
-S.BAG_ICONS = {
-  [1] = MEDIA .. "SleepingBag-A-1",
-  [2] = MEDIA .. "SleepingBag-A-2",
-  [3] = MEDIA .. "SleepingBag-A-3",
-}
 S.OPT_KEYS = {
   death = "slotDeath", flight = "slotFlight",
   afk = "slotAfk", bags = "slotBags", fishing = "slotFishing", swimming = "slotSwimming",
   durability = "slotDurability",
-  sleepingbag = "slotSleepingBag",
   trainer = "slotTrainer",
 }
 
@@ -114,10 +106,6 @@ end
 
 function S.SetSim(id, on)
   if on then S._sim[id] = true else S._sim[id] = nil end
-  if id == "sleepingbag" and not on then
-    S._simBagStacks = nil
-    S._bagBuilding, S._bagPeak = false, 0
-  end
 end
 
 function S.SetEatSim(kind)
@@ -131,27 +119,10 @@ function S.SetEatSim(kind)
   return kind
 end
 
-function S.SetSleepingBagSim(stacks)
-  stacks = N(stacks)
-  if not stacks or stacks < 1 then
-    S.SetSim("sleepingbag", false)
-    return
-  end
-  S._simBagStacks = math.max(1, math.min(3, math.floor(stacks + 0.5)))
-  S._bagBuilding = true
-  S._bagSession = true
-  S._bagStartedAt = S._bagStartedAt or Now()
-  S._bagPeak = S._simBagStacks
-  S.SetSim("sleepingbag", true)
-end
-
 function S.ClearSim()
   S._sim = {}
   S._jolt = 0
   S._fishUntil = 0
-  S._simBagStacks = nil
-  S._bagBuilding, S._bagPeak = false, 0
-  S._bagSession, S._bagStartedAt, S._bagUsing = nil, nil, nil
   S._simCamp, S._simEat = nil, nil
   S._campBurstUntil, S._campChargeAt, S._fireUntil = nil, nil, nil
   S._campStartedAt, S._campExpire, S._restEnteredAt, S._campBenefitSeenAt, S._campState = nil, nil, nil, nil, nil
@@ -498,11 +469,11 @@ local function AuraAtRaw(i)
 end
 
 -- 3.7.1 : lecture des auras du joueur mise en cache. Le puits relisait jusqu'à
--- 40 index plusieurs fois par seconde (repas, sac de couchage, Bien reposé),
+-- 40 index plusieurs fois par seconde (repas, Bien reposé),
 -- et le client crée une table par GetAuraDataByIndex. Le cache est vidé à
 -- chaque UNIT_AURA du joueur (S.OnPlayerAura / InvalidateAuras / FlushAuras /
 -- relecture forcée, changement de monde / mort) ; filet de sécurité : 10 s.
-S.AURA_CACHE_TTL = 2   -- 3.7.2 : filet plus court (sac de couchage)
+S.AURA_CACHE_TTL = 2   -- 3.7.2 : filet plus court
 local auraC = { n = {}, s = {}, p = {}, gen = -1, at = nil }
 S._auraGen = 0
 function S.BumpAuraCache() S._auraGen = (S._auraGen or 0) + 1 end
@@ -668,8 +639,6 @@ function S.ScanPlayerAuras(force)
   S._restedStacks = (okR and stacks) or 0
   local okF, fish = pcall(S.RawFishing)
   S._fishOn = okF and fish and true or false
-  local okB, using = pcall(S.SleepingBagUsing)
-  S._bagUsing = okB and using and true or false
   return S._eatName, S._eatSpell
 end
 
@@ -824,220 +793,6 @@ function S.WellRestedAura()
   return 0
 end
 
--- Buffs *résultants* (après la charge) : ils ne doivent ni garder le pictogramme
--- du sac, ni être pris pour un canal de charge (« au repos », Bien reposé,
--- « chaleur du feu »).
-function S.IsResultingBagBuffName(name)
-  local fold = SafeFold(name)
-  if fold == "" then return false end
-  if fold == "au repos" or fold == "repos" then return true end
-  if fold:find("bien repos", 1, true) then return true end
-  if fold:find("well%-rested") or fold == "well rested" or fold == "wellrested" then return true end
-  if fold:find("chaleur du feu", 1, true) or fold:find("warmth of the fire", 1, true) then return true end
-  return false
-end
-
-function S.IsSleepingBagActionName(name)
-  if S.IsResultingBagBuffName(name) then return false end
-  local fold = SafeFold(name)
-  if fold == "" then return false end
-  if fold:find("sac de couchage", 1, true) or fold:find("sleeping bag", 1, true) then return true end
-  if fold:find("unroll bag", 1, true) or fold:find("unfurl", 1, true) then return true end
-  if fold:find("deplier le sac", 1, true) or fold:find("derouler le sac", 1, true)
-    or fold:find("deployer le sac", 1, true) then
-    return true
-  end
-  return false
-end
-
-local ACTION_SPELL_IDX = { 10, 9, 8, 11, 7, 12 }
-local function ActionSpellId(r)
-  if type(r) ~= "table" then return nil end
-  for _, idx in ipairs(ACTION_SPELL_IDX) do
-    local id = N(r[idx])
-    if id and id > 0 then return id end
-  end
-  return nil
-end
-
--- Cast ou canal de déploiement / charge (pas le buff Bien reposé).
--- 3.7.1 : retours du cast copiés dans une table réutilisée (plus de fermeture
--- ni de table à chaque appel ; appelé à chaque rafraîchissement du puits).
-local castScratch = {}
-local function FillCast(ok, ...)
-  if not ok then return false end
-  for i = 1, 12 do castScratch[i] = (select(i, ...)) end
-  return true
-end
-function S.SleepingBagCasting()
-  for k = 1, 2 do
-    -- (comme l'ancien ipairs : sans UnitChannelInfo, rien n'est lu)
-    if k == 2 and _G.UnitChannelInfo == nil then break end
-    local fn = (k == 1) and _G.UnitChannelInfo or _G.UnitCastingInfo
-    if type(fn) == "function" then
-      local ok = FillCast(pcall(fn, "player"))
-      local r = castScratch
-      if ok and (r[1] or r[4]) then
-        local id = ActionSpellId(r)
-        if id and id == (S.UNROLL_BAG_SPELL or 429961) then return true, id end
-        local nm = SafeStr(r[1]) or SafeStr(r[4]) or SafeStr(r[2])
-        if S.IsSleepingBagActionName(nm) then return true, id end
-      end
-    end
-  end
-  return false
-end
-
--- Aura de déploiement 429961 (si le client la pose sur le joueur).
--- 3.7.1 : résultat gardé pour la même lecture d'auras (le puits le demande
--- jusqu'à 20 fois par seconde au repos ; il ne change qu'avec UNIT_AURA).
--- 3.7.2 : l'aura 429961 est relue EN DIRECT à chaque appel (aucune table si
--- elle est absente) ; seul le repli par nom passe par le cache d'auras, et
--- son résultat n'est jamais gardé (3.7.1 : le sac pouvait rester « absent »).
-function S.UnrollBagAura()
-  local id0 = S.UNROLL_BAG_SPELL or 429961
-  local C = _G.C_UnitAuras
-  if type(C) == "table" and type(C.GetPlayerAuraBySpellID) == "function" then
-    local ok, data = pcall(C.GetPlayerAuraBySpellID, id0)
-    if ok and type(data) == "table" then return true, data end
-  end
-  return S.UnrollBagAuraScan(id0)
-end
-function S.UnrollBagAuraRaw() return S.UnrollBagAura() end
-function S.UnrollBagAuraScan(id0)
-  id0 = id0 or S.UNROLL_BAG_SPELL or 429961
-  for i = 1, 40 do
-    local name, spellId, present = AuraAt(i)
-    if not present then
-      -- pas de coupure précoce : l'aura peut être plus loin
-    elseif spellId and spellId == id0 then
-      return true, name
-    elseif name and S.IsSleepingBagActionName(name) then
-      return true, name
-    end
-  end
-  return false
-end
-
--- Action de charge uniquement (cast, canal, aura 429961). Jamais « assis +
--- charges de Bien reposé » : ce buff dure après la charge et gardait l'icône.
-function S.SleepingBagUsing()
-  if S._sim.sleepingbag then return true end
-  if S.SleepingBagCasting() then return true end
-  if S.UnrollBagAura() then return true end
-  return false
-end
-
--- Phase de charge : action ci-dessus, ou session ouverte encore en cours
--- (on reste assis dans le sac après le jet de 15 s). Pas le buff résultant.
-function S.SleepingBagCharging()
-  if S._sim.sleepingbag then return true end
-  if S.Opt and not S.Opt("slotSleepingBag") then return false end
-  local combat = (ns.InCombat and ns.InCombat()) or (type(_G.UnitAffectingCombat) == "function" and Call(_G.UnitAffectingCombat, "player"))
-  if combat then return false end
-  if S.SleepingBagUsing() then
-    if not S._bagSession then
-      S._bagSession = true
-      S._bagStartedAt = Now()
-    end
-    return true
-  end
-  if S._bagSession and S._bagBuilding then
-    if type(_G.IsSitting) == "function" then
-      local sit = Call(_G.IsSitting)
-      if sit == false then return false end
-    end
-    return true
-  end
-  return false
-end
-
-function S.SleepingBagStacks()
-  if S._sim.sleepingbag or S._simBagStacks then
-    local n = N(S._simBagStacks) or 1
-    return math.max(1, math.min(3, math.floor(n + 0.5)))
-  end
-  if not S._auraFresh then S.ScanPlayerAuras(true) end
-  local stacks = N(S._restedStacks) or 0
-  if stacks >= 1 then return math.min(3, stacks) end
-  return 0
-end
-
-function S.NotifySleepingBagMiss(peak)
-  peak = math.max(1, math.min(2, math.floor((N(peak) or 1) + 0.5)))
-  if not (ns.UI and ns.UI.SpawnDrop) then return nil end
-  local title = string.format(Tr["Sac de couchage : %d/3 %%"], peak)
-  local sub = string.format(Tr["%d %% manqué"], 3 - peak)
-  local icon = S.BAG_ICONS[peak] or S.BAG_ICONS[1]
-  local ok, f = pcall(ns.UI.SpawnDrop, ns.UI, icon, title, sub, nil, nil, nil, {
-    kind = "sleepingbag", hint = Tr["Bien reposé"], dedupeKey = "sleepingbag-miss",
-  })
-  return ok and f or nil
-end
-
-function S.EndSleepingBag(why)
-  if not S._bagBuilding then
-    S._bagPeak, S._bagSession, S._bagStartedAt, S._bagUsing = 0, nil, nil, nil
-    return
-  end
-  local peak = N(S._bagPeak) or 0
-  S._bagBuilding = false
-  S._bagSession, S._bagStartedAt, S._bagUsing = nil, nil, nil
-  if peak >= 1 and peak < 3 and not S._sim.sleepingbag then
-    pcall(S.NotifySleepingBagMiss, peak)
-  end
-  -- En simulation, le toast « miss » est déclenché par /drop test sleepingbag miss.
-  if not S._sim.sleepingbag then S._bagPeak = 0 end
-end
-
-function S.SyncSleepingBag()
-  if S._sim.sleepingbag then return end
-  local combat = (ns.InCombat and ns.InCombat()) or (type(_G.UnitAffectingCombat) == "function" and Call(_G.UnitAffectingCombat, "player"))
-  if combat then
-    if S._bagBuilding or S._bagSession then S.EndSleepingBag("combat") end
-    return
-  end
-  if not S._auraFresh then
-    S.ScanPlayerAuras(true)
-  end
-  local stacks = N(S._restedStacks) or 0
-  if stacks > 3 then stacks = 3 end
-  local charging = S.SleepingBagCharging and S.SleepingBagCharging()
-  -- Mouvement : fin immédiate de la charge.
-  if charging or S._bagBuilding or S._bagSession then
-    local speed
-    if type(_G.GetUnitSpeed) == "function" then speed = Call(_G.GetUnitSpeed, "player") end
-    if N(speed) and speed > 0 then
-      S.EndSleepingBag("move")
-      return
-    end
-  end
-  if charging then
-    if not S._bagSession then
-      S._bagSession = true
-      S._bagStartedAt = S._bagStartedAt or Now()
-    end
-    S._bagBuilding = true
-    S._bagUsing = true
-    if stacks > (S._bagPeak or 0) then S._bagPeak = stacks end
-    return
-  end
-  -- Plus en charge : les buffs résultants (Bien reposé, au repos, chaleur du feu)
-  -- ne conservent pas l'icône. Toast palier manqué si on part avant 3/3.
-  if S._bagBuilding or S._bagSession then
-    S.EndSleepingBag("leave")
-  end
-end
-
-function S.LiveSleepingBag()
-  if S._sim.sleepingbag then return true end
-  if S.Opt and not S.Opt("slotSleepingBag") then return false end
-  local combat = (ns.InCombat and ns.InCombat()) or (type(_G.UnitAffectingCombat) == "function" and Call(_G.UnitAffectingCombat, "player"))
-  if combat then return false end
-  -- Uniquement pendant la charge, pas tant que le buff Bien reposé / au repos reste.
-  return S.SleepingBagCharging() and true or false
-end
-
 function S.Want(id)
   local key = S.OPT_KEYS[id]
   if key and not S.Opt(key) then return false end
@@ -1052,7 +807,6 @@ function S.Want(id)
   if id == "rested" then return S.LiveRested() end
   if id == "trainer" then return S.LiveTrainer() end
   if id == "eating" then return S.LiveEating() end
-  if id == "sleepingbag" then return S.LiveSleepingBag() end
   return false
 end
 
@@ -1326,16 +1080,11 @@ local function TexCoord(i, frames, cols, rows)
 end
 S.TexCoord = TexCoord
 
-local function HideBagIcon(t)
-  if t and t._bagIcon and t._bagIcon.Hide then t._bagIcon:Hide() end
-end
-
 local function HideSymbol(t)
   if t and t._hg then
     if t._hg.ClearAllPoints and t.icon then pcall(t._hg.ClearAllPoints, t._hg) pcall(t._hg.SetAllPoints, t._hg, t.icon) end
     if t._hg.Hide then t._hg:Hide() end
   end
-  HideBagIcon(t)
   if t and t.icon and (not ns.Flight or (ns.Flight._vis or 0) <= 0) then
     if t.icon.Show then t.icon:Show() end
     if t.icon.SetAlpha then t.icon:SetAlpha(1) end
@@ -1374,41 +1123,6 @@ function S.ApplySheet(t, id)
   if h.SetAlpha then pcall(h.SetAlpha, h, 1) end
   if h.Show then h:Show() end
   return h
-end
-
-function S.EnsureBagIcon(t, parent)
-  if t._bagIcon then
-    if parent and t._bagIcon.SetParent then pcall(t._bagIcon.SetParent, t._bagIcon, parent) end
-    return t._bagIcon
-  end
-  parent = parent or t
-  if not (parent and type(parent.CreateTexture) == "function") then return nil end
-  local tex = parent:CreateTexture(nil, "ARTWORK", nil, 5)
-  if not tex then return nil end
-  t._bagIcon = tex
-  return tex
-end
-
--- Pictogramme style A (1 / 2 / 3 bandes), cadré dans l'icône (barre et grille).
-function S.ApplySleepingBag(t)
-  if not t then return nil end
-  local step = S.SleepingBagStacks()
-  if step < 1 then step = 1 end
-  if step > 3 then step = 3 end
-  local path = S.BAG_ICONS[step] or S.BAG_ICONS[1]
-  t._bagStep = step
-  local clip, content, w, h = S.PlaceIconClip(t)
-  local parent = content or clip or t.icon or t
-  local tex = S.EnsureBagIcon(t, parent)
-  if not tex then return nil end
-  S.PlaceClippedTex(tex, parent, w or 16, h or 16, 0, 0)
-  if tex.SetTexture then pcall(tex.SetTexture, tex, path) end
-  if tex.SetTexCoord then pcall(tex.SetTexCoord, tex, 0, 1, 0, 1) end
-  if tex.SetAlpha then pcall(tex.SetAlpha, tex, 1) end
-  if tex.Show then tex:Show() end
-  if t.icon and t.icon.Hide then t.icon:Hide() end
-  if t._hg and t._hg.Hide then t._hg:Hide() end
-  return tex
 end
 
 -- Cadre de rognage (ScrollFrame) calé dans l'icône, en retrait du cadre bronze /
@@ -1690,7 +1404,7 @@ end
 
 function S.ReplacesFlaskIcon(t)
   local act = S.Active and S.Active()
-  if act == "sleepingbag" or act == "fishing" or act == "combat" or act == "rested" then return true end
+  if act == "fishing" or act == "combat" or act == "rested" then return true end
   if act == "drop" and S.CombatStateOn and S.CombatStateOn() then return true end
   if act == "drop" and S.Want and S.Want("eating") then return true end
   if act and act ~= "drop" and S.SHEETS and S.SHEETS[act] then return true end
@@ -2166,17 +1880,12 @@ function S.ApplyTotal(t)
     if Wd and Wd.SyncFlaskHit then Wd.SyncFlaskHit(t, F and F._vis or 0) end
     return
   end
-  if act == "sleepingbag" then
-    S.ApplySlotZ(t, false)
-    HideSymbol(t)
-    S.ApplySleepingBag(t)
-  elseif act == "rested" then
+  if act == "rested" then
     S.ApplySlotZ(t, false)
     HideSymbol(t)
     S.ApplyRestIcon(t)
   elseif act ~= "drop" and S.SHEETS[act] then
     S.ApplySlotZ(t, false)
-    HideBagIcon(t)
     S.ApplySheet(t, act)
   else
     S.ApplySlotZ(t, false)
@@ -2343,7 +2052,7 @@ end
 function S.FillStateTip(tt)
   if not tt then return nil end
   local act = S.Active and S.Active()
-  if act ~= "sleepingbag" and act ~= "rested" then
+  if act ~= "rested" then
     return nil
   end
   local function line(text, r, g, b)
@@ -2357,31 +2066,6 @@ function S.FillStateTip(tt)
     else
       line(text, 1, 0.82, 0)
     end
-  end
-  if act == "sleepingbag" then
-    local stacks = S.SleepingBagStacks and S.SleepingBagStacks() or 0
-    if stacks > 3 then stacks = 3 end
-    local step = (stacks < 1) and 1 or stacks
-    title(Tr["Sac de couchage"])
-    line(string.format(Tr["Palier : %d/3 (%d %% d'XP)"], step, step), 1, 1, 1)
-    local started = N(S._bagStartedAt)
-    if started and started > 0 then
-      local elapsed = Now() - started
-      if elapsed < 0 then elapsed = 0 end
-      local ev = S.FormatExact(elapsed)
-      if ev then line(string.format(Tr["Depuis le début : %s"], ev), 1, 1, 1) end
-      if stacks < 3 and (S.BAG_TIER_SEC or 60) > 0 then
-        -- palier k après k minutes de charge
-        local nextAt = started + (stacks + 1) * (S.BAG_TIER_SEC or 60)
-        local remain = nextAt - Now()
-        if remain < 0 then remain = 0 end
-        local rv = S.FormatExact(remain)
-        if rv then line(string.format(Tr["Prochain palier : %s"], rv), 1, 1, 1) end
-      elseif stacks >= 3 then
-        line(Tr["Palier maximum atteint"], 1, 0.93, 0.80)
-      end
-    end
-    return "sleepingbag"
   end
   if act == "rested" then
     title(Tr["Zone de repos"])
@@ -2431,7 +2115,7 @@ function S.ShowExplanation(owner)
   if not (tt and owner) then return end
   if type(tt.SetOwner) == "function" then pcall(tt.SetOwner, tt, owner, "ANCHOR_RIGHT") end
   if type(tt.ClearLines) == "function" then pcall(tt.ClearLines, tt) end
-  if act == "sleepingbag" or act == "rested" then
+  if act == "rested" then
     S.FillStateTip(tt)
     local Wd = ns.Wide
     if Wd and Wd.FillTotalTip then
@@ -2479,8 +2163,7 @@ end
 
 function S.NeedsDriver()
   local act = S.Active()
-  -- sac de couchage : pictogramme statique, pas d'OnUpdate.
-  if act and act ~= "drop" and act ~= "sleepingbag" then return true end
+  if act and act ~= "drop" then return true end
   if S.Want("trainer") then return true end
   if S.Want("eating") then return true end
   if act == "rested" then return true end
@@ -2606,7 +2289,6 @@ end
 function S.OnRestOrZone(reason)
   S.QuietSkills(2)
   pcall(S.NoteRestZone)
-  pcall(S.SyncSleepingBag)
   S.SyncFillTargets()
   if S.NeedsDriver() then S.StartDriver() end
   S.ApplyTotal()
@@ -2631,7 +2313,6 @@ function S.Refresh(reason)
     end
     return
   end
-  pcall(S.SyncSleepingBag)
   S.SyncFillTargets()
   if S.LiveFishing() then S._fishUntil = Now() + 2 end
   if S.NeedsDriver() then S.StartDriver() end
@@ -2993,9 +2674,8 @@ function S.ApplyRegenWave(dt)
   if not t then return end
   local inCombatFill = S.CombatLiquidOn() and ((S.fill and S.fill.p) or 0) > 0.05
   local show = S.Want("eating") and not inCombatFill and not (S.Opt("slotDeath") and S.LiveDeath())
-  -- Pas par-dessus un état qui remplace déjà la fiole (sac de couchage, feuilles).
+  -- Pas par-dessus un état qui remplace déjà la fiole (feuilles).
   local act = S.Active and S.Active()
-  if show and act == "sleepingbag" then show = false end
   if show and act and act ~= "drop" and S.SHEETS and S.SHEETS[act] then show = false end
   if not show then
     S.HideRegenWave(t)
@@ -3621,8 +3301,6 @@ S.OPTIONS = {
     help = "Des bulles montent dans le puits tant que tu nages." },
   { type = "check", key = "slotDurability", label = "Équipement usé", default = false,
     help = "Un bouclier fendu dans le puits et un toast quand une pièce équipée passe sous 20 % de durabilité. Coupé par défaut." },
-  { type = "check", key = "slotSleepingBag", label = "Sac de couchage", default = true,
-    help = "Dans le puits de la fiole, le sac de couchage (style A) à 1, 2 ou 3 bandes uniquement pendant la charge (sort Unroll Bag 429961 / canal). Le buff Bien reposé (429959) et les buffs résultants n'entretiennent pas l'icône. Si tu pars avant 3 charges, un toast XP indique le palier manqué." },
   { type = "check", key = "slotTrainer", label = "Éclat maître à proximité", default = true,
     help = "Un petit éclat sur la case du métier quand un maître est à proximité (pas dans la fiole)." },
 }
@@ -3694,7 +3372,7 @@ if ns.On then
   for _, ev in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_DEAD", "PLAYER_ALIVE", "PLAYER_UNGHOST", "PLAYER_UPDATE_RESTING" }) do
     ns.On(ev, function() S.BumpAuraCache() end)
   end
-  -- 3.7.2 : un sort du joueur (déploiement du sac…) peut poser une aura avant
+  -- 3.7.2 : un sort du joueur peut poser une aura avant
   -- l'UNIT_AURA : relecture au prochain passage.
   for _, ev in ipairs({ "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_SUCCEEDED",
     "UNIT_SPELLCAST_CHANNEL_START", "UNIT_SPELLCAST_CHANNEL_STOP" }) do
