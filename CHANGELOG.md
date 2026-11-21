@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.7.2
+
+### Fixes
+- Sleeping bag icon shows again instead of the rested Z.
+
 ## 3.7.1
 
 ### Fixes
