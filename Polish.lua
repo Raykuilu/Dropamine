@@ -249,6 +249,10 @@ if Wd then
     -- On ne recalcule pas left/inner ici, pour ne pas écraser le plancher 40 % / overlay.
     I.CleanText(p.text)
     p.text:SetTextColor(1, 0.93, 0.80)
+    if p.textMax and p.textMax.SetTextColor and Wd.MaxColor then
+      I.CleanText(p.textMax)
+      p.textMax:SetTextColor(Wd.MaxColor())
+    end
     local plan = Wd.last
     local left = (plan and plan.left) or 0
     local inner = (plan and plan.inner) or 0

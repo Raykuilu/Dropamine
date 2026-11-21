@@ -142,12 +142,24 @@ end
 -- 3.7.2 : police du niveau total : chiffres (~0,72 em en Arial Narrow) à la
 -- hauteur de la barre, jamais sous la police d'origine ni plus haute que la rangée.
 Wd.DIGIT_EM = 0.72
+Wd.LEVEL_DOWN = 2
+Wd.MAX_GAP = 2            -- px entre « 89 » et « / 2460 »
+-- « / max » : même rapport et même atténuation que le « /max » des cases.
+function Wd.MaxFont(sz)
+  local k = (ns.Polish and ns.Polish.MAX_K) or 0.78
+  return math.max(7, math.floor((sz or 11) * k + 0.5))
+end
+function Wd.MaxColor()
+  local k = (ns.Polish and ns.Polish.MAX_DIM) or { 0.80, 0.76, 0.68 }
+  return 1 * k[1], 0.93 * k[2], 0.80 * k[3]
+end
 function Wd.LevelFont(m, bh, h)
   m = m or {}
   local base = m.font or 11
   bh = bh or m.bh or Wd.MIN_BAR_H or 12
   h = h or m.h or 25
-  local f = math.floor(bh / (Wd.DIGIT_EM or 0.72) + 0.5)
+  -- 3.7.2 : un cran sous la hauteur de barre (le niveau ne doit pas dominer).
+  local f = math.floor(bh / (Wd.DIGIT_EM or 0.72) + 0.5) - (Wd.LEVEL_DOWN or 2)
   f = math.min(f, math.max(base, h - 4))
   return math.max(base, f)
 end
@@ -225,18 +237,30 @@ function Wd.PlaceTotalRow(t, p, m, w, h, cur, max)
   -- Toujours Arial Narrow + ombre de case, jamais la face du modèle de police.
   local path = (I and I.COUNT_PATH) or m.fontPath or "Fonts\\ARIALN.TTF"
   local flags = (I and I.TEXT_FLAGS) or m.fontFlags or ""
+  -- 3.7.2 : « 89 » (crème) + « / 2460 » plus petit et atténué, comme le /max des cases.
+  local pm = p.textMax
   local label = string.format("%d / %d", N(cur) or 0, N(max) or 0)
-  if p.text.SetText then p.text:SetText(label) end
-  local function twOf(sz)
+  if pm then
+    if p.text.SetText then p.text:SetText(string.format("%d", N(cur) or 0)) end
+    if pm.SetText then pm:SetText(string.format("/ %d", N(max) or 0)) end
+  elseif p.text.SetText then
+    p.text:SetText(label)
+  end
+  local function fontOn(fs, sz)
     if I and I.ApplyNumberFont then
-      I.ApplyNumberFont(p.text, sz)
-    elseif p.text.SetFont and path then
-      pcall(p.text.SetFont, p.text, path, sz, flags)
-      if I and I.CleanText then I.CleanText(p.text) end
+      I.ApplyNumberFont(fs, sz)
+    elseif fs.SetFont and path then
+      pcall(fs.SetFont, fs, path, sz, flags)
+      if I and I.CleanText then I.CleanText(fs) end
     end
-    local okW, tw = pcall(p.text.GetStringWidth, p.text)
+    local okW, tw = pcall(fs.GetStringWidth, fs)
     tw = (okW and N(tw)) or 56
     if tw < 0 then tw = 0 end
+    return tw
+  end
+  local function twOf(sz)
+    local tw = fontOn(p.text, sz)
+    if pm then tw = tw + (Wd.MAX_GAP or 2) + fontOn(pm, Wd.MaxFont(sz)) end
     return tw
   end
   local plan = Wd.PlanTotalRow(w, m, twOf)
@@ -249,6 +273,21 @@ function Wd.PlaceTotalRow(t, p, m, w, h, cur, max)
   if p.text.ClearAllPoints then p.text:ClearAllPoints() end
   -- Texte à gauche de la barre, jamais superposé, à la police planifiée (plancher 13 px).
   p.text:SetPoint("LEFT", t, "LEFT", plan.textX, 0)
+  if pm then
+    local f2 = Wd.MaxFont(plan.font)
+    if pm.SetFont and path then pcall(pm.SetFont, pm, path, f2, flags or "") end
+    if I and I.CleanText then I.CleanText(pm) end
+    if pm.SetTextColor then pm:SetTextColor(Wd.MaxColor()) end
+    if pm.ClearAllPoints then pm:ClearAllPoints() end
+    -- Posé sur la rangée (pas sur la boîte du niveau) juste après « 89 ».
+    -- Lignes de base alignées : deux boîtes centrées, descente ~0,21 em,
+    -- donc la petite descend de (f1 - f2) × 0,29.
+    local okW, w1 = pcall(p.text.GetStringWidth, p.text)
+    w1 = (okW and N(w1)) or 0
+    local dy = -math.floor((plan.font - f2) * 0.29 + 0.5)
+    pm:SetPoint("LEFT", t, "LEFT", plan.textX + w1 + (Wd.MAX_GAP or 2), dy)
+    plan.font2 = f2
+  end
   if p.track.ClearAllPoints then p.track:ClearAllPoints() end
   p.track:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", plan.left, plan.by)
   p.track:SetSize(plan.inner, plan.bh)
@@ -373,6 +412,8 @@ local function Parts(t)
   pcall(p.fill.SetTexture, p.fill, Wd.TEX)
   p.text = t:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   if p.text.SetJustifyH then p.text:SetJustifyH("CENTER") end
+  p.textMax = t:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  if p.textMax.SetJustifyH then p.textMax:SetJustifyH("LEFT") end
   t._wideParts = p
   return p
 end
@@ -698,6 +739,7 @@ function Wd.Paint(t)
     p.track:SetVertexColor(Wd.TRACK[1], Wd.TRACK[2], Wd.TRACK[3], Wd.TRACK[4])
   end
   p.track:Show() p.text:Show()
+  if p.textMax then p.textMax:Show() end
   Wd.last = { w = w, h = h, cur = cur, max = max, pct = pct, inner = inner,
     left = left, by = by, bh = bh, isz = isz, pad = pad, font = plan and plan.font or m.font,
     edgeOut = edge, overlay = plan and plan.overlay, minBar = plan and plan.minBar,
@@ -731,6 +773,7 @@ local function Unwide(t)
     if t._hgHit and t._hgHit.Hide then pcall(t._hgHit.Hide, t._hgHit) end
     if p.sheen then p.sheen:Hide() end
     p.text:Hide()
+    if p.textMax then p.textMax:Hide() end
   end
   if t.countFS then t.countFS:Show() end
   if t.countFS2 then t.countFS2:Show() end
