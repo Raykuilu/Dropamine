@@ -3592,13 +3592,13 @@ do
     local wantLo = (Wd.IconSize and Wd.IconSize(lo.tile)) or math.floor((lo.tile or 36) * 0.70 + 0.5)
     ok(lo.h == wantLo and lo.isz == wantLo and lo.bh >= 12 and lo.font == (nlo and nlo.total)
       and lo.minBarW >= 100 and lo.pad >= (Wd.MIN_PAD or 3)
-      and lo.isz >= (Wd.MIN_ISZ or 32) and lo.isz <= lo.tile,
-      "rangée total 90 % : hauteur = icône de case (h=" .. tostring(lo.h) .. ")")
+      and math.abs((lo.isz or 0) - (lo.tile or 0) * 0.70) <= 1.5,
+      "rangée total 90 % : hauteur = fiole 70 % de la case (h=" .. tostring(lo.h) .. ")")
     ok((Wd.MIN_BAR_H or 0) >= 12
-      and (Wd.MIN_BAR_W or 0) >= 100 and Wd.IconSize(I.TILE) == I.ICON
-      and Wd.StateIconSize(I.TILE) == I.ICON
+      and (Wd.MIN_BAR_W or 0) >= 100 and math.abs((Wd.ICON_K or 0) - 0.70) < 0.01
+      and math.abs((Wd.STATE_ICON_K or 0) - 0.55) < 0.01
       and (I.TILE_MIN or 0) >= 36 and (L.SCALE_MIN or 0) >= 90,
-      "planchers : case 36 px, fiole = états = icône de case, échelle 90 %")
+      "planchers : case 36 px, fiole 70 %, états 55 %, échelle 90 %")
     ok(nlo and nlo.rank > nlo.total and nlo.total > nlo.max,
       "90 % : rang > total > /max")
     -- En dessous de la taille medium, l'épaisseur reste au plancher 12 px (ratio plus élevé).
@@ -3612,7 +3612,7 @@ do
     local r150, r200 = midHi.bh / midHi.tile, hi.bh / hi.tile
     ok(math.abs(r150 - r200) < 0.03, "épaisseur barre : même ratio à 150 % et 200 % (" .. string.format("%.3f/%.3f", r150, r200) .. ")")
     ok(mid.font == mid.font and hi.font >= mid.font, "police total posée en px, pas étirée")
-    ok(Wd.IconSize(hi.tile) == math.floor(hi.tile * I.ICON / I.TILE + 0.5), "fiole : même ratio que l'icône de case à toutes les tailles")
+    ok(math.abs((Wd.ICON_K or 0) - 0.70) < 0.01, "fiole : glyphe à 70 % de la case, sans cadre")
   end
   if ns.db and ns.db.ui then ns.db.ui.scale = savedScale end
   if L and L.SyncMetrics then L.SyncMetrics() end
@@ -3785,8 +3785,8 @@ do
         string.format("métriques %d col. %d %% : h=%d bh=%d font=%d isz=%d (total=%s)",
           cols, pct, m.h, m.bh, m.font, m.isz, tostring(nsizes and nsizes.total)))
       ok(plan.overlay ~= true, string.format("%d col. %d %% : pas de texte superposé à la barre", cols, pct))
-      ok(plan.font == m.font,
-        string.format("%d col. %d %% : police pleine %d (pas réduite)", cols, pct, plan.font))
+      ok(plan.font >= m.font and plan.font <= Wd.LevelFont(m, plan.bh, plan.h),
+        string.format("%d col. %d %% : police du niveau %d (>= %d, <= barre)", cols, pct, plan.font, m.font))
       if gw + 0.01 >= minW then
         ok(plan.inner + 0.01 >= (Wd.MIN_BAR_W or 100),
           string.format("barre %d col. %d %% : inner=%d >= 100", cols, pct, plan.inner))
@@ -3866,7 +3866,7 @@ do
         local want = (Wd.IconSize and Wd.IconSize(tile)) or math.floor(tile * 0.70 + 0.5)
         local cx = (Wd.FirstColCenter and Wd.FirstColCenter(tile))
           or (Wd.ColCenter and Wd.ColCenter(tile)) or math.floor(tile / 2 + 0.5)
-        ok(want == I.ICON, "taille fiole = icône de case (" .. tostring(want) .. ")")
+        ok(want == math.floor(tile * 0.70 + 0.5), "taille fiole = 70 % de la case (" .. tostring(want) .. ")")
         local dummy = { _wideOn = true, icon = { shown = true, w = 0, h = 0, pts = {} },
           slotBg = { shown = true }, slotBorder = { shown = true }, bg333 = { shown = true },
           _flareRing = { shown = true }, _restZ = { disc = { shown = true } } }
@@ -4436,9 +4436,9 @@ do
     local m59 = Wd.Metrics(tile)
     local isz70 = (Wd.IconSize and Wd.IconSize(tile)) or math.floor(tile * 0.70 + 0.5)
     local isz55 = (Wd.StateIconSize and Wd.StateIconSize(tile)) or math.floor(tile * 0.55 + 0.5)
-    ok(m59.h == isz70 and isz70 == I.ICON, "59 : hauteur rangée total = icône de case (" .. tostring(m59.h) .. ")")
-    ok(isz55 == isz70,
-      "59 : glyphe Z de repos = icône de case (" .. tostring(isz55) .. ")")
+    ok(m59.h == isz70, "59 : hauteur rangée total = fiole 70 % (" .. tostring(m59.h) .. ")")
+    ok(isz55 == math.floor(tile * 0.55 + 0.5),
+      "59 : glyphe Z de repos = 55 % de la case (" .. tostring(isz55) .. ")")
     local rows59 = 2
     local expectGh = rows59 * tile + (rows59 - 1) * vg + vg + m59.h
     ok(gh59 == expectGh, "59 : écart avant le total = écart entre rangées (" .. tostring(gh59) .. " / " .. tostring(expectGh) .. ")")
@@ -4722,26 +4722,36 @@ do
   ok(mem1 <= mem0 + 128, "Tester 3× : mémoire revenue au socle (" .. string.format("%.1f", mem1) .. " / " .. string.format("%.1f", mem0) .. " Ko)")
 end
 
--- 3.7.2 : icône de la rangée total = icône de case ; texte centré entre l'icône et la barre.
+-- 3.7.2 : icônes inchangées (fiole 70 %, Z 55 %) ; la barre est la référence :
+-- chiffres du niveau à la hauteur de la barre, texte centré entre l'icône et la barre.
 do
-  local Wd, I = ns.Wide, ns.Icons
+  local Wd = ns.Wide
   local Lyt = ns.Layout
   local ox = (Lyt and Lyt.GridOriginX and Lyt.GridOriginX()) or 0
+  local function twOf(sz) return math.floor(11 * (sz or 13) * 0.5 + 0.5) end
   for _, tile in ipairs({ 36, 40, 54, 72 }) do
     local m = Wd.Metrics(tile)
-    local want = math.floor(tile * I.ICON / I.TILE + 0.5)
-    ok(m.isz == math.max(Wd.MIN_ISZ or 32, want) and m.isz <= tile and m.h >= m.isz,
-      "3.7.2 case " .. tile .. " : icône total = icône de case (" .. m.isz .. "), rangée " .. m.h)
-    for _, tw in ipairs({ 40, 56, 70 }) do
-      local w = Wd.MinRowWidth(m, tw) + 20
-      local plan = Wd.PlanTotalRow(w, m, tw)
+    ok(m.isz == math.max(Wd.MIN_ISZ or 25, math.floor(tile * 0.70 + 0.5))
+      and Wd.StateIconSize(tile) == math.floor(tile * 0.55 + 0.5) and m.h == m.isz,
+      "3.7.2 case " .. tile .. " : fiole 70 % (" .. m.isz .. "), Z 55 % (" .. Wd.StateIconSize(tile) .. "), rangée " .. m.h)
+    for _, extra in ipairs({ 200, 60, 0 }) do
+      local w = Wd.MinRowWidth(m, twOf(m.font)) + extra
+      local plan = Wd.PlanTotalRow(w, m, twOf)
+      local tw = twOf(plan.font)
+      local digitH = plan.font * Wd.DIGIT_EM
+      ok(plan.font >= m.font and digitH <= plan.bh + 1 and plan.font <= plan.h,
+        "3.7.2 case " .. tile .. " +" .. extra .. " : niveau " .. plan.font .. " px (chiffres ~" .. string.format("%.1f", digitH) .. " / barre " .. plan.bh .. ")")
+      if extra >= 200 then
+        ok(digitH >= plan.bh - 1.5, "3.7.2 case " .. tile .. " : chiffres à la hauteur de la barre quand la place le permet")
+      end
       local iconR = ox + Wd.ColCenter(tile) + m.isz / 2
       local barL = plan.left - plan.edge
       local gl, gr = plan.textX - iconR, barL - (plan.textX + tw)
       ok(gl >= 0 and gr >= 0 and math.abs(gl - gr) <= 1,
-        "3.7.2 case " .. tile .. " texte " .. tw .. " : centré entre Z et barre (" .. gl .. " / " .. gr .. ")")
+        "3.7.2 case " .. tile .. " +" .. extra .. " : texte centré entre l'icône et la barre (" .. gl .. " / " .. gr .. ")")
       ok(plan.left + plan.inner + plan.pad + plan.edge <= w + 0.5 and plan.inner >= (Wd.MIN_BAR_W or 100),
-        "3.7.2 case " .. tile .. " texte " .. tw .. " : barre sans débordement")
+        "3.7.2 case " .. tile .. " +" .. extra .. " : barre >= 100 px, sans débordement")
+      ok(plan.by == math.floor((plan.h - plan.bh) / 2 + 0.5), "3.7.2 case " .. tile .. " : barre centrée verticalement")
     end
   end
 end
