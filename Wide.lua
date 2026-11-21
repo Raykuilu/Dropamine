@@ -27,23 +27,16 @@ Wd.MIN_BAR_H = 12
 Wd.MIN_BAR_W = 100
 Wd.MIN_FONT  = 13
 Wd.MIN_PAD   = 3
-Wd.MIN_ISZ   = 32   -- 3.7.2 : taille des icônes de case (I.ICON_MIN)
-Wd.ICON_K       = 0.90 -- repli seulement : I.ICON / I.TILE quand Icons est chargé
-Wd.STATE_ICON_K = nil  -- 3.7.2 : le Z / les états ont la même taille que la fiole
--- 3.7.2 : icône de la rangée total = même taille que les icônes des cases de
--- compétence au-dessus (I.ICON pour une case I.TILE), à l'échelle de la case.
+Wd.MIN_ISZ   = 25   -- 70 % de la case plancher 36 px
+Wd.ICON_K       = 0.70 -- fiole (goutte) : ~70 % de la hauteur de case
+Wd.STATE_ICON_K = 0.55 -- Z de repos seulement ; fiole / vol / combat restent à ICON_K
 function Wd.IconSize(tile)
-  local I = ns.Icons
-  tile = (ns.N and ns.N(tile)) or tonumber(tile) or (I and I.TILE) or Wd.REF_TILE or 40
-  local ic, tl = I and tonumber(I.ICON), I and tonumber(I.TILE)
-  if ic and tl and tl > 0 then
-    if tile == tl then return math.max(1, math.floor(ic + 0.5)) end
-    return math.max(1, math.floor(tile * ic / tl + 0.5))
-  end
-  return math.max(1, math.floor(tile * (Wd.ICON_K or 0.90) + 0.5))
+  tile = (ns.N and ns.N(tile)) or tonumber(tile) or (ns.Icons and ns.Icons.TILE) or Wd.REF_TILE or 40
+  return math.max(1, math.floor(tile * (Wd.ICON_K or 0.70) + 0.5))
 end
 function Wd.StateIconSize(tile)
-  return Wd.IconSize(tile)
+  tile = (ns.N and ns.N(tile)) or tonumber(tile) or (ns.Icons and ns.Icons.TILE) or Wd.REF_TILE or 40
+  return math.max(1, math.floor(tile * (Wd.STATE_ICON_K or 0.55) + 0.5))
 end
 function Wd.ColCenter(tile)
   tile = (ns.N and ns.N(tile)) or tonumber(tile) or (ns.Icons and ns.Icons.TILE) or Wd.REF_TILE or 40
@@ -146,6 +139,18 @@ end
 -- Disposition fixe : fiole | texte à la police de référence (jamais réduite) |
 -- barre d'au moins MIN_BAR_W. Pas de superposition, pas de texte tassé.
 -- Si w est trop étroit, le plan utilise minW (le cadre doit avoir grandi).
+-- 3.7.2 : police du niveau total : chiffres (~0,72 em en Arial Narrow) à la
+-- hauteur de la barre, jamais sous la police d'origine ni plus haute que la rangée.
+Wd.DIGIT_EM = 0.72
+function Wd.LevelFont(m, bh, h)
+  m = m or {}
+  local base = m.font or 11
+  bh = bh or m.bh or Wd.MIN_BAR_H or 12
+  h = h or m.h or 25
+  local f = math.floor(bh / (Wd.DIGIT_EM or 0.72) + 0.5)
+  f = math.min(f, math.max(base, h - 4))
+  return math.max(base, f)
+end
 function Wd.PlanTotalRow(w, m, twOf)
   m = m or (Wd.Metrics and Wd.Metrics()) or {}
   w = math.max(0, math.floor((w or 0) + 0.5))
@@ -158,19 +163,33 @@ function Wd.PlanTotalRow(w, m, twOf)
   local bh = math.max(m.bh or 0, Wd.MIN_BAR_H or 12)
   local h = math.max(m.h or 0, Wd.MIN_H or 36)
   local minBar = Wd.MIN_BAR_W or 100
+  local Lyt = ns.Layout
+  local ox = (Lyt and Lyt.GridOriginX and Lyt.GridOriginX()) or 0
+  -- 3.7.2 : le niveau total suit la barre (référence) : hauteur des chiffres
+  -- ~ épaisseur de la barre, sans dépasser la rangée. On ne réduit vers la
+  -- police d'origine que si la barre tomberait sous MIN_BAR_W (pas de
+  -- débordement, pas d'élargissement du cadre).
+  local want = Wd.LevelFont and Wd.LevelFont(m, bh, h) or font
   local tw
   if type(twOf) == "function" then
-    tw = N(twOf(font)) or 0
+    local sz = want
+    while true do
+      tw = N(twOf(sz)) or 0
+      if tw <= 0 then tw = Wd.ReserveTextW(sz) end
+      local need = ox + slotW + pad + tw + pad + edge + minBar + pad + edge
+      if sz <= font or not w or w <= 0 or need <= w then break end
+      sz = sz - 1
+    end
+    font = sz
   else
     tw = N(twOf) or 0
+    font = want
   end
   if tw <= 0 then tw = Wd.ReserveTextW(font) end
   local minW = Wd.MinRowWidth(m, tw)
   -- La rangée tient dans la largeur réelle du cadre (plus d'élargissement forcé).
   local used = w
   if not used or used <= 0 then used = minW end
-  local Lyt = ns.Layout
-  local ox = (Lyt and Lyt.GridOriginX and Lyt.GridOriginX()) or 0
   local gap = pad + edge
   local textX = ox + slotW + pad
   local left = ox + slotW + pad + tw + gap
