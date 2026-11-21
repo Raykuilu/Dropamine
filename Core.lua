@@ -9,7 +9,7 @@ end
 _G.Dropamine = ns
 ns.ADDON = ADDON
 local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
-ns.VERSION = "3.7.0"
+ns.VERSION = "3.7.1"
 -- DEV ONLY : une seule ligne à passer à true pour rétablir la section Options « Test » et /drop test.
 -- Éteint sur la version publique.
 ns.DEV_TEST = false

@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.7.1
+
+### Fixes
+- Much lower memory growth and CPU while idle or resting (especially in capitals): player buffs are read once per aura change instead of up to 40 times per refresh, and travel detection is no longer recomputed several times per poll.
+- No more forced garbage-collection steps every 2 seconds.
+
 ## 3.7.0
 This release is the 3.6.3 work shipped as 3.7.0 (the 3.6.3 tag was never created).
 
