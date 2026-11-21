@@ -502,17 +502,16 @@ end
 -- et le client crée une table par GetAuraDataByIndex. Le cache est vidé à
 -- chaque UNIT_AURA du joueur (S.OnPlayerAura / InvalidateAuras / FlushAuras /
 -- relecture forcée, changement de monde / mort) ; filet de sécurité : 10 s.
-S.AURA_CACHE_TTL = 10
+S.AURA_CACHE_TTL = 2   -- 3.7.2 : filet plus court (sac de couchage)
 local auraC = { n = {}, s = {}, p = {}, gen = -1, at = nil }
 S._auraGen = 0
 function S.BumpAuraCache() S._auraGen = (S._auraGen or 0) + 1 end
 local function AuraCacheCheck()
   local now = Now()
-  if auraC.gen ~= S._auraGen or not auraC.at or now < auraC.at or (now - auraC.at) >= (S.AURA_CACHE_TTL or 10) then
+  if auraC.gen ~= S._auraGen or not auraC.at or now < auraC.at or (now - auraC.at) >= (S.AURA_CACHE_TTL or 2) then
     local n, sp, pr = auraC.n, auraC.s, auraC.p
     for k in pairs(pr) do n[k], sp[k], pr[k] = nil, nil, nil end
     auraC.gen, auraC.at = S._auraGen, now
-    auraC.unrollSet, auraC.unroll1, auraC.unroll2 = nil, nil, nil
   end
 end
 local function AuraAt(i)
@@ -892,20 +891,21 @@ end
 -- Aura de déploiement 429961 (si le client la pose sur le joueur).
 -- 3.7.1 : résultat gardé pour la même lecture d'auras (le puits le demande
 -- jusqu'à 20 fois par seconde au repos ; il ne change qu'avec UNIT_AURA).
+-- 3.7.2 : l'aura 429961 est relue EN DIRECT à chaque appel (aucune table si
+-- elle est absente) ; seul le repli par nom passe par le cache d'auras, et
+-- son résultat n'est jamais gardé (3.7.1 : le sac pouvait rester « absent »).
 function S.UnrollBagAura()
-  AuraCacheCheck()
-  if auraC.unrollSet then return auraC.unroll1, auraC.unroll2 end
-  local a, b = S.UnrollBagAuraRaw()
-  auraC.unrollSet, auraC.unroll1, auraC.unroll2 = true, a, b
-  return a, b
-end
-function S.UnrollBagAuraRaw()
   local id0 = S.UNROLL_BAG_SPELL or 429961
   local C = _G.C_UnitAuras
   if type(C) == "table" and type(C.GetPlayerAuraBySpellID) == "function" then
     local ok, data = pcall(C.GetPlayerAuraBySpellID, id0)
     if ok and type(data) == "table" then return true, data end
   end
+  return S.UnrollBagAuraScan(id0)
+end
+function S.UnrollBagAuraRaw() return S.UnrollBagAura() end
+function S.UnrollBagAuraScan(id0)
+  id0 = id0 or S.UNROLL_BAG_SPELL or 429961
   for i = 1, 40 do
     local name, spellId, present = AuraAt(i)
     if not present then
@@ -3691,8 +3691,14 @@ if ns.On then
     "SKILL_LINES_CHANGED", "CHAT_MSG_SKILL",
   }
   -- 3.7.1 : cache d'auras vidé dès l'événement brut (avant le regroupement).
-  for _, ev in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_DEAD", "PLAYER_ALIVE", "PLAYER_UNGHOST" }) do
+  for _, ev in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_DEAD", "PLAYER_ALIVE", "PLAYER_UNGHOST", "PLAYER_UPDATE_RESTING" }) do
     ns.On(ev, function() S.BumpAuraCache() end)
+  end
+  -- 3.7.2 : un sort du joueur (déploiement du sac…) peut poser une aura avant
+  -- l'UNIT_AURA : relecture au prochain passage.
+  for _, ev in ipairs({ "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_SUCCEEDED",
+    "UNIT_SPELLCAST_CHANNEL_START", "UNIT_SPELLCAST_CHANNEL_STOP" }) do
+    ns.On(ev, function(_, unit) if unit == nil or unit == "player" then S.BumpAuraCache() end end)
   end
   for i = 1, #evs do
     local ev = evs[i]
