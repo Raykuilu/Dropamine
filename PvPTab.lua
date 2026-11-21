@@ -19,11 +19,14 @@ if not PV then return end
 local PT = { stats = { clicks = 0, armed = 0, prof = 0 } }
 ns.PvPTab = PT
 
+-- 3.7.1 : sans table temporaire.
+local function GetRet(ok, ...)
+  if not ok then return nil end
+  return ...
+end
 local function Get(o, m, ...)
   if type(o) ~= "table" or type(o[m]) ~= "function" then return nil end
-  local r = { pcall(o[m], o, ...) }
-  if not r[1] then return nil end
-  return (table.unpack or unpack)(r, 2)
+  return GetRet(pcall(o[m], o, ...))
 end
 local function InCombat()
   if type(_G.InCombatLockdown) == "function" then

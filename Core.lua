@@ -2409,15 +2409,11 @@ F.TRANSPORT_NAMES = {
 -- mots qui, seuls comme nom de zone / sous-zone / minimap, suffisent
 F.TRANSPORT_WORDS = { "zeppelin", "zepplin", "zeplin", "deeprun" }
 
+-- 3.7.1 : listes constantes (aucune table créée à chaque sondage).
+local TRANSPORT_ZONE_FNS = { "GetMinimapZoneText", "GetSubZoneText", "GetRealZoneText", "GetZoneText" }
 function F.ZoneLooksTransport()
-  local names = {
-    CallFn("GetMinimapZoneText"),
-    CallFn("GetSubZoneText"),
-    CallFn("GetRealZoneText"),
-    CallFn("GetZoneText"),
-  }
-  for i = 1, #names do
-    local raw = names[i]
+  for i = 1, #TRANSPORT_ZONE_FNS do
+    local raw = (CallFn(TRANSPORT_ZONE_FNS[i]))
     if type(raw) == "string" and raw ~= "" then
       local f = (ns.Fold and ns.Fold(raw)) or raw:lower()
       if F.TRANSPORT_NAMES[f] then return true, raw end
@@ -2429,25 +2425,20 @@ function F.ZoneLooksTransport()
   return false
 end
 
+local TRANSPORT_API_NS = { "C_Transport", "C_GameTransport", "C_Unit", "C_Vehicle", "C_Player" }
+local TRANSPORT_API_METHODS = { "IsOnTransport", "UnitIsOnTransport", "IsPlayerOnTransport", "GetTransportGUID" }
 function F.ApiOnTransport()
   if F._simTransport then return true end
   -- APIs optionnelles, toutes protégées (absentes sur une 1.12 stricte).
-  local tries = {
-    { "IsOnTransport" },
-    { "IsPlayerOnTransport" },
-    { "UnitIsOnTransport", "player" },
-    { "UnitOnTransport", "player" },
-  }
-  for i = 1, #tries do
-    local t = tries[i]
-    local v = CallFn(t[1], unpack(t, 2))
-    if v then return true end
-  end
-  for _, nsName in ipairs({ "C_Transport", "C_GameTransport", "C_Unit", "C_Vehicle", "C_Player" }) do
-    local t = _G[nsName]
+  if CallFn("IsOnTransport") then return true end
+  if CallFn("IsPlayerOnTransport") then return true end
+  if CallFn("UnitIsOnTransport", "player") then return true end
+  if CallFn("UnitOnTransport", "player") then return true end
+  for ni = 1, #TRANSPORT_API_NS do
+    local t = _G[TRANSPORT_API_NS[ni]]
     if type(t) == "table" then
-      for _, meth in ipairs({ "IsOnTransport", "UnitIsOnTransport", "IsPlayerOnTransport", "GetTransportGUID" }) do
-        local fn = t[meth]
+      for mi = 1, #TRANSPORT_API_METHODS do
+        local fn = t[TRANSPORT_API_METHODS[mi]]
         if type(fn) == "function" then
           local ok, v = pcall(fn, t, "player")
           if not ok then ok, v = pcall(fn, "player") end
@@ -2491,6 +2482,8 @@ function F.PlayerPos()
   return nil
 end
 
+-- 3.7.1 : comparaison partagée (plus de fermeture créée à chaque appel).
+local function NumLtZero(v) return v < 0 end
 function F.IsSecret(v)
   if v == nil then return false end
   local fn = _G and (_G.issecretvalue or _G.IsSecretValue)
@@ -2499,7 +2492,7 @@ function F.IsSecret(v)
     if ok and r then return true end
   end
   if type(v) == "number" then
-    local ok = pcall(function() return v < 0 end)
+    local ok = pcall(NumLtZero, v)
     if not ok then return true end
   end
   return false
@@ -2515,7 +2508,7 @@ function F.DriftIsTransport()
   -- comparaison provoque une erreur). Dans ce cas, pas de détection par dérive.
   if F.IsSecret(speed) or F.IsSecret(x) or F.IsSecret(y) then F._drift = nil return false end
   if type(speed) ~= "number" then speed = 0 end
-  if not pcall(function() return speed < 0 end) then F._drift = nil return false end
+  if not pcall(NumLtZero, speed) then F._drift = nil return false end
   if CallFn("UnitOnTaxi", "player") then F._drift = nil return false end
   if CallFn("IsSwimming") or CallFn("IsFalling") then F._drift = nil return false end
   if not x then F._drift = nil return false end
@@ -2546,12 +2539,22 @@ function F.DriftIsTransport()
   return d.hits >= 3
 end
 
-function F.OnTransport()
-  if F._simTransport then return true end
+-- 3.7.1 : F.Paused() est appelé ~5 fois par sondage (Sync, Pulse, Slot,
+-- barres de nom…). Dans une même image (même GetTime), le monde n'a pas
+-- changé : on réutilise le résultat au lieu de relancer API + zones + dérive.
+function F.OnTransportRaw()
   if F.ApiOnTransport() then return true end
   if F.ZoneLooksTransport() then return true end
   if F.DriftIsTransport() then return true end
   return false
+end
+function F.OnTransport()
+  if F._simTransport then return true end
+  local now = (type(GetTime) == "function" and GetTime()) or nil
+  if now and F._otAt == now then return F._otVal end
+  local v = F.OnTransportRaw()
+  F._otAt, F._otVal = now, v
+  return v
 end
 
 function F.SafetyPause()
@@ -2701,6 +2704,8 @@ function F.SetTaxi(on, why)
 end
 
 function F.Sync(why)
+  -- 3.7.1 : un événement (zone, contrôle, chargement…) relit l'état du monde.
+  if why ~= "poll" then F._otAt = nil end
   -- Une simulation /drop test ne doit pas être annulée par le sondage.
   if F._simTaxi or F._simTransport or F._simLoading or F._simCinematic then
     F.SetTaxi(true, why or "sim")
@@ -2781,14 +2786,9 @@ function F.EnsurePoll()
     if F._elapsed < F.POLL then return end
     F._elapsed = 0
     local combat = ns.InCombat and ns.InCombat()
-    -- GC incrémental hors combat (le tas Lua grossit par le churn, pas les tables retenues).
-    if not combat and type(collectgarbage) == "function" then
-      F._gcAcc = (F._gcAcc or 0) + 1
-      if F._gcAcc >= 4 then  -- ~2 s à F.POLL 0,5
-        F._gcAcc = 0
-        pcall(collectgarbage, "step", 200)
-      end
-    end
+    -- 3.7.1 : plus de collectgarbage("step") toutes les 2 s. Le churn venait
+    -- des relectures d'auras / transport (corrigées) ; un pas manuel faisait
+    -- travailler le GC de TOUT le client au compte de Dropamine (CPU).
     if not combat and ns.Watchdog and ns.Watchdog.Tick then
       pcall(ns.Watchdog.Tick, dt)
     end

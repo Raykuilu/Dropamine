@@ -192,8 +192,20 @@ function Style.SeasonalTint(month)
   return Style.SEASONS[key], key
 end
 
+-- 3.7.1 : résultat mémorisé par texte (catalogue statique) ; l'ancien calcul
+-- créait une table par entrée du catalogue à chaque barre de nom / infobulle.
+local skillTextCache, skillTextN, NOHIT = {}, 0, {}
 function Style.SkillIdForText(text)
   if type(text) ~= "string" then return nil end
+  local hit = skillTextCache[text]
+  if hit ~= nil then if hit == NOHIT then return nil end return hit end
+  local r = Style.SkillIdForTextRaw(text)
+  if skillTextN >= 2000 then skillTextCache, skillTextN = {}, 0 end
+  skillTextCache[text] = (r == nil) and NOHIT or r
+  skillTextN = skillTextN + 1
+  return r
+end
+function Style.SkillIdForTextRaw(text)
   local f = Fold(text)
   local best, bestLen
   for _, e in ipairs(ns.CATALOG or {}) do

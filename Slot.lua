@@ -234,13 +234,14 @@ function S.LiveRested()
   return Call(IsResting) and true or false
 end
 
+local TRAINER_UNITS = { "npc", "target", "mouseover" }
 function S.LiveTrainer()
   if S._sim.trainer then return true end
   local tf = _G.TrainerFrame
   if tf and type(tf.IsShown) == "function" and Call(tf.IsShown, tf) then return true end
-  local names = { Call(UnitName, "npc"), Call(UnitName, "target"), Call(UnitName, "mouseover") }
-  for i = 1, #names do
-    local n = names[i]
+  -- 3.7.1 : sans table temporaire (appelé à chaque rafraîchissement du puits).
+  for i = 1, #TRAINER_UNITS do
+    local n = (Call(UnitName, TRAINER_UNITS[i]))
     if type(n) == "string" and n ~= "" then
       local f = (ns.Fold and ns.Fold(n) or n:lower())
       if f:find("maitre", 1, true) or f:find("trainer", 1, true) then return true end
@@ -396,12 +397,12 @@ local function SafeStr(v)
   return v
 end
 
+-- 3.7.1 : sans fermeture par appel (appelé pour chaque aura lue).
+local function FoldOrLower(v) return (ns.Fold and ns.Fold(v)) or v:lower() end
 local function SafeFold(v)
   v = SafeStr(v)
   if not v then return "" end
-  local ok, f = pcall(function()
-    return (ns.Fold and ns.Fold(v)) or v:lower()
-  end)
+  local ok, f = pcall(FoldOrLower, v)
   if ok and type(f) == "string" then return f end
   return ""
 end
@@ -458,9 +459,18 @@ function S.ClassifyEat(name, spellId)
   return nil
 end
 
+-- 3.7.1 : retours de UnitAura copiés dans une table réutilisée (plus de
+-- fermeture ni de table par index).
+local auraScratch = {}
+local AURA_SPELL_IDX = { 10, 11, 12, 8, 9 }
+local function FillAura(ok, ...)
+  if not ok then return false end
+  for i = 1, 12 do auraScratch[i] = (select(i, ...)) end
+  return true
+end
 -- Un index d'aura : nom + spellId, via C_UnitAuras, UnitAura/UnitBuff, AuraUtil.
 -- Ne lève jamais (pcall + gardes secrètes). Un trou (nom secret) n'arrête pas le scan.
-local function AuraAt(i)
+local function AuraAtRaw(i)
   local name, spellId
   local C = _G.C_UnitAuras
   if type(C) == "table" and type(C.GetAuraDataByIndex) == "function" then
@@ -473,10 +483,11 @@ local function AuraAt(i)
   end
   local fn = _G.UnitAura or _G.UnitBuff
   if type(fn) == "function" then
-    local ok, r = pcall(function() return { fn("player", i, "HELPFUL") } end)
-    if ok and type(r) == "table" and (r[1] ~= nil or r[10] ~= nil or r[11] ~= nil) then
+    local ok = FillAura(pcall(fn, "player", i, "HELPFUL"))
+    local r = auraScratch
+    if ok and (r[1] ~= nil or r[10] ~= nil or r[11] ~= nil) then
       name = SafeStr(r[1])
-      for _, idx in ipairs({ 10, 11, 12, 8, 9 }) do
+      for _, idx in ipairs(AURA_SPELL_IDX) do
         local id = N(r[idx])
         if id and id > 0 and id < 2000000 then spellId = id break end
       end
@@ -486,7 +497,65 @@ local function AuraAt(i)
   return nil, nil, false
 end
 
+-- 3.7.1 : lecture des auras du joueur mise en cache. Le puits relisait jusqu'à
+-- 40 index plusieurs fois par seconde (repas, sac de couchage, Bien reposé),
+-- et le client crée une table par GetAuraDataByIndex. Le cache est vidé à
+-- chaque UNIT_AURA du joueur (S.OnPlayerAura / InvalidateAuras / FlushAuras /
+-- relecture forcée, changement de monde / mort) ; filet de sécurité : 10 s.
+S.AURA_CACHE_TTL = 10
+local auraC = { n = {}, s = {}, p = {}, gen = -1, at = nil }
+S._auraGen = 0
+function S.BumpAuraCache() S._auraGen = (S._auraGen or 0) + 1 end
+local function AuraCacheCheck()
+  local now = Now()
+  if auraC.gen ~= S._auraGen or not auraC.at or now < auraC.at or (now - auraC.at) >= (S.AURA_CACHE_TTL or 10) then
+    local n, sp, pr = auraC.n, auraC.s, auraC.p
+    for k in pairs(pr) do n[k], sp[k], pr[k] = nil, nil, nil end
+    auraC.gen, auraC.at = S._auraGen, now
+    auraC.unrollSet, auraC.unroll1, auraC.unroll2 = nil, nil, nil
+  end
+end
+local function AuraAt(i)
+  AuraCacheCheck()
+  local present = auraC.p[i]
+  if present == nil then
+    local name, spellId, pres = AuraAtRaw(i)
+    auraC.n[i], auraC.s[i], auraC.p[i] = name, spellId, pres
+    return name, spellId, pres
+  end
+  return auraC.n[i], auraC.s[i], present
+end
+S.AuraAt = AuraAt
+
+-- Noms d'auras présents (même parcours que le scan, 3 trous = fin), pour ne
+-- lancer AuraUtil.FindAuraByName que sur un nom réellement présent.
+local auraNameSet = {}
+local function PlayerAuraNames()
+  for k in pairs(auraNameSet) do auraNameSet[k] = nil end
+  local holes, any = 0, false
+  for i = 1, 40 do
+    local name, _, present = AuraAt(i)
+    if not present then
+      holes = holes + 1
+      if holes >= 3 then break end
+    else
+      holes = 0
+      any = true
+      if name then auraNameSet[name] = true end
+    end
+  end
+  return auraNameSet, any
+end
+local FOOD_AURA_NAMES = {
+  "Nourriture", "Boisson", "Nourriture et Boisson", "Boisson et Nourriture",
+  "Food", "Drink", "Food & Drink", "Food and Drink", "Refreshment", "Restauration",
+}
+local foodNames = {}
+
 function S.FoodDrinkAura()
+  -- Lecture fraîche (point d'entrée du scan) : les passages suivants du même
+  -- scan (second passage, Bien reposé, sac) réutilisent cette lecture.
+  S.BumpAuraCache()
   -- 1) C_UnitAuras par identifiant de sort (même si le nom est secret)
   local C = _G.C_UnitAuras
   if type(C) == "table" and type(C.GetPlayerAuraBySpellID) == "function" then
@@ -498,10 +567,10 @@ function S.FoodDrinkAura()
   -- 2) AuraUtil par nom FR/EN (et noms localisés des sorts connus)
   local A = _G.AuraUtil
   if type(A) == "table" and type(A.FindAuraByName) == "function" then
-    local names = {
-      "Nourriture", "Boisson", "Nourriture et Boisson", "Boisson et Nourriture",
-      "Food", "Drink", "Food & Drink", "Food and Drink", "Refreshment", "Restauration",
-    }
+    local names = foodNames
+    for k = #names, 1, -1 do names[k] = nil end
+    for k = 1, #FOOD_AURA_NAMES do names[k] = FOOD_AURA_NAMES[k] end
+    local present, scanned = PlayerAuraNames()
     if type(_G.GetSpellInfo) == "function" then
       local n = 0
       for id in pairs(S.EAT_SPELLS) do
@@ -511,7 +580,12 @@ function S.FoodDrinkAura()
       end
     end
     for i = 1, #names do
-      local ok, hit = pcall(A.FindAuraByName, names[i], "player", "HELPFUL")
+      local ok, hit = false, nil
+      -- 3.7.1 : FindAuraByName reparcourt toutes les auras à chaque nom ;
+      -- on ne l'appelle que si ce nom est présent (ou si le scan est muet).
+      if present[names[i]] or not scanned then
+        ok, hit = pcall(A.FindAuraByName, names[i], "player", "HELPFUL")
+      end
       if ok and hit then
         local nm = SafeStr(hit) or (type(hit) == "table" and SafeStr(hit.name)) or names[i]
         if not IsWellFed(SafeFold(nm)) then return nm end
@@ -601,6 +675,7 @@ function S.ScanPlayerAuras(force)
 end
 
 function S.InvalidateAuras()
+  S.BumpAuraCache()
   S._auraFresh = false
 end
 
@@ -612,6 +687,7 @@ function S.FlushAuras(reason)
 end
 
 function S.OnPlayerAura(reason)
+  S.BumpAuraCache()
   -- Unité déjà filtrée (player). Regroupe les salves d'UNIT_AURA.
   if S.CombatQuiet and S.CombatQuiet() and not S._flushing then
     S.Defer("auras")
@@ -680,6 +756,8 @@ local function IsWellRestedName(name)
   return false
 end
 
+local REST_AURA_NAMES = { "Bien reposé", "Bien repose", "Well-Rested", "Well Rested" }
+local restNames = {}
 function S.WellRestedAura()
   -- 1) Par identifiant de sort (même si le nom est secret).
   local C = _G.C_UnitAuras
@@ -693,13 +771,19 @@ function S.WellRestedAura()
   -- 2) AuraUtil par nom FR/EN.
   local A = _G.AuraUtil
   if type(A) == "table" and type(A.FindAuraByName) == "function" then
-    local names = { "Bien reposé", "Bien repose", "Well-Rested", "Well Rested" }
+    local names = restNames
+    for k = #names, 1, -1 do names[k] = nil end
+    for k = 1, #REST_AURA_NAMES do names[k] = REST_AURA_NAMES[k] end
     if type(_G.GetSpellInfo) == "function" then
       local ok, nm = pcall(_G.GetSpellInfo, S.WELL_RESTED_SPELL)
       if ok and SafeStr(nm) then names[#names + 1] = nm end
     end
+    local present, scanned = PlayerAuraNames()
     for i = 1, #names do
-      local ok, hit = pcall(A.FindAuraByName, names[i], "player", "HELPFUL")
+      local ok, hit = false, nil
+      if present[names[i]] or not scanned then
+        ok, hit = pcall(A.FindAuraByName, names[i], "player", "HELPFUL")
+      end
       if ok and hit then
         local stacks = 1
         if type(hit) == "table" then stacks = AuraStacks(hit) or 1 end
@@ -767,9 +851,10 @@ function S.IsSleepingBagActionName(name)
   return false
 end
 
+local ACTION_SPELL_IDX = { 10, 9, 8, 11, 7, 12 }
 local function ActionSpellId(r)
   if type(r) ~= "table" then return nil end
-  for _, idx in ipairs({ 10, 9, 8, 11, 7, 12 }) do
+  for _, idx in ipairs(ACTION_SPELL_IDX) do
     local id = N(r[idx])
     if id and id > 0 then return id end
   end
@@ -777,11 +862,23 @@ local function ActionSpellId(r)
 end
 
 -- Cast ou canal de déploiement / charge (pas le buff Bien reposé).
+-- 3.7.1 : retours du cast copiés dans une table réutilisée (plus de fermeture
+-- ni de table à chaque appel ; appelé à chaque rafraîchissement du puits).
+local castScratch = {}
+local function FillCast(ok, ...)
+  if not ok then return false end
+  for i = 1, 12 do castScratch[i] = (select(i, ...)) end
+  return true
+end
 function S.SleepingBagCasting()
-  for _, fn in ipairs({ _G.UnitChannelInfo, _G.UnitCastingInfo }) do
+  for k = 1, 2 do
+    -- (comme l'ancien ipairs : sans UnitChannelInfo, rien n'est lu)
+    if k == 2 and _G.UnitChannelInfo == nil then break end
+    local fn = (k == 1) and _G.UnitChannelInfo or _G.UnitCastingInfo
     if type(fn) == "function" then
-      local ok, r = pcall(function() return { fn("player") } end)
-      if ok and type(r) == "table" and (r[1] or r[4]) then
+      local ok = FillCast(pcall(fn, "player"))
+      local r = castScratch
+      if ok and (r[1] or r[4]) then
         local id = ActionSpellId(r)
         if id and id == (S.UNROLL_BAG_SPELL or 429961) then return true, id end
         local nm = SafeStr(r[1]) or SafeStr(r[4]) or SafeStr(r[2])
@@ -793,7 +890,16 @@ function S.SleepingBagCasting()
 end
 
 -- Aura de déploiement 429961 (si le client la pose sur le joueur).
+-- 3.7.1 : résultat gardé pour la même lecture d'auras (le puits le demande
+-- jusqu'à 20 fois par seconde au repos ; il ne change qu'avec UNIT_AURA).
 function S.UnrollBagAura()
+  AuraCacheCheck()
+  if auraC.unrollSet then return auraC.unroll1, auraC.unroll2 end
+  local a, b = S.UnrollBagAuraRaw()
+  auraC.unrollSet, auraC.unroll1, auraC.unroll2 = true, a, b
+  return a, b
+end
+function S.UnrollBagAuraRaw()
   local id0 = S.UNROLL_BAG_SPELL or 429961
   local C = _G.C_UnitAuras
   if type(C) == "table" and type(C.GetPlayerAuraBySpellID) == "function" then
@@ -2098,8 +2204,9 @@ end
 ------------------------------------------------------------------------------
 -- Éclat sur la case métier (maître à proximité)
 ------------------------------------------------------------------------------
-function S.ProfessionTiles()
-  local out = {}
+function S.ProfessionTiles(out)
+  -- 3.7.1 : table réutilisable fournie par l'appelant (éclat du maître).
+  if out then for k = #out, 1, -1 do out[k] = nil end else out = {} end
   local ui = ns.UI
   local tiles = (ui and ui.embed and ui.embed.tiles) or {}
   for i = 1, #tiles do
@@ -2129,7 +2236,8 @@ end
 
 function S.ApplyTrainerGlints()
   local on = S.Want("trainer")
-  local tiles = S.ProfessionTiles()
+  S._profTiles = S._profTiles or {}
+  local tiles = S.ProfessionTiles(S._profTiles)
   for i = 1, #tiles do
     local t = tiles[i]
     if on then
@@ -3582,6 +3690,10 @@ if ns.On then
     "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA",
     "SKILL_LINES_CHANGED", "CHAT_MSG_SKILL",
   }
+  -- 3.7.1 : cache d'auras vidé dès l'événement brut (avant le regroupement).
+  for _, ev in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_DEAD", "PLAYER_ALIVE", "PLAYER_UNGHOST" }) do
+    ns.On(ev, function() S.BumpAuraCache() end)
+  end
   for i = 1, #evs do
     local ev = evs[i]
     ns.On(ev, function(...)
