@@ -2,6 +2,10 @@
 
 ## 3.7.2
 
+### Changes
+- The total-row icon (drop vial, rested Z and other states) is now the same size as the skill tile icons.
+- The total level text is centered between that icon and the total bar.
+
 ### Other
 - Removed sleeping bag tracking (it did not display reliably).
 
