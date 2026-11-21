@@ -1216,15 +1216,7 @@ function S.ApplyStateIcon(t, key, mode)
   local side = math.min(w, h)
   side = math.max(6, side - 1)
   local x, y = (w - side) * 0.5, (h - side) * 0.5
-  -- Z de repos seulement : ~55 % de la case, centré dans le puits 70 %.
-  if key == "rested" and t._wideOn then
-    local tile = (ns.Icons and ns.Icons.TILE) or 40
-    local Wd = ns.Wide
-    local zsz = (Wd and Wd.StateIconSize and Wd.StateIconSize(tile))
-      or math.max(1, math.floor(tile * ((Wd and Wd.STATE_ICON_K) or 0.55) + 0.5))
-    side = math.max(6, math.min(zsz, math.min(w, h)))
-    x, y = (w - side) * 0.5, (h - side) * 0.5
-  end
+  -- 3.7.2 : le Z de repos a la même taille que la fiole / les icônes de case.
   local alpha = 1
   local phase = S._phase or 0
   mode = mode or "pulse"

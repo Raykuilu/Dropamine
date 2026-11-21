@@ -27,16 +27,23 @@ Wd.MIN_BAR_H = 12
 Wd.MIN_BAR_W = 100
 Wd.MIN_FONT  = 13
 Wd.MIN_PAD   = 3
-Wd.MIN_ISZ   = 25   -- 70 % de la case plancher 36 px
-Wd.ICON_K       = 0.70 -- fiole (goutte) : ~70 % de la hauteur de case
-Wd.STATE_ICON_K = 0.55 -- Z de repos seulement ; fiole / vol / combat restent à ICON_K
+Wd.MIN_ISZ   = 32   -- 3.7.2 : taille des icônes de case (I.ICON_MIN)
+Wd.ICON_K       = 0.90 -- repli seulement : I.ICON / I.TILE quand Icons est chargé
+Wd.STATE_ICON_K = nil  -- 3.7.2 : le Z / les états ont la même taille que la fiole
+-- 3.7.2 : icône de la rangée total = même taille que les icônes des cases de
+-- compétence au-dessus (I.ICON pour une case I.TILE), à l'échelle de la case.
 function Wd.IconSize(tile)
-  tile = (ns.N and ns.N(tile)) or tonumber(tile) or (ns.Icons and ns.Icons.TILE) or Wd.REF_TILE or 40
-  return math.max(1, math.floor(tile * (Wd.ICON_K or 0.70) + 0.5))
+  local I = ns.Icons
+  tile = (ns.N and ns.N(tile)) or tonumber(tile) or (I and I.TILE) or Wd.REF_TILE or 40
+  local ic, tl = I and tonumber(I.ICON), I and tonumber(I.TILE)
+  if ic and tl and tl > 0 then
+    if tile == tl then return math.max(1, math.floor(ic + 0.5)) end
+    return math.max(1, math.floor(tile * ic / tl + 0.5))
+  end
+  return math.max(1, math.floor(tile * (Wd.ICON_K or 0.90) + 0.5))
 end
 function Wd.StateIconSize(tile)
-  tile = (ns.N and ns.N(tile)) or tonumber(tile) or (ns.Icons and ns.Icons.TILE) or Wd.REF_TILE or 40
-  return math.max(1, math.floor(tile * (Wd.STATE_ICON_K or 0.55) + 0.5))
+  return Wd.IconSize(tile)
 end
 function Wd.ColCenter(tile)
   tile = (ns.N and ns.N(tile)) or tonumber(tile) or (ns.Icons and ns.Icons.TILE) or Wd.REF_TILE or 40
@@ -177,6 +184,12 @@ function Wd.PlanTotalRow(w, m, twOf)
   end
   left = math.floor(left + 0.5)
   inner = math.floor(inner + 0.5)
+  -- 3.7.2 : texte centré entre le bord droit de l'icône (centrée sur la
+  -- 1re colonne) et le bord visible de la barre (piste - débord du filet).
+  local iconR = ox + (Wd.ColCenter and Wd.ColCenter(tile) or math.floor(tile / 2 + 0.5)) + isz / 2
+  local barL = left - edge
+  local cx = math.floor((iconR + barL - tw) / 2 + 0.5)
+  if cx >= iconR and cx + tw <= barL then textX = cx end
   textX = math.floor(textX + 0.5)
   local by = math.floor((h - bh) / 2 + 0.5)
   return {
