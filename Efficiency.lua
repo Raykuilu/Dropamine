@@ -31,11 +31,14 @@ local function Now()
   end
   return Wall()
 end
+-- 3.7.1 : sans table temporaire (retours passés tels quels).
+local function CallRet(ok, ...)
+  if not ok then return nil end
+  return ...
+end
 local function Call(fn, ...)
   if type(fn) ~= "function" then return nil end
-  local r = { pcall(fn, ...) }
-  if not r[1] then return nil end
-  return unpack(r, 2)
+  return CallRet(pcall(fn, ...))
 end
 local function Fold(s)
   if ns.Fold then return ns.Fold(s) end

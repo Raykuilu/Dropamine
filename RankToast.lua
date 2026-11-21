@@ -89,11 +89,9 @@ end
 function RT.CapitalKey()
   local id = RT.MapId()
   if id and CAPITAL_MAPS[id] then return "map:" .. tostring(id) end
-  local zones = {
-    Call(GetRealZoneText), Call(GetZoneText), Call(GetMinimapZoneText),
-  }
-  for i = 1, #zones do
-    local z = zones[i]
+  -- 3.7.1 : sans table temporaire (même ordre de lecture).
+  for i = 1, 3 do
+    local z = (Call((i == 1 and GetRealZoneText) or (i == 2 and GetZoneText) or GetMinimapZoneText))
     if type(z) == "string" and z ~= "" then
       local f = Fold(z)
       if CAPITALS[f] then return f end
@@ -126,6 +124,7 @@ local function Tiles()
 end
 RT._emptyTiles = {}
 
+local stCache, availRec = {}, {}
 -- Métiers dont un rang supérieur s'apprend chez le maître (pas livre / quête).
 -- Réutilise le buffer pour ne pas allouer à chaque événement de zone.
 function RT.Available(tiles)
@@ -153,14 +152,34 @@ function RT.Available(tiles)
     local d = (t and t.data) or t
     if d and not d.placeholder and d.id and (d.kind == "profession" or d.kind == "secondary") then
       if not seen[d.id] then
-        local st = ns.RankStatus and ns.RankStatus(d, d.current, d.apiMax)
-        if st and st.state == "available" then
+        -- 3.7.1 : RankStatus (table + textes) appelé à chaque rafraîchissement
+        -- du puits ; pour un métier, l'état ne dépend que du rang, du maximum,
+        -- du niveau et du mode de couleur : on garde le dernier état par métier.
+        local state
+        if ns.RankStatus then
+          local lvl = ns.PlayerLevel and ns.PlayerLevel() or nil
+          local mode = ns.GetColorMode and ns.GetColorMode() or nil
+          local c = stCache[d.id]
+          if c and c.cur == d.current and c.cap == d.apiMax and c.kind == d.kind and c.lvl == lvl and c.mode == mode then
+            state = c.state
+          else
+            local st = ns.RankStatus(d, d.current, d.apiMax)
+            state = st and st.state or false
+            c = c or {}
+            c.cur, c.cap, c.kind, c.lvl, c.mode, c.state = d.current, d.apiMax, d.kind, lvl, mode, state
+            stCache[d.id] = c
+          end
+        end
+        if state == "available" then
           local tiers = ns.PROF_TIERS and ns.PROF_TIERS[d.id]
           local cap = tonumber(d.apiMax) or 0
           local nx = tiers and tiers[cap]
           if nx and nx.src == "maître" then
             seen[d.id] = true
-            out[#out + 1] = { id = d.id, name = d.name or d.id, icon = d.icon }
+            local rec = availRec[d.id] or {}
+            rec.id, rec.name, rec.icon = d.id, d.name or d.id, d.icon
+            availRec[d.id] = rec
+            out[#out + 1] = rec
           end
         end
       end

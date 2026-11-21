@@ -557,15 +557,18 @@ if P then
   if P.ApplyOpacity then
     local baseAO = P.ApplyOpacity
     -- pilote d'opacité partagé : chaque mise à jour du panneau recale les toasts
-    function P.ApplyOpacity(...)
-      local r = { baseAO(...) }
+    -- 3.7.1 : retours passés sans table (appelé à chaque pas du pilote, 20/s).
+    local function afterAO(...)
       if Th.IsSans() then
         local X = P.tip
         if X and X.host then pcall(X.host.SetBackdropColor, X.host, 0, 0, 0, 0) pcall(X.host.SetBackdropBorderColor, X.host, 0, 0, 0, 0) end
         Th.HideChrome()
       end
       pcall(Th.RestyleToasts)
-      return unpack(r)
+      return ...
+    end
+    function P.ApplyOpacity(...)
+      return afterAO(baseAO(...))
     end
   end
   if P.ApplyTooltipLook then
@@ -578,10 +581,12 @@ if P then
   end
   if P.SetHover then
     local baseSH = P.SetHover
-    function P.SetHover(...)
-      local r = { baseSH(...) }
+    local function afterSH(...)
       pcall(Th.UpdateHandles)
-      return unpack(r)
+      return ...
+    end
+    function P.SetHover(...)
+      return afterSH(baseSH(...))
     end
   end
   -- (c) plus d'infobulle « Niveau total / Glisser : déplacer » sur le bord
