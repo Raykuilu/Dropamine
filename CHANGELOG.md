@@ -3,7 +3,7 @@
 ## 3.7.2
 
 ### Changes
-- Bigger total level number, centered between the icon and the bar.
+- Bigger total level number with a smaller, muted “/ max” (like the skill tiles), centered between the icon and the bar.
 
 ### Other
 - Removed sleeping bag tracking (it did not display reliably).

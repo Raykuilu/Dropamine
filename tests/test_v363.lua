@@ -4728,7 +4728,10 @@ do
   local Wd = ns.Wide
   local Lyt = ns.Layout
   local ox = (Lyt and Lyt.GridOriginX and Lyt.GridOriginX()) or 0
-  local function twOf(sz) return math.floor(11 * (sz or 13) * 0.5 + 0.5) end
+  -- « 89 » (2 chiffres) + écart + « / 2460 » au rapport /max des cases
+  local function twOf(sz)
+    return math.floor(2 * sz * 0.5 + 0.5) + (Wd.MAX_GAP or 2) + math.floor(6 * Wd.MaxFont(sz) * 0.5 + 0.5)
+  end
   for _, tile in ipairs({ 36, 40, 54, 72 }) do
     local m = Wd.Metrics(tile)
     ok(m.isz == math.max(Wd.MIN_ISZ or 25, math.floor(tile * 0.70 + 0.5))
@@ -4739,10 +4742,12 @@ do
       local plan = Wd.PlanTotalRow(w, m, twOf)
       local tw = twOf(plan.font)
       local digitH = plan.font * Wd.DIGIT_EM
-      ok(plan.font >= m.font and digitH <= plan.bh + 1 and plan.font <= plan.h,
+      ok(plan.font >= m.font and plan.font <= plan.h
+        and plan.font <= math.max(m.font, math.floor(plan.bh / Wd.DIGIT_EM + 0.5) - 2),
         "3.7.2 case " .. tile .. " +" .. extra .. " : niveau " .. plan.font .. " px (chiffres ~" .. string.format("%.1f", digitH) .. " / barre " .. plan.bh .. ")")
       if extra >= 200 then
-        ok(digitH >= plan.bh - 1.5, "3.7.2 case " .. tile .. " : chiffres à la hauteur de la barre quand la place le permet")
+        ok(plan.font == Wd.LevelFont(m, plan.bh, plan.h),
+          "3.7.2 case " .. tile .. " : niveau un cran sous la barre quand la place le permet (" .. plan.font .. " px)")
       end
       local iconR = ox + Wd.ColCenter(tile) + m.isz / 2
       local barL = plan.left - plan.edge
@@ -4754,6 +4759,35 @@ do
       ok(plan.by == math.floor((plan.h - plan.bh) / 2 + 0.5), "3.7.2 case " .. tile .. " : barre centrée verticalement")
     end
   end
+end
+
+-- 3.7.2 : « 89 » crème + « / 2460 » plus petit, atténué, ligne de base alignée.
+do
+  local Wd, Po = ns.Wide, ns.Polish
+  local t = CreateFrame("Button", "DropamineTest372Row", UIParent)
+  t:SetSize(320, 25)
+  local p = { track = t:CreateTexture(nil, "ARTWORK"), text = t:CreateFontString(nil, "OVERLAY"),
+    textMax = t:CreateFontString(nil, "OVERLAY") }
+  local m = Wd.Metrics(40)
+  local plan = Wd.PlaceTotalRow(t, p, m, 320, m.h, 89, 2460)
+  local f1 = plan and plan.font
+  local f2 = plan and plan.font2
+  ok(p.text.text == "89" and p.textMax.text == "/ 2460",
+    "3.7.2 total : « " .. tostring(p.text.text) .. " » + « " .. tostring(p.textMax.text) .. " » séparés")
+  ok(f1 == Wd.LevelFont(m, plan.bh, plan.h) and f1 == math.floor(plan.bh / Wd.DIGIT_EM + 0.5) - 2,
+    "3.7.2 total : niveau " .. tostring(f1) .. " px (2 px sous la hauteur de barre)")
+  ok(f2 == math.max(7, math.floor(f1 * (Po and Po.MAX_K or 0.78) + 0.5)) and f2 < f1,
+    "3.7.2 total : « / max » " .. tostring(f2) .. " px (rapport /max des cases " .. tostring(Po and Po.MAX_K) .. ")")
+  local pt = p.textMax.points and p.textMax.points[1]
+  local w1 = p.text:GetStringWidth()
+  ok(pt and pt[1] == "LEFT" and pt[2] == t and pt[3] == "LEFT"
+    and pt[4] == plan.textX + w1 + (Wd.MAX_GAP or 2) and pt[5] == -math.floor((f1 - f2) * 0.29 + 0.5),
+    "3.7.2 total : « / max » juste après le niveau, ligne de base alignée (dy " .. tostring(pt and pt[5]) .. ")")
+  local c = p.textMax.color or p.textMax.textColor or p.textMax._color
+  local r, g, b = Wd.MaxColor()
+  ok(r < 1 and g < 0.93 and b < 0.80, "3.7.2 total : « / max » atténué (" .. string.format("%.2f %.2f %.2f", r, g, b) .. ")")
+  local q = p.text.points and p.text.points[1]
+  ok(q and q[1] == "LEFT" and (q[5] or 0) == 0, "3.7.2 total : niveau centré verticalement sur la rangée")
 end
 
 ok(errs() == 0, "aucune erreur UI (3.7.0)")
