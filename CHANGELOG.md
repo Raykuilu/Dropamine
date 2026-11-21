@@ -2,8 +2,8 @@
 
 ## 3.7.2
 
-### Fixes
-- Sleeping bag icon shows again instead of the rested Z.
+### Other
+- Removed sleeping bag tracking (it did not display reliably).
 
 ## 3.7.1
 

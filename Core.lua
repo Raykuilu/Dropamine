@@ -2898,7 +2898,6 @@ do
     { id = "fishing",  label = "Pêche",              tip = "Simule la pêche : l'icône de jeu (pêche) remplace la fiole et tangue doucement, comme le sablier. /drop test fishing." },
     { id = "swimming", label = "Nage",               tip = "Simule la nage : bulles dans le puits." },
     { id = "rested",   label = "Repos",              tip = "Simule le repos en auberge : « z » dans le puits de la fiole, dans tous les modes (barre et grilles 1/2/3/5 col.). En barre, les z quittent le portrait Niveau ; en grille, ils restent aussi sur Niveau." },
-    { id = "sleepingbag", label = "Sac de couchage", tip = "Simule le sac de couchage style A (1, 2 ou 3 bandes) dans le puits. /drop test sleepingbag 1|2|3|miss : miss affiche le toast « palier manqué » (teinte XP)." },
     { id = "combat",   label = "Combat",             tip = "Simule le combat : l'icône de jeu (armes) remplace la fiole, avec une animation simple comme le sablier. Le compteur reste lisible. /drop test combat." },
     { id = "trainer",  label = "Maître à proximité", tip = "Simule un maître à proximité : éclat sur les cases de métier." },
     { id = "rankup",   label = "Rang supérieur disponible", tip = "Affiche le toast collant « rang supérieur disponible chez le maître »." },
@@ -2920,8 +2919,6 @@ do
     peche = "fishing", fishing = "fishing",
     nage = "swimming", swim = "swimming", swimming = "swimming",
     repos = "rested", rested = "rested", rest = "rested",
-    sleepingbag = "sleepingbag", ["sleeping-bag"] = "sleepingbag", couchage = "sleepingbag",
-    ["sac"] = "sleepingbag", ["sac-de-couchage"] = "sleepingbag", wellrested = "sleepingbag",
     maitre = "trainer", trainer = "trainer",
     combat = "combat",
     rankup = "rankup", rang = "rankup", palier = "rankup",
@@ -3020,31 +3017,6 @@ do
     if Lyt and Lyt.SnapToContent then pcall(Lyt.SnapToContent) end
   end
 
-  function T.StartSleepingBag(extra)
-    if not T.Enabled() then return nil end
-    extra = tostring(extra or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
-    if extra == "" then extra = "1" end
-    T._on = T._on or {}
-    T._on.sleepingbag = true
-    local S = ns.Slot
-    if extra == "miss" or extra == "manque" or extra == "manqué" or extra == "manquee" then
-      if S and S.SetSleepingBagSim then pcall(S.SetSleepingBagSim, 2) end
-      if S and S.Refresh then pcall(S.Refresh, "test") end
-      if S and S.NotifySleepingBagMiss then pcall(S.NotifySleepingBagMiss, 2) end
-      ns.Print(Tr["test : sac de couchage, palier manqué."])
-      return true
-    end
-    local n = tonumber(extra)
-    if n ~= 1 and n ~= 2 and n ~= 3 then
-      ns.Print(Tr["test : usage /drop test sleepingbag 1|2|3|miss"])
-      return nil
-    end
-    if S and S.SetSleepingBagSim then pcall(S.SetSleepingBagSim, n) end
-    DriveFlask()
-    ns.Print(string.format(Tr["test : sac de couchage palier %s."], tostring(n)))
-    return true
-  end
-
   function T.StartEating(extra)
     if not T.Enabled() then return nil end
     extra = tostring(extra or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
@@ -3097,7 +3069,6 @@ do
     extra = extra or ""
     if id == "off" then return T.StopAll() end
     if id == "toast" then return T.Toast() end
-    if id == "sleepingbag" then return T.StartSleepingBag(extra) end
     if id == "eating" then return T.StartEating(extra) end
     if id == "totaladd" then return T.StartTotalAdd(extra) end
     if id == "levelup" then return T.StartLevelUp() end
