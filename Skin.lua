@@ -29,8 +29,13 @@ Sk.BG = { 1, 1, 1, 1 }                    -- la texture porte la couleur ; alpha
 Sk.stats = { hosts = 0 }
 Sk.enabled = true                         -- false : ancien cadre d'infobulle (repli, tests)
 
-function Sk.Backdrop()
-  return { bgFile = Sk.BG_FILE, edgeFile = Sk.EDGE_FILE, tile = false, tileSize = 0, edgeSize = Sk.EDGE_SIZE,
+-- « FlareUI (New) » : le cadre du chat FlareUI = bord FlareUI-Thick (MIT : Media/LICENSE-FlareUI-Border.txt)
+-- + trait à nœuds au bas ET au haut, pris dans l'image du jeu (voir Sk.UpdateArt).
+Sk.EDGE_FILE_THICK = MEDIA .. "Dropamine-Frame-Thick"
+-- host : seuls le panneau et la fenêtre Progression (host._skinNew) prennent le cadre New ; toasts et autres fenêtres gardent le cadre standard
+function Sk.Backdrop(host)
+  local thick = host and host._skinNew and ns.Theme and ns.Theme.IsNew and ns.Theme.IsNew()
+  return { bgFile = Sk.BG_FILE, edgeFile = thick and Sk.EDGE_FILE_THICK or Sk.EDGE_FILE, tile = false, tileSize = 0, edgeSize = Sk.EDGE_SIZE,
     insets = { left = Sk.INSET, right = Sk.INSET, top = Sk.INSET, bottom = Sk.INSET } }
 end
 
@@ -85,7 +90,7 @@ function Sk.TexHost(f)
 end
 
 -- Cadre d'habillage (enfant de f, sous son contenu, ne prend pas la souris).
-function Sk.Host(f)
+function Sk.Host(f, wantNew)
   if type(f) ~= "table" or not f.CreateTexture then return nil end
   local host = f._skinHost
   if not host and (Sk.forceTextures or not _G.BackdropTemplateMixin) then
@@ -110,14 +115,89 @@ function Sk.Host(f)
     f._skinHost = host
     Sk.stats.hosts = Sk.stats.hosts + 1
   end
+  if wantNew then host._skinNew = true end
   host:ClearAllPoints()
   host:SetAllPoints(f)
   if host.SetScale then pcall(host.SetScale, host, 1) end
   local lvl = (f.GetFrameLevel and f:GetFrameLevel()) or 1
   pcall(host.SetFrameLevel, host, math.max(0, lvl - 0))
   if Sk.Guard then Sk.Guard(host) end
-  if not pcall(host.SetBackdrop, host, Sk.Backdrop()) then return nil end
+  if not pcall(host.SetBackdrop, host, Sk.Backdrop(host)) then return nil end
   return host
+end
+
+-- Trait à nœuds du chat FlareUI (thème New). L'image est celle du jeu (bande de titre du suivi de quêtes,
+-- C_Texture.GetAtlasInfo) : rien n'est copié. Même découpe et mêmes cotes que FlareUI (Chat.ApplyFrameStyleArt,
+-- ObjectiveTracker Build.PlaceStrip, MIT) : deux bouts à leur taille + une fine tranche du milieu étirée,
+-- sur la bande du bas de l'image (le trait et ses nœuds), posée sur le bord à 2,5 px du cadre.
+Sk.ART = "ui-questtracker-primary-objective-header"
+Sk.ART_FRAME, Sk.ART_CAP, Sk.ART_TITLE_RIGHT, Sk.ART_TITLE_LEFT, Sk.ART_KNOB_IN = 260, 0.3, 8, 1, 2
+Sk.ART_BAND = { 31 / 40, 38 / 40 }
+Sk.ART_INSET, Sk.ART_EDGE_Y = 8, 2.5
+function Sk.ArtInfo()
+  if Sk._artInfo == nil then
+    local ok, found = pcall(function() return C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(Sk.ART) end)
+    Sk._artInfo = (ok and type(found) == "table" and found.file and (found.width or 0) > 0) and found or false
+  end
+  return Sk._artInfo or nil
+end
+local function PlaceLine(owner, info)
+  local st = {}
+  for _, part in ipairs({ "L", "M", "R" }) do
+    local t = owner:CreateTexture(nil, "BACKGROUND", nil, -1)
+    if t.SetSnapToPixelGrid then t:SetSnapToPixelGrid(false) end
+    if t.SetTexelSnappingBias then t:SetTexelSnappingBias(0) end
+    st[part] = t
+  end
+  local l, r, t0, b0 = info.leftTexCoord, info.rightTexCoord, info.topTexCoord, info.bottomTexCoord
+  local tall = b0 - t0
+  local t1, b1 = t0 + tall * Sk.ART_BAND[1], t0 + tall * Sk.ART_BAND[2]
+  local height = info.height * (Sk.ART_BAND[2] - Sk.ART_BAND[1])
+  local reach = math.max(0, (info.width - Sk.ART_FRAME) / 2)
+  local leftOut = reach - Sk.ART_KNOB_IN + Sk.ART_TITLE_LEFT
+  local rightOut = reach + Sk.ART_TITLE_RIGHT - Sk.ART_KNOB_IN - Sk.ART_TITLE_LEFT
+  local span = r - l
+  local cap = math.floor(info.width * Sk.ART_CAP + 0.5)
+  local capSpan = span * cap / info.width
+  local mid = l + span / 2
+  for _, t in pairs(st) do t:SetTexture(info.file) t:ClearAllPoints() t:SetHeight(height) end
+  st.L:SetTexCoord(l, l + capSpan, t1, b1) st.L:SetWidth(cap) st.L:SetPoint("LEFT", owner, "LEFT", -leftOut, 0)
+  st.R:SetTexCoord(r - capSpan, r, t1, b1) st.R:SetWidth(cap) st.R:SetPoint("RIGHT", owner, "RIGHT", rightOut, 0)
+  st.M:SetTexCoord(mid - span * 0.005, mid + span * 0.005, t1, b1)
+  st.M:SetPoint("LEFT", st.L, "RIGHT") st.M:SetPoint("RIGHT", st.R, "LEFT")
+  owner._lineTex = st
+end
+function Sk.UpdateArt(host)
+  if not host or not host.CreateTexture then return end
+  local on = host._skinNew and ns.Theme and ns.Theme.IsNew and ns.Theme.IsNew() and Sk.ArtInfo() and true or false
+  if host._artOn == on then return end
+  host._artOn = on
+  if on and not host._art then
+    local info = Sk.ArtInfo()
+    host._art = {}
+    for i, side in ipairs({ "TOP", "BOTTOM" }) do
+      local o = CreateFrame("Frame", nil, host)
+      local sgn = (side == "TOP") and -1 or 1
+      o:SetPoint(side .. "LEFT", host, side .. "LEFT", Sk.ART_INSET, sgn * Sk.ART_EDGE_Y)
+      o:SetPoint(side .. "RIGHT", host, side .. "RIGHT", -Sk.ART_INSET, sgn * Sk.ART_EDGE_Y)
+      o:SetHeight(1)
+      if o.EnableMouse then o:EnableMouse(false) end
+      PlaceLine(o, info)
+      host._art[i] = o
+    end
+  end
+  for _, o in ipairs(host._art or {}) do if on then o:Show() else o:Hide() end end
+end
+function Sk.RefreshArt()
+  local f = ns.Window and ns.Window.frame
+  local list = { f and f._skinHost, ns.ProgressUI and ns.ProgressUI.frame and ns.ProgressUI.frame.skin }
+  for i = 1, 2 do
+    local h = list[i]
+    if h then
+      if h.SetBackdrop then pcall(h.SetBackdrop, h, Sk.Backdrop(h)) end
+      Sk.UpdateArt(h)
+    end
+  end
 end
 
 -- Pose fond + bord ; a = alpha du fond. Renvoie le cadre.
@@ -127,11 +207,12 @@ function Sk.Paint(host, a, border)
   pcall(host.SetBackdropColor, host, Sk.BG[1], Sk.BG[2], Sk.BG[3], a or 1)
   pcall(host.SetBackdropBorderColor, host, b[1], b[2], b[3], 1)
   host._skinBgA = a
+  Sk.UpdateArt(host)
   return host
 end
 
 function Sk.Apply(f)
-  local host = Sk.Host(f)
+  local host = Sk.Host(f, f == (ns.Window and ns.Window.frame))
   if not host then return nil end
   -- ancien cadre d'infobulle (3.3.9–3.3.11) : retiré
   local old = f._tipChrome
@@ -175,7 +256,12 @@ if P and P.ApplyTipAlpha then
     local X = P.tip
     if not (X and X.skin and X.host) then return baseATA(kb, kr) end
     local ba = math.min(1, (Sk.BG[4] or 1) * (kb or 1))
-    X.bgColor, X.borderColor = { Sk.BG[1], Sk.BG[2], Sk.BG[3], 1 }, { Sk.TINT[1], Sk.TINT[2], Sk.TINT[3], 1 }
+    -- 3.5.3 : tables réutilisées (appelé à chaque image pendant le fondu)
+    local bc, tc = X.bgColor, X.borderColor
+    if type(bc) ~= "table" then bc = {} X.bgColor = bc end
+    if type(tc) ~= "table" then tc = {} X.borderColor = tc end
+    bc[1], bc[2], bc[3], bc[4] = Sk.BG[1], Sk.BG[2], Sk.BG[3], 1
+    tc[1], tc[2], tc[3], tc[4] = Sk.TINT[1], Sk.TINT[2], Sk.TINT[3], 1
     Sk.Paint(X.host, ba)
     X.bgAlpha, X.borderAlpha = ba, 1
   end
@@ -210,11 +296,21 @@ if Ch then
     if f.SetBackdropColor then pcall(f.SetBackdropColor, f, 0, 0, 0, 0) end
     local fl = f._flare and f._flare.border
     if fl then for _, t in pairs(fl) do if type(t) == "table" and t.Hide then t:Hide() end end end
-    if f._toastBg then f._toastBg:Hide() end          -- le fond est celui de l'habillage
-    local a = (P and P.tip and P.tip.bgAlpha) or ns.N(f._bgAlpha) or ((P and P.BgAlpha and P.BgAlpha() or 85) / 100)
-    Sk.Paint(c.host, a)
+    if f._toastBg then f._toastBg:Hide() end          -- le fond plat est recouvert par l'habillage
+    local a
+    if ns.UI and ns.UI.ToastBgAlpha then
+      a = ns.UI.ToastBgAlpha(f)
+    elseif ns.UI and ns.UI.DropBgAlpha then
+      a = ns.UI:DropBgAlpha()
+    end
+    if a == nil then a = 0.68 end
+    -- Fond Dialog : le RVB reste (1,1,1) ; l'opacité est SetAlpha du host
+    -- (la texture Dialog ignore souvent l'alpha vertex → noir à 0 %).
+    Sk.Paint(c.host, 1)
     c.host:Show()
     f._osrsNativeBorder = c.mode
+    if ns.UI and ns.UI.ApplyToastLayerAlpha then pcall(ns.UI.ApplyToastLayerAlpha, f, a) end
+    if ns.UI and ns.UI.ApplyToastTint then pcall(ns.UI.ApplyToastTint, f, f._tintOpts) end
     return c
   end
   -- bord à épaisseur native : l'habillage n'est jamais compensé ni agrandi

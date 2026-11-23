@@ -8,6 +8,7 @@
 -- titre au-dessus du filet, le rang / max sur la barre bleue, la progression,
 -- la description et les recettes.
 local ADDON, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local UI = ns.UI
 local H = UI._H
 local V = ns.View
@@ -36,17 +37,20 @@ local function GOLDC() return H.GOLD or I.GOLD end
 -- le panneau, son bord et ses coins restent à l'échelle 1 (épaisseur native).
 I.BASE = { ICON = 36, TILE = 40, HGAP = 8, VGAP = 12, COUNT_MAX = 13, COUNT_MIN = 8 }   -- 3.3.17 : écart vertical 12 (pastille entière dans l’écart)
 I.VGAP_MIN = 12       -- place de la pastille « N prêt » (taille fixe) au-dessus de la case
+-- Plancher : case = bouton d'action par défaut (36 px). En dessous, rang / max se chevauchent.
+I.TILE_MIN = 36
+I.ICON_MIN = 32
 function I.SetMetrics(k)
   k = ns.N(k) or 1
   if k <= 0 then k = 1 end
   local B = I.BASE
   local function R(v) return math.floor(v * k + 0.5) end
-  I.ICON = math.max(16, R(B.ICON))
-  I.TILE = math.max(I.ICON + 2, R(B.TILE))
+  I.ICON = math.max(I.ICON_MIN or 32, R(B.ICON))
+  I.TILE = math.max(I.TILE_MIN or 36, I.ICON + 2, R(B.TILE))
   I.HGAP = math.max(2, R(B.HGAP))
   I.VGAP = math.max(I.VGAP_MIN, R(B.VGAP))
   I.STEP = I.TILE + I.VGAP
-  I.COUNT_MAX = math.max(8, R(B.COUNT_MAX))
+  I.COUNT_MAX = math.max(I.RANK_MIN or 11, R(B.COUNT_MAX))
   I.COUNT_MIN = math.max(6, math.min(I.COUNT_MAX, R(B.COUNT_MIN)))
   if ns.View then ns.View.ROW_PITCH = I.STEP end
   I.metricsK = k
@@ -58,6 +62,23 @@ V.ROW_PITCH = I.STEP
 function V.MinPitch() return I.STEP end
 
 function UI:FitGrid(wrap, n)
+  local compact = ns.Panel and ns.Panel.IsExpanded and not ns.Panel.IsExpanded()
+  local Lyt = ns.Layout
+  -- En compact : les colonnes choisies (L.Cols), la case courante (I.TILE après
+  -- SetMetrics). On ne déduit plus les colonnes d'une largeur de liste périmée
+  -- (262 px / 5 col. à 40 px), qui décalait cadre et grille quand la taille change.
+  if compact and Lyt and Lyt.Cols then
+    if Lyt.SyncMetrics then Lyt.SyncMetrics() end
+    local cols = Lyt.Cols()
+    local groups = wrap and wrap._snap and self:GroupTiles(wrap._snap.tiles) or nil
+    local rowsAll = 0
+    if groups and #groups > 0 then
+      for gi = 1, #groups do rowsAll = rowsAll + math.ceil(#groups[gi].tiles / cols) end
+    else
+      rowsAll = math.ceil((n or 1) / cols)
+    end
+    return cols, I.TILE, I.TILE, I.STEP, math.max(1, rowsAll)
+  end
   local w = (wrap and wrap._innerW) or self:GetGridInnerWidth(wrap)
   local cols = math.max(1, math.floor((w + I.HGAP) / (I.TILE + I.HGAP)))
   local groups = wrap and wrap._snap and self:GroupTiles(wrap._snap.tiles) or nil
@@ -173,6 +194,36 @@ function I.CleanText(fs)
 end
 I.COUNT_EM = 0.5
 I.COUNT_MAX, I.COUNT_MIN = I.COUNT_MAX or 13, I.COUNT_MIN or 8
+I.RANK_MIN = 11
+
+function I.ApplyNumberFont(fs, size)
+  if type(fs) ~= "table" then return fs end
+  if size and fs.SetFont then pcall(fs.SetFont, fs, I.COUNT_PATH, size, I.TEXT_FLAGS or "") end
+  I.CleanText(fs)
+  return fs
+end
+
+-- Rang (case) > total (rangée) > « /max », même face / style / ombre,
+-- tous proportionnels à la taille de case. Jamais de police de modèle.
+function I.NumberSizes(tile)
+  tile = tile or I.TILE or 40
+  -- Rang dérivé de CETTE taille de case (pas du COUNT_MAX d'une autre échelle).
+  local B = I.BASE or { TILE = 40, COUNT_MAX = 13 }
+  local refT = B.TILE or 40
+  if refT <= 0 then refT = 40 end
+  local k = (tile or refT) / refT
+  if k <= 0 then k = 1 end
+  local rank = math.max(I.RANK_MIN or 11, math.floor((B.COUNT_MAX or 13) * k + 0.5))
+  local total = math.max(8, math.floor(rank * 0.85 + 0.5))
+  if total >= rank then total = rank - 1 end
+  if total < 8 then total = 8 end
+  local k = (ns.Polish and ns.Polish.MAX_K) or 0.78
+  local maxs = math.max(7, math.floor(rank * k + 0.5))
+  if maxs >= total then maxs = total - 1 end
+  if maxs < 7 then maxs = 7 end
+  return { rank = rank, total = total, max = maxs }
+end
+
 function I.CountSize(longest, avail, availH, lines)
   local size = math.floor(avail / (math.max(1, longest) * I.COUNT_EM))
   if availH and lines then size = math.min(size, math.floor(availH / lines)) end
@@ -306,13 +357,13 @@ function I.TooltipLines(d)
   if not d then return out end
   local cur, cap = ns.N(d.current) or 0, ns.N(d.apiMax) or 0
   if d.placeholder then
-    out[#out + 1] = { d.notLearnedTag or "Pas encore appris", 0.62, 0.55, 0.45 }
+    out[#out + 1] = { d.notLearnedTag or Tr["Pas encore appris"], 0.62, 0.55, 0.45 }
   elseif d.kind == "level" then
-    out[#out + 1] = { "Niveau " .. cur .. (cap > 0 and (" / " .. cap) or ""), 1, 1, 1 }
+    out[#out + 1] = { Tr["Niveau "] .. cur .. (cap > 0 and (" / " .. cap) or ""), 1, 1, 1 }
     local xp = cap > 0 and UI.LevelBarXP and UI:LevelBarXP(cur, cap) or nil
     if xp and xp.max and xp.max > 0 then out[#out + 1] = { "XP " .. xp.cur .. " / " .. xp.max, 0.8, 0.8, 0.8 } end
   elseif cap > 0 then
-    out[#out + 1] = { "Rang " .. cur .. " / " .. cap, 1, 1, 1 }
+    out[#out + 1] = { Tr["Rang "] .. cur .. " / " .. cap, 1, 1, 1 }
   else
     out[#out + 1] = { tostring(cur), 1, 1, 1 }
   end
@@ -330,8 +381,8 @@ function I.OnEnter(self)
     GameTooltip:SetText(d.name or "?", g[1], g[2], g[3])
     for _, l in ipairs(I.TooltipLines(d)) do GameTooltip:AddLine(l[1], l[2], l[3], l[4]) end
     if self._warnText then GameTooltip:AddLine(self._warnText, 1, 0.82, 0.2, true) end
-    if self._capped then GameTooltip:AddLine("Palier atteint : va voir ton maître.", 0.25, 1, 0.25, true) end
-    GameTooltip:AddLine("Clic : détail à droite", 0.6, 0.6, 0.6)
+    if self._capped then GameTooltip:AddLine(Tr["Palier atteint : va voir ton maître."], 0.25, 1, 0.25, true) end
+    -- 3.5.5 : plus de « Clic : détail à droite » (il n'y a plus de volet de détail)
     GameTooltip:Show()
     self._tipShown = true
   end
@@ -484,7 +535,7 @@ function UI:ShowDetailBreakdown(snap)
   if snap then self._detailData, self._detailLive = nil, nil end
   local r = { baseBreakdown332(self, snap) }
   local f = self.ownDetail
-  if f and snap and f:IsShown() then I.EnsurePaneText(f, "Niveau total", ns.TOTAL_SHORT_FR) end
+  if f and snap and f:IsShown() then I.EnsurePaneText(f, Tr["Niveau total"], Tr[ns.TOTAL_SHORT_FR]) end
   return unpack(r)
 end
 local baseFill332 = UI.FillOwnDetail
@@ -549,6 +600,6 @@ ns.SlashExt.categories = function(rest)
   rest = (rest or ""):lower()
   if rest == "on" then ns.db.ui.categories = true elseif rest == "off" then ns.db.ui.categories = nil
   else ns.db.ui.categories = not I.Categories() or nil end
-  print("|cffffd100Dropamine|r : catégories " .. (I.Categories() and "affichées" or "masquées (grille compacte)"))
+  print(Tr["|cffffd100Dropamine|r : catégories "] .. (I.Categories() and Tr["affichées"] or Tr["masquées (grille compacte)"]))
   if W.IsShown() then W.Layout() end
 end

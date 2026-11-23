@@ -4,6 +4,7 @@
 --
 -- Rien ici ne touche un cadre natif : on dessine NOS cadres et NOS textures.
 local ADDON, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local UI = ns.UI
 local H = UI._H
 local V = ns.View
@@ -168,6 +169,9 @@ function P.IsExpanded() return false end
 -- grandit vers la droite / le bas en se dépliant, sans sauter)
 function P.SavePos(f)
   local l, _, t = RectOf(f)
+  -- 3.5.16 : au pixel entier (plus de dérive d'un demi-pixel à chaque mise en page)
+  local Px = ns.Layout and ns.Layout.Px
+  if Px then l, t = Px(l, f), Px(t, f) end
   if l and t then DB().winPos = { point = "TOPLEFT", relativePoint = "BOTTOMLEFT", x = l, y = t } end
 end
 
@@ -194,11 +198,26 @@ function P.ApplyMode()
     list:SetSize(W.LIST_W, W.SIZE.h - W.TOP - W.PAD)
     pcall(f.SetFrameStrata, f, "HIGH")
   else
-    local lh = P.CompactListHeight()
-    f:SetSize(W.LIST_W + 2 * P.CPAD, P.CTOP + lh + P.CPAD)
-    list:SetPoint("TOPLEFT", f, "TOPLEFT", P.CPAD, -P.CTOP)
-    list:SetSize(W.LIST_W, lh)
-    pcall(f.SetFrameStrata, f, "MEDIUM")
+    local Lyt = ns.Layout
+    local fw, fh, pad, gw, gh
+    if Lyt and Lyt.ContentSize then
+      fw, fh, pad, gw, gh = Lyt.ContentSize()
+    else
+      local lh = P.CompactListHeight()
+      pad = P.CPAD
+      gw, gh = W.LIST_W, lh
+      fw, fh = gw + 2 * pad, gh + 2 * pad
+    end
+    f:SetSize(fw, fh)
+    list:SetPoint("TOPLEFT", f, "TOPLEFT", pad, -pad)
+    list:SetSize(gw, gh)
+    P._contentPad = pad
+    -- Au-dessus du chat (MEDIUM). Niveau stable : on ne le redescend pas.
+    pcall(f.SetFrameStrata, f, "HIGH")
+    if f.SetToplevel then pcall(f.SetToplevel, f, true) end
+    if f.SetFrameLevel and (N(f:GetFrameLevel()) or 0) < 20 then
+      pcall(f.SetFrameLevel, f, 20)
+    end
   end
   setShown(detail, exp)
   setShown(W.title, exp) setShown(W.subtitle, exp) setShown(W.titleBar, exp)
@@ -229,16 +248,6 @@ function P.PlaceChevron()
   c:SetNormalTexture(exp and C.close or C.open)
   c:SetPushedTexture(exp and C.closeDown or C.openDown)
 end
-
-function P.SetExpanded(v, why)
-  DB().expanded = nil
-  P.lastToggle = why
-  if W.frame and W.frame:IsShown() then
-    P.ApplyMode()
-    W.Layout()
-  end
-end
-function P.ToggleExpanded(why) P.SetExpanded(not P.IsExpanded(), why) end
 
 -- Échap : un petit cadre (le nôtre) inscrit dans UISpecialFrames, montré
 -- seulement quand le volet est déplié ; Échap le cache → on replie.
@@ -292,7 +301,7 @@ function W.Build()
     if not GameTooltip then return end
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
     GameTooltip:SetText(W.TotalLine(), 1, 0.82, 0)
-    GameTooltip:AddLine(DB().locked and "Position verrouillée (/drop verrou off)" or "Glisser : déplacer", 1, 1, 1)
+    GameTooltip:AddLine(DB().locked and Tr["Position verrouillée (/drop verrou off)"] or Tr["Glisser : déplacer"], 1, 1, 1)
     GameTooltip:Show()
   end)
   h:SetScript("OnLeave", function() P.SetHover(false) if GameTooltip then GameTooltip:Hide() end end)
@@ -379,7 +388,12 @@ end
 -- réglables ici.
 P.DEFAULT_OPACITY, P.DEFAULT_FADE = 60, 3
 function P.Opacity() return P.Clamp(DB().opacity, 0, 100) or P.DEFAULT_OPACITY end
-function P.FadeDelay() return P.Clamp(DB().fadeDelay, 0, 60) or P.DEFAULT_FADE end
+function P.FadeDelay()
+  if DB().fadeDelay == nil then return P.DEFAULT_FADE end
+  local c = P.Clamp(DB().fadeDelay, 0, 60)
+  if c == nil then return P.DEFAULT_FADE end
+  return c   -- 0 = jamais (ne pas retomber sur le défaut)
+end
 -- 3.3.8 : FOND à l'état actif (survol / gain) = alpha ABSOLU du fond, réglable
 -- (/drop fond <0-100>, mémorisé) : plus clair / translucide, comme les fenêtres
 -- du compteur de dégâts. Le repos garde son aspect (jamais plus opaque que l'actif) ;
@@ -632,12 +646,6 @@ function P.ApplyTipAlpha(kb, kr)
   X.bgAlpha, X.borderAlpha = ba, math.min(1, (bc[4] or 1) * kr)
 end
 
-function P.ChromeTextures()
-  local out = {}
-  local T = P.toast
-  if T then for _, t in ipairs(T.bg) do out[#out + 1] = t end for _, t in ipairs(T.border) do out[#out + 1] = t end end
-  return out
-end
 function P.StateMix()
   local k = P._mix or 0          -- 0 = repos, 1 = actif (gain / survol)
   local L = P.LOOK
@@ -647,7 +655,10 @@ end
 function P.FrameAlpha()
   local a = P.Opacity() / 100
   local k = P._mix or 0
-  return a + (1 - a) * k
+  local base = a + (1 - a) * k
+  local dim = 1
+  if ns.Flight and ns.Flight.DimMul then dim = ns.Flight.DimMul() or 1 end
+  return base * dim
 end
 function P.ApplyOpacity()
   local f = W.frame
@@ -693,14 +704,22 @@ end
 function P.ScheduleSleep()
   P._sleepToken = (P._sleepToken or 0) + 1
   local tok = P._sleepToken
-  P._sleepAt = Now() + P.FadeDelay()
+  local delay = P.FadeDelay()
+  -- 0 = jamais : le repos n'est pas déclenché.
+  if not delay or delay <= 0 then
+    P._sleepAt = nil
+    return
+  end
+  P._sleepAt = Now() + delay
   local function go()
     if tok ~= P._sleepToken or P._hoverWant then return end
     P._sleepAt = nil
     P._target = 0
     P.StartFade()
   end
-  if not After(P.FadeDelay(), go) then go() end
+  if not After(delay, go) then
+    -- sans C_Timer on ne déclenche pas immédiatement (0 était instantané)
+  end
 end
 function P.Wake(reason)
   P.lastWake = reason or "gain"
@@ -715,6 +734,8 @@ function P.SetHover(on)
   if on then
     P._sleepToken = (P._sleepToken or 0) + 1   -- annule un retour au repos en attente
     P._sleepAt = nil
+    -- 3.5.3 : déjà pleinement actif (case → case voisine) : rien à repeindre
+    if (P._mix or 0) >= 1 and (P._target or 0) >= 1 then return end
     P._target = 1
     P.StartFade()
   else
@@ -746,6 +767,7 @@ function P.SetOpacity(v)
   local c = P.Clamp(v, 0, 100)
   if not c then return nil end
   DB().opacity = c
+  if ns.SaveActiveProfile then pcall(ns.SaveActiveProfile) end
   P.ApplyOpacity()
   return c
 end
@@ -753,19 +775,28 @@ function P.SetBgAlpha(v)
   local c = P.Clamp(v, 0, 100)
   if not c then return nil end
   DB().bgAlpha = c
+  if ns.SaveActiveProfile then pcall(ns.SaveActiveProfile) end
   P.ApplyOpacity()
   return c
 end
 function P.SetFadeDelay(v)
   local c = P.Clamp(v, 0, 60)
-  if not c then return nil end
+  if c == nil then return nil end
   DB().fadeDelay = c
+  if ns.SaveActiveProfile then pcall(ns.SaveActiveProfile) end
+  if c == 0 then
+    P._sleepToken = (P._sleepToken or 0) + 1
+    P._sleepAt = nil
+    P._target = 1
+    if P.StartFade then P.StartFade() end
+  end
   return c
 end
 function P.SetIconAlpha(v)
   local c = P.Clamp(v, 20, 100)
   if not c then return nil end
   DB().iconAlpha = c
+  if ns.SaveActiveProfile then pcall(ns.SaveActiveProfile) end
   for _, t in ipairs(UI.embed and UI.embed.tiles or {}) do if t.icon and t.icon.SetAlpha then t.icon:SetAlpha(c / 100) end end
   return c
 end
@@ -793,7 +824,7 @@ function P.BuildSlider(f)
   end)
   local lab = H.Text(f, "GameFontHighlightSmall", "RIGHT")
   lab:SetPoint("RIGHT", sl, "LEFT", -6, 0)
-  lab:SetText("Opacité")
+  lab:SetText(Tr["Opacité"])
   P.slider, W.opSlider, W.opLabel = sl, sl, lab
 end
 
@@ -801,34 +832,40 @@ end
 -- 6) Commandes
 ------------------------------------------------------------------------------
 ns.SlashExt = ns.SlashExt or {}
-local function say(m) print("|cffffd100Dropamine|r : " .. m) end
+local function say(m) print(Tr["|cffffd100Dropamine|r : "] .. m) end
 ns.SlashExt.opacite = function(rest)
   rest = (rest or ""):lower()
   local which, val = rest:match("^(%a+)%s+(%S+)$")
   if which == "icones" or which == "icônes" then
     local c = P.SetIconAlpha(val)
-    say(c and ("opacité des icônes : " .. c .. " %") or "usage : /drop opacite icones <20-100>")
+    say(c and (Tr["opacité des icônes : "] .. c .. " %") or Tr["usage : /drop opacite icones <20-100>"])
     return
   end
   local c = P.SetOpacity(rest:match("^%s*(%-?[%d%.]+)"))
-  if c then say("opacité au repos : " .. c .. " % (100 % au survol et à chaque gain)") else say("opacité au repos : " .. P.Opacity() .. " % (usage : /drop opacite <0-100>)") end
+  if c then say(Tr["opacité au repos : "] .. c .. Tr[" % (100 % au survol et à chaque gain)"]) else say(Tr["opacité au repos : "] .. P.Opacity() .. Tr[" % (usage : /drop opacite <0-100>)"]) end
 end
 ns.SlashExt.fondu = function(rest)
   local c = P.SetFadeDelay((rest or ""):match("^%s*(%-?[%d%.]+)"))
-  if c then say("retour au repos après " .. c .. " s sans survol ni gain") else say("fondu : " .. P.FadeDelay() .. " s (usage : /drop fondu <0-60>)") end
+  if c == 0 then say(Tr["retour au repos : "] .. Tr["Jamais"])
+  elseif c then say(Tr["retour au repos après "] .. c .. Tr[" s sans survol ni gain"])
+  else
+    local d = P.FadeDelay()
+    if d <= 0 then say(Tr["fondu : "] .. Tr["Jamais"] .. Tr[" (usage : /drop fondu <0-60>)"])
+    else say(Tr["fondu : "] .. d .. Tr[" s (usage : /drop fondu <0-60>)"]) end
+  end
 end
 ns.SlashExt.fond = function(rest)
   local c = P.SetBgAlpha((rest or ""):match("^%s*(%-?[%d%.]+)"))
-  if c then say("fond à l'état actif : " .. c .. " % (bord doré inchangé)") else say("fond : " .. P.BgAlpha() .. " % (usage : /drop fond <0-100>)") end
+  if c then say(Tr["fond à l'état actif : "] .. c .. Tr[" % (bord doré inchangé)"]) else say(Tr["fond : "] .. P.BgAlpha() .. Tr[" % (usage : /drop fond <0-100>)"]) end
 end
 ns.SlashExt["opacité"] = ns.SlashExt.opacite
 ns.SlashExt.verrou = function(rest)
   rest = (rest or ""):lower()
   if rest == "on" then DB().locked = true elseif rest == "off" then DB().locked = nil else DB().locked = (not DB().locked) or nil end
-  say(DB().locked and "panneau verrouillé" or "panneau déplaçable")
+  say(DB().locked and Tr["panneau verrouillé"] or Tr["panneau déplaçable"])
 end
 -- 3.3.5 : commandes devenues sans objet, gardées pour ne pas surprendre
-local function noDetail() say("plus de volet de détail : passe la souris sur une case pour tout voir (infobulle)") end
+local function noDetail() say(Tr["plus de volet de détail : passe la souris sur une case pour tout voir (infobulle)"]) end
 ns.SlashExt.deplier = function() if not W.IsShown() then W.Show() end noDetail() end
 ns.SlashExt.replier = noDetail
 
@@ -850,11 +887,11 @@ end
 --    la grille 5 colonnes existante ne change pas de largeur).
 ------------------------------------------------------------------------------
 UI.NO_FOOT = true
-P.TOTAL_ICON = "Interface\\AddOns\\Dropamine\\Media\\SkillsTab"   -- nos 3 piliers (pas le portrait)
+P.TOTAL_ICON = "Interface\\AddOns\\Dropamine\\Media\\SkillsTab"   -- 3.5.20 : La Goutte (pas le portrait)
 function P.TotalTile()
   local d = UI.TOTAL_DATA
   local snap = UI.snapshot
-  d.kind, d.id, d.name, d.key = "total", "total", "Niveau total", "total"
+  d.kind, d.id, d.name, d.key = "total", "total", Tr["Niveau total"], "total"
   d.current = snap and snap.total or 0
   d.apiMax = (snap and snap.totalMax) or ns.TOTAL_MAX or 2460
   d.icon = P.TOTAL_ICON
@@ -895,10 +932,16 @@ function UI:LayoutGrid(wrap, snap)
   return unpack(r)
 end
 function P.CompactListHeight()
+  -- Hauteur de la grille seule (sans marge, sans écart fantôme sous la
+  -- dernière rangée). Le cadre ajoute la même marge de chaque côté.
+  local Lyt = ns.Layout
+  if Lyt and Lyt.GridSize then
+    local gw, gh, cols, rows = Lyt.GridSize()
+    return gh, cols, rows
+  end
   local n = (UI.snapshot and UI.snapshot.tiles and #UI.snapshot.tiles or 9) + 1
-  local ins = UI:ListInsets()
-  local inner = W.LIST_W - ins.left - ins.right
-  local cols = math.max(1, math.floor((inner + I.HGAP) / (I.TILE + I.HGAP)))
+  local cols = (Lyt and Lyt.Cols and Lyt.Cols()) or 5
   local rows = math.max(1, math.ceil(n / cols))
-  return ins.top + rows * I.STEP + 4, cols, rows
+  local gh = rows * (I.TILE or 40) + math.max(0, rows - 1) * (I.VGAP or 12)
+  return gh, cols, rows
 end

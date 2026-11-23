@@ -7,6 +7,7 @@
 --    calculé ; mémorisé par compétence pour l'afficher dans notre panneau.
 -- Aucune écriture sur un cadre natif ; rien en combat (valeurs mémorisées).
 local _, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local UI = ns.UI
 local NL = {}
 ns.NativeLook = NL
@@ -40,7 +41,9 @@ end
 NL.Rect, NL.TextOf = Rect, TextOf
 
 -- Libellés des en-têtes natifs (repères de lecture, pas des valeurs).
-NL.HEADER_KEYS = { "adversaire de niveau", "contre les boss", "recompenses au rang" }
+-- 3.6.2 : libellés anglais aussi (client EN) ; comparés en texte replié (Fold).
+NL.HEADER_KEYS = { "adversaire de niveau", "contre les boss", "recompenses au rang",
+  "equal level", "same level", "even level", "against raid boss", "raid boss", "rewards at rank" }
 local function IsHeaderText(t)
   local f = Fold(t)
   for _, k in ipairs(NL.HEADER_KEYS) do if string.find(f, k, 1, true) then return true end end
@@ -509,8 +512,348 @@ function NL.CaptureNativeDetail()
 end
 
 function NL.Cached(skillName)
+  if type(skillName) == "table" then return NL.CachedFor(skillName) end
   local c = ns.CharDB and ns.CharDB()
   return c and c.nativeDetail and skillName and c.nativeDetail[Fold(skillName)] or nil
+end
+
+-- 3.6.2 : détail mémorisé d'une CASE. La clé de capture est le nom affiché par
+-- le client (« Armes d'hast » sur un client FR) ; depuis 3.5.19 la case porte
+-- un nom d'affichage qui suit la langue de l'addon (« Polearms » en EN sur un
+-- client FR) : on cherche donc aussi par identifiant du catalogue.
+local function CatId(name)
+  local e = ns.LookupCatalog and name and ns.LookupCatalog(name)
+  return e and e.id or nil
+end
+function NL.CachedFor(d)
+  if type(d) ~= "table" then return nil end
+  local c = ns.CharDB and ns.CharDB()
+  local nd = c and c.nativeDetail
+  if type(nd) ~= "table" then return nil end
+  for _, nm in ipairs({ d.skillName, d.catName, d.name }) do
+    if type(nm) == "string" and nm ~= "" and nd[Fold(nm)] then return nd[Fold(nm)] end
+  end
+  local id = d.id
+  if not id then return nil end
+  local k = c.nativeDetailIds and c.nativeDetailIds[id]
+  if k and nd[k] then return nd[k] end
+  for _, v in pairs(nd) do   -- anciennes captures (avant 3.6.2) : sans index
+    if type(v) == "table" and (v.id == id or CatId(v.skill) == id) then return v end
+  end
+  return nil
+end
+
+-- 3.6.2 : chances de toucher / critique / coups déviés, en COURT -------------
+-- Les valeurs sont LUES dans le texte natif (jamais calculées) ; une ligne
+-- dont on ne sait pas extraire le chiffre est abandonnée (pas de phrase brute).
+local function Plain(t)
+  t = tostring(t or "")
+  t = t:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+  t = t:gsub("\226\136\146", "-"):gsub("\226\128\147", "-")      -- − –
+  t = t:gsub("\194\160", " "):gsub("\226\128\175", " ")            -- espaces insécables
+  return t
+end
+local function Percents(t)
+  local out = {}
+  for v in string.gmatch(Plain(t), "([%+%-]?%d+[%.,]?%d*)%s*%%") do out[#out + 1] = v .. "%" end
+  return out
+end
+NL.Percents = Percents
+local function SectionKind(title)
+  local f = Fold(Plain(title))
+  if string.find(f, "boss", 1, true) then return "boss" end
+  if string.find(f, "egal", 1, true) or string.find(f, "equal", 1, true)
+    or string.find(f, "same", 1, true) or string.find(f, "even", 1, true) then return "same" end
+  return nil
+end
+-- Texte replié (minuscules, sans accents) qui GARDE le signe moins des chiffres.
+local function Low(t)
+  t = Plain(t):gsub("%-(%d)", "\001%1")
+  t = (ns.FoldRaw and ns.FoldRaw(t)) or string.lower(t)
+  return (t:gsub("\001", "-"))
+end
+NL.Low = Low
+local NUM = "([%+%-]?%d+[%.,]?%d*)%s*%%"
+local function First(low, keys)
+  local best
+  for _, k in ipairs(keys) do
+    local i = string.find(low, k, 1, true)
+    if i and (not best or i < best) then best = i end
+  end
+  return best
+end
+-- Valeur « : -0.96% » qui SUIT le mot-clé, sans déborder sur l'autre phrase.
+local function ValueAfter(low, pos, stop)
+  if not pos then return nil end
+  local seg = (stop and stop > pos) and string.sub(low, pos, stop - 1) or string.sub(low, pos)
+  local v = string.match(seg, ":%s*" .. NUM) or string.match(seg, NUM)
+  return v and (v .. "%") or nil
+end
+NL.HIT_KEYS = { "toucher", "chance to hit", "hit chance", "to hit" }
+NL.CRIT_KEYS = { "critique", "critical", "crit" }
+local function AllNums(seg)
+  local out = {}
+  for v in string.gmatch(seg, NUM) do out[#out + 1] = v .. "%" end
+  return out
+end
+local function SectionValues(text)
+  local low = Low(text)
+  -- la phrase des coups déviés n'entre pas dans toucher / critique
+  local gp = string.find(low, "devie", 1, true) or string.find(low, "glancing", 1, true)
+  if gp then low = string.sub(low, 1, gp - 1) end
+  local hp, cp = First(low, NL.HIT_KEYS), First(low, NL.CRIT_KEYS)
+  local function stopFor(p)
+    local st
+    for _, q in ipairs({ hp, cp }) do if q and q > p and (not st or q < st) then st = q end end
+    return st
+  end
+  local hit = hp and ValueAfter(low, hp, stopFor(hp)) or nil
+  local crit = cp and ValueAfter(low, cp, stopFor(cp)) or nil
+  -- En jeu, les segments colorés d'une phrase sont des FontStrings séparés,
+  -- parfois sur plusieurs lignes : la valeur peut précéder son mot-clé une
+  -- fois recollée. Repli : exactement deux valeurs dans la section → dans
+  -- l'ordre des phrases (toucher puis critique, comme le volet natif).
+  if (hp or cp) and not (hit and crit) then
+    local v = AllNums(low)
+    if #v == 2 then
+      local hitFirst = not (hp and cp) or hp < cp
+      if hitFirst then hit, crit = v[1], v[2] else hit, crit = v[2], v[1] end
+      if not hp then hit = nil end
+      if not cp then crit = nil end
+    end
+  end
+  return hit, crit
+end
+local function GlanceValues(text)
+  local low = Low(text)
+  local gp = string.find(low, "devie", 1, true) or string.find(low, "glancing", 1, true)
+  if not gp then return nil end
+  local seg = string.sub(low, gp)
+  local f = string.match(seg, "surviennent%s*" .. NUM) or string.match(seg, "survient%s*" .. NUM)
+    or string.match(seg, "occurs?%s*" .. NUM)
+  local r = string.match(seg, "reduits? de%s*" .. NUM) or string.match(seg, "reduced by%s*" .. NUM)
+  if f and r then f, r = f .. "%", r .. "%"
+  else
+    -- segments dans le désordre : les deux seules valeurs, dans l'ordre (fréquence, réduction)
+    local v = AllNums(seg)
+    if #v ~= 2 then return nil end
+    f, r = v[1], v[2]
+  end
+  return f, "-" .. r:gsub("^[%+%-]", "")
+end
+NL.SectionValues, NL.GlanceValues = SectionValues, GlanceValues
+-- cap = { sections = { { title, lines } } } → { same = {hit, crit}, boss = {…}, glance = {freq, red} } | nil
+-- 3.6.2 (retour en jeu) : chaque section est lue comme UN texte (segments
+-- colorés et lignes coupées recollés), puis on cherche « toucher … : x% »,
+-- « critique … : x% » et « surviennent x% … réduits de y% ».
+function NL.ParseCombat(cap)
+  if type(cap) ~= "table" then return nil end
+  local res, any, all = {}, false, {}
+  for _, s in ipairs(cap.sections or {}) do
+    local text = table.concat(s.lines or {}, " ")
+    all[#all + 1] = text
+    local kind = SectionKind(s.title)
+    if kind then
+      local hit, crit = SectionValues(text)
+      if hit or crit then res[kind] = { hit = hit, crit = crit } any = true end
+    end
+  end
+  local f, r = GlanceValues(table.concat(all, " "))
+  if f then res.glance = { freq = f, red = r } any = true end
+  return any and res or nil
+end
+
+local function Pair(hit, crit)
+  if hit and crit then
+    if hit == crit then return "&", hit end
+    return "/", hit .. " / " .. crit
+  end
+  return hit and "hit" or "crit", hit or crit
+end
+-- Lignes deux tons prêtes pour l'infobulle (libellés traduits).
+function NL.CompactCombatLines(parsed)
+  local out = {}
+  if type(parsed) ~= "table" then return out end
+  for _, k in ipairs({ "same", "boss" }) do
+    local v = parsed[k]
+    if v and (v.hit or v.crit) then
+      local form, val = Pair(v.hit, v.crit)
+      local who = (k == "same") and "(même niv.)" or "(boss)"
+      local label = (form == "&") and ("Toucher & crit " .. who) or (form == "/") and ("Toucher / crit " .. who)
+        or (form == "hit") and ("Toucher " .. who) or ("Crit " .. who)
+      out[#out + 1] = NL.TwoTone(Tr[label] .. " : " .. val)
+    end
+  end
+  local g = parsed.glance
+  if g and g.freq and g.red then
+    out[#out + 1] = NL.TwoTone(Tr["Coups déviés"] .. " : " .. g.freq .. " · " .. g.red .. Tr[" dégâts"])
+  end
+  return out
+end
+-- Description native mémorisée : seulement si l'addon parle la langue du
+-- client (sinon une phrase française dans une infobulle anglaise, ou l'inverse).
+function NL.NativeDesc(d)
+  local cap = NL.CachedFor(d)
+  if not (cap and cap.desc and #cap.desc > 0) then return nil end
+  if ns.LangCode and ns.ClientLang and ns.LangCode() ~= ns.ClientLang() then return nil end
+  return table.concat(cap.desc, "\n")
+end
+-- 3.6.2 : lecture SEULE du volet natif « Comp. » (fiche du personnage).
+-- Depuis 3.2.0, Window.lua neutralise CaptureNativeDetail (son DetailRoot est
+-- notre propre volet) : plus rien n'était lu. Ici : on parcourt les cadres
+-- natifs VISIBLES, hors combat, sans rien y écrire ni y accrocher, et on ne
+-- garde que la colonne de droite (celle des en-têtes natifs).
+NL.ROOT_NAMES = { "SkillDetailFrame", "SkillFrame", "SkillsFrame", "CharacterSkillFrame",
+  "CharacterSkillsFrame", "CharacterFrame" }
+local function Visible(o)
+  if type(o) ~= "table" or not o.IsVisible then return false end
+  local ok, v = pcall(o.IsVisible, o)
+  return ok and v and true or false
+end
+local function WalkVisible(root, fn, depth, seen)
+  depth = depth or 0
+  if type(root) ~= "table" or depth > 14 or seen[root] or Own(root) or not Visible(root) then return end
+  seen[root] = true
+  if root.GetRegions then
+    local regs = { pcall(root.GetRegions, root) }
+    if regs[1] then for i = 2, #regs do if type(regs[i]) == "table" and Visible(regs[i]) then fn(regs[i], root) end end end
+  end
+  if root.GetChildren then
+    local kids = { pcall(root.GetChildren, root) }
+    if kids[1] then for i = 2, #kids do WalkVisible(kids[i], fn, depth + 1, seen) end end
+  end
+end
+function NL.NativeRoots()
+  local out = {}
+  local W = ns.Window
+  for _, n in ipairs(NL.ROOT_NAMES) do
+    local f = rawget(_G, n)
+    if type(f) == "table" and not Own(f) and f ~= (W and W.frame) and Visible(f) then out[#out + 1] = f end
+  end
+  return out
+end
+function NL.ReadNativeDetail()
+  if ns.InCombat and ns.InCombat() then return nil end
+  local roots = NL.NativeRoots()
+  if #roots == 0 then return nil end
+  local items, seen = {}, {}
+  for _, root in ipairs(roots) do
+    WalkVisible(root, function(reg, owner)
+      if ObjType(reg) ~= "FontString" then return end
+      local t = TextOf(reg)
+      if not t then return end
+      local l, _, top = Rect(reg)
+      if not l then return end
+      items[#items + 1] = { text = t, plain = Plain(t), top = top, left = l, owner = owner }
+    end, 0, seen)
+  end
+  -- colonne des en-têtes natifs : bord gauche du bouton d'en-tête (ou du texte)
+  local colL, hdrTop
+  for _, it in ipairs(items) do
+    if IsHeaderText(it.plain) then
+      local bl = Rect(it.owner) or it.left
+      local x = math.min(bl, it.left) - 40
+      colL = colL and math.min(colL, x) or x
+      hdrTop = hdrTop and math.max(hdrTop, it.top) or it.top
+    end
+  end
+  if not colL then return nil end
+  local col = {}
+  for _, it in ipairs(items) do if it.left >= colL then col[#col + 1] = it end end
+  table.sort(col, function(a, b) if a.top ~= b.top then return a.top > b.top end return a.left < b.left end)
+  local known = {}
+  for _, s in ipairs(ns.CollectLiveSkills and (ns.CollectLiveSkills() or {}) or {}) do
+    if s.name then known[Fold(s.name)] = s.name end
+  end
+  local title
+  for _, it in ipairs(col) do
+    if it.top > hdrTop and known[Fold(it.plain)] then title = known[Fold(it.plain)] break end
+  end
+  if not title then return nil end
+  local out = { skill = title, desc = {}, sections = {}, src = "volet natif 3.6.2" }
+  -- Sections par POSITION : un élément appartient à l'en-tête le plus bas
+  -- situé au-dessus de lui (bas du bouton d'en-tête) ; au-dessus de tous les
+  -- en-têtes : description. Puis rangées visuelles (même hauteur ±4 px)
+  -- lues de gauche à droite : les segments colorés se recollent dans l'ordre.
+  local heads = {}
+  for _, it in ipairs(col) do
+    if IsHeaderText(it.plain) then
+      local _, _, bt, bb = Rect(it.owner)
+      heads[#heads + 1] = { title = it.plain, top = bt or it.top, bottom = bb or (it.top - 14), items = {} }
+    end
+  end
+  table.sort(heads, function(a, b) return a.top > b.top end)
+  local desc = {}
+  for _, it in ipairs(col) do
+    local t = it.plain
+    if Fold(t) == Fold(title) or IsHeaderText(t) or string.match(t, "^%s*%d+%s*/%s*%d+%s*$") then
+      -- titre, en-tête ou texte de barre
+    else
+      local owner
+      for _, h in ipairs(heads) do if it.top <= h.bottom + 2 then owner = h end end
+      if owner then owner.items[#owner.items + 1] = it
+      elseif it.top > hdrTop then desc[#desc + 1] = it end
+    end
+  end
+  local function Rows(list)
+    table.sort(list, function(a, b) if a.top ~= b.top then return a.top > b.top end return a.left < b.left end)
+    local rows, cur, rowTop = {}, nil, nil
+    for _, it in ipairs(list) do
+      if not cur or math.abs(it.top - rowTop) > 4 then
+        cur = {} rows[#rows + 1] = cur rowTop = it.top
+      end
+      cur[#cur + 1] = it
+    end
+    local out2 = {}
+    for _, r in ipairs(rows) do
+      table.sort(r, function(a, b) return a.left < b.left end)
+      local parts = {}
+      for _, it in ipairs(r) do parts[#parts + 1] = it.plain end
+      out2[#out2 + 1] = table.concat(parts, " ")
+    end
+    return out2
+  end
+  out.desc = Rows(desc)
+  for _, h in ipairs(heads) do out.sections[#out.sections + 1] = { title = h.title, lines = Rows(h.items) } end
+  out.combat = NL.ParseCombat(out)
+  out.id = CatId(title)
+  out.at = type(time) == "function" and time() or nil
+  local c = ns.CharDB and ns.CharDB()
+  if c then
+    c.nativeDetail = c.nativeDetail or {}
+    c.nativeDetail[Fold(title)] = out
+    if out.id then
+      c.nativeDetailIds = c.nativeDetailIds or {}
+      c.nativeDetailIds[out.id] = Fold(title)
+    end
+  end
+  NL.lastRead = out
+  return out
+end
+-- Au plus une lecture par intervalle ; rien si la fiche native est fermée.
+NL.READ_EVERY = 1
+function NL.ReadIfShown(force)
+  local now = (ns.NowSec and ns.NowSec()) or (type(GetTime) == "function" and GetTime()) or 0
+  if not force and NL._lastRead and (now - NL._lastRead) < NL.READ_EVERY then return nil end
+  NL._lastRead = now
+  local ok, r = pcall(NL.ReadNativeDetail)
+  return ok and r or nil
+end
+-- Pilote : NOTRE cadre (aucun crochet sur le natif) ; ne fait rien tant que
+-- la fiche native n'est pas visible.
+if type(CreateFrame) == "function" then
+  local okF, drv = pcall(CreateFrame, "Frame", "DropamineNativeReader")
+  if okF and drv and drv.SetScript then
+    local acc = 0
+    drv:SetScript("OnUpdate", function(_, el)
+      acc = acc + (tonumber(el) or 0)
+      if acc < NL.READ_EVERY then return end
+      acc = 0
+      local cf = rawget(_G, "CharacterFrame")
+      if Visible(cf) or Visible(rawget(_G, "SkillFrame")) then NL.ReadIfShown(true) end
+    end)
+    NL.driver = drv
+  end
 end
 
 -- Le natif affiche-t-il en ce moment cette compétence ? (lecture seule)
@@ -525,7 +868,7 @@ function NL.TwoTone(line)
   if string.find(line, "|c", 1, true) then return line end
   local label, value = string.match(line, "^(.-)%s*:%s*(.+)$")
   if label and value and label ~= "" then
-    return "|cffffd100" .. label .. " :|r |cffffffff" .. value .. "|r"
+    return "|cffffd100" .. label .. Tr[" :|r |cffffffff"] .. value .. "|r"
   end
   return "|cffffffff" .. line .. "|r"
 end

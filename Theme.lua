@@ -4,6 +4,7 @@
 -- panneau depuis n'importe où, toasts et panneau sur le même fond / la même
 -- opacité. Rien par image : tout est posé à la construction / au changement.
 local _, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local Th = {}
 ns.Theme = Th
 
@@ -14,8 +15,8 @@ local MEDIA = "Interface\\AddOns\\Dropamine\\Media\\"
 -- 3.3.13 : deux thèmes seulement — « flare » (fond + bord arrondi FlareUI,
 -- défaut) et « leger » (sans cadre, sobre, cases flottantes). Alias : cadre → flare,
 -- sans → leger.
-Th.MODES = { flare = true, leger = true, classic = true }   -- 3.3.17 : + « classic » (textures Blizzard)
-Th.ALIASES = { cadre = "flare", frame = "flare", avec = "flare", flareui = "flare",
+Th.MODES = { flare = true, flare2 = true, leger = true, classic = true }   -- 3.3.17 : + « classic » (textures Blizzard)
+Th.ALIASES = { cadre = "flare", frame = "flare", avec = "flare", flareui = "flare", ancien = "flare", old = "flare", oldschool = "flare", new = "flare2", nouveau = "flare2", flareui2 = "flare2",
   sans = "leger", ["léger"] = "leger", light = "leger", sanscadre = "leger", ["sans-cadre"] = "leger", none = "leger", aucun = "leger",
   classique = "classic", blizzard = "classic", natif = "classic", native = "classic", default = "classic", ["défaut"] = "classic" }
 Th.BRONZE = ns.STYLE.BORDER                              -- #A67D45, jeton unique (STYLE.md)
@@ -34,6 +35,10 @@ function Th.Mode()
   if m == "classic" then return "classic" end
   return (m == "leger" or m == "sans") and "leger" or "flare"
 end
+-- Variante « FlareUI (New) » : le cadre du chat FlareUI (bord épais + trait à nœuds). Th.Mode() reste « flare ».
+function Th.IsNew() return DB().theme == "flare2" end
+function Th.Choice() local m = DB().theme if m == "flare2" then return "flare2" end return Th.Mode() end
+
 function Th.IsSans() return Th.Mode() == "leger" end
 
 ------------------------------------------------------------------------------
@@ -81,11 +86,6 @@ function Th.ShowFrame(e, on)
     if on then e.outer[i]:Show() e.inner[i]:Show() else e.outer[i]:Hide() e.inner[i]:Hide() end
   end
 end
-function Th.SetFrameAlpha(e, a)
-  if not e then return end
-  for i = 1, 4 do e.outer[i]:SetAlpha(a) e.inner[i]:SetAlpha(a) end
-end
-
 -- Ombre douce sous une zone (taille ∝ zone : la partie pleine du fichier = la zone).
 function Th.Shadow(owner, target, key, alpha)
   key = key or "_thShadow"
@@ -215,7 +215,17 @@ end
 function Th.BevelColor(t)
   local e = t and t._bevel
   if not e then return nil end
-  local c = (t._tgtLit and ((ns.Target and ns.Target.GREEN) or { 0.25, 1, 0.25 })) or (t._flSelOn and ns.STYLE.SELECT) or ns.STYLE.BORDER
+  local c
+  if t._tgtLit then
+    c = t._tgtCol
+    if not c and ns.Target and ns.Target.GainColor then c = ns.Target.GainColor(t.data) end
+    if not c then
+      local G = ns.GAIN_COLORS
+      c = (G and G.green) or { 0.310, 0.498, 0.243 }
+    end
+  else
+    c = (t._flSelOn and ns.STYLE.SELECT) or ns.STYLE.BORDER
+  end
   local a = ((t._tgtLit == "indirect") and Th.SUBTLE_A or 1) * Th.EDGE_LINE_A
   for side = 1, 4 do
     local sh, li, inn = e.strips[side][3], e.strips[side][2], e.strips[side][1]
@@ -438,7 +448,8 @@ function Th.Set(m)
   m = type(m) == "string" and m:lower() or ""
   m = Th.ALIASES[m] or m
   if not Th.MODES[m] then return nil end
-  DB().theme = (m ~= "flare") and m or nil       -- défaut (flare) : rien d'enregistré
+  DB().theme = (m ~= "flare") and m or nil
+  if ns.Skin and ns.Skin.RefreshArt then pcall(ns.Skin.RefreshArt) end       -- défaut (flare) : rien d'enregistré
   if Th.OnModeChanged then pcall(Th.OnModeChanged, m) end
   Th.ApplyPanel()
   Th.RestyleToasts()
@@ -475,24 +486,23 @@ function Th.ToastLook(f)
   if f._tipChrome then f._tipChrome:Show() end
   local bg = f._toastBg
   -- 3.3.13 : habillage FlareUI (Skin.lua) : même fond / alpha / bord que le panneau
+  local toastA
+  if ns.UI and ns.UI.ToastBgAlpha then toastA = ns.UI.ToastBgAlpha(f) end
+  if toastA == nil then toastA = 0.68 end
   if f._skinHost and ns.Skin then
-    if look then
-      ns.Skin.Paint(f._skinHost, look.bgAlpha, look.border)
-      f._bgAlpha = look.bgAlpha
-      f._thShared = true
-    else
-      f._thShared = nil
-    end
+    -- RVB du fond inchangé ; Fond des toasts = SetAlpha du host (pas l'alpha panneau).
+    ns.Skin.Paint(f._skinHost, 1, look and look.border or nil)
+    f._thShared = look and true or nil
     if bg then bg:Hide() end
     f._thTheme = Th.Mode()
+    if ns.UI and ns.UI.ApplyToastLayerAlpha then pcall(ns.UI.ApplyToastLayerAlpha, f, toastA) end
+    if ns.UI and ns.UI.ApplyToastTint then pcall(ns.UI.ApplyToastTint, f, f._tintOpts) end
     return
   end
-  if look and bg then
-    local col = look.bg
-    Solid(bg, { col[1], col[2], col[3], look.bgAlpha })
-    bg:SetAlpha(1)
-    f._bgAlpha = look.bgAlpha
-    f._thShared = true
+  if bg then
+    local col = (look and look.bg) or { 0, 0, 0, 1 }
+    Solid(bg, { col[1], col[2], col[3], 1 })
+    f._thShared = look and true or nil
   else
     f._thShared = nil
   end
@@ -502,13 +512,14 @@ function Th.ToastLook(f)
         -- 3.3.11 : bord par défaut de l'infobulle, sans aucune teinte (ni live, ni palier)
         local bcol = look.border
         if t.SetVertexColor then pcall(t.SetVertexColor, t, bcol[1], bcol[2], bcol[3], 1) end
-        if t.SetAlpha then t:SetAlpha(look.borderAlpha) end
       end
     end
   end
+  if ns.UI and ns.UI.ApplyToastLayerAlpha then pcall(ns.UI.ApplyToastLayerAlpha, f, toastA) end
   Th.ShowFrame(f._thEdge, false)
   if f._thShadow then f._thShadow:Hide() end
   f._thTheme = Th.Mode()
+  if ns.UI and ns.UI.ApplyToastTint then pcall(ns.UI.ApplyToastTint, f, f._tintOpts) end
 end
 function Th.RestyleToasts()
   local UI = ns.UI
@@ -546,15 +557,18 @@ if P then
   if P.ApplyOpacity then
     local baseAO = P.ApplyOpacity
     -- pilote d'opacité partagé : chaque mise à jour du panneau recale les toasts
-    function P.ApplyOpacity(...)
-      local r = { baseAO(...) }
+    -- 3.7.1 : retours passés sans table (appelé à chaque pas du pilote, 20/s).
+    local function afterAO(...)
       if Th.IsSans() then
         local X = P.tip
         if X and X.host then pcall(X.host.SetBackdropColor, X.host, 0, 0, 0, 0) pcall(X.host.SetBackdropBorderColor, X.host, 0, 0, 0, 0) end
         Th.HideChrome()
       end
       pcall(Th.RestyleToasts)
-      return unpack(r)
+      return ...
+    end
+    function P.ApplyOpacity(...)
+      return afterAO(baseAO(...))
     end
   end
   if P.ApplyTooltipLook then
@@ -567,10 +581,12 @@ if P then
   end
   if P.SetHover then
     local baseSH = P.SetHover
-    function P.SetHover(...)
-      local r = { baseSH(...) }
+    local function afterSH(...)
       pcall(Th.UpdateHandles)
-      return unpack(r)
+      return ...
+    end
+    function P.SetHover(...)
+      return afterSH(baseSH(...))
     end
   end
   -- (c) plus d'infobulle « Niveau total / Glisser : déplacer » sur le bord
@@ -726,7 +742,19 @@ function Th.TopExtra(gt)
   return math.max(0, need - M)
 end
 if L then
-  L.TopExtra = function(gt) local e = Th.TopExtra(gt) L._topExtra = e return e end
+  -- 3.5.16 : la place de la pastille « N prêts » reste réservée une fois vue
+  -- (mémorisée) : son apparition avec un toast de recette ne décale plus la
+  -- grille vers le bas
+  L.TopExtra = function(gt)
+    local e = Th.TopExtra(gt)
+    local ui = ns.db and ns.db.ui
+    if ui then
+      if e > (tonumber(ui.topExtra) or 0) then ui.topExtra = e end
+      e = math.max(e, tonumber(ui.topExtra) or 0)
+    end
+    L._topExtra = e
+    return e
+  end
 end
 if UI and UI.UpdateCraftBadge then
   local baseBadge = UI.UpdateCraftBadge
@@ -742,7 +770,8 @@ if UI and UI.UpdateCraftBadge then
     -- état « pastille en 1re rangée » changé → recentrage (pas de calcul sinon)
     if L and L.Center and not Th._centering then
       local gt = select(3, L.GridRect())
-      local want = Th.TopExtra(gt)
+      local ui = ns.db and ns.db.ui
+      local want = math.max(Th.TopExtra(gt), (ui and tonumber(ui.topExtra)) or 0)
       if want ~= (L._topExtra or 0) then
         Th._centering = true
         pcall(L.Center)
@@ -761,19 +790,19 @@ if Frame() then pcall(Th.ApplyPanel) end
 -- /drop theme cadre|sans
 ------------------------------------------------------------------------------
 ns.SlashExt = ns.SlashExt or {}
-local function Say(s) print("|cffffd100Dropamine|r " .. s) end
+local function Say(s) print(Tr["|cffffd100Dropamine|r "] .. s) end
 ns.SlashExt.theme = function(rest)
   local a = (rest or ""):match("^%s*(%S*)") or ""
-  if a == "" then Say("thème : " .. Th.Mode() .. " (/drop theme flare|leger|classic)") return end
+  if a == "" then Say(Tr["thème : "] .. Th.Choice() .. Tr[" (/drop theme flare|flare2|leger|classic)"]) return end
   local m = Th.Set(a)
-  local DESC = { leger = " (léger : cases flottantes, sans fond ni bord)", classic = " (classique : cadres et barres de l'interface Blizzard)", flare = " (FlareUI : fond sombre + bord arrondi)" }
-  if m then Say("thème : " .. m .. (DESC[m] or ""))
-  else Say("usage : /drop theme flare|leger|classic (alias : cadre, sans, classique)") end
+  local DESC = { leger = Tr[" (léger : cases flottantes, sans fond ni bord)"], classic = Tr[" (classique : cadres et barres de l'interface Blizzard)"], flare = Tr[" (FlareUI Old School : fond sombre + bord arrondi)"], flare2 = Tr[" (FlareUI New : comme le cadre du chat FlareUI)"] }
+  if m then Say(Tr["thème : "] .. m .. (DESC[m] or ""))
+  else Say(Tr["usage : /drop theme flare|flare2|leger|classic (alias : old, new, sans, classique)"]) end
 end
 ns.SlashExt["thème"] = ns.SlashExt.theme
 
 ns.HelpExt = ns.HelpExt or {}
-ns.HelpExt[#ns.HelpExt + 1] = ("/drop theme flare|leger|classic — panneau FlareUI (fond + bord arrondi), léger (cases flottantes) ou classique (textures Blizzard)")
+ns.HelpExt[#ns.HelpExt + 1] = ("/drop theme flare|flare2|leger|classic — panneau FlareUI Old School ou New (cadre du chat), léger (cases flottantes) ou classique (textures Blizzard)")
 
 ns.DebugExt = ns.DebugExt or {}
 ns.DebugExt[#ns.DebugExt + 1] = (function()

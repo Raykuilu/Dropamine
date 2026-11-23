@@ -2,6 +2,7 @@
 -- au scanner, recettes réalisables avec le contenu des sacs (tous les métiers de
 -- fabrication). Lecture seule des fenêtres de métier ; rien en combat.
 local ADDON, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local Craft = {}
 ns.Craft = Craft
 local S = ns.Scanner
@@ -12,18 +13,21 @@ local function Str(v)
   if type(v) ~= "string" or v == "" then return nil end
   return v
 end
+-- 3.6.0 : sans table temporaire (appelé sur les événements fréquents : survol,
+-- barres de nom, cible) et sans troncature aux valeurs nil intermédiaires.
+local function Ret(ok, ...) if not ok then return nil end return ... end
 local function Call(fn, ...)
   if type(fn) ~= "function" then return nil end
-  local r = { pcall(fn, ...) }
-  if not r[1] then return nil end
-  return unpack(r, 2)
+  return ns.Unsecret(Ret(pcall(fn, ...)))
 end
 local function InCombat() return S and S.InCombat and S.InCombat() end
 
 -- Métiers de fabrication (badge, détail, drop « réalisable »). Les métiers de
 -- récolte seuls (Dépeçage, Herboristerie, Pêche) n'en ont pas.
 Craft.SKILLS = { leatherworking = true, blacksmithing = true, tailoring = true, alchemy = true,
-  engineering = true, enchanting = true, mining = true, cooking = true, firstaid = true }
+  engineering = true, enchanting = true, mining = true, cooking = true, firstaid = true,
+  -- 3.5.12 : sur Forever, les métiers de récolte ont aussi leur fenêtre et des recettes
+  skinning = true, herbalism = true, fishing = true }
 Craft.VERB = { cooking = "À cuisiner maintenant" }
 -- 3.0.1 : plus de texte « ouvre la fenêtre » : sans cache, la ligne est omise.
 Craft.ORDER = { optimal = 3, medium = 2, easy = 1, trivial = 0 }
@@ -33,7 +37,7 @@ Craft.THROTTLE = 0.5
 local function Hex(c) return string.format("|cff%02x%02x%02x", math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5), math.floor(c[3] * 255 + 0.5)) end
 function Craft.Color(diff) return S.DiffColor(diff) end
 function Craft.Paint(diff, text) return Hex(Craft.Color(diff)) .. text .. "|r" end
-function Craft.Verb(skill) return Craft.VERB[skill] or "À fabriquer maintenant" end
+function Craft.Verb(skill) local v = Craft.VERB[skill] return v and Tr[v] or Tr["À fabriquer maintenant"] end
 
 -- Seuils de couleur de la base Forever (Cuisine / Secourisme), par nom de recette.
 function Craft.DBColors(skill, name)
@@ -171,10 +175,13 @@ function Craft.Known(skill)
 end
 
 local function ItemName(id, fallback)
-  local it = S.StaticItem and S.StaticItem(id)
-  if it and (it.fr or it.en) then return it.fr or it.en end
+  if ns.ItemDisplayName then return ns.ItemDisplayName(id, fallback) end
+  local it = S and S.StaticItem and S.StaticItem(id)
+  if it and (it.fr or it.en) then return ns.GameName(it.en, it.fr) end
   local nm = Str(Call(_G.GetItemInfo, id))
-  return nm or fallback or ("objet " .. tostring(id))
+  if nm then return nm end
+  if fallback and not (ns.BareItemIdLabel and ns.BareItemIdLabel(fallback)) then return fallback end
+  return nil
 end
 Craft.ItemName = ItemName
 
@@ -218,26 +225,62 @@ function Craft.MatchRaw(c, skill)
   return out, out[1] and out[1].diff or nil
 end
 
+-- 3.6.3 : si le nom d'ingrédient n'est pas encore connu, seulement « Recette (+1) ».
+function Craft.FormatMatch(m)
+  if not m then return "" end
+  local rec = tostring(m.recipe and m.recipe.name or "")
+  local item = m.itemName
+  local text
+  if type(item) == "string" and item ~= "" and not (ns.BareItemIdLabel and ns.BareItemIdLabel(item)) then
+    text = string.format(Tr["%s : %s (+1)"], item, rec)
+  else
+    text = string.format(Tr["%s (+1)"], rec)
+  end
+  return Craft.Paint(m.diff, text)
+end
+
 function Craft.MatchLines(creature, matches)
   local lines = {}
   for i = 1, math.min(Craft.MAX_LINES, #(matches or {})) do
-    local m = matches[i]
     -- 3.3.8 : ni nom de créature (déjà en titre), ni flèche (absente de la police du jeu)
-    lines[i] = Craft.Paint(m.diff, string.format("%s : %s (+1)", m.itemName, tostring(m.recipe.name)))
+    lines[i] = Craft.FormatMatch(matches[i])
   end
   return lines
+end
+
+-- Met à jour un toast encore visible quand le nom d'objet arrive (cache client).
+function Craft.BindToastItems(frame, matches)
+  if not (frame and matches and ns.WhenItemName) then return end
+  local function apply()
+    if frame.IsShown and not frame:IsShown() then return end
+    local lines = Craft.MatchLines(nil, matches)
+    if frame.titleFS and lines[1] and frame.titleFS.SetText then pcall(frame.titleFS.SetText, frame.titleFS, lines[1]) end
+    if frame.subFS and frame.subFS.SetText then pcall(frame.subFS.SetText, frame.subFS, lines[2] or "") end
+    if frame.hintFS and lines[3] and frame.hintFS.SetText then pcall(frame.hintFS.SetText, frame.hintFS, lines[3]) end
+    frame._fullTitle = lines[1] or frame._fullTitle
+    frame._fullSub = lines[2] or frame._fullSub
+    if ns.ToastFit and ns.ToastFit.FitSoon then pcall(ns.ToastFit.FitSoon, frame) end
+  end
+  for _, m in ipairs(matches) do
+    if m.item and (not m.itemName or m.itemName == "" or (ns.BareItemIdLabel and ns.BareItemIdLabel(m.itemName))) then
+      ns.WhenItemName(m.item, function(nm)
+        m.itemName = nm
+        apply()
+      end)
+    end
+  end
 end
 
 local SKILL_FR = { cooking = "Cuisine", firstaid = "Secourisme" }
 function Craft.WhyLines(c, skill, creature)
   local out = {}
-  local fr = SKILL_FR[skill] or skill
+  local fr = SKILL_FR[skill] and ns.SkillDisplayName(skill) or skill
   local list, est = Craft.Known(skill)
   if not list then
-    out[1] = fr .. " : recettes jamais lues — ouvre la fenêtre " .. fr .. " une fois."
+    out[1] = fr .. Tr[" : recettes jamais lues — ouvre la fenêtre "] .. fr .. Tr[" une fois."]
     return out
   end
-  if est then out[#out + 1] = fr .. " : estimation (recettes du maître de la base Forever) — ouvre la fenêtre " .. fr .. " pour tes vraies recettes." end
+  if est then out[#out + 1] = fr .. Tr[" : estimation (recettes du maître de la base Forever) — ouvre la fenêtre "] .. fr .. Tr[" pour tes vraies recettes."] end
   local m = Craft.Match(c, skill)
   if #m == 0 then
     local any = false
@@ -246,20 +289,85 @@ function Craft.WhyLines(c, skill, creature)
       for _, rg in ipairs(r.reagents or {}) do
         if rg.id and c.items[rg.id] then
           any = true
-          out[#out + 1] = string.format("%s : %s pour %s est %s : pas d'icône.", fr, ItemName(rg.id, rg.name), tostring(r.name), S.DIFF_FR[Craft.Diff(r, rank) or "trivial"] or "?")
+          out[#out + 1] = string.format(Tr["%s : %s pour %s est %s : pas d'icône."], fr, ItemName(rg.id, rg.name) or Tr["composant"], tostring(r.name), Tr[S.DIFF_FR[Craft.Diff(r, rank) or "trivial"] or "?"])
           break
         end
       end
     end
-    if not any then out[#out + 1] = fr .. " : aucune recette connue n'utilise ses objets." end
+    if not any then out[#out + 1] = fr .. Tr[" : aucune recette connue n'utilise ses objets."] end
     return out
   end
-  for _, l in ipairs(Craft.MatchLines(creature, m)) do out[#out + 1] = fr .. " : " .. l end
-  out[#out + 1] = fr .. " : couleur de l'icône = " .. S.DIFF_FR[m[1].diff] .. " (meilleure recette)."
+  for _, l in ipairs(Craft.MatchLines(creature, m)) do out[#out + 1] = fr .. Tr[" : "] .. l end
+  out[#out + 1] = fr .. Tr[" : couleur de l'icône = "] .. Tr[S.DIFF_FR[m[1].diff]] .. Tr[" (meilleure recette)."]
   return out
 end
 
 -- Recettes réalisables avec les sacs -----------------------------------------
+function Craft.AvailCount(r)
+  if not r then return 0 end
+  local n
+  for _, rg in ipairs(r.reagents or {}) do
+    if not rg.id then n = 0 break end
+    local k = math.floor(Craft.ItemCount(rg.id) / math.max(1, rg.count or 1))
+    n = (n == nil) and k or math.min(n, k)
+  end
+  if n == nil and N(r.avail) then n = N(r.avail) end
+  return n or 0
+end
+
+function Craft.MissingReagents(r)
+  local out = {}
+  if not r then return out end
+  for _, rg in ipairs(r.reagents or {}) do
+    local need = math.max(1, rg.count or 1)
+    local have = rg.id and Craft.ItemCount(rg.id) or 0
+    if have < need then
+      out[#out + 1] = { id = rg.id, name = ItemName(rg.id, rg.name), have = have, need = need }
+    end
+  end
+  return out
+end
+
+function Craft:FillToastTooltip(tt, data)
+  if not tt or not data or not tt.AddLine then return end
+  local e = data.entries and data.entries[1]
+  local m = data.matches and data.matches[1]
+  local r = data.recipe or (e and e.recipe) or (m and m.recipe)
+  local skill = data.skill or (e and e.skill)
+  local diff = data.diff or (e and e.diff) or (m and m.diff)
+  if skill then
+    local nm = (ns.SkillDisplayName and ns.SkillDisplayName(skill)) or skill
+    pcall(tt.AddLine, tt, string.format(Tr["Métier : %s"], tostring(nm)), 1, 1, 1, true)
+  end
+  if r and r.req then
+    pcall(tt.AddLine, tt, string.format(Tr["Rang requis : %d"], r.req), 1, 1, 1, true)
+  end
+  if diff then
+    local lab = (S and S.DIFF_FR and S.DIFF_FR[diff]) or diff
+    lab = Tr[lab] or lab
+    local col = Craft.Color and Craft.Color(diff)
+    local cr, cg, cb = 1, 1, 1
+    if type(col) == "table" then cr, cg, cb = col[1] or 1, col[2] or 1, col[3] or 1 end
+    pcall(tt.AddLine, tt, string.format(Tr["Difficulté : %s"], tostring(lab)), cr, cg, cb, true)
+  end
+  local n = data.n
+  if n == nil and e then n = e.n end
+  if n == nil and r then n = Craft.AvailCount(r) end
+  if n ~= nil then
+    pcall(tt.AddLine, tt, string.format(Tr["Réalisable maintenant : %d"], n), 1, 1, 1, true)
+  end
+  local missing = data.missing
+  if missing == nil and r then missing = Craft.MissingReagents(r) end
+  if type(missing) == "table" and #missing > 0 then
+    pcall(tt.AddLine, tt, Tr["Composants manquants :"], 1, 0.25, 0.25, true)
+    for i = 1, #missing do
+      local rg = missing[i]
+      local nm = rg.name or (ItemName and ItemName(rg.id)) or Tr["composant"]
+      pcall(tt.AddLine, tt, string.format("  %s (%d/%d)", tostring(nm), rg.have or 0, rg.need or 1), 1, 0.60, 0.60, true)
+    end
+  end
+end
+
 function Craft.ItemCount(id)
   local v = N(Call(_G.GetItemCount, id))
   if v == nil and type(_G.C_Item) == "table" then v = N(Call(_G.C_Item.GetItemCount, id)) end
@@ -278,6 +386,8 @@ function Craft.Compute(skill)
       local k = math.floor(Craft.ItemCount(rg.id) / math.max(1, rg.count or 1))
       n = (n == nil) and k or math.min(n, k)
     end
+    -- 3.5.8 : composants non lus (fenêtre Métiers) : compte donné par le jeu à la lecture
+    if n == nil and (not r.reagents or #r.reagents == 0) and N(r.avail) then n = N(r.avail) end
     if n and n > 0 then
       local d = Craft.Diff(r, rank) or "trivial"
       local e = { recipe = r, n = n, diff = d }
@@ -300,6 +410,7 @@ Craft.prev = {}
 -- silent : lecture de fenêtre / premier passage → on mémorise sans annoncer.
 function Craft.Update(silent)
   if InCombat() then Craft._pending = true return nil end
+  if ns.PausedForFlight and ns.PausedForFlight() then silent = true end
   Craft._pending = false
   local gains = {}
   for skill in pairs(Craft.SKILLS) do
@@ -322,6 +433,24 @@ function Craft.Update(silent)
   return gains
 end
 
+-- Titre de toast « recette possible » : le préfixe « N × » seulement si N ≥ 2.
+-- Pas de « × » orphelin quand le compte est nil, 0 ou 1.
+function Craft.RecipeToastTitle(n, name)
+  n = ns.N(n)
+  name = tostring(name or "")
+  local word = (n and n > 1) and Tr["possibles"] or Tr["possible"]
+  local core = name
+  if name ~= "" then
+    core = name .. " " .. word .. " (+1)"
+  else
+    core = word .. " (+1)"
+  end
+  if n and n > 1 then
+    return tostring(math.floor(n + 0.5)) .. " × " .. core
+  end
+  return core
+end
+
 function Craft.Notify(gains)
   if not ns.Opt("craftNotify") or not (ns.UI and ns.UI.SpawnDrop) then return nil end
   table.sort(gains, function(a, b)
@@ -332,9 +461,22 @@ function Craft.Notify(gains)
   local lines = {}
   for i = 1, math.min(Craft.MAX_LINES, #gains) do
     local e = gains[i]
-    lines[i] = Craft.Paint(e.diff, string.format("%d × %s %s (+1)", e.n, tostring(e.recipe.name), e.n > 1 and "possibles" or "possible"))
+    lines[i] = Craft.Paint(e.diff, Craft.RecipeToastTitle(e.n, e.recipe and e.recipe.name))
   end
-  local f = ns.UI:SpawnDrop(gains[1].recipe.icon, lines[1], lines[2], nil, nil, nil, { kind = "craft", hint = lines[3] })
+  local g1 = gains[1]
+  -- Icône du métier (pas l'icône d'objet de la recette : sac, cuir, composant).
+  local opts = {
+    kind = "craft", hint = lines[3],
+    skillId = g1.skill,
+    toastData = {
+      kind = "craft", skill = g1.skill, entries = gains,
+      recipe = g1.recipe, n = g1.n, diff = g1.diff,
+      item = g1.recipe and (g1.recipe.itemID or g1.recipe.item),
+    },
+  }
+  local icon = (ns.UI and ns.UI.ResolveToastIcon and ns.UI.ResolveToastIcon(nil, opts))
+    or (ns.CATALOG_BY_ID and ns.CATALOG_BY_ID[g1.skill] and ns.CATALOG_BY_ID[g1.skill].icon)
+  local f = ns.UI:SpawnDrop(icon, lines[1], lines[2], nil, nil, nil, opts)
   Craft.lastNotify = lines
   return f
 end
@@ -361,14 +503,14 @@ function Craft.DetailText(skill)
   if not st then return nil end
   Craft.state[skill] = st
   local L = {}
-  if #st.list == 0 then L[1] = Craft.Verb(skill) .. " : rien qui fasse progresser avec tes sacs."
+  if #st.list == 0 then L[1] = Craft.Verb(skill) .. Tr[" : rien qui fasse progresser avec tes sacs."]
   else
-    L[1] = Craft.Verb(skill) .. " :"
-    for _, e in ipairs(st.list) do L[#L + 1] = Craft.Paint(e.diff, string.format("%s ×%d (+1)", tostring(e.recipe.name), e.n)) end
+    L[1] = Craft.Verb(skill) .. Tr[" :"]
+    for _, e in ipairs(st.list) do L[#L + 1] = Craft.Paint(e.diff, string.format(Tr["%s ×%d (+1)"], tostring(e.recipe.name), e.n)) end
   end
   if #st.greys > 0 then
-    L[#L + 1] = "|cff808080Sans gain :|r"
-    for _, e in ipairs(st.greys) do L[#L + 1] = string.format("|cff808080%s ×%d (sans gain)|r", tostring(e.recipe.name), e.n) end
+    L[#L + 1] = Tr["|cff808080Sans gain :|r"]
+    for _, e in ipairs(st.greys) do L[#L + 1] = string.format(Tr["|cff808080%s ×%d (sans gain)|r"], tostring(e.recipe.name), e.n) end
   end
   return table.concat(L, "\n")
 end
@@ -398,7 +540,7 @@ function Craft.DBByReagent()
     if skill then
       local col = {}
       for v in string.gmatch(p[3] or "", "[^,]+") do col[#col + 1] = tonumber(v) end
-      local r = { skill = skill, req = tonumber(p[2]), colors = col, en = p[5], fr = p[6], name = p[6] or p[5], reagents = {} }
+      local r = { skill = skill, req = tonumber(p[2]), colors = col, en = p[5], fr = p[6], name = ns.GameName(p[5], p[6]), reagents = {} }
       for id, n in string.gmatch(p[4] or "", "(%d+)x(%d+)") do r.reagents[#r.reagents + 1] = { id = tonumber(id), count = tonumber(n) } end
       for _, rg in ipairs(r.reagents) do
         idx[rg.id] = idx[rg.id] or {}
@@ -443,7 +585,7 @@ function Craft.UnlearnedLines(c)
   local lines = {}
   for i, u in ipairs(Craft.UnlearnedFor(c)) do
     if i > Craft.UNLEARNED_MAX then break end
-    local txt = string.format("%s (recette non apprise, rang %d)", tostring(u.recipe.name), u.recipe.req)
+    local txt = string.format(Tr["%s (recette non apprise, rang %d)"], tostring(u.recipe.name), u.recipe.req)
     if u.diff == "locked" then lines[#lines + 1] = "|cffb36060" .. txt .. "|r"
     else
       -- teinte atténuée (≈ 75 %) : ligne secondaire
@@ -457,7 +599,7 @@ end
 -- Infobulle d'unité : jusqu'à 3 lignes « créature → ingrédient → recette (+1) ».
 function Craft.UnitTooltip(tt)
   if ns.Tip and ns.Tip.active then return nil end   -- 3.3.8 : infobulle compacte (Tip.lua)
-  if InCombat() or not S.Enabled() or type(tt) ~= "table" then return nil end
+  if InCombat() or (ns.PausedForFlight and ns.PausedForFlight()) or not S.Enabled() or type(tt) ~= "table" then return nil end
   local unit = "mouseover"
   local id = S.UnitNpcID(unit)
   if not id then return nil end

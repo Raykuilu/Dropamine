@@ -94,11 +94,27 @@ When you log out, a toast tells you exactly what the session earned — total le
 
 Session combo, daily challenge, your personal records, the next-point bar, the “N discovered” collection, and a celebration when a skill hits its max. Sounds are off by default. It's your grind, and yours alone.
 
+## Progression window
+
+Left-click the droplet or type `/drop progression`: overview, charts, achievements, farm spots and efficiency, your other characters. Skill tracking and the collection log are inspired by Old School RuneScape (unaffiliated project).
+
+## Hunt and Collection log
+
+Pick the item you want from a dungeon boss on an equipment grid (data read live from Dungeon Journal, nothing bundled), and Dropamine counts your real boss kills, the cumulative drop chance, and warns you with a clickable toast when it drops. The Collection log lists every dungeon and raid with obtained items in colour, approximate kills per boss, recipes known out of the total per profession, and how much of the creature database you have discovered. A Home page shows your overall progress and the dungeons closest to completion.
+
+## Achievements and milestones
+
+Achievements that stay reachable at any level and any profession choice: streaks, active-time runs, exploration, collection, total-level milestones (with a gold toast, a cheer and fireworks at the maximum). A rare-loot alert shows epic drops with the item icon and quality colour.
+
+## Guided tour
+
+On first launch, a short step-by-step tour presents each feature, lets you test it and switch it off. Reopen it any time with `/drop setup`; `/drop about` shows the version and links.
+
 ## Three themes
 
 ![Three themes.](docs/img/feat-themes-en.png)
 
-Flare, Léger or Classic: pick the look, keep the same grid. Dropamine also sits seamlessly in a FlareUI layout, next to the quest tracker and the Threat and Damage meters.
+FlareUI (New or Old School), Léger or Classic: pick the look, keep the same grid. Dropamine also sits seamlessly in a FlareUI layout, next to the quest tracker and the Threat and Damage meters.
 
 `/drop` opens the panel. `/drop debug` is diagnostics.
 
@@ -202,11 +218,27 @@ Deux colonnes, trois colonnes, ou une barre horizontale avec la barre de total. 
 
 Combo de session, défi du jour, tes records personnels, la barre du prochain point, la collection « N découverts », et une célébration quand une compétence atteint son max. Les sons sont désactivés par défaut. C'est ton grind, et le tien seul.
 
+## Fenêtre Progression
+
+Clic gauche sur la goutte ou `/drop progression` : vue d'ensemble, graphiques, succès, spots de farm et efficacité, tes autres personnages. Le suivi des compétences et le collection log s'inspirent d'Old School RuneScape (projet non affilié).
+
+## Chasse et Collection log
+
+Choisis l'objet que tu veux d'un boss de donjon sur une grille d'équipement (données lues en direct dans Dungeon Journal, rien d'embarqué) : Dropamine compte tes vrais kills de boss, la chance cumulée de drop, et te prévient par un toast cliquable quand il tombe. Le collection log liste chaque donjon et raid avec les objets obtenus en couleur, les kills approximatifs par boss, les recettes connues sur le total de chaque métier, et la part de la base de créatures découverte. Une page d'accueil montre ta progression globale et les donjons les plus proches de la fin.
+
+## Succès et paliers
+
+Des succès atteignables à tout niveau et quel que soit ton choix de métiers : séries, temps actif d'affilée, exploration, collection, paliers du niveau total (toast doré, émote et feu d'artifice au maximum). Une alerte de butin rare affiche les drops épiques avec l'icône et la couleur de qualité.
+
+## Visite guidée
+
+Au premier lancement, une courte visite pas à pas présente chaque fonction, te laisse l'essayer et la désactiver. Rouvre-la quand tu veux avec `/drop setup` ; `/drop about` affiche la version et les liens.
+
 ## Trois thèmes
 
 ![Trois thèmes.](docs/img/feat-themes-fr.png)
 
-Flare, Léger ou Classic : tu choisis le look, tu gardes la même grille. Dropamine s'intègre aussi parfaitement à FlareUI, entre le suivi de quêtes et les compteurs Menace et Dégâts.
+FlareUI (New ou Old School), Léger ou Classic : tu choisis le look, tu gardes la même grille. Dropamine s'intègre aussi parfaitement à FlareUI, entre le suivi de quêtes et les compteurs Menace et Dégâts.
 
 `/drop` ouvre le panneau. `/drop debug` sert au diagnostic.
 
@@ -222,7 +254,13 @@ Unzip `Dropamine` into `World of Warcraft\_forever_\Interface\AddOns\`. This add
 | --- | --- |
 | `/drop` | Show or hide the panel |
 | `/dropamine` | Same as `/drop` |
+| `/drop progression` | Open the Progression window |
+| `/drop chasse` | Hunt list (wanted items, attempts, drop chance) |
+| `/drop collection` | What the scanner has learned |
+| `/drop records` | Best session, hour, day, combo, active streak |
+| `/drop setup` | Reopen the guided tour |
+| `/drop about` | Version, links, thanks |
 
 ## License
 
-[MIT](LICENSE) — © 2026 Raykuilu. The default look is inspired by FlareUI (Malkkav); no FlareUI files are included. The grid idea comes from Old School RuneScape; no Jagex assets are included.
+[MIT](LICENSE) — © 2026 Raykuilu. The default look is inspired by FlareUI (Malkkav). The only FlareUI file included is its MIT-licensed border texture (`Media/Dropamine-Frame-Thick.tga`, licence in `Media/LICENSE-FlareUI-Border.txt`), used by the "FlareUI (New)" theme. The grid idea comes from Old School RuneScape; no Jagex assets are included.

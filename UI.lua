@@ -1,5 +1,6 @@
 -- Dropamine 2.5.0 — vue OSRS dans l'onglet Comp. natif, fenêtre de secours /drop
 local ADDON, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 if type(ns) ~= "table" then ns = _G.Dropamine or {} end
 local UI = {}
 ns.UI = UI
@@ -99,7 +100,7 @@ local function SafeStep(label, fn, ...)
     UI._errPrinted = UI._errPrinted or {}
     if not UI._errPrinted[label] and ns.Print then
       UI._errPrinted[label] = true
-      ns.Print("|cffff4040erreur|r " .. tostring(label) .. " : " .. tostring(err))
+      ns.Print(Tr["|cffff4040erreur|r "] .. tostring(label) .. " : " .. tostring(err))
     end
   end
   return ok, err
@@ -250,14 +251,35 @@ local function ReuseOrCreate(kind, name, parent, template)
 end
 
 
-local function SetTileIcon(tex, path)
+local function IsAddonMedia(path)
+  if type(path) ~= "string" then return false end
+  local f = string.lower(path):gsub("/", "\\")
+  return string.find(f, "interface\\addons\\dropamine\\media\\", 1, true) and true or false
+end
+
+local function SetTileIcon(tex, path, slot)
   if not tex then return end
   local icon = path or ns.FALLBACK_ICON
   local ok = tex.SetTexture and pcall(tex.SetTexture, tex, icon)
   if not ok and icon ~= ns.FALLBACK_ICON then
     pcall(tex.SetTexture, tex, ns.FALLBACK_ICON)
+    icon = ns.FALLBACK_ICON
   end
-  if tex.SetTexCoord then pcall(tex.SetTexCoord, tex, 0.07, 0.93, 0.07, 0.93) end
+  -- 3.5.20 : la goutte a son propre alpha — ne pas recadrer (ça coupait la pointe).
+  -- 3.6.3 : nos icônes Media tiennent déjà dans le cercle (masque + retrait) ;
+  -- les icônes de jeu sont rognées (0,07) pour que le cadre cuit ne déborde pas.
+  local fold = type(icon) == "string" and string.lower(icon):gsub("/", "\\") or ""
+  local logo = string.find(fold, "skillstab", 1, true) or string.find(fold, "dropamine-icon", 1, true)
+  local media = IsAddonMedia(icon)
+  if tex.SetTexCoord then
+    if logo or media then pcall(tex.SetTexCoord, tex, 0, 1, 0, 1)
+    else pcall(tex.SetTexCoord, tex, 0.07, 0.93, 0.07, 0.93) end
+  end
+  -- toast / anneau rond : recaler le masque et le retrait après SetTexture (tous les formats)
+  if slot and slot._ringLook and ns.Style and ns.Style.IconRing then
+    pcall(ns.Style.IconRing, slot, tex)
+    if slot._flareMask and tex.AddMaskTexture then pcall(tex.AddMaskTexture, tex, slot._flareMask) end
+  end
 end
 
 local function DisplayNumber(d)
@@ -279,16 +301,16 @@ end
 local function ContributionLine(d)
   if not d then return "" end
   if d.kind == "stat" then
-    return "Non inclus dans le total (caractéristique)."
+    return Tr["Non inclus dans le total (caractéristique)."]
   end
   if d.excludedMonte then
-    return "Affichée mais non incluse : aucun plafond de Monte n'est documenté."
+    return Tr["Affichée mais non incluse : aucun plafond de Monte n'est documenté."]
   end
   if d.combatTile and d.skillName and d.skillName ~= d.name then
-    return "Compte dans le total : +" .. tostring(d.current or 0) .. "  (" .. d.skillName .. ")"
+    return Tr["Compte dans le total : +"] .. tostring(d.current or 0) .. "  (" .. d.skillName .. ")"
   end
   if d.inTotal then
-    return "Compte dans le total : +" .. tostring(d.current or 0)
+    return Tr["Compte dans le total : +"] .. tostring(d.current or 0)
   end
   return ""
 end
@@ -339,53 +361,6 @@ local function ShowPixelBorder(frame, show)
   if not t then return end
   for _, tex in pairs(t) do
     if show then tex:Show() else tex:Hide() end
-  end
-end
-
--- Essaie un backdrop avec filet doré du client ; sinon filet 1 px.
-local function ApplyGoldEdge(frame, edgeSize)
-  if not frame then return false end
-  if frame._osrsEdgeApplied then return frame._osrsEdgeOk and true or false end
-  frame._osrsEdgeApplied = true
-  -- Reprendre le filet d'une barre native si on l'a déjà observé.
-  local files = {}
-  if UI.nativeEdgeFile then files[#files + 1] = UI.nativeEdgeFile end
-  for i = 1, #EDGE_FILES do files[#files + 1] = EDGE_FILES[i] end
-  if frame.SetBackdrop then
-    for i = 1, #files do
-      local bd = {
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = files[i],
-        tile = true,
-        tileSize = 8,
-        edgeSize = edgeSize or UI.nativeEdgeSize or 10,
-        insets = { left = 2, right = 2, top = 2, bottom = 2 },
-      }
-      if pcall(frame.SetBackdrop, frame, bd) then
-        frame._osrsEdgeOk = true
-        frame._osrsEdgeFile = files[i]
-        return true
-      end
-    end
-  end
-  frame._osrsEdgeOk = false
-  EnsurePixelBorder(frame, "OVERLAY")
-  return false
-end
-
-local function SetGoldEdgeColor(frame, r, g, b, a)
-  if frame and frame._osrsEdgeOk and frame.SetBackdropBorderColor then
-    pcall(frame.SetBackdropBorderColor, frame, r, g, b, a or 1)
-  end
-  ColorPixelBorder(frame, r, g, b, a)
-end
-
-local function SetGoldFill(frame, r, g, b, a)
-  if frame and frame.SetBackdropColor then
-    pcall(frame.SetBackdropColor, frame, r, g, b, a)
-  end
-  if frame and frame.bg then
-    FillTexture(frame.bg, r, g, b, a)
   end
 end
 
@@ -742,21 +717,6 @@ TrySetTex = function(tex, path, blend, asAtlas)
   return false
 end
 
--- Le filet et l'icône partagent le même centre et la même taille.
--- On n'utilise plus UI-Quickslot2 à 64/36 : en jeu le filet dépassait
--- l'icône et se décalait à gauche (ancres du template + overlay trop grand).
-local function SizeSlotOverlay(tex, slot)
-  if not tex or not slot then return end
-  if tex.ClearAllPoints then tex:ClearAllPoints() end
-  tex:SetAllPoints(slot)
-end
-
-local function ThinDarkBorder(frame)
-  -- Filet sombre type barre de cadre d'unité, PAS le filet jaune plat des tooltips.
-  EnsurePixelBorder(frame, "OVERLAY")
-  ColorPixelBorder(frame, BAR_EDGE_DARK[1], BAR_EDGE_DARK[2], BAR_EDGE_DARK[3], BAR_EDGE_DARK[4])
-end
-
 local function ThinBronzeBorder(frame)
   -- Filet unique : le cadre intérieur / séparateur Forever, pas notre or maison.
   if UI.ApplyNativeInsetBorder then
@@ -770,71 +730,6 @@ local function ThinBronzeBorder(frame)
     EnsurePixelBorder(frame, "OVERLAY")
     ColorPixelBorder(frame, (NATIVE_INSET_COLOR or GOLD_BORDER)[1], (NATIVE_INSET_COLOR or GOLD_BORDER)[2], (NATIVE_INSET_COLOR or GOLD_BORDER)[3], 1)
   end
-end
-
--- Barre type Comp. / réputation Forever : ~18 px, fond sombre, filet bronze, remplissage BLEU, texte au centre.
-local function SkinBarHolder(hold, height)
-  if not hold then return end
-  hold:SetHeight(height or BAR_H)
-  if not hold.bg then
-    hold.bg = hold:CreateTexture(nil, "BACKGROUND")
-    hold.bg:SetAllPoints()
-  end
-  FillTexture(hold.bg, 0.05, 0.04, 0.03, 0.95)
-  if hold.borderTex then hold.borderTex:Hide() end
-  -- Un seul filet partout (barre, pied, drops) : le cadre intérieur Forever.
-  ThinBronzeBorder(hold)
-end
-
-local function EnsureBarText(hold)
-  if hold.barText then return hold.barText end
-  local fs = Text(hold, "GameFontHighlightSmall", "CENTER")
-  fs:SetPoint("CENTER", 0, 0)
-  fs:SetTextColor(1, 1, 1)
-  if fs.SetDrawLayer then pcall(fs.SetDrawLayer, fs, "OVERLAY", 7) end
-  hold.barText = fs
-  return fs
-end
-
-local function SetBlueBarProgress(hold, bar, cur, cap, widthHint)
-  if not hold then return end
-  cur, cap = ns.N(cur) or 0, ns.N(cap) or 0
-  SkinBarHolder(hold, BAR_H)
-  local barW = widthHint
-  if (not barW or barW < 8) and hold.GetWidth then
-    local ok, v = pcall(hold.GetWidth, hold)
-    if ok then barW = ns.N(v) end
-  end
-  if not barW or barW < 8 then barW = 80 end
-  if widthHint and widthHint >= 8 and hold.SetWidth then hold:SetWidth(widthHint) end
-  hold:Show()
-  local col = (UI.BarBlueColor and UI:BarBlueColor()) or BAR_BLUE
-  if bar then
-    if bar.SetMinMaxValues and cap > 0 then pcall(bar.SetMinMaxValues, bar, 0, cap) end
-    if bar.SetValue then pcall(bar.SetValue, bar, cur) end
-    ApplyBarFill(bar)
-    if bar.SetStatusBarColor then pcall(bar.SetStatusBarColor, bar, col[1], col[2], col[3], col[4] or 1) end
-    if bar.Show then bar:Show() end
-  end
-  if not hold.fill then
-    hold.fill = hold:CreateTexture(nil, "ARTWORK")
-    hold.fill:SetPoint("TOPLEFT", 1, -1)
-    hold.fill:SetPoint("BOTTOMLEFT", 1, 1)
-  end
-  FillTexture(hold.fill, col[1], col[2], col[3], col[4] or 1)
-  local inner = math.max(0, barW - 2)
-  local pct = (cap > 0) and (cur / cap) or 0
-  if pct < 0 then pct = 0 end
-  if pct > 1 then pct = 1 end
-  local fw = inner * pct
-  if fw < 0.5 and cur > 0 and cap > 0 then fw = 0.5 end
-  hold.fill:SetWidth((fw > 0) and fw or 0.01)
-  if fw > 0 then hold.fill:Show() else hold.fill:Hide() end
-  local fs = EnsureBarText(hold)
-  fs:SetText((cap > 0) and (tostring(cur) .. " / " .. tostring(cap)) or tostring(cur))
-  -- Le chiffre de palier (tuile) est coloré ailleurs ; le texte SUR la barre reste blanc (lisible sur le bleu).
-  fs:SetTextColor(1, 1, 1)
-  if fs.Show then fs:Show() end
 end
 
 -- v2.4.4 : barres copiées sur les barres de rang natives de l'onglet Comp.
@@ -1109,7 +1004,7 @@ local function FitBarText(fs, cur, cap, width, label)
   local avail = (width or 80) - 4
   -- Style Métiers : « Cuisine 78/150 » centré dans la barre quand ça tient.
   if label and label ~= "" and cap > 0 then
-    fs:SetText(label .. " : " .. tostring(cur) .. "/" .. tostring(cap))
+    fs:SetText(label .. Tr[" : "] .. tostring(cur) .. "/" .. tostring(cap))
     local okL, lw = pcall(fs.GetStringWidth, fs)
     lw = okL and ns.N(lw) or nil
     if lw and lw <= avail then return fs:GetText(), true end
@@ -1305,32 +1200,6 @@ function UI:ShowDetailCached(d)
   self._cachedDetailFill = false
 end
 
--- Lien avec la sélection native (liste / vue classique) : différé et une
--- seule fois par tuile différente, jamais à chaque image.
-function UI:ScheduleNativeSync(d)
-  if not d then return end
-  local key = self:SelectionKey(d)
-  if key == self._nativeSyncedKey then return end
-  self._nativeSyncPending = d
-  local tf = self:TimerFrame("nativesync")
-  if not tf then return end
-  tf._acc = 0
-  tf:SetScript("OnUpdate", function(f, elapsed)
-    f._acc = (f._acc or 0) + (elapsed or 0.05)
-    if f._acc < 0.15 then return end
-    f:SetScript("OnUpdate", nil)
-    local pd = UI._nativeSyncPending
-    UI._nativeSyncPending = nil
-    if not pd then return end
-    local k = UI:SelectionKey(pd)
-    if k == UI._nativeSyncedKey then return end
-    UI._nativeSyncedKey = k
-    UI.perf = UI.perf or {}
-    UI.perf.nativeSync = (UI.perf.nativeSync or 0) + 1
-    SafeStep("lien natif", UI.WriteNativeDetail, UI, pd)
-  end)
-end
-
 -- (3.0.0 : code de tuile déplacé dans View.lua)
 local TILE_FONT_STEPS = {
   { font = "GameFontHighlightLarge", h = 16 },
@@ -1343,13 +1212,6 @@ local function SetFontSafe(fs, fontName)
   local obj = _G[fontName]
   if obj and fs.SetFontObject then pcall(fs.SetFontObject, fs, obj) end
   fs.font = fontName
-end
-
-local function TextFits(fs, avail)
-  if not fs.GetStringWidth then return true end
-  local ok, w = pcall(fs.GetStringWidth, fs)
-  w = ok and ns.N(w) or nil
-  return not w or w <= avail
 end
 
 -- (3.0.0 : code de tuile déplacé dans View.lua)
@@ -1427,7 +1289,7 @@ function UI:UpdateCraftBadge(t, d)
     b.fs:SetTextColor(1.00, 0.85, 0.00)
     t.craftBadge = b
   end
-  local txt = tostring(n) .. " prêt" .. ((n > 1) and "s" or "")
+  local txt = tostring(n) .. ((n > 1) and Tr[" prêts"] or Tr[" prêt"])
   b.fs:SetText(txt)
   local w = 6 * #txt
   if b.fs.GetStringWidth then local ok, v = pcall(b.fs.GetStringWidth, b.fs) if ok and ns.N(v) and v > 0 then w = v end end
@@ -1469,14 +1331,14 @@ function UI:DetailExtraLines(d)
   local g = ns.GetGoal(self:GoalKey(d))
   if g then
     local left = g.rank - cur
-    lines[#lines + 1] = "Objectif : " .. tostring(g.rank) .. ((left > 0) and (" (encore " .. tostring(left) .. ")") or "")
+    lines[#lines + 1] = Tr["Objectif : "] .. tostring(g.rank) .. ((left > 0) and (Tr[" (encore "] .. tostring(left) .. ")") or "")
   end
   if ns.Opt("paliers") and self:IsCapped(d, cur, cap) then
-    lines[#lines + 1] = "Palier atteint (" .. tostring(cap) .. ") : va voir ton maître pour le suivant."
+    lines[#lines + 1] = Tr["Palier atteint ("] .. tostring(cap) .. Tr[") : va voir ton maître pour le suivant."]
   end
   local lag = ns.Opt("rappel") and self:WeaponLagInfo(d) or nil
   if lag then
-    lines[#lines + 1] = "Compétence d'arme sous-montée : " .. tostring(lag.name) .. " " .. tostring(lag.cur) .. "/" .. tostring(lag.max)
+    lines[#lines + 1] = Tr["Compétence d'arme sous-montée : "] .. tostring(lag.name) .. " " .. tostring(lag.cur) .. "/" .. tostring(lag.max)
   end
   if ns.QoL and ns.QoL.DetailLines then
     local okQ, extra = pcall(ns.QoL.DetailLines, d)
@@ -1496,8 +1358,8 @@ function UI:EnsureGoalPopup()
     if data and v then UI:ApplyGoal(data, v) end
   end
   _G.StaticPopupDialogs.OSRS_TOTALLEVEL_GOAL = {
-    text = "Objectif pour %s (actuel %s) :",
-    button1 = "Valider", button2 = "Annuler", button3 = "Effacer",
+    text = Tr["Objectif pour %s (actuel %s) :"],
+    button1 = Tr["Valider"], button2 = Tr["Annuler"], button3 = Tr["Effacer"],
     hasEditBox = 1, maxLetters = 4, timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
     OnShow = function(p, data)
       local eb = editOf(p)
@@ -1568,11 +1430,13 @@ function UI:FindTileByName(name)
   self.snapshot = snap
   local want = ns.Fold(name or "")
   if want == "" then return nil end
+  local ce = ns.LookupCatalog and ns.LookupCatalog(name)   -- 3.5.19 : nom FR ou EN
   for _, list in ipairs({ snap.tiles or {}, snap.allTiles or {} }) do
     for i = 1, #list do
       local d = list[i]
       if ns.Fold(d.name or "") == want or ns.Fold(d.skillName or "") == want then return d end
-      if want == "niveau" and d.kind == "level" then return d end
+      if ce and ce.id and d.id == ce.id then return d end
+      if (want == "niveau" or want == "level") and d.kind == "level" then return d end
     end
   end
   return nil
@@ -1583,26 +1447,26 @@ function UI:SlashGoal(rest)
   local onoff = rest:lower()
   if onoff == "on" or onoff == "off" then
     ns.SetOpt("objectifs", onoff == "on")
-    ns.Print("drops d'objectif " .. ((onoff == "on") and "activés." or "désactivés."))
+    ns.Print(Tr["drops d'objectif "] .. ((onoff == "on") and Tr["activés."] or Tr["désactivés."]))
     return
   end
   local low = string.lower(rest)
   if rest == "" then
     local c = ns.CharDB()
     local any = false
-    for k, g in pairs(c.goals) do any = true ns.Print("objectif : " .. tostring(g.name or k) .. " → " .. tostring(g.rank)) end
-    if not any then ns.Print("aucun objectif. Usage : /drop objectif <compétence> <rang> | /drop objectif clear") end
+    for k, g in pairs(c.goals) do any = true ns.Print(Tr["objectif : "] .. tostring(g.name or k) .. " → " .. tostring(g.rank)) end
+    if not any then ns.Print(Tr["aucun objectif. Usage : /drop objectif <compétence> <rang> | /drop objectif clear"]) end
     return
   end
   local clearWhat = low:match("^clear%s*(.*)$") or low:match("^effacer%s*(.*)$")
   if clearWhat then
     if clearWhat == "" then
       ns.ClearGoal(nil)
-      ns.Print("objectifs effacés.")
+      ns.Print(Tr["objectifs effacés."])
     else
       local d = self:FindTileByName(rest:match("^%S+%s+(.+)$"))
-      if d and ns.ClearGoal(self:GoalKey(d)) then ns.Print("objectif effacé : " .. self:GoalLabel(d))
-      else ns.Print("aucun objectif pour « " .. tostring(clearWhat) .. " ».") end
+      if d and ns.ClearGoal(self:GoalKey(d)) then ns.Print(Tr["objectif effacé : "] .. self:GoalLabel(d))
+      else ns.Print(Tr["aucun objectif pour « "] .. tostring(clearWhat) .. Tr[" »."]) end
     end
     self:Refresh(true)
     return
@@ -1610,13 +1474,13 @@ function UI:SlashGoal(rest)
   local name, num = rest:match("^(.-)%s+(%d+)%s*$")
   local d = name and self:FindTileByName(name)
   if not d then
-    ns.Print("compétence introuvable : « " .. tostring(name or rest) .. " ». Usage : /drop objectif <compétence> <rang>")
+    ns.Print(Tr["compétence introuvable : « "] .. tostring(name or rest) .. Tr[" ». Usage : /drop objectif <compétence> <rang>"])
     return
   end
   if self:ApplyGoal(d, num) then
-    ns.Print("objectif : " .. self:GoalLabel(d) .. " → " .. tostring(num))
+    ns.Print(Tr["objectif : "] .. self:GoalLabel(d) .. " → " .. tostring(num))
   else
-    ns.Print("objectif refusé : il doit dépasser le rang actuel (" .. tostring(d.current) .. ").")
+    ns.Print(Tr["objectif refusé : il doit dépasser le rang actuel ("] .. tostring(d.current) .. ").")
   end
 end
 
@@ -1643,13 +1507,13 @@ function UI:CheckMilestones(snap)
     if g and cur >= g.rank then
       ns.ClearGoal(key)
       c.goalsDone[key] = g.rank
-      if ns.Opt("objectifs") then self:SpawnDrop(d.icon, "Objectif atteint : " .. self:GoalLabel(d) .. " " .. tostring(g.rank),
-        "Clic droit sur la tuile pour le suivant", cur, (cap > 0) and cap or nil, nil, { variant = "gold", skillId = d.id, kind = "goal" }) end
+      if ns.Opt("objectifs") then self:SpawnDrop(d.icon, Tr["Objectif atteint : "] .. self:GoalLabel(d) .. " " .. tostring(g.rank),
+        Tr["Clic droit sur la tuile pour le suivant"], cur, (cap > 0) and cap or nil, nil, { variant = "gold", skillId = d.id, kind = "goal" }) end
     end
     if self:IsCapped(d, cur, cap) and c.caps[key] ~= cap then
       c.caps[key] = cap
       if not seeding and ns.Opt("paliers") then
-        self:SpawnDrop(d.icon, "Palier atteint — va voir ton maître",
+        self:SpawnDrop(d.icon, Tr["Palier atteint — va voir ton maître"],
           self:GoalLabel(d) .. " " .. tostring(cur) .. " / " .. tostring(cap), cur, cap, nil, { variant = "palier", skillId = d.id, kind = "palier" })
       end
     end
@@ -1666,7 +1530,7 @@ function UI:CheckMilestones(snap)
       local state = st and st.state
       local prevCap = c.profCaps[key]
       if not seeding and prevCap and cap > prevCap then
-        self:PlayRankMilestone(d, "Nouveau rang : " .. tostring(d.name), "maximum " .. tostring(cap))
+        self:PlayRankMilestone(d, Tr["Nouveau rang : "] .. tostring(d.name), Tr["maximum "] .. tostring(cap))
       elseif not seeding and state == "available" and c.rankStates[key] and c.rankStates[key] ~= "available" then
         self:PlayRankMilestone(d, tostring(d.name), st.note)
       end
@@ -1726,12 +1590,12 @@ end
 function UI:FooterText(snap)
   local total = snap.total or snap.ficTotal or 0
   local tmax = snap.totalMax or snap.ficMax or ns.TOTAL_MAX or 2460
-  local base = "Niveau total : " .. tostring(total) .. " / " .. tostring(tmax)
+  local base = Tr["Niveau total : "] .. tostring(total) .. " / " .. tostring(tmax)
   if not ns.Opt("session") or (snap.liveCount or 0) <= 0 then return base, base end
   local gain = ns.DailyGains(snap)
   if not gain or gain == 0 then return base, base end
   local sign = (gain >= 0) and "+" or ""
-  return base .. " (" .. sign .. tostring(gain) .. " aujourd'hui)", base .. " (" .. sign .. tostring(gain) .. ")"
+  return base .. " (" .. sign .. tostring(gain) .. Tr[" aujourd'hui)"], base .. " (" .. sign .. tostring(gain) .. ")"
 end
 
 -- Grille compacte : emplacements sur le fond du panneau, sans cadre extérieur.
@@ -1760,15 +1624,29 @@ function UI:BuildGrid(parent, namePrefix)
   foot:SetScript("OnEnter", function(self)
     if UI.snapshot then UI:ShowDetailBreakdown(UI.snapshot) end
     UI:ShowRulesTooltip(self)
+    -- 3.6.0 : clic = fenêtre Progression, mini-graphe 7 jours
+    local PUi = ns.ProgressUI
+    if PUi and GameTooltip and GameTooltip.IsShown and GameTooltip:IsShown() then
+      GameTooltip:AddLine(Tr["Clic : fenêtre Progression"], 0.6, 0.8, 1)
+      GameTooltip:Show()
+      if PUi.ShowMini then pcall(PUi.ShowMini, GameTooltip, self) end
+    end
   end)
   foot:SetScript("OnLeave", function()
+    if ns.ProgressUI and ns.ProgressUI.HideMini then pcall(ns.ProgressUI.HideMini) end
     if GameTooltip then GameTooltip:Hide() end
     local d = UI.selected
     if d then UI:ShowDetailCached(d) end
   end)
   -- v2.7.2 : tout le bandeau est cliquable (sélectionne « Niveau total »).
   if foot.RegisterForClicks then pcall(foot.RegisterForClicks, foot, "LeftButtonUp") end
-  foot:SetScript("OnClick", function() UI:SelectTile(UI.TOTAL_DATA) end)
+  foot:SetScript("OnClick", function(self, button)
+    UI:SelectTile(UI.TOTAL_DATA)
+    if ns.ProgressUI and ns.ProgressUI.OnTotalClick then
+      if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
+      ns.ProgressUI.OnTotalClick(self, button)
+    end
+  end)
   wrap:SetScript("OnSizeChanged", function(fr)
     if wrap._snap and UI:SizeChangedFor(fr, "grid") then UI:LayoutGrid(wrap, wrap._snap) end
   end)
@@ -1840,7 +1718,7 @@ function UI:GroupTiles(tiles)
   end
   local out = {}
   for g = 1, 3 do
-    if #groups[g] > 0 then out[#out + 1] = { title = UI.GROUP_TITLES[g], tiles = groups[g] } end
+    if #groups[g] > 0 then out[#out + 1] = { title = Tr[UI.GROUP_TITLES[g]], tiles = groups[g] } end
   end
   return out
 end
@@ -1853,82 +1731,6 @@ local function ObjType(o)
   local ok, t = pcall(o.GetObjectType, o)
   return ok and t or nil
 end
-function UI:DiscoverNativeHeader()
-  if self._hdrProbed and not self._nativeRescan then return self.nativeHeader end
-  self._hdrProbed = true
-  local names = {}
-  for k in pairs(ns.openHeaders or {}) do names[k] = true end
-  for _, k in ipairs(ns.collapsedHeaders or {}) do names[k] = true end
-  local f = self.skillFrame
-  local found
-  local function textOf(fs)
-    if not fs.GetText then return nil end
-    local ok, t = pcall(fs.GetText, fs)
-    if ok and type(t) == "string" and not ns.IsSecret(t) then return t end
-  end
-  local function widest(frame)
-    local best, bw
-    local regs = { pcall(frame.GetRegions, frame) }
-    for i = 2, #regs do
-      local r = regs[i]
-      if type(r) == "table" and ObjType(r) == "Texture" then
-        local w = select(1, SizeOf(r)) or 0
-        if w > (bw or 0) then best, bw = r, w end
-      end
-    end
-    return best
-  end
-  local function visit(o, depth)
-    if found or type(o) ~= "table" or depth > 6 or IsOwnFrame(o) then return end
-    if o.GetRegions then
-      local regs = { pcall(o.GetRegions, o) }
-      for i = 2, #regs do
-        local r = regs[i]
-        if type(r) == "table" and ObjType(r) == "FontString" then
-          local t = textOf(r)
-          if t and names[t] then
-            local bar = widest(o)
-            if bar then
-              local d = { from = t }
-              local okA, atlas = pcall(function() return bar.GetAtlas and bar:GetAtlas() end)
-              if okA and type(atlas) == "string" and atlas ~= "" and not ns.IsSecret(atlas) then d.atlas = atlas end
-              local path = TexOrFileID(bar)
-              if path ~= nil and not ns.IsSecret(path) then d.tex = path end
-              if bar.GetTexCoord then
-                local tc = { pcall(bar.GetTexCoord, bar) }
-                if tc[1] and #tc >= 9 then d.coords = { tc[2], tc[3], tc[4], tc[5], tc[6], tc[7], tc[8], tc[9] } end
-              end
-              if bar.GetVertexColor then
-                local vc = { pcall(bar.GetVertexColor, bar) }
-                if vc[1] then d.color = { ns.N(vc[2]) or 1, ns.N(vc[3]) or 1, ns.N(vc[4]) or 1, ns.N(vc[5]) or 1 } end
-              end
-              if d.atlas or d.tex then found = d return end
-            end
-          end
-        end
-      end
-    end
-    if o.GetChildren then
-      local kids = { pcall(o.GetChildren, o) }
-      if kids[1] then for i = 2, #kids do visit(kids[i], depth + 1) end end
-    end
-  end
-  if f and not ns.InCombat() then
-    visit(f.ScrollBox, 0)
-    if not found then visit(self.nativeLeft, 0) end
-    if not found then for _, r in ipairs(self:NativeListRows()) do visit(r, 0) if found then break end end end
-  end
-  local db = ns.db
-  if found then
-    if db then db.nativeAssets = db.nativeAssets or {} db.nativeAssets.header = found end
-  elseif db and db.nativeAssets and db.nativeAssets.header then
-    found = db.nativeAssets.header
-    found.cached = true
-  end
-  self.nativeHeader = found
-  return found
-end
-
 -- (3.0.0 : déplacé dans View.lua)
 function UI:FitGrid(wrap, n)
   -- Toujours 2 colonnes, largeur fixe (volet gauche natif). Les rangées se
@@ -1986,26 +1788,26 @@ end
 -- (3.0.0 : déplacé dans View.lua)
 function UI:FillBreakdownTooltip(tt, snap)
   if not tt then return end
-  tt:AddLine("Niveau total", GOLD[1], GOLD[2], GOLD[3])
+  tt:AddLine(Tr["Niveau total"], GOLD[1], GOLD[2], GOLD[3])
   if not snap then return end
   local total = snap.total or snap.ficTotal or 0
   local tmax = snap.totalMax or snap.ficMax or ns.TOTAL_MAX
-  tt:AddLine("Total : " .. tostring(total) .. " / " .. tostring(tmax), 1, 1, 1)
+  tt:AddLine(Tr["Total : "] .. tostring(total) .. " / " .. tostring(tmax), 1, 1, 1)
   if snap.breakdown then
-    tt:AddLine("Détail", GOLD[1], GOLD[2], GOLD[3])
+    tt:AddLine(Tr["Détail"], GOLD[1], GOLD[2], GOLD[3])
     for i = 1, #snap.breakdown do
       local b = snap.breakdown[i]
-      tt:AddLine(b.name .. " : +" .. tostring(b.value), 0.85, 0.85, 0.85)
+      tt:AddLine(b.name .. Tr[" : +"] .. tostring(b.value), 0.85, 0.85, 0.85)
     end
   end
   local gain, list = ns.DailyGains(snap)
   if gain and gain > 0 then
-    tt:AddLine("Aujourd'hui : +" .. tostring(gain), GOLD[1], GOLD[2], GOLD[3])
+    tt:AddLine(Tr["Aujourd'hui : +"] .. tostring(gain), GOLD[1], GOLD[2], GOLD[3])
     for _, e in ipairs(list) do tt:AddLine(e.name .. " +" .. tostring(e.gain), 0.25, 1, 0.25) end
   end
   tt:AddLine(" ", 1, 1, 1)
-  if ns.TOTAL_FORMULA_FR then tt:AddLine(ns.TOTAL_FORMULA_FR, 0.7, 0.7, 0.7, true) end
-  if ns.MONTE_NOTE_FR then tt:AddLine(ns.MONTE_NOTE_FR, 0.7, 0.65, 0.4, true) end
+  if ns.TOTAL_FORMULA_FR then tt:AddLine(Tr[ns.TOTAL_FORMULA_FR], 0.7, 0.7, 0.7, true) end
+  if ns.MONTE_NOTE_FR then tt:AddLine(Tr[ns.MONTE_NOTE_FR], 0.7, 0.65, 0.4, true) end
 end
 
 -- Panneau de droite : on ne pose PLUS de texte par-dessus la barre native.
@@ -2079,27 +1881,6 @@ function UI:ProbeNativeUpdateFunctions()
   self.nativeUpdateNames = found
   ns.lastNativeUpdateNames = found
   return found
-end
-
-function UI:CallNativeSkillUpdates()
-  -- v2.7.1 : plus JAMAIS d'appel aux fonctions natives (SkillFrame_Update…) :
-  -- elles s'exécutaient souillées par l'addon et la ScrollBox échouait en combat
-  -- sur les valeurs secrètes (SkillsFrame.lua:442). Conservé en no-op.
-  if true then return end
-  local names = self:ProbeNativeUpdateFunctions() or {}
-  for i = 1, #names do
-    local name = names[i]
-    local fn
-    local colon = string.find(name, ":", 1, true)
-    if colon then
-      local fname, meth = string.sub(name, 1, colon - 1), string.sub(name, colon + 1)
-      local f = _G[fname]
-      if type(f) == "table" then fn = f[meth] if fn then pcall(fn, f) end end
-    else
-      fn = _G[name]
-      if type(fn) == "function" then pcall(fn) end
-    end
-  end
 end
 
 local function HideLegacyDetailExtras(detail)
@@ -3012,14 +2793,14 @@ function UI:DetailDescriptionFor(d, liveInfo)
   end
   if not d then return "" end
   if d.kind == "level" then
-    return "Niveau du personnage, sur " .. tostring(ns.GetLevelCap and ns.GetLevelCap() or 60)
-      .. ". Il compte dans le total (règles détaillées : survol du titre ou du bandeau)."
+    return Tr["Niveau du personnage, sur "] .. tostring(ns.GetLevelCap and ns.GetLevelCap() or 60)
+      .. Tr[". Il compte dans le total (règles détaillées : survol du titre ou du bandeau)."]
   end
   if d.kind == "stat" then
-    return "Caractéristique déjà visible sur la fiche de personnage. Elle est affichée ici uniquement sur demande (/drop stats) et n'entre pas dans le total : aucun plafond n'est documenté pour Forever."
+    return Tr["Caractéristique déjà visible sur la fiche de personnage. Elle est affichée ici uniquement sur demande (/drop stats) et n'entre pas dans le total : aucun plafond n'est documenté pour Forever."]
   end
   if d.excludedMonte then
-    return "Compétence de Monte. Elle est affichée si elle est apprise, mais elle n'entre pas dans le total : aucun plafond n'est documenté pour Forever."
+    return Tr["Compétence de Monte. Elle est affichée si elle est apprise, mais elle n'entre pas dans le total : aucun plafond n'est documenté pour Forever."]
   end
   return ""
 end
@@ -3233,7 +3014,7 @@ function UI:FillOwnDetail(d, liveInfo)
   self:EnsureDetailTitle(f)
   if f.sub then
     if d.kind == "level" then
-      f.sub:SetText("Niveau " .. tostring(ns.N(d.current) or 0))
+      f.sub:SetText(Tr["Niveau "] .. tostring(ns.N(d.current) or 0))
       f.sub:Show()
     else
       f.sub:SetText("")
@@ -3273,7 +3054,7 @@ function UI:FillOwnDetail(d, liveInfo)
   end
   local isCombat = (d.kind == "melee" or d.kind == "ranged" or d.kind == "feral" or d.kind == "defense")
   if d.placeholder then
-    desc = "|cff808080" .. tostring(d.placeholderNote or "Emplacement libre.") .. "|r"
+    desc = "|cff808080" .. tostring(d.placeholderNote or Tr["Emplacement libre."]) .. "|r"
   else
     local prog = {}
     local st = ns.RankStatus and ns.RankStatus(d, cur, cap)
@@ -3305,15 +3086,15 @@ function UI:FillOwnDetail(d, liveInfo)
           local ls = split(stx)
           table.remove(ls, 1)   -- l'en-tête devient une barre de section
           for i = 1, #ls do ls[i] = NL and NL.TwoTone(ls[i]) or ls[i] end
-          add("Statistiques", ls)
+          add(Tr["Statistiques"], ls)
         end
       end
     end
-    local pr = { title = "Progression", lines = prog }
+    local pr = { title = Tr["Progression"], lines = prog }
     if #prog > 0 then table.insert(sections, 1, pr) end
     if ns.Craft and ns.Craft.DetailText and d.id then
       local okC, ct = pcall(ns.Craft.DetailText, d.id)
-      if okC and ct and ct ~= "" then add("Recettes", split(ct)) end
+      if okC and ct and ct ~= "" then add(Tr["Recettes"], split(ct)) end
     end
   end
   f.desc:SetText(desc)
@@ -3512,7 +3293,7 @@ function UI:FitContribLine(f, line)
   if fits() then return end
   SetFontSafe(fs, "GameFontNormalSmall")
   if fits() then return end
-  fs:SetText((short:gsub("Compte dans le total", "Total")))
+  fs:SetText((short:gsub(Tr["Compte dans le total"], Tr["Total"])))
 end
 
 function UI:HideDetailRows(f)
@@ -3520,56 +3301,6 @@ function UI:HideDetailRows(f)
   for i = 1, #f.rows do f.rows[i].label:Hide() f.rows[i].value:Hide() end
   if f.rowNote then f.rowNote:Hide() end
   if f.desc then f.desc:Show() end
-end
-
-function UI:ShowDetailRows(f, items, note)
-  local child = f.scrollChild
-  if not child then return end
-  local w = 200
-  if f.scroll then w = select(1, SizeOf(f.scroll)) or w end
-  if w < 80 then w = 200 end
-  child:SetWidth(w)
-  f.desc:SetText("")
-  f.desc:Hide()
-  local y = 0
-  for i = 1, #items do
-    local r = f.rows[i]
-    if not r then
-      r = { label = Text(child, "GameFontNormalSmall", "LEFT"), value = Text(child, "GameFontHighlightSmall", "RIGHT") }
-      if r.label.SetWordWrap then r.label:SetWordWrap(false) end
-      f.rows[i] = r
-    end
-    r.label:ClearAllPoints()
-    r.label:SetPoint("TOPLEFT", child, "TOPLEFT", 2, -y)
-    r.label:SetPoint("RIGHT", child, "RIGHT", -44, 0)
-    r.value:ClearAllPoints()
-    r.value:SetPoint("TOPRIGHT", child, "TOPRIGHT", -2, -y)
-    r.value:SetWidth(40)
-    r.label:SetText(items[i].label)
-    r.value:SetText(items[i].value)
-    r.label:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
-    r.value:SetTextColor(1, 1, 1)
-    if items[i].header then y = y + 6 r.label:ClearAllPoints() r.label:SetPoint("TOPLEFT", child, "TOPLEFT", 2, -y)
-      r.label:SetPoint("RIGHT", child, "RIGHT", -44, 0) r.value:ClearAllPoints() r.value:SetPoint("TOPRIGHT", child, "TOPRIGHT", -2, -y) end
-    if items[i].today then r.label:SetTextColor(0.85, 0.85, 0.85) r.value:SetTextColor(0.25, 1, 0.25) end
-    r.label:Show() r.value:Show()
-    y = y + 14
-  end
-  for i = #items + 1, #f.rows do f.rows[i].label:Hide() f.rows[i].value:Hide() end
-  local nh = 0
-  if note and note ~= "" then
-    f.rowNote:ClearAllPoints()
-    f.rowNote:SetPoint("TOPLEFT", child, "TOPLEFT", 2, -(y + 6))
-    f.rowNote:SetPoint("RIGHT", child, "RIGHT", -2, 0)
-    f.rowNote:SetText(note)
-    f.rowNote:SetTextColor(0.80, 0.80, 0.80)
-    f.rowNote:Show()
-    nh = 30
-  else
-    f.rowNote:Hide()
-  end
-  child:SetHeight(y + 6 + nh)
-  if f.scroll and f.scroll.SetVerticalScroll then pcall(f.scroll.SetVerticalScroll, f.scroll, 0) end
 end
 
 function UI:ShowDetailBreakdown(snap)
@@ -3584,7 +3315,7 @@ function UI:ShowDetailBreakdown(snap)
   self:SetNativeDetailShown(false)
   local total = snap.total or 0
   local tmax = snap.totalMax or ns.TOTAL_MAX
-  f.title:SetText("Niveau total")
+  f.title:SetText(Tr["Niveau total"])
   self:EnsureDetailTitle(f)
   if f.sub then f.sub:SetText("") f.sub:Hide() end
   self:AnchorDetailBar(f)
@@ -3601,17 +3332,17 @@ function UI:ShowDetailBreakdown(snap)
   local lines = {}
   for i = 1, #(snap.breakdown or {}) do
     local b = snap.breakdown[i]
-    lines[#lines + 1] = NL and NL.TwoTone(b.name .. " : +" .. tostring(b.value)) or (b.name .. " : +" .. tostring(b.value))
+    lines[#lines + 1] = NL and NL.TwoTone(b.name .. Tr[" : +"] .. tostring(b.value)) or (b.name .. Tr[" : +"] .. tostring(b.value))
   end
-  local sections = { { title = "Détail", lines = lines } }
+  local sections = { { title = Tr["Détail"], lines = lines } }
   local gain, glist = ns.DailyGains(snap)
   if gain and gain > 0 then
-    local tl = { NL and NL.TwoTone("Total : +" .. tostring(gain)) or ("Total : +" .. tostring(gain)) }
+    local tl = { NL and NL.TwoTone(Tr["Total : +"] .. tostring(gain)) or (Tr["Total : +"] .. tostring(gain)) }
     for _, e in ipairs(glist) do tl[#tl + 1] = "|cff40ff40" .. e.name .. " +" .. tostring(e.gain) .. "|r" end
-    sections[#sections + 1] = { title = "Aujourd'hui", lines = tl }
+    sections[#sections + 1] = { title = Tr["Aujourd'hui"], lines = tl }
   end
   self._todayItems = gain and gain > 0 and #glist or 0
-  f.desc:SetText(ns.TOTAL_SHORT_FR or "")
+  f.desc:SetText(Tr[ns.TOTAL_SHORT_FR or ""])
   f.desc:Show()
   self:LayoutDetailDesc(f)
   self:RenderDetailSections(f, sections)
@@ -3680,7 +3411,8 @@ function UI:ReapplySelection()
   return d
 end
 
-UI.TOTAL_DATA = { kind = "total", id = "total", name = "Niveau total" }
+-- 3.5.19 : nom lu à l'affichage (langue choisie après le chargement)
+UI.TOTAL_DATA = setmetatable({ kind = "total", id = "total" }, { __index = function(_, k) if k == "name" then return Tr["Niveau total"] end end })
 function UI:SelectTile(d)
   if not d then return end
   if d.kind == "total" then
@@ -3816,13 +3548,13 @@ function UI:EnsureViewToggle(f)
     if not btn then btn, used = CreateFrame("Button", "DropamineViewToggle", f), false end
   end
   btn:SetSize(110, 20)
-  if btn.SetText then pcall(btn.SetText, btn, "Vue classique") end
+  if btn.SetText then pcall(btn.SetText, btn, Tr["Vue classique"]) end
   btn:SetScript("OnClick", function() UI:ToggleView() end)
   self.viewToggle = btn
   if not (btn.GetFontString and btn:GetFontString()) and btn.CreateFontString then
     local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetAllPoints()
-    fs:SetText("Vue classique")
+    fs:SetText(Tr["Vue classique"])
     btn.fs = fs
   end
   return btn
@@ -3898,7 +3630,7 @@ end
 function UI:SetViewToggleText()
   local b = self.viewToggle
   if not b then return end
-  local label = self:IsOsrsView() and "Vue classique" or "Vue OSRS"
+  local label = self:IsOsrsView() and Tr["Vue classique"] or Tr["Vue OSRS"]
   if b.SetText then pcall(b.SetText, b, label) end
   if b.fs then b.fs:SetText(label) end
   self:SizeViewToggle()
@@ -4221,7 +3953,7 @@ function UI:BuildStandalone()
     self.title = Text(f, "GameFontNormal", "CENTER")
     self.title:SetPoint("TOP", 0, -8)
   end
-  self.title:SetText("Niveau total")
+  self.title:SetText(Tr["Niveau total"])
   local portrait = (type(f.portrait) == "table" and f.portrait) or (f.PortraitContainer and f.PortraitContainer.portrait)
   if portrait and SetPortraitTexture then pcall(SetPortraitTexture, portrait, "player") end
   self.subtitle = Text(f, "GameFontHighlightSmall", "LEFT")
@@ -4240,35 +3972,112 @@ function UI:BuildStandalone()
   end)
 end
 
+-- 3.5.21 : en combat, mise à jour des textes et du remplissage des cases
+-- déjà posées, sans SetPoint / Show / Hide / SetFrameLevel (le wrap peut
+-- être enfant de SkillFrame, cadre protégé). La mise en page complète
+-- attend PLAYER_REGEN_ENABLED (self.dirty).
+function UI:RefreshVisibleTiles(wrap, snap)
+  if not (wrap and snap and wrap.tiles) then return end
+  wrap._snap = snap
+  local function match(t)
+    local d0 = t and t.data
+    if not d0 then return nil end
+    if d0.kind == "total" then
+      d0.current = snap.total or snap.ficTotal or d0.current
+      d0.apiMax = snap.totalMax or snap.ficMax or d0.apiMax
+      return d0
+    end
+    -- Case de combat : lier par la ligne réelle (id / skillName), pas seulement
+    -- « Mêlée » — sinon une vieille entrée Épées / 2H peut rester collée.
+    if d0.combatTile or d0.kind == "melee" or d0.kind == "ranged" or d0.kind == "defense" or d0.kind == "feral" then
+      for _, d in ipairs(snap.tiles or {}) do
+        if d and d.kind == d0.kind then
+          if d0.id and d.id == d0.id then return d end
+          if d0.skillName and d.skillName and d.skillName == d0.skillName then return d end
+          if d0.key and d.key == d0.key then return d end
+        end
+      end
+      -- Ré-équipement (épée → mains nues) : une seule case « Mêlée » dans le snap.
+      for _, d in ipairs(snap.tiles or {}) do
+        if d and d.kind == d0.kind and d0.name and d.name == d0.name then return d end
+      end
+    end
+    for _, d in ipairs(snap.tiles or {}) do
+      if d and ((d0.key and d.key == d0.key) or (d0.kind and d.kind == d0.kind and d0.name and d.name == d0.name)) then
+        return d
+      end
+    end
+    return nil
+  end
+  for i = 1, #wrap.tiles do
+    local t = wrap.tiles[i]
+    local d = match(t)
+    if d then
+      pcall(self.UpdateTile, self, t, d)
+      if t._wideOn and ns.Wide and ns.Wide.Paint then pcall(ns.Wide.Paint, t) end
+    end
+  end
+  if wrap.totalFS and wrap.totalFS.SetText then
+    local full, short = self:FooterText(snap)
+    wrap.totalFS:SetText(full)
+    local okW, sw = pcall(wrap.totalFS.GetStringWidth, wrap.totalFS)
+    sw = okW and ns.N(sw) or nil
+    if sw and sw > self:GetGridInnerWidth(wrap) - 12 then wrap.totalFS:SetText(short) end
+  end
+end
+
 function UI:Refresh(force)
   local need = force or (self.frame and self.frame:IsShown()) or (self.embed and self.embed:IsShown()) or (self.skillFrame and self.skillFrame:IsShown() and self:IsOsrsView())
   if not need and not force then
     self.dirty = true
     return
   end
-  -- En combat : rafraîchissement non essentiel reporté à PLAYER_REGEN_ENABLED.
-  if not force and type(InCombatLockdown) == "function" and InCombatLockdown() then
-    self.dirty = true
-    return
-  end
-  self.dirty = false
+  local combat = type(InCombatLockdown) == "function" and InCombatLockdown()
+  -- 3.5.21 : en combat on met à jour les valeurs (textes, jauges) ; seules
+  -- les opérations sur cadres protégés (SetPoint / Show / Hide / SetFrameLevel)
+  -- sont reportées à PLAYER_REGEN_ENABLED.
   local okC, snap = pcall(ns.Collect)
   if not okC then SafeStep("collecte", error, snap) return end
   self.snapshot = snap
   self._snapVersion = (self._snapVersion or 0) + 1
   SafeStep("objectifs / paliers", self.CheckMilestones, self, snap)
-  SafeStep("style métiers", self.ApplyProfessionStyle, self)
+  if not combat then
+    SafeStep("style métiers", self.ApplyProfessionStyle, self)
+  end
   if self.title then
-    self.title:SetText("Niveau total")
+    self.title:SetText(Tr["Niveau total"])
   end
   if self.subtitle then
     local name = snap.playerName or ""
     if name ~= "" then
-      self.subtitle:SetText(name .. "  ·  niveau " .. tostring(snap.level or 0))
+      self.subtitle:SetText(name .. Tr["  ·  niveau "] .. tostring(snap.level or 0))
     else
       self.subtitle:SetText("")
     end
   end
+  local function layoutWrap(wrap, shown)
+    if not (wrap and shown) then return end
+    local prot = (wrap.IsProtected and wrap:IsProtected())
+      or (wrap.child and wrap.child.IsProtected and wrap.child:IsProtected())
+    if prot or (combat and prot) then
+      if self.RefreshVisibleTiles then self:RefreshVisibleTiles(wrap, snap) end
+      return
+    end
+    if combat then
+      -- panneau compact : reflow + hauteur tout de suite (pas protégé).
+      self:LayoutGrid(wrap, snap)
+      if ns.Layout and ns.Layout.Center then pcall(ns.Layout.Center) end
+    else
+      self:LayoutGrid(wrap, snap)
+    end
+  end
+  if combat then
+    layoutWrap(self.soloGrid, self.frame and self.frame:IsShown())
+    layoutWrap(self.embed, self.embed:IsShown())
+    self.dirty = true
+    return
+  end
+  self.dirty = false
   if self.soloGrid and self.frame and self.frame:IsShown() then
     self:LayoutGrid(self.soloGrid, snap)
   end
@@ -4304,14 +4113,36 @@ function UI:RequestRefresh()
     self:Refresh()
     return
   end
-  holder:SetScript("OnUpdate", function(f, elapsed)
-    f._osrsAcc = (f._osrsAcc or 0) + (elapsed or 0.05)
-    if f._osrsAcc < 0.10 then return end
-    f._osrsAcc = 0
-    f:SetScript("OnUpdate", nil)
-    UI.pending = false
-    UI:Refresh()
-  end)
+  -- 3.6.0 : une seule fermeture (plus d'allocation à chaque demande) et, en
+  -- combat ou en raid, une fenêtre de regroupement plus large : une rafale
+  -- d'XP / UNIT_STATS = une seule collecte (valeurs seulement, voir Refresh).
+  holder._osrsAcc = 0
+  holder._osrsWait = UI.RefreshWindow()
+  if not UI._refreshTick then
+    UI._refreshTick = function(f, elapsed)
+      f._osrsAcc = (f._osrsAcc or 0) + (elapsed or 0.05)
+      if f._osrsAcc < (f._osrsWait or 0.10) then return end
+      f._osrsAcc = 0
+      f:SetScript("OnUpdate", nil)
+      UI.pending = false
+      UI:Refresh()
+    end
+  end
+  holder:SetScript("OnUpdate", UI._refreshTick)
+end
+-- 3.6.3 : les rescans (compétences, sacs, auras, textes) sont regroupés
+-- toutes les 1–2 s ; les animations (vague, bulles, gouttes) restent à 20 i/s.
+UI.REFRESH_WAIT = { idle = 1.25, combat = 1.50, raid = 2.00 }
+function UI.RefreshWindow()
+  local W = UI.REFRESH_WAIT
+  local combat = ns.InCombat and ns.InCombat()
+  if not combat then return W.idle end
+  local raid = type(_G.IsInRaid) == "function" and select(2, pcall(_G.IsInRaid)) == true
+  if not raid and type(_G.GetNumRaidMembers) == "function" then
+    local ok, n = pcall(_G.GetNumRaidMembers)
+    raid = ok and (tonumber(n) or 0) > 0
+  end
+  return raid and W.raid or W.combat
 end
 
 -- v2.4.4 : si l'onglet Comp. existe, on l'ouvre en vue OSRS ; la fenêtre
@@ -4338,7 +4169,7 @@ function UI:OpenSkillTab(after)
             SafeStep("ouverture Comp.", function() UI:HookSkillFrame() UI:ApplyView() end)
             if after then SafeStep("après ouverture", after) end
           else
-            ns.Print("onglet Comp. introuvable : ouvrez la fiche du personnage (C) puis l'onglet Comp.")
+            ns.Print(Tr["onglet Comp. introuvable : ouvrez la fiche du personnage (C) puis l'onglet Comp."])
           end
         end
       end)
@@ -4348,7 +4179,7 @@ function UI:OpenSkillTab(after)
   if not f then return false end
   if ns.InCombat and ns.InCombat() then
     ns.AfterCombat("openskilltab", function() UI:OpenSkillTab() end)
-    ns.Print("en combat : la fenêtre s'ouvrira à la fin du combat.")
+    ns.Print(Tr["en combat : la fenêtre s'ouvrira à la fin du combat."])
     return true
   end
   if self.frame and self.frame.Hide then self.frame:Hide() end
@@ -4430,16 +4261,12 @@ function UI:BuildMinimap()
     pcall(b.SetFrameLevel, b, (parent:GetFrameLevel() or 0) + 8)
   end
   b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
-  -- 3.3.1 : icône « 3 piliers » dessinée avec nos aplats (plus de texture d'icône)
-  local icon
-  if ns.Window and ns.Window.DrawPillars then
-    b.pillars = ns.Window.DrawPillars(b, 20, "BACKGROUND", 0)
-    icon = b.pillars.bg
-  else
-    icon = b:CreateTexture(nil, "BACKGROUND")
-    icon:SetSize(20, 20)
-    icon:SetPoint("CENTER")
-  end
+  -- 3.5.20 : icône « La Goutte » (master simplifié 32 px) ; ToggleIcon la reprend ensuite.
+  local icon = b:CreateTexture(nil, "BACKGROUND")
+  icon:SetSize(20, 20)
+  icon:SetPoint("CENTER")
+  pcall(icon.SetTexture, icon, "Interface\\AddOns\\Dropamine\\Media\\Dropamine-Icon-32")
+  b.icon = icon
   local overlay = b:CreateTexture(nil, "OVERLAY")
   overlay:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
   overlay:SetSize(54, 54)
@@ -4448,8 +4275,12 @@ function UI:BuildMinimap()
   b:RegisterForClicks("LeftButtonUp")
   b:RegisterForDrag("LeftButton")
   b:SetScript("OnClick", function(self)
-    if self.moved then self.moved = false return end
-    -- Clic : ouvrir l'onglet Comp. si possible, sinon la fenêtre de secours.
+    -- 3.5.5 : seul le clic qui TERMINE un glisser est ignoré (avant, un glisser
+    -- relâché hors du bouton avalait le clic suivant : bouton « sans effet »)
+    local moved = self.moved
+    self.moved = false
+    if moved and type(GetTime) == "function" and (GetTime() - (self._dragStop or 0)) < 0.3 then return end
+    -- Clic : ouvrir / fermer le panneau (chemin protégé, voir SafeOpen.lua)
     UI:Toggle()
   end)
   local function minimapDragUpdate(self)
@@ -4475,6 +4306,7 @@ function UI:BuildMinimap()
   end)
   b:SetScript("OnDragStop", function(self)
     self.dragging = false
+    self._dragStop = type(GetTime) == "function" and GetTime() or 0
     if self._freeMoving and self.StopMovingOrSizing then
       self:StopMovingOrSizing()
       self._freeMoving = false
@@ -4485,12 +4317,11 @@ function UI:BuildMinimap()
     if not GameTooltip then return end
     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
     local snap = UI.snapshot or (ns.Collect and ns.Collect())
-    GameTooltip:AddLine("Niveau total", GOLD[1], GOLD[2], GOLD[3])
+    GameTooltip:AddLine(Tr["Niveau total"], GOLD[1], GOLD[2], GOLD[3])
     if snap then
-      GameTooltip:AddLine("Total : " .. tostring(snap.total or snap.ficTotal or 0) .. " / " .. tostring(snap.totalMax or snap.ficMax or 0), 1, 1, 1)
+      GameTooltip:AddLine(Tr["Total : "] .. tostring(snap.total or snap.ficTotal or 0) .. " / " .. tostring(snap.totalMax or snap.ficMax or 0), 1, 1, 1)
     end
-    GameTooltip:AddLine("Clic : ouvrir l'onglet Comp.", 0.7, 0.7, 0.7)
-    GameTooltip:AddLine("/drop  onglet Comp.   /drop debug", 0.55, 0.55, 0.55)
+    GameTooltip:AddLine(Tr["Clic : ouvrir / fermer"], 0.7, 0.7, 0.7)
     GameTooltip:Show()
   end)
   b:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
@@ -4530,10 +4361,62 @@ end
 -- v2.7.1 : 56 = hauteur d'un drop complet type (titre 12 + ligne 14 + marges 12
 -- + astuce 11 + barre 7) ; c'est aussi la taille du support en mode édition.
 local TOAST_W, TOAST_H = 260, 56
-local TOAST_GAP = 4
+local TOAST_GAP = 6
 local TOAST_FADEIN, TOAST_HOLD, TOAST_FADEOUT = 0.15, 2.6, 0.70
+UI.TOAST_SLIDE = 7  -- px : glissement court à l'apparition / à la disparition
 local TOAST_BG_A = 0.35   -- v2.7.1 : un peu plus translucide, comme le chat
 local TOAST_LIGHT_H = 26
+
+function UI.ToastScaleK()
+  local pct = (ns.Layout and ns.Layout.Scale and ns.Layout.Scale()) or 100
+  local k = (ns.N and ns.N(pct) or tonumber(pct) or 100) / 100
+  if k < 0.9 then k = 0.9 end
+  if k > 2 then k = 2 end
+  return k
+end
+function UI.ToastPx(base, minv)
+  local v = math.floor((base or 0) * UI.ToastScaleK() + 0.5)
+  if minv and v < minv then v = minv end
+  return v
+end
+function UI.ToastMetrics(opts)
+  opts = opts or {}
+  local light, hint, maxv, big = opts.light, opts.hint, opts.maxv, opts.big
+  local icon = UI.ToastPx(light and 20 or (big and 40 or 32), light and 16 or 22)
+  local titleSize = UI.ToastPx(light and 11 or (big and 16 or 13), 10)
+  local subSize = UI.ToastPx(11, 9)
+  local barH = UI.ToastPx(4, 3)
+  local pad = UI.ToastPx(7, 5)
+  local fh
+  if light then
+    fh = UI.ToastPx(TOAST_LIGHT_H, 22)
+  else
+    fh = pad + titleSize + 2 + subSize
+    if hint and hint ~= "" then fh = fh + 1 + subSize end
+    if maxv and maxv > 0 then fh = fh + barH + 8 end
+    fh = fh + pad
+    if fh < UI.ToastPx(46, 40) then fh = UI.ToastPx(46, 40) end
+    if big then fh = math.max(fh, UI.ToastPx(UI.LEVELUP_H or TOAST_H, 56)) end
+  end
+  return { icon = icon, titleSize = titleSize, subSize = subSize, barH = barH, pad = pad, fh = math.floor(fh + 0.5) }
+end
+local function ApplyToastFont(fs, size, fallback)
+  if not (fs and size) then return end
+  local path, flags
+  if fs.GetFont then
+    local ok, pth, _, fl = pcall(fs.GetFont, fs)
+    if ok then path, flags = pth, fl end
+  end
+  if (not path or path == "") and fallback then
+    local fo = type(fallback) == "string" and _G[fallback] or fallback
+    if fo and fo.GetFont then
+      local ok, pth, _, fl = pcall(fo.GetFont, fo)
+      if ok then path, flags = pth, fl end
+    end
+  end
+  if path and fs.SetFont then pcall(fs.SetFont, fs, path, size, flags or "") end
+end
+
 
 -- Durée d'affichage (options) et opacité du fond, bornées.
 function UI:DropHold()
@@ -4543,7 +4426,8 @@ function UI:DropHold()
 end
 function UI:DropBgAlpha()
   local v = ns.db and ns.db.ui and ns.N(ns.db.ui.dropBgAlpha)
-  if not v then return nil end
+  if v == nil then v = 0.68 end   -- 0 est une vraie valeur (fond invisible)
+  if v > 1 then v = math.min(1, v / 100) end
   return math.max(0, math.min(1, v))
 end
 local TOAST_BORDER = { 0.12, 0.10, 0.08, 0.95 }
@@ -4707,18 +4591,19 @@ ApplyRestToastChromeRaw = function(frame, tint, noBg)
   local cc = UI:LearnChatChrome()
   local bgc = cc.bgColor
   local ua = UI:DropBgAlpha()
-  if ua then bgc = { bgc[1], bgc[2], bgc[3], ua } end
+  if ua == nil then ua = 0.68 end
+  bgc = { bgc[1], bgc[2], bgc[3], 1 }   -- RVB constant ; l'alpha va sur le calque
   if not noBg then
-  frame._bgAlpha = bgc[4]
+  frame._bgAlpha = ua
   if not frame._toastBg then
     frame._toastBg = frame:CreateTexture(nil, "BACKGROUND")
   end
   frame._toastBg:ClearAllPoints()
   frame._toastBg:SetPoint("TOPLEFT", 3, -3)
   frame._toastBg:SetPoint("BOTTOMRIGHT", -3, 3)
-  FillTexture(frame._toastBg, bgc[1], bgc[2], bgc[3], bgc[4])
-  if frame._toastBg.SetAlpha then pcall(frame._toastBg.SetAlpha, frame._toastBg, 1) end
+  FillTexture(frame._toastBg, bgc[1], bgc[2], bgc[3], 1)
   end
+  if UI.ApplyToastLayerAlpha then UI.ApplyToastLayerAlpha(frame, ua) end
   if next(cc.pieces) then
     frame._chatPieces = frame._chatPieces or {}
     local cw, chh = 16, 16
@@ -4767,44 +4652,6 @@ ApplyRestToastChromeRaw = function(frame, tint, noBg)
   ns.Style.FlareBorder(frame, "BORDER", 2, tint)
   frame._osrsNativeBorder = "repli FlareUI (Border.tga, or 4 px)"
   return frame._osrsNativeBorder
-end
-
-local function ApplyKhakiBar(bar)
-  if not bar then return end
-  if bar.SetStatusBarTexture then
-    local ok = false
-    for i = 1, #LOOT_BAR_TEX do
-      if pcall(bar.SetStatusBarTexture, bar, LOOT_BAR_TEX[i]) then ok = true break end
-    end
-    if not ok then ApplyBarFill(bar) end
-  else
-    ApplyBarFill(bar)
-  end
-  if bar.SetStatusBarColor then
-    pcall(bar.SetStatusBarColor, bar, TOAST_KHAKI[1], TOAST_KHAKI[2], TOAST_KHAKI[3], TOAST_KHAKI[4] or 1)
-  end
-end
-
-local function PlaceGoldRing(iconHold, icon)
-  local ring = iconHold:CreateTexture(nil, "OVERLAY")
-  ring:SetPoint("CENTER", icon, "CENTER", 0, 0)
-  local used
-  for i = 1, #RING_TEX do
-    ring:SetSize(46, 46)
-    if TrySetTex(ring, RING_TEX[i], "BLEND") then
-      if ring.SetVertexColor then pcall(ring.SetVertexColor, ring, GOLD[1], GOLD[2], GOLD[3], 1) end
-      used = RING_TEX[i]
-      break
-    end
-  end
-  if not used then
-    ring:Hide()
-    ThinBronzeBorder(iconHold)
-  end
-  if icon.SetMask then
-    pcall(icon.SetMask, icon, "Interface\\CharacterFrame\\TempPortraitAlphaMask")
-  end
-  return used
 end
 
 function UI:DropsEnabled()
@@ -4872,7 +4719,7 @@ function UI:BuildDrops()
   local hfs = Text(handle, "GameFontNormalSmall", "CENTER")
   hfs:SetPoint("CENTER", 0, 0)
   hfs:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
-  hfs:SetText("Drops  ·  glisser pour déplacer")
+  hfs:SetText(Tr["Drops  ·  glisser pour déplacer"])
   handle:Hide()
   f.handle = handle
 
@@ -4894,7 +4741,7 @@ function UI:BuildDrops()
   local ovfs = Text(ov, "GameFontNormal", "CENTER")
   ovfs:SetPoint("CENTER", 0, 0)
   ovfs:SetTextColor(0.85, 0.95, 1)
-  ovfs:SetText("Drops  ·  glisser pour déplacer")
+  ovfs:SetText(Tr["Drops  ·  glisser pour déplacer"])
   ov:Hide()
   f.editOverlay, f.editLabel = ov, ovfs
 
@@ -4937,17 +4784,39 @@ function UI:ToggleDropsMove()
     if f._osrsMoving then f.handle:Show() else f.handle:Hide() end
   end
   if f._osrsMoving then
-    ns.Print("déplace le cadre des drops, puis /drop drops move pour figer.")
+    ns.Print(Tr["déplace le cadre des drops, puis /drop drops move pour figer."])
   else
     SaveFramePos(f, "dropsPos")
-    ns.Print("position des drops enregistrée.")
+    ns.Print(Tr["position des drops enregistrée."])
   end
 end
 
--- v2.7.1 : sens d'empilement (« Vers le bas » par défaut, « Vers le haut »).
+-- 3.5.1 : sens d'empilement en position libre (« Vers le haut » par défaut,
+-- « Vers le bas », « Sur place »). En position accrochée, Notif.lua force
+-- haut / bas selon dessus / dessous.
+UI.PILE_OFF, UI.PILE_MAX = 4, 3
+UI.PILE_FADE = { 1, 0.80, 0.60 }
 function UI:DropDir()
   local d = ns.db and ns.db.ui and ns.db.ui.dropDir
-  return (d == "haut") and "haut" or "bas"
+  if d == "haut" or d == "bas" or d == "place" then return d end
+  return "haut"
+end
+
+local function ToastAlpha(frame, a)
+  if not frame or not frame.SetAlpha then return end
+  local fade = frame._pileHidden and 0 or (frame._pileFade or 1)
+  pcall(frame.SetAlpha, frame, (a or 1) * fade)
+end
+
+local function EnsurePileShade(t)
+  if t._shade then return t._shade end
+  if not t.CreateTexture then return nil end
+  local sh = t:CreateTexture(nil, "OVERLAY")
+  sh:SetAllPoints(t)
+  pcall(sh.SetTexture, sh, "Interface\\Buttons\\WHITE8X8")
+  if sh.SetDrawLayer then pcall(sh.SetDrawLayer, sh, "OVERLAY", 7) end
+  t._shade = sh
+  return sh
 end
 
 -- v2.7.2 : support posé sur le chat → même largeur que le chat, collé à son
@@ -4972,9 +4841,54 @@ function UI:DropSnappedToChat()
   return math.abs(l - cl) <= UI.SNAP_PX and b >= ct - UI.SNAP_PX and b <= ct + UI.SNAP_PX * 3
 end
 
+function UI:PanelWidth()
+  local W = ns.Window
+  local f = W and W.frame
+  if f and f.GetWidth then
+    local w = ns.N(f:GetWidth())
+    if w and w > 0 then return w end
+  end
+  return nil
+end
+
+-- Auto : largeur du panneau, minimum lisible 260 px × échelle.
+-- Manuel : db.ui.dropWidth >= 200.
 function UI:DropWidth()
   if self.dropsFrame and self.dropsFrame._snapW then return self.dropsFrame._snapW end
-  return TOAST_W
+  local ui = ns.db and ns.db.ui
+  local manual = ns.N(ui and ui.dropWidth)
+  if manual and manual >= 200 then return math.floor(manual + 0.5) end
+  local scale = (ns.Layout and ns.Layout.Scale and ns.Layout.Scale()) or 100
+  local minW = math.floor(260 * (scale / 100) + 0.5)
+  if minW < 160 then minW = 160 end
+  local pw = self.PanelWidth and self:PanelWidth()
+  return math.max(minW, math.floor((pw or 0) + 0.5))
+end
+
+-- Si le toast est plus large que le panneau, l'aligner sur le bord du panneau
+-- du côté de l'écran, pour ne pas dépasser vers le bord de l'écran.
+function UI:AlignDropsToPanel()
+  local f = self.dropsFrame
+  local W = ns.Window
+  local panel = W and W.frame
+  if not (f and panel and UIParent) then return end
+  if f._osrsMoving or f._osrsEditMoving then return end
+  if ns.db and ns.db.ui and ns.db.ui.dropsSnapChat then return end
+  if not (f.GetTop and panel.GetLeft and panel.GetRight and UIParent.GetWidth) then return end
+  local pl, pr, top = ns.N(panel:GetLeft()), ns.N(panel:GetRight()), ns.N(f:GetTop())
+  if not (pl and pr and top) then return end
+  local tw = self:DropWidth()
+  local pw = pr - pl
+  if tw <= pw + 1 then return end
+  local sw = ns.N(UIParent:GetWidth()) or 0
+  local leftSide = ((pl + pr) / 2) < (sw / 2)
+  if f.ClearAllPoints then f:ClearAllPoints() end
+  if leftSide then
+    f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", pl, top)
+  else
+    f:SetPoint("TOPRIGHT", UIParent, "BOTTOMLEFT", pr, top)
+  end
+  if f.SetClampedToScreen then pcall(f.SetClampedToScreen, f, true) end
 end
 
 -- Après un déplacement : aimante le support au chat (même largeur, sans décalage).
@@ -5007,7 +4921,7 @@ function UI:SetDropsSnapChat(on)
     local cl, ct, cw = self:ChatRect()
     if not cl then
       if ns.db and ns.db.ui then ns.db.ui.dropsSnapChat = false end
-      ns.Print("cadre de chat introuvable : impossible d'y coller les drops.")
+      ns.Print(Tr["cadre de chat introuvable : impossible d'y coller les drops."])
       return false
     end
     f._snapW = math.floor(cw + 0.5)
@@ -5027,6 +4941,9 @@ end
 
 function UI:DropFirstHeight()
   local light = ns.db and ns.db.ui and ns.db.ui.dropStyle == "leger"
+  if UI.ToastMetrics then
+    return UI.ToastMetrics({ light = light }).fh
+  end
   return light and TOAST_LIGHT_H or TOAST_H
 end
 
@@ -5035,8 +4952,9 @@ function UI:PlaceDropsHandle()
   local h = f and f.handle
   if not h then return end
   h:ClearAllPoints()
-  if self:DropDir() == "haut" then
-    -- Les drops montent : la poignée passe sous le support.
+  local dir = self:DropDir()
+  if dir == "haut" or dir == "place" then
+    -- Les drops montent ou s'empilent sur place : la poignée passe sous le support.
     h:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 0, 0)
     h:SetPoint("TOPRIGHT", f, "BOTTOMRIGHT", 0, 0)
   else
@@ -5045,46 +4963,447 @@ function UI:PlaceDropsHandle()
   end
 end
 
--- Recalcule la taille du support (= premier drop) en gardant fixe le bord
--- d'où partent les drops (haut en « vers le bas », bas en « vers le haut »).
+-- Recalcule la taille du support (= premier drop, + décalage pile en « sur place »)
+-- en gardant fixe le bord d'ancrage (haut en « vers le bas », bas autrement).
 function UI:ApplyDropsLayout()
   local f = self.dropsFrame
   if not f then return end
   local newH = self:DropFirstHeight()
+  local dir = self:DropDir()
+  local extra = (dir == "place") and ((self.PILE_MAX or 3) - 1) * (self.PILE_OFF or 4) or 0
   local oldH = f._osrsHeight or newH
-  if newH ~= oldH and f.GetLeft and f.GetBottom then
+  local oldExtra = f._osrsPile or 0
+  if (newH + extra) ~= (oldH + oldExtra) and f.GetLeft and f.GetBottom then
     local l, b = f:GetLeft(), f:GetBottom()
     if type(l) == "number" and type(b) == "number" then
-      if self:DropDir() == "bas" then b = b + (oldH - newH) end
+      if dir == "bas" then b = b + (oldH + oldExtra) - (newH + extra) end
       f:ClearAllPoints()
       f:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", l, b)
       if ns.db and ns.db.ui then ns.db.ui.dropsPos = { point = "BOTTOMLEFT", relativePoint = "BOTTOMLEFT", x = l, y = b } end
     end
   end
-  f:SetSize(self:DropWidth(), newH)
-  f._osrsHeight = newH
+  f:SetSize(self:DropWidth() + extra, newH + extra)
+  f._osrsHeight, f._osrsPile = newH, extra
+  if self.AlignDropsToPanel then pcall(self.AlignDropsToPanel, self) end
   self:PlaceDropsHandle()
   self:PackDrops()
+end
+
+function UI.ToastSlideAmount(frame)
+  if not frame or frame._pileHidden then return 0 end
+  if frame._editPreview then return 0 end
+  local t = frame._toastAge or 0
+  local holdT = frame._hold or (UI.DropHold and UI:DropHold()) or TOAST_HOLD
+  local dist = UI.TOAST_SLIDE or 7
+  if frame._sticky then
+    if t < TOAST_FADEIN then return dist * (1 - t / TOAST_FADEIN) end
+    return 0
+  end
+  if t < TOAST_FADEIN then
+    return dist * (1 - t / TOAST_FADEIN)
+  elseif t < TOAST_FADEIN + holdT then
+    return 0
+  elseif t < TOAST_FADEIN + holdT + TOAST_FADEOUT then
+    local k = (t - TOAST_FADEIN - holdT) / TOAST_FADEOUT
+    return dist * k
+  end
+  return dist
+end
+
+function UI.ApplyToastPoint(frame, slide)
+  if not frame then return end
+  local pt, rel, rp = frame._packPt, frame._packRel, frame._packRP
+  local x, y = frame._packX, frame._packY
+  if not pt then return end
+  slide = slide or 0
+  if frame._slideApplied == slide and frame._packApplied then return end
+  local oy = y or 0
+  if pt == "BOTTOMLEFT" or pt == "BOTTOMRIGHT" or pt == "BOTTOM" then
+    oy = (y or 0) - slide
+  else
+    oy = (y or 0) + slide
+  end
+  if frame.ClearAllPoints then pcall(frame.ClearAllPoints, frame) end
+  if frame.SetPoint then pcall(frame.SetPoint, frame, pt, rel, rp, x or 0, oy) end
+  frame._slideApplied, frame._packApplied = slide, true
 end
 
 function UI:PackDrops()
   local parent = self.dropsStack or self.dropsFrame
   if not parent or not self.dropsActive then return end
-  local up = self:DropDir() == "haut"
-  local y = 0
-  for i = 1, #self.dropsActive do
-    local t = self.dropsActive[i]
-    if t and t.ClearAllPoints then
-      t:ClearAllPoints()
-      if up then
-        -- Premier drop collé au bord bas du support, les suivants au-dessus.
-        t:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", 0, y)
-      else
-        t:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -y)
+  local dir = self:DropDir()
+  local n = #self.dropsActive
+  local pile = dir == "place"
+  local off, maxv = self.PILE_OFF or 4, self.PILE_MAX or 3
+  local fades = self.PILE_FADE or { 1, 0.80, 0.60 }
+  local baseLvl = (parent.GetFrameLevel and parent:GetFrameLevel()) or 1
+  if pile then
+    for i = 1, n do
+      local t = self.dropsActive[i]
+      if t and t.ClearAllPoints then
+        t:ClearAllPoints()
+        local depth = n - i
+        if depth >= maxv then
+          t._pileHidden, t._pileFade = true, 0
+          if t._shade then t._shade:Hide() end
+          if t.Hide then pcall(t.Hide, t) end
+          ToastAlpha(t, 0)
+          if t.EnableMouse then pcall(t.EnableMouse, t, false) end
+        else
+          t._pileHidden, t._pileFade = nil, fades[depth + 1] or 0.5
+          if t.Show then pcall(t.Show, t) end
+          t._packPt, t._packRel, t._packRP = "BOTTOMLEFT", parent, "BOTTOMLEFT"
+          t._packX, t._packY, t._packApplied = depth * off, depth * off, nil
+          UI.ApplyToastPoint(t, (depth == 0) and UI.ToastSlideAmount(t) or 0)
+          if t.SetFrameLevel then pcall(t.SetFrameLevel, t, baseLvl + (maxv - depth) + 1) end
+          if depth > 0 then
+            local sh = EnsurePileShade(t)
+            if sh then
+              sh:SetVertexColor(0, 0, 0, 0.18 * depth)
+              sh:Show()
+            end
+            if t.EnableMouse then pcall(t.EnableMouse, t, false) end
+          else
+            if t._shade then t._shade:Hide() end
+            if t.EnableMouse and not self._inEditMode then pcall(t.EnableMouse, t, true) end
+          end
+          ToastAlpha(t, 1)
+        end
       end
-      y = y + (t._h or TOAST_H) + TOAST_GAP
+    end
+    return
+  end
+  local y = 0
+  if dir == "haut" then
+    -- Le plus récent reste à l'ancre (bas du support), les plus anciens montent.
+    for i = n, 1, -1 do
+      local t = self.dropsActive[i]
+      if t and t.ClearAllPoints then
+        t._pileHidden, t._pileFade = nil, 1
+        if t._shade then t._shade:Hide() end
+        t:ClearAllPoints()
+        if t.Show then pcall(t.Show, t) end
+        t._packPt, t._packRel, t._packRP = "BOTTOMLEFT", parent, "BOTTOMLEFT"
+        t._packX, t._packY, t._packApplied = 0, y, nil
+        UI.ApplyToastPoint(t, UI.ToastSlideAmount(t))
+        y = y + (t._h or TOAST_H) + TOAST_GAP
+        ToastAlpha(t, 1)
+      end
+    end
+  else
+    -- Vers le bas : comportement historique (le plus ancien en haut, les suivants en dessous).
+    for i = 1, n do
+      local t = self.dropsActive[i]
+      if t and t.ClearAllPoints then
+        t._pileHidden, t._pileFade = nil, 1
+        if t._shade then t._shade:Hide() end
+        t:ClearAllPoints()
+        if t.Show then pcall(t.Show, t) end
+        t._packPt, t._packRel, t._packRP = "TOPLEFT", parent, "TOPLEFT"
+        t._packX, t._packY, t._packApplied = 0, -y, nil
+        UI.ApplyToastPoint(t, UI.ToastSlideAmount(t))
+        y = y + (t._h or TOAST_H) + TOAST_GAP
+        ToastAlpha(t, 1)
+      end
     end
   end
+end
+
+-- Teinte de toast = la même palette que le voile de case, le +1 et l'étincelle.
+-- Slot.lua pose ns.GAIN_COLORS ; repli identique si lu avant le chargement de Slot.
+-- Toasts système (vol, sacs, usure…) restent neutres (pas de famille).
+local GAIN_FALLBACK = {
+  red   = { 0.616, 0.278, 0.227 },
+  blue  = { 0.329, 0.408, 0.604 },
+  green = { 0.310, 0.498, 0.243 },
+}
+function UI.GainPalette()
+  return ns.GAIN_COLORS or (ns.Slot and ns.Slot.ADD_COLORS) or GAIN_FALLBACK
+end
+-- Même teinte (rouge / bleu / vert), valeur abaissée pour coller au fond sombre.
+-- L'opacité du calque vient uniquement de « Fond des toasts », jamais d'un RVB.
+UI.TINT_VALUE = 0.40
+function UI.ShadeTint(c)
+  if type(c) ~= "table" then return c end
+  local k = UI.TINT_VALUE
+  if type(k) ~= "number" or k <= 0 then k = 0.40 end
+  if k > 1 then k = 1 end
+  return { (c[1] or 0) * k, (c[2] or 0) * k, (c[3] or 0) * k }
+end
+function UI.ToastTintColor(opts_or_fam)
+  local fam = opts_or_fam
+  if type(opts_or_fam) == "table" then fam = UI.ToastFamily(opts_or_fam) end
+  local G = UI.GainPalette()
+  if fam == "level" then return UI.ShadeTint(G.red) end
+  if fam == "weapon" then return UI.ShadeTint(G.blue) end
+  if fam == "prof" then return UI.ShadeTint(G.green) end
+  return nil
+end
+UI.TOAST_TINT = setmetatable({}, {
+  __index = function(_, fam) return UI.ToastTintColor(fam) end,
+})
+
+-- Icône manquante / goutte de repli (pas l'art XP).
+local function IsMissingToastIcon(path)
+  -- identifiant de fichier du jeu (icône d'objet) : valide tant que ce n'est pas le point d'interrogation
+  if type(path) == "number" then return not (path > 0 and not (ns.IconMissing and ns.IconMissing(path))) end
+  if type(path) ~= "string" or path == "" then return true end
+  if ns.IconMissing and ns.IconMissing(path) then return true end
+  if path == ns.FALLBACK_ICON then return true end
+  local l = path:lower():gsub("/", "\\")
+  if l:find("fallback%-icon", 1, true) then return true end
+  return false
+end
+
+local function IsXpVialIcon(path)
+  if type(path) ~= "string" or path == "" then return false end
+  if path == ns.LEVEL_ICON then return true end
+  local l = path:lower():gsub("/", "\\")
+  return l:find("xp%-icon", 1, true) and true or false
+end
+
+function UI.CatalogEntry(opts)
+  opts = opts or {}
+  local id, name = opts.skillId, opts.skillName
+  local td = opts.toastData
+  if type(td) == "table" then
+    id = id or td.skill or td.skillId
+    name = name or td.skillName
+    if type(td.recipe) == "table" then
+      id = id or td.recipe.skill or td.recipe.skillId
+      name = name or td.recipe.skillName or td.recipe.profession
+    end
+    if type(td.matches) == "table" and td.matches[1] and td.matches[1].recipe then
+      local r = td.matches[1].recipe
+      id = id or r.skill or r.skillId
+      name = name or r.skillName or r.profession
+    end
+  end
+  local e
+  if id and ns.CATALOG_BY_ID then e = ns.CATALOG_BY_ID[id] end
+  if not e and name and ns.LookupCatalog then e = ns.LookupCatalog(name) end
+  return e, id, name
+end
+
+local function KindOf(opts, e)
+  if opts and opts.skillKind then return opts.skillKind end
+  if e and e.kind then return e.kind end
+  local id = opts and opts.skillId
+  if id and ns.CATALOG_BY_ID and ns.CATALOG_BY_ID[id] then return ns.CATALOG_BY_ID[id].kind end
+  if id or (opts and opts.skillName) then
+    local snap = UI.snapshot
+    for _, d in ipairs((snap and (snap.allTiles or snap.tiles)) or {}) do
+      if d and (d.id == id or d.name == (opts and opts.skillName)) then return d.kind end
+    end
+  end
+end
+
+local function FamilyFromKind(dkind)
+  if dkind == "level" then return "level" end
+  if dkind == "melee" or dkind == "ranged" or dkind == "defense" or dkind == "feral" or dkind == "class" then
+    return "weapon"
+  end
+  if dkind == "profession" or dkind == "secondary" then return "prof" end
+end
+
+function UI.ToastFamily(opts)
+  opts = opts or {}
+  local kind = opts.kind or (opts.toastData and opts.toastData.kind)
+  if kind == "xp" or kind == "levelup" or kind == "level" or kind == "jalon" or kind == "spells"
+    or kind == "xp-milestone" then
+    return "level"
+  end
+  if kind == "flight-hint" or kind == "bags-full" or kind == "durability" or kind == "pvp" or kind == "weekly"
+    or kind == "achievement" or kind == "progress" or kind == "recap" or kind == "test"
+    or kind == "milestone" or kind == "record" or kind == "max" or kind == "combo" then
+    -- jalons / records / max peuvent encore être typés par la compétence plus bas
+    if kind == "flight-hint" or kind == "bags-full" or kind == "durability" or kind == "pvp"
+      or kind == "weekly" or kind == "achievement" or kind == "progress" or kind == "recap"
+      or kind == "test" then
+      return nil
+    end
+  end
+  local e = UI.CatalogEntry(opts)
+  local fromSkill = FamilyFromKind(KindOf(opts, e))
+  -- Objectif, palier, recette, rang maître : famille métier, sauf si la compétence
+  -- est clairement une arme ou le niveau.
+  if kind == "rank-trainer" or kind == "rankup" or kind == "craft" or kind == "pretier"
+    or kind == "prepalier" or kind == "recipe" or kind == "scanner" or kind == "palier"
+    or kind == "tier" or kind == "goal" or kind == "objectif" then
+    if fromSkill == "level" or fromSkill == "weapon" then return fromSkill end
+    return "prof"
+  end
+  if fromSkill then return fromSkill end
+  if kind == "skill" and e then return FamilyFromKind(e.kind) or "prof" end
+  return nil
+end
+
+function UI.ProfessionToastIcon(opts)
+  opts = opts or {}
+  local e, id, name = UI.CatalogEntry(opts)
+  if e and e.icon and not IsMissingToastIcon(e.icon) and not IsXpVialIcon(e.icon) then return e.icon end
+  if name and UI.SkillDropIcon then
+    local ic = UI.SkillDropIcon(UI, name, opts.header, opts.skillLine)
+    if ic and not IsMissingToastIcon(ic) and not IsXpVialIcon(ic) then return ic end
+  end
+  if (name or id) and ns.ResolveSkillIcon then
+    local ic = ns.ResolveSkillIcon(name or id, opts.header, opts.skillLine)
+    if ic and not IsMissingToastIcon(ic) and not IsXpVialIcon(ic) then return ic end
+  end
+  return nil
+end
+
+function UI.ResolveToastIcon(path, opts)
+  opts = opts or {}
+  local fam = UI.ToastFamily(opts)
+  -- Toasts XP / niveau : garder l'icône goutte XP, jamais le fallback vide.
+  if fam == "level" then
+    if IsXpVialIcon(path) then return path end
+    if not IsMissingToastIcon(path) then return path end
+    return ns.LEVEL_ICON or ns.FALLBACK_ICON
+  end
+  -- Recettes / métiers : toujours l'icône du métier (ex. Trade_LeatherWorking),
+  -- jamais l'icône d'objet (sac, rouleau de cuir, composant).
+  if fam == "prof" then
+    local prof = UI.ProfessionToastIcon(opts)
+    if prof then return prof end
+    if not IsMissingToastIcon(path) and not IsXpVialIcon(path) then return path end
+    return ns.FALLBACK_ICON
+  end
+  -- Autres familles : remplacer le fallback ou une goutte XP par l'icône du métier si on en a une.
+  if not IsMissingToastIcon(path) and not IsXpVialIcon(path) then return path end
+  local prof = UI.ProfessionToastIcon(opts)
+  if prof then return prof end
+  return ns.FALLBACK_ICON
+end
+
+function UI.EnsureToastFill(frame)
+  if not frame then return nil end
+  local host = frame._skinHost or frame
+  if frame._tintFill then return frame._tintFill end
+  if not (host and host.CreateTexture) then return frame._toastBg end
+  local ok, fill = pcall(host.CreateTexture, host, nil, "BACKGROUND")
+  if not (ok and fill) then return frame._toastBg end
+  if fill.SetDrawLayer then pcall(fill.SetDrawLayer, fill, "BACKGROUND", 1) end
+  local inset = (ns.Skin and ns.Skin.INSET) or 3
+  if fill.ClearAllPoints then fill:ClearAllPoints() end
+  if fill.SetPoint then
+    fill:SetPoint("TOPLEFT", host, "TOPLEFT", inset, -inset)
+    fill:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", -inset, inset)
+  end
+  frame._tintFill = fill
+  return fill
+end
+
+-- Alpha du calque de fond / teinte / bord (Fond des toasts). 0 = invisible.
+-- Jamais l'opacité du panneau, jamais un RVB multiplié.
+function UI.ToastBgAlpha(frame)
+  local a = UI.DropBgAlpha and UI:DropBgAlpha()
+  if a == nil then a = 0.68 end
+  if a > 1 then a = math.min(1, a / 100) end
+  a = math.max(0, math.min(1, a))
+  if frame then frame._bgAlpha = a end
+  return a
+end
+
+-- Pose l'opacité sur les calques (SetAlpha), pas sur le RVB.
+-- Avec habillage, le host porte fond + teinte + bord : un seul SetAlpha.
+-- Sans host, chaque texture de fond/bord est réglée séparément.
+-- L'icône et le texte (enfants du cadre toast, hors host) restent à 1.
+function UI.ApplyToastLayerAlpha(frame, a)
+  if not frame then return nil end
+  if a == nil then a = UI.ToastBgAlpha(frame) end
+  a = ns.N(a)
+  if a == nil then a = 0.68 end
+  if a > 1 then a = math.min(1, a / 100) end
+  a = math.max(0, math.min(1, a))
+  frame._bgAlpha = a
+  local function layer(t, aa)
+    if t and t.SetAlpha then pcall(t.SetAlpha, t, aa) end
+  end
+  local host = frame._skinHost
+  if host and host.SetAlpha then
+    pcall(host.SetAlpha, host, a)
+    layer(frame._tintFill, 1)
+    layer(frame._toastBg, 1)
+  else
+    layer(frame._toastBg, a)
+    layer(frame._tintFill, a)
+    if frame._chatPieces then
+      for _, t in pairs(frame._chatPieces) do layer(t, a) end
+    end
+    local chrome = frame._tipChrome
+    if type(chrome) == "table" then
+      if chrome.SetAlpha and chrome ~= frame then pcall(chrome.SetAlpha, chrome, a) end
+      if type(chrome.border) == "table" then
+        for _, t in pairs(chrome.border) do layer(t, a) end
+      end
+      if chrome.center then layer(chrome.center, a) end
+      if type(chrome.pieces) == "table" then
+        for _, t in pairs(chrome.pieces) do layer(t, a) end
+      end
+    end
+    if frame.SetBackdropBorderColor then
+      -- le cadre toast lui-même ne doit pas porter un fond noir opaque
+    end
+  end
+  return a
+end
+
+function UI.RefreshToastOpacity()
+  local list = {}
+  for _, f in ipairs(UI.dropsActive or {}) do list[#list + 1] = f end
+  for _, f in ipairs(UI._toastPool or {}) do list[#list + 1] = f end
+  for i = 1, #list do
+    local f = list[i]
+    if f then
+      f._tintA = nil
+      if f._tintFill then f._tintFill._bgAlpha = nil end
+      if ns.Chrome and ns.Chrome.Toast then pcall(ns.Chrome.Toast, f) end
+      if UI.ApplyToastTint then pcall(UI.ApplyToastTint, f, f._tintOpts or {}) end
+      if UI.ApplyToastLayerAlpha then pcall(UI.ApplyToastLayerAlpha, f) end
+    end
+  end
+end
+
+function UI.ApplyToastTint(frame, opts)
+  if not frame then return nil end
+  if opts then frame._tintOpts = opts end
+  opts = opts or frame._tintOpts or {}
+  local fam = UI.ToastFamily(opts)
+  frame._tintFamily = fam
+  local c = (UI.ToastTintColor and UI.ToastTintColor(opts)) or (fam and UI.TOAST_TINT[fam])
+  local fill = UI.EnsureToastFill(frame)
+  if not c then
+    if frame._tintFill and frame._tintFill.Hide then frame._tintFill:Hide() end
+    return fam
+  end
+  -- RVB de teinte constant (composante vertex 1). L'opacité est un SetAlpha
+  -- de calque (host ou textures), pour que 0 % soit transparent, pas noir.
+  local a = UI.ToastBgAlpha(frame)
+  if fill and frame._tintR == c[1] and frame._tintG == c[2] and frame._tintB == c[3]
+    and frame._tintA == a and frame._tintFamily == fam and fill._bgAlpha == a then
+    if fill.Show then fill:Show() end
+    if UI.ApplyToastLayerAlpha then UI.ApplyToastLayerAlpha(frame, a) end
+    return fam
+  end
+  if fill then
+    FillTexture(fill, c[1], c[2], c[3], 1)
+    fill._bgAlpha = a
+    if fill.Show then fill:Show() end
+  end
+  frame._tintR, frame._tintG, frame._tintB, frame._tintA = c[1], c[2], c[3], a
+  -- L'habillage Skin recouvre _toastBg : le calque _tintFill est sur le host.
+  if frame._toastBg and frame._toastBg ~= fill then
+    if frame._skinHost then
+      if frame._toastBg.Hide then frame._toastBg:Hide() end
+    else
+      FillTexture(frame._toastBg, c[1], c[2], c[3], 1)
+      if frame._toastBg.Show then frame._toastBg:Show() end
+    end
+  end
+  if UI.ApplyToastLayerAlpha then UI.ApplyToastLayerAlpha(frame, a) end
+  return fam
 end
 
 local DROP_VARIANTS = {
@@ -5104,16 +5423,50 @@ end
 function UI:WireDropMouse(f)
   if not f or not f.SetScript then return end
   if f.EnableMouse then pcall(f.EnableMouse, f, not self._inEditMode) end
-  f:SetScript("OnEnter", function(self) self._hover = true if self.SetAlpha then pcall(self.SetAlpha, self, 1) end end)
-  f:SetScript("OnLeave", function(self) self._hover = false if self._restart then self._restart() end end)
+  f:SetScript("OnEnter", function(self)
+    self._hover = true
+    ToastAlpha(self, 1)
+    if ns.ToastFit and ns.ToastFit.ShowTooltip then pcall(ns.ToastFit.ShowTooltip, self) end
+  end)
+  f:SetScript("OnLeave", function(self)
+    self._hover = false
+    if ns.ToastFit and ns.ToastFit.HideTooltip then pcall(ns.ToastFit.HideTooltip, self) end
+  end)
   f:SetScript("OnMouseUp", function(self, button)
     -- mode édition / déplacement : jamais d'ouverture (le clic sert au glisser)
     if self._dragged then self._dragged = nil return end
     if UI._inEditMode or self._editPreview then return end
     local df = UI.dropsFrame
     if df and (df._osrsMoving or df._osrsEditMoving) then return end
-    if button == "RightButton" then UI:DismissDrop(self)
-    else UI:OpenFromDrop(self._target, self) end
+    -- sticky (astuce premier vol) : tout clic ferme le toast, sans ouvrir une tuile.
+    if button == "RightButton" or self._sticky then UI:DismissDrop(self)
+    elseif self._kind == "recap" or self._dedupeKey == "osrs-logout-recap" then
+      if ns.ProgressUI and ns.ProgressUI.OpenRecap then pcall(ns.ProgressUI.OpenRecap, "current") end
+      UI:DismissDrop(self)
+    else
+      local shift = (type(_G.IsShiftKeyDown) == "function" and _G.IsShiftKeyDown())
+        or (type(_G.IsModifiedClick) == "function" and _G.IsModifiedClick("CHATLINK"))
+      if shift and self._craft and self._craft.item then
+        local link
+        if type(_G.GetItemInfo) == "function" then
+          local ok, results = pcall(function()
+            local n, lk = _G.GetItemInfo(self._craft.item)
+            return { n, lk }
+          end)
+          if ok and results then link = results[2] end
+        end
+        if not link and self._craft.item then
+          link = "item:" .. tostring(self._craft.item)
+        end
+        if link and type(_G.ChatEdit_InsertLink) == "function" then
+          pcall(_G.ChatEdit_InsertLink, link)
+        elseif link and _G.ChatFrame1EditBox and _G.ChatFrame1EditBox.Insert then
+          pcall(_G.ChatFrame1EditBox.Insert, _G.ChatFrame1EditBox, link)
+        end
+      else
+        UI:OpenFromDrop(self._target, self)
+      end
+    end
   end)
   -- 3.0.0 : le glisser sur un drop déplace le SUPPORT (mode édition ou
   -- /drop drops move) — le drop ne vole plus le glisser au support.
@@ -5140,6 +5493,8 @@ end
 
 function UI:DismissDrop(f)
   if not f then return end
+  if f._inPool then return end
+  if ns.ToastFit and ns.ToastFit.HideTooltip then pcall(ns.ToastFit.HideTooltip, f) end
   if f.SetScript then pcall(f.SetScript, f, "OnUpdate", nil) end
   f._hover = false
   if f.Hide then pcall(f.Hide, f) end
@@ -5148,6 +5503,7 @@ function UI:DismissDrop(f)
   end
   self:PackDrops()
   self.dismissed = (self.dismissed or 0) + 1
+  self:ReleaseToast(f)
 end
 
 -- Tuile visée par un drop : XP / niveau → Niveau ; montée de niveau → Niveau
@@ -5166,7 +5522,7 @@ function UI:DropTargetData(target)
     for _, d in ipairs(tiles) do if d.id == id and not d.placeholder then return d end end
     local e = ns.CatalogById and ns.CatalogById(id)
     local nm = e and e.name
-    for _, d in ipairs(tiles) do if d.combatTile and nm and d.skillName == nm then return d end end
+    for _, d in ipairs(tiles) do if d.combatTile and nm and (d.catName == nm or d.skillName == ns.CatalogDisplayName(e)) then return d end end
     for _, d in ipairs(tiles) do if d.id == id then return d end end
   end
   return nil
@@ -5175,7 +5531,7 @@ end
 function UI:OpenFromDrop(target, drop)
   if ns.InCombat and ns.InCombat() then
     ns.AfterCombat("openfromdrop", function() UI:OpenFromDrop(target) end)
-    ns.Print("en combat : la fenêtre s'ouvrira à la fin du combat.")
+    ns.Print(Tr["en combat : la fenêtre s'ouvrira à la fin du combat."])
     return "queued"
   end
   if self._openingFromDrop then return "busy" end
@@ -5248,9 +5604,146 @@ function UI:BumpDropTitle(f)
   f._bumps = (f._bumps or 0) + 1
 end
 
+local function StripStrayTimes(s)
+  if type(s) ~= "string" or s == "" then return s end
+  local prefix, rest = "", s
+  local code = s:match("^(|c%x%x%x%x%x%x%x%x)")
+  if code then
+    prefix, rest = code, s:sub(1 + #code)
+  end
+  rest = rest:gsub("^%s*×%s*", "", 1)
+  return prefix .. rest
+end
+
+-- 3.6.3 : les toasts sont recyclés. Chaque SpawnDrop créait un Frame (slot,
+-- textures, FontStrings, barre) que Hide ne libère jamais : en quelques
+-- minutes de jeu (toasts d'XP / de compétence) la mémoire grimpait de
+-- ~20 Mo à plus de 80 Mo. Le vivier plafonne au pic simultané (~5).
+UI._toastPool = UI._toastPool or {}
+UI._toastCreated = UI._toastCreated or 0
+UI.TOAST_POOL_MAX = 8
+
+function UI:AcquireToast(parent)
+  local pool = self._toastPool
+  local f
+  while pool and #pool > 0 do
+    f = table.remove(pool)
+    if f then
+      f._inPool = nil
+      if f.SetParent and parent then pcall(f.SetParent, f, parent) end
+      f._tfBaseH, f._h, f.font = nil, nil, nil
+      f._tintR, f._tintG, f._tintB, f._tintA, f._tintFamily = nil, nil, nil, nil, nil
+      if ns.ToastFit and ns.ToastFit.Reset then pcall(ns.ToastFit.Reset, f) end
+      return f, true
+    end
+  end
+  f = TryCreate("Frame", nil, parent, "BackdropTemplate")
+  if f then
+    f._osrsToast = true
+    self._toastCreated = (self._toastCreated or 0) + 1
+  end
+  return f, false
+end
+
+function UI:ReleaseToast(f)
+  if not f or f._inPool then return end
+  if not f._osrsToast and not f.iconSlot then return end
+  if f.SetScript then pcall(f.SetScript, f, "OnUpdate", nil) end
+  f._dedupeKey, f._acc, f._kills, f._quest = nil, nil, nil, nil
+  f._sticky, f._hover, f._toastAge, f._editPreview = nil, nil, 0, nil
+  f._toastData, f._target, f._kind, f._tintOpts = nil, nil, nil, nil
+  f._tintR, f._tintG, f._tintB, f._tintA, f._tintFamily = nil, nil, nil, nil, nil
+  f._fullTitle, f._fullSub, f._hold, f._light = nil, nil, nil, nil
+  f._tfBaseH = nil
+  if ns.ToastFit and ns.ToastFit.Reset then pcall(ns.ToastFit.Reset, f) end
+  f._pileHidden, f._pileFade, f._osrsFly = nil, nil, nil
+  if f.barHold and f.barHold.Hide then pcall(f.barHold.Hide, f.barHold) end
+  if f.Hide then pcall(f.Hide, f) end
+  f._inPool = true
+  f._osrsToast = true
+  self._toastPool = self._toastPool or {}
+  -- Plafond : un pic de toasts ne doit pas rester dans le vivier pour toujours.
+  if #self._toastPool >= (self.TOAST_POOL_MAX or 8) then return end
+  self._toastPool[#self._toastPool + 1] = f
+end
+
+function UI.ToastRestart(frame)
+  if not frame then return end
+  if (frame._toastAge or 0) > TOAST_FADEIN then frame._toastAge = TOAST_FADEIN end
+  ToastAlpha(frame, 1)
+end
+
+function UI.ToastDismissSoon(frame)
+  if not frame then return end
+  frame._hover = nil
+  local h = frame._hold or UI:DropHold()
+  local t = frame._toastAge or 0
+  if t < TOAST_FADEIN + h then frame._toastAge = TOAST_FADEIN + h end
+end
+
+function UI.ToastOnUpdate(self, elapsed)
+  if self._editPreview then
+    ToastAlpha(self, 1)
+    return
+  end
+  if self._pileHidden then
+    ToastAlpha(self, 0)
+    return
+  end
+  local t = self._toastAge or 0
+  if self._hover then
+    if t >= TOAST_FADEIN then ToastAlpha(self, 1)
+    else ToastAlpha(self, math.min(1, t / TOAST_FADEIN)) end
+    UI.ApplyToastPoint(self, UI.ToastSlideAmount(self))
+    return
+  end
+  if self._sticky then
+    if t < TOAST_FADEIN then
+      t = t + (elapsed or 0.03)
+      self._toastAge = t
+      ToastAlpha(self, math.min(1, t / TOAST_FADEIN))
+    else
+      ToastAlpha(self, 1)
+    end
+    UI.ApplyToastPoint(self, UI.ToastSlideAmount(self))
+    return
+  end
+  t = t + (elapsed or 0.03)
+  self._toastAge = t
+  local holdT = self._hold or UI:DropHold()
+  local a = 1
+  if t < TOAST_FADEIN then
+    a = t / TOAST_FADEIN
+  elseif t < TOAST_FADEIN + holdT then
+    a = 1
+  elseif t < TOAST_FADEIN + holdT + TOAST_FADEOUT then
+    a = 1 - ((t - TOAST_FADEIN - holdT) / TOAST_FADEOUT)
+  else
+    if UI.DismissDrop then UI:DismissDrop(self) end
+    return
+  end
+  ToastAlpha(self, a)
+  if not self._pileHidden then
+    UI.ApplyToastPoint(self, UI.ToastSlideAmount(self))
+  end
+end
+
 function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opts)
   opts = opts or {}
-  if not self:DropsEnabled() and not self._inEditMode then return end
+  if type(title) == "string" then title = StripStrayTimes(title) end
+  if type(subtitle) == "string" then subtitle = StripStrayTimes(subtitle) end
+  if opts.hint and type(opts.hint) == "string" then opts.hint = StripStrayTimes(opts.hint) end
+  local function blank(s)
+    if s == nil then return true end
+    s = tostring(s)
+    return s:gsub("%s+", "") == ""
+  end
+  -- Jamais un toast icône seule : titre et corps vides = on n'affiche rien.
+  if not self._inEditMode and not opts.force and blank(title) and blank(subtitle) and blank(opts.hint) then
+    return nil
+  end
+  if ns.PausedForFlight and ns.PausedForFlight() and not self._inEditMode and not (opts and opts.force) then return end
+  if not self:DropsEnabled() and not self._inEditMode and not (opts and opts.force) then return end
   self:BuildDrops()
   local parent = self.dropsStack or self.dropsFrame or UIParent
   if not parent then return end
@@ -5270,14 +5763,21 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
           if o._light and subtitle and subtitle ~= "" then title = title .. "  |cffffffff" .. subtitle .. "|r" end
         end
         if o.titleFS and title then o.titleFS:SetText(title) end
+        o._fullTitle = title or o._fullTitle
+        o._fullSub = subtitle or o._fullSub
+        if opts.toastData then o._toastData = opts.toastData end
+        if opts.sticky then o._sticky = true end
         self:BumpDropTitle(o)
         if o.subFS and subtitle then o.subFS:SetText(subtitle) end
         if o.hintFS and opts.hint then o.hintFS:SetText(opts.hint) end
         if o.barHold and o.bar and ns.N(barMax) and ns.N(barMax) > 0 then
-          pcall(SetSkillBarProgress, o.barHold, o.bar, barCur, ns.N(barMax), o._bw, 4)
+          pcall(SetSkillBarProgress, o.barHold, o.bar, barCur, ns.N(barMax), o._bw, (UI.ToastMetrics and UI.ToastMetrics({}).barH) or 4)
         end
         o._restart()
         o._updates = (o._updates or 0) + 1
+        o._tintOpts = opts
+        o._kind = opts.kind or o._kind
+        if UI.ApplyToastTint then UI.ApplyToastTint(o, opts) end
         return o
       end
     end
@@ -5288,7 +5788,10 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   for i = 1, #self.dropsActive do if not self.dropsActive[i]._editPreview then live = live + 1 end end
   while live >= (UI.DROP_MAX or 5) do
     local idx
-    for i = 1, #self.dropsActive do if not self.dropsActive[i]._editPreview then idx = i break end end
+    for i = 1, #self.dropsActive do
+      local o = self.dropsActive[i]
+      if o and not o._editPreview and not o._sticky then idx = i break end
+    end
     if not idx then break end
     local o = table.remove(self.dropsActive, idx)
     if o.SetScript then pcall(o.SetScript, o, "OnUpdate", nil) end
@@ -5299,60 +5802,123 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   local maxv = ns.N(barMax)
   local hint = opts.hint
 
-  -- Style « Léger » : une ligne compacte icône + texte, sans barre.
-  local light = opts.light or (ns.db and ns.db.ui and ns.db.ui.dropStyle == "leger")
+  -- Style « Léger » : une ligne compacte. S'il y a un titre ET un corps,
+  -- on force le toast complet : la rangée 20–26 px coupait le texte
+  -- (barre rouge vide, texte seulement en infobulle — « Nouveaux sorts »).
+  local light = opts.light or (ns.db and ns.db.ui and ns.db.ui.dropStyle == "leger") or false
+  if light and type(title) == "string" and title ~= "" and type(subtitle) == "string" and subtitle ~= "" then
+    light = false
+  end
   -- Complet : boîte compacte façon toast — icône 32 px à gauche, 3 lignes
   -- (titre or, ligne blanche, astuce verte) et fine barre en bas.
-  local fh
-  if light then fh = TOAST_LIGHT_H
+  local tm = UI.ToastMetrics and UI.ToastMetrics({
+    light = light, hint = hint, maxv = maxv, big = opts.big,
+  }) or nil
+  local fh, iconSize, barH, pad
+  if tm then
+    fh, iconSize, barH, pad = tm.fh, tm.icon, tm.barH, tm.pad
   else
-    fh = 12 + 14 + 12 + ((hint and hint ~= "") and 11 or 0) + ((maxv and maxv > 0) and 7 or 0)
-    if fh < 46 then fh = 46 end
-    if opts.big then fh = math.max(fh, UI.LEVELUP_H) end
+    if light then fh = TOAST_LIGHT_H
+    else
+      fh = 12 + 14 + 12 + ((hint and hint ~= "") and 11 or 0) + ((maxv and maxv > 0) and 7 or 0)
+      if fh < 46 then fh = 46 end
+      if opts.big then fh = math.max(fh, UI.LEVELUP_H) end
+    end
+    iconSize = light and 20 or (opts.big and 40 or 32)
+    barH, pad = 4, 7
   end
-  local iconSize = light and 20 or (opts.big and 40 or 32)
-  local f = TryCreate("Frame", nil, parent, "BackdropTemplate")
   local dw = self:DropWidth()
+  local f, reused = self:AcquireToast(parent)
+  if not f then return end
+  f._inPool = nil
   f:SetSize(dw, fh)
   f._h = fh
+  f._tfBaseH = fh
   f._light = light and true or false
   f._variant = opts.variant
   f._kind = opts.kind
   if f.SetFrameStrata then pcall(f.SetFrameStrata, f, "HIGH") end
   ApplyRestToastChrome(f, variant and variant.border or nil)
+  f._tintOpts = opts
+  UI.ApplyToastTint(f, opts)
 
-  -- Icône nette dans un cadre fin carré.
-  local slot = CreateSlotButton(f, iconSize, true)
-  if light then slot:SetPoint("LEFT", f, "LEFT", 4, 0)
-  else slot:SetPoint("TOPLEFT", f, "TOPLEFT", 7, -7) end
-  SetTileIcon(slot.iconTex, iconPath or ns.LEVEL_ICON or ns.FALLBACK_ICON)
-  f.iconSlot, f.icon = slot, slot.iconTex
+  -- Icône dans l'anneau rond : masque circulaire + retrait, jamais hors du cercle.
+  -- Métiers : icône d'origine du jeu (pas la goutte de repli), sans cadre d'emplacement.
+  local slot = f.iconSlot
+  if not slot then
+    slot = CreateSlotButton(f, iconSize, true)
+    f.iconSlot, f.icon = slot, slot.iconTex
+  else
+    -- Vivier : recaler taille, anneau et points (un toast « big » recyclé
+    -- en « Nouveaux sorts » léger débordait du cadre).
+    if ResizeSlotButton then ResizeSlotButton(slot, iconSize) end
+    if slot.ClearAllPoints then pcall(slot.ClearAllPoints, slot) end
+  end
+  if light then slot:SetPoint("LEFT", f, "LEFT", math.max(3, math.floor((pad or 7) * 0.6 + 0.5)), 0)
+  else slot:SetPoint("TOPLEFT", f, "TOPLEFT", pad or 7, -(pad or 7)) end
+  local resolved = UI.ResolveToastIcon and UI.ResolveToastIcon(iconPath, opts) or iconPath
+  SetTileIcon(slot.iconTex, resolved or ns.LEVEL_ICON or ns.FALLBACK_ICON, slot)
+  f.iconSlot, f.icon = slot, slot.iconTex or f.icon
 
-  local titleFS = Text(f, "GameFontNormal", "LEFT")
+  local titleFS = f.titleFS
+  if not titleFS then
+    titleFS = Text(f, "GameFontNormal", "LEFT")
+  elseif titleFS.ClearAllPoints then
+    titleFS:ClearAllPoints()
+  end
   titleFS:SetPoint("TOPLEFT", slot, "TOPRIGHT", 7, 1)
   titleFS:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+  if titleFS.Show then titleFS:Show() end
   if titleFS.SetWordWrap then titleFS:SetWordWrap(false) end
+  if type(titleFS.SetMaxLines) == "function" then pcall(titleFS.SetMaxLines, titleFS, 1) end
   titleFS:SetText(title or "")
   local tc = (variant and variant.title) or GOLD
   titleFS:SetTextColor(tc[1], tc[2], tc[3])
-  if opts.big and not light then
-    if titleFS.SetFontObject and _G.GameFontNormalLarge then pcall(titleFS.SetFontObject, titleFS, _G.GameFontNormalLarge) end
-    titleFS.font = "GameFontNormalLarge"
+  -- Vivier : toujours remettre la police (un level-up laissait GameFontNormalLarge).
+  do
+    local font
+    if opts.big and not light then
+      font = _G.GameFontNormalLarge or "GameFontNormalLarge"
+      titleFS.font = "GameFontNormalLarge"
+    elseif light then
+      font = _G.GameFontNormalSmall or "GameFontNormalSmall"
+      titleFS.font = "GameFontNormalSmall"
+    else
+      font = _G.GameFontNormal or "GameFontNormal"
+      titleFS.font = "GameFontNormal"
+    end
+    if titleFS.SetFontObject then pcall(titleFS.SetFontObject, titleFS, font) end
+    if tm and ApplyToastFont then ApplyToastFont(titleFS, tm.titleSize, font) end
   end
 
-  local subFS = Text(f, "GameFontHighlightSmall", "LEFT")
+  local subFS = f.subFS
+  if not subFS then
+    subFS = Text(f, "GameFontHighlightSmall", "LEFT")
+  elseif subFS.ClearAllPoints then
+    subFS:ClearAllPoints()
+  end
   subFS:SetPoint("TOPLEFT", titleFS, "BOTTOMLEFT", 0, -2)
   subFS:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+  if subFS.Show then subFS:Show() end
   if subFS.SetWordWrap then subFS:SetWordWrap(false) end
+  if type(subFS.SetMaxLines) == "function" then pcall(subFS.SetMaxLines, subFS, 1) end
   subFS:SetText(subtitle or "")
   subFS:SetTextColor(1, 1, 1)
+  if tm and ApplyToastFont then ApplyToastFont(subFS, tm.subSize, "GameFontHighlightSmall") end
 
-  local hintFS = Text(f, "GameFontHighlightSmall", "LEFT")
+  local hintFS = f.hintFS
+  if not hintFS then
+    hintFS = Text(f, "GameFontHighlightSmall", "LEFT")
+  elseif hintFS.ClearAllPoints then
+    hintFS:ClearAllPoints()
+  end
   hintFS:SetPoint("TOPLEFT", subFS, "BOTTOMLEFT", 0, -1)
   hintFS:SetPoint("RIGHT", f, "RIGHT", -8, 0)
   if hintFS.SetWordWrap then hintFS:SetWordWrap(false) end
+  if type(hintFS.SetMaxLines) == "function" then pcall(hintFS.SetMaxLines, hintFS, 1) end
   hintFS:SetText(hint or "")
   hintFS:SetTextColor(0.25, 1.00, 0.25)
+  if tm and ApplyToastFont then ApplyToastFont(hintFS, tm.subSize, "GameFontHighlightSmall") end
   if not hint or hint == "" then hintFS:Hide() end
   f.hintFS = hintFS
 
@@ -5362,6 +5928,7 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
     titleFS:SetPoint("RIGHT", f, "RIGHT", -6, 0)
     if titleFS.SetFontObject then pcall(titleFS.SetFontObject, titleFS, "GameFontNormalSmall") end
     titleFS.font = "GameFontNormalSmall"
+    if tm and ApplyToastFont then ApplyToastFont(titleFS, tm.titleSize, "GameFontNormalSmall") end
     if subtitle and subtitle ~= "" then titleFS:SetText((title or "") .. "  |cffffffff" .. subtitle .. "|r") end
     subFS:SetText("")
     subFS:Hide()
@@ -5371,76 +5938,60 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   -- Fine barre en bas, alignée sur le texte : elle commence au bord gauche
   -- du titre (jamais sous l'icône ronde) et finit au même retrait droit.
   if maxv and maxv > 0 and not light then
-    local hold = CreateFrame("Frame", nil, f)
+    local hold, sbar = f.barHold, f.bar
+    if not hold then
+      hold = CreateFrame("Frame", nil, f)
+      local okB, sb = pcall(CreateFrame, "StatusBar", nil, hold)
+      sbar = (okB and sb) or CreateFrame("Frame", nil, hold)
+    end
+    if hold.ClearAllPoints then hold:ClearAllPoints() end
     hold:SetPoint("LEFT", titleFS, "LEFT", 0, 0)
     hold:SetPoint("RIGHT", titleFS, "RIGHT", 0, 0)
-    hold:SetPoint("BOTTOM", f, "BOTTOM", 0, 6)
+    hold:SetPoint("BOTTOM", f, "BOTTOM", 0, math.max(4, (pad or 7) - 1))
+    if hold.Show then hold:Show() end
     local textRight = 8
-    local bw = math.max(8, dw - (7 + iconSize + 7) - textRight)
-    local okB, sbar = pcall(CreateFrame, "StatusBar", nil, hold)
-    if not (okB and sbar) then sbar = CreateFrame("Frame", nil, hold) end
+    local bw = math.max(8, dw - ((pad or 7) + iconSize + (pad or 7)) - textRight)
     hold._styleSkill = opts.skillId
-    SetSkillBarProgress(hold, sbar, barCur, maxv, bw, 4)
+    SetSkillBarProgress(hold, sbar, barCur, maxv, bw, barH or 4)
     f._bw = bw
     if hold.nbBorder then hold.nbBorder:Hide() end
     if hold.barText then hold.barText:SetText("") hold.barText:Hide() end
     f.barHold, f.bar = hold, sbar
+  elseif f.barHold and f.barHold.Hide then
+    f.barHold:Hide()
   end
   f.titleFS, f.subFS = titleFS, subFS
+  f._fullTitle, f._fullSub = title or "", subtitle or ""
+  f._toastData = opts.toastData
+  f._sticky = opts.sticky and true or nil
+  f._kind = opts.kind
+
   self.dropsActive[#self.dropsActive + 1] = f
   self:PackDrops()
-  if f.SetAlpha then pcall(f.SetAlpha, f, 0) end
+  ToastAlpha(f, 0)
   if f.Show then pcall(f.Show, f) end
 
   -- Aperçu d'édition : pas de fondu, on le garde visible.
   if f._editPreview then return f end
 
-  local t = 0
+  f._toastAge, f._toastBorn = 0, (type(GetTime) == "function" and GetTime()) or 0
   f._dedupeKey = opts.dedupeKey
   f._acc = opts.accumulate and ns.N(opts.accumulate.delta) or nil
   f._kills = opts.accumulate and opts.accumulate.kills or nil
   f._quest = opts.accumulate and opts.accumulate.quest or nil
   f._target = { kind = opts.kind, skillId = opts.skillId, skillName = opts.skillName }
-  f._restart = function() if t > TOAST_FADEIN then t = TOAST_FADEIN end if f.SetAlpha then pcall(f.SetAlpha, f, 1) end end
+  if not f._restart then
+    f._restart = function() UI.ToastRestart(f) end
+  end
+  if not f._dismiss then
+    f._dismiss = function() UI.ToastDismissSoon(f) end
+  end
   f._hold = ns.N(opts.hold)
-  -- 3.3.16 : fermeture anticipée (fondu de sortie immédiat)
-  f._dismiss = function() f._hover = nil local h = f._hold or UI:DropHold() if t < TOAST_FADEIN + h then t = TOAST_FADEIN + h end end
   -- v2.8.1 : survol = drop tenu (minuterie en pause) ; sortie = durée complète
   -- relancée ; clic gauche = onglet Comp. sur la bonne tuile ; clic droit = fermer.
   -- Jamais en mode édition (le déplacement du support reste inchangé).
   self:WireDropMouse(f)
-  f:SetScript("OnUpdate", function(self, elapsed)
-    if self._editPreview then
-      if self.SetAlpha then pcall(self.SetAlpha, self, 1) end
-      return
-    end
-    if self._hover then
-      t = TOAST_FADEIN
-      if self.SetAlpha then pcall(self.SetAlpha, self, 1) end
-      return
-    end
-    t = t + (elapsed or 0.03)
-    local a = 1
-    local holdT = self._hold or UI:DropHold()   -- 3.3.16 : durée propre (récap de déconnexion)
-    if t < TOAST_FADEIN then
-      a = t / TOAST_FADEIN
-    elseif t < TOAST_FADEIN + holdT then
-      a = 1
-    elseif t < TOAST_FADEIN + holdT + TOAST_FADEOUT then
-      a = 1 - ((t - TOAST_FADEIN - holdT) / TOAST_FADEOUT)
-    else
-      self:SetScript("OnUpdate", nil)
-      if self.Hide then pcall(self.Hide, self) end
-      if UI.dropsActive then
-        for i = #UI.dropsActive, 1, -1 do
-          if UI.dropsActive[i] == self then table.remove(UI.dropsActive, i) end
-        end
-        UI:PackDrops()
-      end
-      return
-    end
-    if self.SetAlpha then pcall(self.SetAlpha, self, a) end
-  end)
+  f:SetScript("OnUpdate", UI.ToastOnUpdate)
   return f
 end
 
@@ -5484,6 +6035,22 @@ end
 -- Effets sur un drop : lueur de bord (pulse ×2) + éclat doré (grossit, s'estompe).
 function UI:AttachFlareFx(f, strong)
   if not f or not f.CreateTexture then return nil end
+  if f._fx then
+    local out = f._fx
+    if out.glowAnim and out.glowAnim.Stop then pcall(out.glowAnim.Stop, out.glowAnim) end
+    if out.burstAnim and out.burstAnim.Stop then pcall(out.burstAnim.Stop, out.burstAnim) end
+    if out.fx then
+      if out.fx.SetAlpha then pcall(out.fx.SetAlpha, out.fx, 0) end
+      if out.fx.Show then pcall(out.fx.Show, out.fx) end
+    end
+    if out.glowAnim and out.glowAnim.Play then pcall(out.glowAnim.Play, out.glowAnim) end
+    if strong and out.burst then
+      if out.burst.Show then pcall(out.burst.Show, out.burst) end
+      if out.burstAnim and out.burstAnim.Play then pcall(out.burstAnim.Play, out.burstAnim) end
+    end
+    if UI.ApplyToastTint then UI.ApplyToastTint(f, f._tintOpts or {}) end
+    return out
+  end
   local F = ns.Style.FLARE
   local fx = CreateFrame("Frame", nil, f)
   fx:SetAllPoints(f)
@@ -5496,10 +6063,11 @@ function UI:AttachFlareFx(f, strong)
   local out = { fx = fx }
   local ag = NewAnim(fx)
   if ag then
-    AddAnim(ag, "Alpha", { SetFromAlpha = 0, SetToAlpha = 1, SetDuration = 0.35, SetOrder = 1 })
-    AddAnim(ag, "Alpha", { SetFromAlpha = 1, SetToAlpha = 0.25, SetDuration = 0.45, SetOrder = 2 })
-    AddAnim(ag, "Alpha", { SetFromAlpha = 0.25, SetToAlpha = 1, SetDuration = 0.35, SetOrder = 3 })
-    AddAnim(ag, "Alpha", { SetFromAlpha = 1, SetToAlpha = 0, SetDuration = 0.8, SetOrder = 4 })
+    -- Pic à 0,55 : la lumière joue au-dessus du fond teinté, sans le masquer.
+    AddAnim(ag, "Alpha", { SetFromAlpha = 0, SetToAlpha = 0.55, SetDuration = 0.35, SetOrder = 1 })
+    AddAnim(ag, "Alpha", { SetFromAlpha = 0.55, SetToAlpha = 0.20, SetDuration = 0.45, SetOrder = 2 })
+    AddAnim(ag, "Alpha", { SetFromAlpha = 0.20, SetToAlpha = 0.55, SetDuration = 0.35, SetOrder = 3 })
+    AddAnim(ag, "Alpha", { SetFromAlpha = 0.55, SetToAlpha = 0, SetDuration = 0.8, SetOrder = 4 })
     pcall(ag.Play, ag)
     out.glowAnim = ag
   else
@@ -5535,21 +6103,22 @@ function UI:AttachFlareFx(f, strong)
     out.burst = bf
   end
   f._fx = out
+  if UI.ApplyToastTint then UI.ApplyToastTint(f, f._tintOpts or {}) end
   return out
 end
 
 function UI:LevelTotalLine()
   local snap = self.snapshot
   local total = snap and ns.N(snap.total or snap.ficTotal)
-  if total then return "Niveau total : " .. tostring(total + 1) .. " (+1)" end
-  return "Niveau total : +1"
+  if total then return Tr["Niveau total : "] .. tostring(total + 1) .. " (+1)" end
+  return Tr["Niveau total : +1"]
 end
 
 function UI:PlayLevelUp(level)
   level = ns.N(level) or ns.GetPlayerLevel()
   self._pendingLevelPulse = true
   if not ns.Opt("levelUpAnim") then return nil end
-  local f = self:SpawnDrop(ns.LEVEL_ICON, "Niveau " .. tostring(level) .. " atteint !", self:LevelTotalLine(), nil, nil, nil,
+  local f = self:SpawnDrop(ns.LEVEL_ICON, Tr["Niveau "] .. tostring(level) .. Tr[" atteint !"], self:LevelTotalLine(), nil, nil, nil,
     { kind = "levelup", variant = "gold", big = true })
   if f then
     self:AttachFlareFx(f, true)
@@ -5559,7 +6128,21 @@ function UI:PlayLevelUp(level)
       self._lastLevelUpSound = kit or "aucun kit"
     end
   end
+  if ns.Slot and ns.Slot.PlayLevelUp then pcall(ns.Slot.PlayLevelUp) end
   self:PulseLevelTile()
+  -- 3.5.4 : niveaux pairs = nouveaux sorts chez le maître de classe (notif sous le level-up + son)
+  if f and level and level >= 2 and level % 2 == 0 then
+    local ui = self
+    local function spellToast()
+      local g = ui:SpawnDrop(ns.SPELLS_ICON, Tr["Nouveaux sorts"], Tr["Va voir ton maître de classe"], nil, nil, nil,
+        { kind = "spells", variant = "gold" })
+      if g and ns.SoundOk("levelUpSound") and type(PlaySound) == "function" then
+        local kit = (type(SOUNDKIT) == "table" and SOUNDKIT.IG_QUEST_LOG_OPEN) or 844
+        pcall(PlaySound, kit)
+      end
+    end
+    if type(C_Timer) == "table" and C_Timer.After then C_Timer.After(1.5, spellToast) else spellToast() end
+  end
   return f
 end
 
@@ -5599,18 +6182,13 @@ function UI:PulseLevelTile()
   return true
 end
 
--- Ancienne barre d'XP séparée (v2.3) : tout est maintenant dans le toast.
-function UI:ShowXPBar(cur, maxxp, level)
-  -- Conservé comme no-op pour compatibilité ; le toast XP porte déjà la barre.
-end
-
 -- v2.8.1 : XP cumulée sur un seul drop tant qu'il est visible :
 -- « +40 XP » → « +125 XP (3 monstres) » ; XP de quête : « (quête) ».
 function UI.XPTitle(n, o)
   local k = o and o._kills or 0
   local parts = {}
-  if k >= 2 then parts[#parts + 1] = tostring(k) .. " monstres" end
-  if o and o._quest then parts[#parts + 1] = "quête" end
+  if k >= 2 then parts[#parts + 1] = tostring(k) .. Tr[" monstres"] end
+  if o and o._quest then parts[#parts + 1] = Tr["quête"] end
   return "+" .. tostring(n) .. " XP" .. ((#parts > 0) and (" (" .. table.concat(parts, ", ") .. ")") or "")
 end
 
@@ -5635,15 +6213,18 @@ function UI:NoteXPMessage(event, msg)
   end
   if kind then
     local now = (type(GetTime) == "function" and GetTime()) or 0
-    local lu = self._lastXPUnknown
-    if lu and now - (lu.at or 0) <= 0.5 and lu.f and lu.f.titleFS then
-      self._lastXPUnknown = nil
-      if kind ~= "kill" then
-        lu.f._kills = math.max(0, (lu.f._kills or 1) - 1)
-        if kind == "quest" then lu.f._quest = true end
-        lu.f.titleFS:SetText(UI.XPTitle(lu.f._acc or 0, lu.f))
+    -- Quête arrivée juste après la hausse (pas de toast monstre) : poser le toast quête.
+    local pend = self._pendingXPToast
+    if kind == "quest" and pend and now - (pend.at or 0) <= 2 then
+      self._pendingXPToast = nil
+      self._xpSrc = { kind = "quest", at = now }
+      if ns.Opt("xpDrops") then
+        self:SpawnQuestXPToast(pend.delta, pend.cur, pend.maxxp, pend.level, pend.hint)
       end
       return
+    end
+    if kind == "kill" then
+      self._pendingXPToast = nil
     end
     self._xpSrc = { kind = kind, at = now }
   end
@@ -5657,6 +6238,83 @@ function UI:TakeXPSource()
   return s.kind
 end
 
+UI.XP_MILESTONES = { 25, 50, 75 }
+
+function UI.XPMilestoneTitle(level, th)
+  return string.format(Tr["Niveau %s · %d %%"], tostring(level or 0), th)
+end
+
+function UI:XPMarksFor(level)
+  local c = ns.CharDB and ns.CharDB()
+  if not c then
+    self._xpMarksMem = self._xpMarksMem or {}
+    local key = tostring(level or 0)
+    self._xpMarksMem[key] = self._xpMarksMem[key] or {}
+    return self._xpMarksMem[key]
+  end
+  c.xpMarks = c.xpMarks or {}
+  local key = tostring(level or 0)
+  if type(c.xpMarks[key]) ~= "table" then c.xpMarks[key] = {} end
+  return c.xpMarks[key]
+end
+
+function UI:MarkXPMilestone(rec, th)
+  rec[th] = true
+  rec[tostring(th)] = true
+end
+
+function UI:HasXPMilestone(rec, th)
+  return rec and (rec[th] or rec[tostring(th)]) and true or false
+end
+
+-- Au login : mémoriser les jalons déjà atteints, sans toast rétroactif.
+function UI:SeedXPMilestones(cur, maxxp, level)
+  cur, maxxp, level = ns.N(cur), ns.N(maxxp), ns.N(level)
+  if not level or not maxxp or maxxp <= 0 then
+    self._xpMarksSeeded = true
+    return
+  end
+  local rec = self:XPMarksFor(level)
+  local p = cur / maxxp
+  for _, th in ipairs(UI.XP_MILESTONES) do
+    if p >= (th / 100) then self:MarkXPMilestone(rec, th) end
+  end
+  self._xpMarksSeeded = true
+end
+
+function UI:MaybeXPMilestone(cur, maxxp, level)
+  if not ns.Opt("xpDrops") then return end
+  cur, maxxp, level = ns.N(cur), ns.N(maxxp), ns.N(level)
+  if not level or not maxxp or maxxp <= 0 then return end
+  if not self._xpMarksSeeded then
+    self:SeedXPMilestones(cur, maxxp, level)
+    return
+  end
+  local rec = self:XPMarksFor(level)
+  local p = cur / maxxp
+  local book = ns.LEVEL_ICON or "Interface\\Icons\\INV_Misc_Book_11"
+  for _, th in ipairs(UI.XP_MILESTONES) do
+    if p >= (th / 100) and not self:HasXPMilestone(rec, th) then
+      self:MarkXPMilestone(rec, th)
+      self:SpawnDrop(book, UI.XPMilestoneTitle(level, th), nil, nil, nil, nil, {
+        kind = "xp-milestone", dedupeKey = "xp-m-" .. tostring(level) .. "-" .. tostring(th),
+      })
+    end
+  end
+end
+
+function UI:SpawnQuestXPToast(delta, cur, maxxp, level, hint)
+  local book = ns.LEVEL_ICON or "Interface\\Icons\\INV_Misc_Book_11"
+  maxxp = ns.N(maxxp) or 0
+  cur = ns.N(cur) or 0
+  local pct = (maxxp > 0) and (cur / maxxp * 100) or 0
+  local sub = string.format(Tr["Niveau %s · %.0f %%"], tostring(level or 0), pct)
+  -- Un toast par remise de quête (pas de fusion avec un autre gain).
+  return self:SpawnDrop(book, UI.XPTitle(delta, { _kills = 0, _quest = true }), sub, cur, maxxp, nil, {
+    kind = "xp", hint = hint,
+  })
+end
+
 function UI:OnXPUpdate()
   local cur, maxxp = ns.GetPlayerXPSafe()
   local level = ns.GetPlayerLevel()
@@ -5665,6 +6323,7 @@ function UI:OnXPUpdate()
   if not self._xpSeeded then
     self._prevXP, self._prevXPMax, self._prevLevel = cur, maxxp, level
     self._xpSeeded = true
+    self:SeedXPMilestones(cur, maxxp, level)
     return
   end
   local delta = cur - (self._prevXP or 0)
@@ -5673,22 +6332,34 @@ function UI:OnXPUpdate()
   end
   self._prevXP, self._prevXPMax, self._prevLevel = cur, maxxp, level
   if delta > 0 then
-    local book = ns.LEVEL_ICON or "Interface\\Icons\\INV_Misc_Book_11"
-    maxxp = ns.N(maxxp) or 0
-    cur = ns.N(cur) or 0
-    local pct = (maxxp > 0) and (cur / maxxp * 100) or 0
-    local sub = string.format("Niveau %s · %.0f %%", tostring(level or 0), pct)
     self._sessionXP = (self._sessionXP or 0) + delta
     ns.Rate.Note("xp", self._sessionXP)
     local hint = self:XPHint(cur, maxxp, level)
     if ns.Opt("xpDrops") then
       local src = self:TakeXPSource()
-      local acc = { delta = delta, kills = (src ~= "quest" and src ~= "other") and 1 or 0, quest = (src == "quest"), fmt = UI.XPTitle }
-      local xf = self:SpawnDrop(book, UI.XPTitle(delta, { _kills = acc.kills, _quest = acc.quest }), sub, cur, maxxp, nil,
-        { kind = "xp", hint = hint, dedupeKey = "xp", accumulate = acc })
-      -- Message arrivé APRÈS la hausse : reclassé juste après (0,5 s).
-      self._lastXPUnknown = (src == nil and xf) and { f = xf, at = (type(GetTime) == "function" and GetTime()) or 0 } or nil
+      if src == "quest" then
+        self._pendingXPToast = nil
+        self:SpawnQuestXPToast(delta, cur, maxxp, level, hint)
+        -- +1 et étincelle à l'arrivée du toast (Compact.Land)
+      elseif src == "kill" or src == "other" then
+        -- Monstre (et exploration) : pas de toast ; +1 rouge sur la case Niveau + étincelle.
+        self._pendingXPToast = nil
+        if ns.Compact and ns.Compact.Announce then
+          pcall(ns.Compact.Announce, { kind = "xp", accumulate = { delta = delta } },
+            { { key = "level", gain = delta, suffix = "" } })
+        elseif ns.Slot and ns.Slot.PlayBarSpark then
+          pcall(ns.Slot.PlayBarSpark, "red")
+        end
+      else
+        -- Source encore inconnue : on attend un message de quête (2 s), sans toast monstre.
+        self._pendingXPToast = {
+          delta = delta, cur = cur, maxxp = maxxp, level = level, hint = hint,
+          at = (type(GetTime) == "function" and GetTime()) or 0,
+        }
+      end
     end
+    -- Les jalons peuvent tomber sur un gain de quête ou de monstre.
+    self:MaybeXPMilestone(cur, maxxp, level)
   end
 end
 
@@ -5707,9 +6378,16 @@ local function Now()
 end
 function UI:FlushSkillDiff()
   self._skillDiffPending = false
+  if ns.InCombat and ns.InCombat() then
+    self._skillDiffAfterCombat = true
+    self.dirty = true
+    return
+  end
   if not ns.SkillRankSnapshot then return end
-  -- Valeurs secrètes en combat : comparaison reportée (pas de base à 0).
-  if ns.InCombat and ns.InCombat() then self.dirty = true self._skillDiffAfterCombat = true return end
+  -- 3.5.21 : on compare aussi en combat (rangs lisibles). Si des rangs
+  -- restent secrets, MergeRankCache / la garde « rang 0 » conservent la
+  -- dernière valeur ; un second passage a lieu à PLAYER_REGEN_ENABLED.
+  if ns.InCombat and ns.InCombat() then self.dirty = true self._skillDiffAfterCombat = true end
   local now = ns.SkillRankSnapshot()
   -- Rang illisible (0 / nil) : on garde la dernière valeur connue.
   if self._prevSkills then
@@ -5744,17 +6422,29 @@ function UI:FlushSkillDiff()
     self._reseeds = (self._reseeds or 0) + 1
     rises = {}
   end
+  -- Après un changement de zone / repos : on met à jour la base, on ne toaste pas
+  -- (une lecture partielle ferait croire à un +1 de métier).
+  local quiet = self._skillQuietUntil and Now() < self._skillQuietUntil
+  if quiet or ((not rises[1]) and fresh == 0) then
+    if quiet then rises = {} end
+    if not rises[1] then
+      -- pas de palier réel : on n'appelle pas Collect (gros paquet de tables).
+      return
+    end
+  end
   self._dropLast = self._dropLast or {}
   local t = Now()
   for _, r in ipairs(rises) do
     local s, pr, cr, fold = r.s, r.pr, r.cr, r.fold
     local d = cr - pr
     if d > 0 and d < cr then
-      local icon, skillId = self:SkillDropIcon(s.name)
-      ns.Rate.Note("skill:" .. tostring(skillId or fold), cr)
+      local icon, skillId = self:SkillDropIcon(s.name, s.headerName, s.skillID)
+      local catEarly = ns.LookupCatalog and ns.LookupCatalog(s.name)
+      local isWeapon = ns.IsWeaponSkill and ns.IsWeaponSkill(skillId or (catEarly and catEarly.id), catEarly and catEarly.kind, s.name)
+      ns.Rate.Note("skill:" .. tostring(skillId or fold), cr, t, { cap = ns.N(s.max) or 0, weapon = isWeapon and true or false })
       local title = (s.name or "") .. " +" .. tostring(d)
       local maxS = ns.N(s.max) or 0
-      local subS = (maxS > 0) and ("Rang " .. tostring(cr) .. " / " .. tostring(maxS)) or ("Rang " .. tostring(cr))
+      local subS = (maxS > 0) and (Tr["Rang "] .. tostring(cr) .. " / " .. tostring(maxS)) or (Tr["Rang "] .. tostring(cr))
       local hintS = self:SkillHint(skillId or fold, skillId, cr, maxS)
       local last = self._dropLast[fold]
       local limited = last and (t - last) >= 0 and (t - last) < UI.DROP_RATE
@@ -5764,10 +6454,22 @@ function UI:FlushSkillDiff()
           dedupeKey = "skill:" .. fold, updateOnly = limited,
           accumulate = { delta = d, fmt = function(n) return nm .. " +" .. tostring(n) end } })
         if f and not limited then self._dropLast[fold] = t end
+      elseif ns.Compact and ns.Compact.Announce then
+        local opts = { kind = "skill", skillId = skillId, skillName = s.name, accumulate = { delta = d } }
+        local tg = ns.Compact.TargetsFor and ns.Compact.TargetsFor(opts) or {}
+        pcall(ns.Compact.Announce, opts, tg)
       end
       self._skillDrops = (self._skillDrops or 0) + 1
+      local cat = ns.LookupCatalog and ns.LookupCatalog(s.name)
+      -- 3.6.0 : suivi de progression (données seulement, aussi en combat)
+      if ns.Progress and ns.Progress.OnRise then
+        pcall(ns.Progress.OnRise, {
+          name = s.name, id = skillId or (cat and cat.id), fold = fold,
+          from = pr, to = cr, delta = d, max = maxS, kind = cat and cat.kind,
+          counts = not (cat and (cat.countsInTotal == false or cat.kind == "stat")), icon = icon,
+        })
+      end
       if ns.Dopamine and ns.Dopamine.OnRise then
-        local cat = ns.LookupCatalog and ns.LookupCatalog(s.name)
         pcall(ns.Dopamine.OnRise, {
           name = s.name, id = skillId or (cat and cat.id), fold = fold,
           from = pr, to = cr, delta = d, max = maxS, kind = cat and cat.kind, icon = icon,
@@ -5780,20 +6482,75 @@ function UI:FlushSkillDiff()
     self.snapshot = snap
     self._snapVersion = (self._snapVersion or 0) + 1
     SafeStep("objectifs / paliers", self.CheckMilestones, self, snap)
+    -- 3.6.3 : repeindre les cases d'arme avec le rang du toast, aussi en combat.
+    SafeStep("cases après palier d'arme", self.SyncSkillTiles, self, snap, rises)
+  end
+end
+
+-- Appliquer le rang / plafond du toast à la case de la MÊME ligne (Mains nues, pas une autre arme).
+function UI:SkillLineMatches(d, name, id)
+  if not d or d.placeholder then return false end
+  if id and (d.id == id or d.skillID == id or d.key == id) then return true end
+  local want = name and ns.Fold(name) or ""
+  if want == "" then return false end
+  if ns.Fold(d.skillName or "") == want or ns.Fold(d.catName or "") == want then return true end
+  -- « Mêlée » n'est pas le nom de la ligne : on ne le compare pas au skillName.
+  local e = ns.LookupCatalog and ns.LookupCatalog(name)
+  if e and d.id == e.id then return true end
+  return false
+end
+
+function UI:ApplyToastRankToTiles(name, rank, maxv, skillId)
+  rank, maxv = ns.N(rank), ns.N(maxv)
+  if not rank then return end
+  local C = ns.Compact
+  local function apply(t)
+    local d = t and t.data
+    if not d or not self:SkillLineMatches(d, name, skillId) then return end
+    d.current = rank
+    if maxv and maxv > 0 then d.apiMax = maxv end
+    if C and C.holds and C.HoldKey then C.holds[C.HoldKey(d) or ""] = nil end
+    pcall(self.UpdateTile, self, t, d)
+  end
+  for _, wrap in ipairs({ self.embed, self.soloGrid }) do
+    for _, t in ipairs((wrap and wrap.tiles) or {}) do apply(t) end
+  end
+end
+
+function UI:SyncSkillTiles(snap, rises)
+  if snap then
+    if self.embed then pcall(self.RefreshVisibleTiles, self, self.embed, snap) end
+    if self.soloGrid then pcall(self.RefreshVisibleTiles, self, self.soloGrid, snap) end
+  end
+  for _, r in ipairs(rises or {}) do
+    local s = r and r.s
+    if s and ns.IsWeaponSkill and ns.IsWeaponSkill(nil, nil, s.name) then
+      self:ApplyToastRankToTiles(s.name, r.cr, s.max)
+    end
   end
 end
 
 -- Ligne verte des drops : objectif > rythme mesuré > palier suivant.
 function UI:SkillHint(rateKey, skillId, cur, maxv)
+  local key = "skill:" .. tostring(rateKey)
   local g = skillId and ns.GetGoal(skillId)
+  local weapon = ns.IsWeaponSkill and ns.IsWeaponSkill(skillId, nil, nil)
   if g and g.rank > cur then
-    local eta = ns.FormatDuration(ns.Rate.ETA("skill:" .. tostring(rateKey), cur, g.rank))
-    return "Objectif " .. g.rank .. " : encore " .. (g.rank - cur) .. (eta and (" (" .. eta .. ")") or "")
+    local eta = ns.FormatDuration(ns.Rate.ETA(key, cur, g.rank, maxv))
+    local tag = weapon and Tr[" (~ estimation)"] or ((eta and (" (" .. tostring(eta) .. ")")) or "")
+    if weapon and eta then
+      return string.format(Tr["Objectif %s : encore %s"], tostring(g.rank), tostring(g.rank - cur)) .. " (" .. eta .. tag .. ")"
+    end
+    return string.format(Tr["Objectif %s : encore %s"], tostring(g.rank), tostring(g.rank - cur)) .. (eta and (" (" .. eta .. ")") or "")
   end
-  local spu = ns.Rate.SecondsPerUnit("skill:" .. tostring(rateKey))
-  if spu then return ns.FormatDuration(spu) .. " par rang (mesuré)" end
-  if maxv and maxv > cur then return "Palier " .. maxv .. " : encore " .. (maxv - cur) end
-  if maxv and maxv > 0 and cur >= maxv then return "Palier atteint" end
+  if weapon and maxv and maxv > cur then
+    local eta = ns.FormatDuration(ns.Rate.ETA(key, cur, maxv, maxv))
+    if eta then return tostring(maxv) .. Tr[" dans "] .. eta .. Tr[" (~ estimation)"] end
+  end
+  local spu = ns.Rate.SecondsPerUnit(key)
+  if spu and not weapon then return ns.FormatDuration(spu) .. Tr[" par rang (mesuré)"] end
+  if maxv and maxv > cur then return string.format(Tr["Palier %s : encore %s"], tostring(maxv), tostring(maxv - cur)) end
+  if maxv and maxv > 0 and cur >= maxv then return Tr["Palier atteint"] end
   return nil
 end
 
@@ -5803,12 +6560,12 @@ function UI:XPHint(cur, maxxp, level)
   local left = maxxp - cur
   local nextL = (ns.N(level) or 0) + 1
   local spu = ns.Rate.SecondsPerUnit("xp")
-  if spu then return "Niveau " .. nextL .. " dans " .. ns.FormatDuration(spu * left) end
-  return "Encore " .. left .. " XP avant le niveau " .. nextL
+  if spu then return string.format(Tr["Niveau %s dans %s"], tostring(nextL), tostring(ns.FormatDuration(spu * left))) end
+  return string.format(Tr["Encore %s XP avant le niveau %s"], tostring(left), tostring(nextL))
 end
 
 -- Icône d'un drop de compétence = exactement celle de la tuile de la grille.
-function UI:SkillDropIcon(name)
+function UI:SkillDropIcon(name, header, skillLine)
   local want = ns.Fold(name or "")
   local snap = self.snapshot
   if not snap then
@@ -5819,22 +6576,32 @@ function UI:SkillDropIcon(name)
     for i = 1, #list do
       local d = list[i]
       if ns.Fold(d.skillName or "") == want or ns.Fold(d.name or "") == want then
-        if d.icon then return d.icon, d.id end
+        if d.icon and not (ns.IconMissing and ns.IconMissing(d.icon)) then return d.icon, d.id end
       end
     end
   end
-  local e = ns.LookupCatalog and ns.LookupCatalog(name)
-  if not e and ns.Style and ns.Style.SkillIdForText then
-    local id = ns.Style.SkillIdForText(name)
-    e = id and ns.CATALOG_BY_ID and ns.CATALOG_BY_ID[id]
+  local ce = ns.LookupCatalog and ns.LookupCatalog(name)   -- 3.5.19 : nom FR ou EN → même case
+  for _, list in ipairs({ snap and snap.tiles or {}, snap and snap.allTiles or {} }) do
+    for i = 1, #list do
+      local d = list[i]
+      if ce and ce.id and d.id == ce.id and d.icon and not (ns.IconMissing and ns.IconMissing(d.icon)) then return d.icon, d.id end
+    end
   end
-  if e and e.icon then return e.icon, e.id end
-  return ns.IconForSkillName(name, nil) or ns.FALLBACK_ICON, nil
+  -- 3.5.18 : catalogue (noms exacts Forever : « Masse »…), ligne de compétence,
+  -- icône générique d'arme ; « ? » seulement pour une compétence inconnue hors armes
+  local icon, id = ns.ResolveSkillIcon(name, header, skillLine)
+  if icon then return icon, id end
+  return ns.FALLBACK_ICON, nil
 end
 
 -- « Votre compétence en Dépeçage est maintenant de 162. » → nom, rang.
 function UI:ParseSkillMessage(msg)
   if type(msg) ~= "string" then return nil end
+  -- 3.5.19 : modèle du client (ERR_SKILL_UP_SI) d'abord, quelle que soit la langue
+  if ns.MatchGlobal then
+    local n0, r0 = ns.MatchGlobal("ERR_SKILL_UP_SI", msg)
+    if n0 and ns.N(r0) then return n0, ns.N(r0) end
+  end
   local okM, name, rank = pcall(string.match, msg, "en (.-) est maintenant de (%d+)")
   if okM and name then return name, ns.N(rank) end
   okM, name, rank = pcall(string.match, msg, "Your skill in (.-) has increased to (%d+)")
@@ -5843,6 +6610,11 @@ function UI:ParseSkillMessage(msg)
 end
 
 function UI:OnSkillDiff()
+  if ns.InCombat and ns.InCombat() then
+    self._skillDiffAfterCombat = true
+    self.dirty = true
+    return
+  end
   if self._skillDiffPending then return end
   self._skillDiffPending = true
   local holder = self:TimerFrame("skilldiff")
@@ -5930,7 +6702,7 @@ function UI:HookEditMode()
       if type(lib.AddFrame) == "function" then
         pcall(lib.AddFrame, lib, frame, enter, exit)
       elseif type(lib.RegisterFrame) == "function" then
-        pcall(lib.RegisterFrame, lib, frame, "Drops Niveau total")
+        pcall(lib.RegisterFrame, lib, frame, Tr["Drops Niveau total"])
       elseif type(lib.RegisterAddOnFrame) == "function" then
         pcall(lib.RegisterAddOnFrame, lib, frame)
       end
@@ -5951,7 +6723,7 @@ function UI:ShowEditPreview()
     return
   end
   local book = ns.LEVEL_ICON or "Interface\\Icons\\INV_Misc_Book_11"
-  local f = self:SpawnDrop(book, "+0 XP", "Aperçu — mode édition", 1, 1, "", { hint = "Glisser pour déplacer" })
+  local f = self:SpawnDrop(book, Tr["+0 XP"], Tr["Aperçu — mode édition"], 1, 1, "", { hint = Tr["Glisser pour déplacer"] })
   if f then
     f._editPreview = true
     if f.EnableMouse then pcall(f.EnableMouse, f, true) end   -- glisser l'aperçu = déplacer le support
@@ -6201,7 +6973,8 @@ end
 local function PathLooksLikeCustom(path)
   if type(path) ~= "string" then return false end
   local fold = string.lower(path):gsub("/", "\\")
-  return string.find(fold, "skillstab", 1, true) and true or false
+  -- 3.5.20 : SkillsTab (goutte en jeu) ou Dropamine-Icon (liste d'addons / minicarte)
+  return (string.find(fold, "skillstab", 1, true) or string.find(fold, "dropamine-icon", 1, true)) and true or false
 end
 
 local function ApplyTextureToTab(btn, path)

@@ -10,23 +10,51 @@
 -- tables. Nos cadres sont enfants d'UIParent / du panneau.
 -- Repli : /drop edit bascule le calque si l'API du mode édition est absente.
 local _, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local UI, W = ns.UI, ns.Window
 local EM = {}
 ns.EditMode = EM
 local function N(v) return ns.N and ns.N(v) or tonumber(v) end
 local function O() return ns.Options end
-local function Say(m) print("|cffffd100Dropamine|r : " .. m) end
+local function Say(m) print(Tr["|cffffd100Dropamine|r : "] .. m) end
 local function After(dt, fn) if type(_G.C_Timer) == "table" and type(_G.C_Timer.After) == "function" then _G.C_Timer.After(dt, fn) else fn() end end
 
 EM.W, EM.ROW_H, EM.HEAD_H, EM.PAD = 300, 26, 22, 12
 EM.YELLOW = { 1, 0.82, 0 }
+-- 3.6.0 : réglages rapides alignés sur les réglages 2.0 (Options.lua) : mêmes
+-- familles (id), dans le même ordre, mêmes titres, mêmes libellés et aides
+-- (Options.SectionItems), aucune clé qui n'existe pas dans le panneau complet.
 EM.SECTIONS = {
-  -- 3.4.0 : mêmes groupes que le panneau d'options (réglages essentiels seulement)
-  { title = "Affichage & thème", keys = { "theme", "cols", "scale", "opacity", "showTotal" } },
-  { title = "Métiers & surlignage", keys = { "gatherAlerts", "activity", "tipCompact", "scannerIcons" } },
-  { title = "JcJ", keys = { "pvp", "pvpMarks" } },
-  { title = "Notifications", keys = { "dropsEnabled", "notifMode" } },
+  { id = "display", keys = { "theme", "cols", "scale", "opacity", "showTotal" } },
+  { id = "notif", keys = { "dropsEnabled", "notifMode", "dropDir", "quietMode" } },
+  { id = "prof", keys = { "gatherAlerts", "activity", "tipCompact", "scannerIcons" } },
+  { id = "advanced", keys = { "pvp", "pvpMarks" } },
 }
+-- Titre de la famille = celui du panneau complet.
+function EM.SectionTitle(sec)
+  local o = ns.Options
+  for _, s in ipairs(o and o.SECTIONS or {}) do if s.id == sec.id then return s.title end end
+  return sec.title or sec.id
+end
+-- Familles résolues : titre, réglages existants (les clés périmées sont écartées
+-- et notées dans EM.stale pour /drop debug et les tests), ordre du panneau complet.
+function EM.Sections()
+  local o = ns.Options
+  local out, stale = {}, {}
+  local rank = {}
+  for i, s in ipairs(o and o.SECTIONS or {}) do rank[s.id] = i end
+  for _, sec in ipairs(EM.SECTIONS) do
+    local items = {}
+    for _, key in ipairs(sec.keys) do
+      local it = o and o.Find and o.Find(key)
+      if it then items[#items + 1] = it else stale[#stale + 1] = key end
+    end
+    if #items > 0 then out[#out + 1] = { id = sec.id, title = EM.SectionTitle(sec), items = items, rank = rank[sec.id] or 99 } end
+  end
+  table.sort(out, function(a, b) return a.rank < b.rank end)
+  EM.stale = stale
+  return out
+end
 EM.collapsed = {}
 EM.stats = { enter = 0, exit = 0, sets = 0 }
 
@@ -166,6 +194,21 @@ local function Arrow(parent, dir)
   return b
 end
 
+-- 3.6.0 : même infobulle que le panneau complet (libellé, aide, commande)
+local function Tip(frame, it)
+  if not (frame and frame.SetScript and it) then return end
+  frame:SetScript("OnEnter", function(self)
+    if not GameTooltip then return end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:AddLine(Tr[it.label], 1, 0.82, 0)
+    if it.help then GameTooltip:AddLine(Tr[it.help], 1, 1, 1, true) end
+    if it.cmd then GameTooltip:AddLine(Tr[it.cmd], 0.7, 0.7, 0.7) end
+    GameTooltip:Show()
+  end)
+  frame:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+end
+EM.Tip = Tip
+
 function EM.Set(key, v)
   local o = O()
   if not o then return end
@@ -180,11 +223,14 @@ local function SliderRow(d, it)
   local r = CreateFrame("Frame", nil, d)
   r._osrsOwn = true
   r:SetSize(EM.W - 2 * EM.PAD, EM.ROW_H)
-  r.label = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  r.label = r:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")   -- libellé or (réglages 2.0)
   r.label:SetPoint("LEFT", r, "LEFT", 0, 0)
   r.label:SetWidth(96)
   if r.label.SetJustifyH then r.label:SetJustifyH("LEFT") end
-  r.label:SetText(it.label)
+  r.label:SetText(Tr[it.label])
+  r.label.font = "GameFontNormalSmall"
+  if r.EnableMouse then r:EnableMouse(true) end
+  Tip(r, it)
   r.left = Arrow(r, -1)
   r.left:SetPoint("LEFT", r, "LEFT", 98, 0)
   local ok, s = pcall(CreateFrame, "Slider", nil, r, "OptionsSliderTemplate")
@@ -243,7 +289,7 @@ local function SliderRow(d, it)
 end
 
 local function Label(it, v)
-  for _, c in ipairs(it.choices or {}) do if c[1] == v then return c[2] end end
+  for _, c in ipairs(it.choices or {}) do if c[1] == v then return Tr[c[2]] end end
   return tostring(v)
 end
 function EM.Menu(row)
@@ -271,7 +317,7 @@ function EM.Menu(row)
     end
     b:ClearAllPoints()
     b:SetPoint("TOPLEFT", m, "TOPLEFT", 4, -4 - (i - 1) * 18)
-    b.fs:SetText(c[2])
+    b.fs:SetText(Tr[c[2]])
     b:SetScript("OnClick", function() m:Hide() EM.Set(it.key, c[1]) end)
     b:Show()
   end
@@ -287,9 +333,12 @@ local function DropRow(d, it)
   local r = CreateFrame("Frame", nil, d)
   r._osrsOwn = true
   r:SetSize(EM.W - 2 * EM.PAD, EM.ROW_H)
-  r.label = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  r.label = r:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   r.label:SetPoint("LEFT", r, "LEFT", 0, 0)
-  r.label:SetText(it.label)
+  r.label:SetText(Tr[it.label])
+  r.label.font = "GameFontNormalSmall"
+  if r.EnableMouse then r:EnableMouse(true) end
+  Tip(r, it)
   local b = CreateFrame("Button", nil, r)
   b._osrsOwn = true
   b:SetSize(170, 20)
@@ -317,9 +366,11 @@ local function CheckRow(d, it)
   c._osrsOwn = true
   c:SetSize(22, 22)
   c:SetPoint("LEFT", r, "LEFT", -2, 0)
-  r.label = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  r.label = r:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   r.label:SetPoint("LEFT", c, "RIGHT", 2, 0)
-  r.label:SetText(it.label)
+  r.label:SetText(Tr[it.label])
+  r.label.font = "GameFontNormalSmall"
+  Tip(c, it)
   r.check, r.it = c, it
   c:SetScript("OnClick", function(self) EM.Set(it.key, self:GetChecked() and true or false) end)
   function r:Refresh() self.value = O().Get(it.key) and true or false self.check:SetChecked(self.value) end
@@ -344,7 +395,7 @@ function EM.BuildDialog()
   local okC, close = pcall(CreateFrame, "Button", nil, d, "UIPanelCloseButton")
   if okC and close then close:SetPoint("TOPRIGHT", d, "TOPRIGHT", -2, -2) close:SetScript("OnClick", function() EM.Deselect() end) d.close = close end
   d.sections, d.rows = {}, {}
-  for si, sec in ipairs(EM.SECTIONS) do
+  for si, sec in ipairs(EM.Sections()) do
     local h = CreateFrame("Button", nil, d)
     h._osrsOwn = true
     h:SetSize(EM.W - 2 * EM.PAD, EM.HEAD_H)
@@ -359,20 +410,18 @@ function EM.BuildDialog()
     h.sec = sec
     h:SetScript("OnClick", function() EM.collapsed[sec.title] = not EM.collapsed[sec.title] or nil EM.Relayout() end)
     local rows = {}
-    for _, key in ipairs(sec.keys) do
-      local it = o.Find(key)
-      if it then
-        local r = (it.type == "slider" and SliderRow(d, it)) or (it.type == "radio" and DropRow(d, it)) or (it.type == "check" and CheckRow(d, it)) or nil
-        if r then rows[#rows + 1] = r d.rows[key] = r end
-      end
+    for _, it in ipairs(sec.items) do
+      local r = (it.type == "slider" and SliderRow(d, it)) or (it.type == "radio" and DropRow(d, it)) or (it.type == "check" and CheckRow(d, it)) or nil
+      if r then rows[#rows + 1] = r d.rows[it.key] = r end
     end
-    d.sections[si] = { head = h, rows = rows, title = sec.title }
+    d.sections[si] = { head = h, rows = rows, title = sec.title, id = sec.id }
   end
-  d.full = Btn(d, "Paramètres complets", EM.W - 2 * EM.PAD, 22)
+  d.full = Btn(d, Tr["Paramètres complets"], EM.W - 2 * EM.PAD, 22)
   d.full:SetScript("OnClick", function() EM.Deselect() if O().Open then pcall(O().Open) end end)
-  d.reset = Btn(d, "Réinitialiser", EM.W - 2 * EM.PAD, 22)
+  d.reset = Btn(d, Tr[o.SECTION_RESET or "Réinitialiser"], EM.W - 2 * EM.PAD, 22)
+  Tip(d.reset, { label = o.SECTION_RESET or "Réinitialiser", help = "Remet les réglages rapides ci-dessus à leur valeur d'origine" })
   d.reset:SetScript("OnClick", function(self) EM.ResetClick(self) end)
-  d.home = Btn(d, "Revenir à la position par défaut", EM.W - 2 * EM.PAD, 22)
+  d.home = Btn(d, Tr["Revenir à la position par défaut"], EM.W - 2 * EM.PAD, 22)
   d.home:SetScript("OnClick", function() if UI.ResetPositions then pcall(UI.ResetPositions, UI) end EM.Place() end)
   d:Hide()
   EM.dialog = d
@@ -380,16 +429,29 @@ function EM.BuildDialog()
   return d
 end
 local function BtnText(b, t) if b.SetText then b:SetText(t) end if b.fs then b.fs:SetText(t) end end
+-- 3.6.0 : comme « Réinitialiser » d'une section des réglages 2.0 : deux clics,
+-- et seulement les réglages montrés ici (avant : TOUT le panneau d'options).
 function EM.ResetClick(b)
+  local o = O()
+  local txt, conf = Tr[o.SECTION_RESET or "Réinitialiser"], Tr[o.SECTION_RESET_CONFIRM or "Confirmer ?"]
   if not EM._resetArmed then
     EM._resetArmed = true
-    BtnText(b, "Confirmer la réinitialisation ?")
-    After(4, function() if EM._resetArmed then EM._resetArmed = nil BtnText(b, "Réinitialiser") end end)
+    BtnText(b, conf)
+    After(4, function() if EM._resetArmed then EM._resetArmed = nil BtnText(b, txt) end end)
     return "armed"
   end
   EM._resetArmed = nil
-  BtnText(b, "Réinitialiser")
-  local n = O().ResetDefaults and O().ResetDefaults() or 0
+  BtnText(b, txt)
+  local n = 0
+  o._syncing = true
+  for _, sec in ipairs(EM.Sections()) do
+    for _, it in ipairs(sec.items) do
+      if it.default ~= nil and not it.noReset and pcall(o.Set, it.key, it.default) then n = n + 1 end
+    end
+  end
+  o._syncing = false
+  if o.panel and o.Sync then pcall(o.Sync) end
+  if o.OnLiveChange then pcall(o.OnLiveChange, "theme") end
   EM.Sync()
   return n
 end
@@ -402,7 +464,7 @@ function EM.Relayout()
     local c = EM.collapsed[s.title]
     s.head:ClearAllPoints()
     s.head:SetPoint("TOPLEFT", d, "TOPLEFT", EM.PAD, y)
-    s.head.fs:SetText((c and "+ " or "– ") .. s.title)
+    s.head.fs:SetText((c and "+ " or "– ") .. Tr[s.title])
     y = y - EM.HEAD_H - 2
     for _, r in ipairs(s.rows) do
       if c then r:Hide() else
@@ -458,9 +520,9 @@ end
 ------------------------------------------------------------------------------
 ns.SlashExt = ns.SlashExt or {}
 ns.SlashExt.edit = function()
-  if InCombat() then Say("en combat : réessaie après le combat.") return end
-  if EM.active then EM.Exit() Say("mode édition du panneau : fermé")
-  else EM.Enter("/drop edit") EM.Select() Say("mode édition du panneau : clic sur le panneau = réglages, glisser = déplacer (/drop edit pour fermer)") end
+  if InCombat() then Say(Tr["en combat : réessaie après le combat."]) return end
+  if EM.active then EM.Exit() Say(Tr["mode édition du panneau : fermé"])
+  else EM.Enter("/drop edit") EM.Select() Say(Tr["mode édition du panneau : clic sur le panneau = réglages, glisser = déplacer (/drop edit pour fermer)"]) end
 end
 ns.SlashExt["edition"] = ns.SlashExt.edit
 ns.SlashExt["édition"] = ns.SlashExt.edit
@@ -469,7 +531,8 @@ ns.HelpExt[#ns.HelpExt + 1] = "/drop edit : calque d'édition + fenêtre de rég
 
 ns.DebugExt = ns.DebugExt or {}
 ns.DebugExt[#ns.DebugExt + 1] = function()
-  return { string.format("— Mode édition (3.3.13) — %s ; calque %s ; SelectSystem %s ; entrées %d, réglages %d",
+  EM.Sections()
+  return { string.format("— Mode édition (3.3.13) — %s ; calque %s ; SelectSystem %s ; entrées %d, réglages %d ; clés périmées : %s",
     EM.active and ("actif (" .. tostring(EM.how) .. ")") or "inactif", tostring(EM.overlayKind or "pas encore créé"),
-    EM._selHooked and "suivi" or "absent", EM.stats.enter, EM.stats.sets) }
+    EM._selHooked and "suivi" or "absent", EM.stats.enter, EM.stats.sets, (#(EM.stale or {}) > 0) and table.concat(EM.stale, ", ") or "aucune") }
 end

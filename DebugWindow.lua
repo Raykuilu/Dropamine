@@ -4,6 +4,7 @@
 -- suffit. Fermeture : bouton ✕ ou Échap. Diagnostic « métier en cours » en tête ;
 -- « /drop debug metier » n'affiche que lui. Rien n'est créé avant le 1er appel.
 local ADDON, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local DW = {}
 ns.DebugWindow = DW
 DW.NAME = "DropamineDebugWindow"
@@ -33,7 +34,7 @@ function DW.Build()
   end
   local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   title:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -12)
-  title:SetText("Dropamine — debug (Ctrl+C pour copier)")
+  title:SetText(Tr["Dropamine — debug (Ctrl+C pour copier)"])
   DW.title = title
   local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
   close:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -2)
@@ -107,6 +108,6 @@ end
 function ns.PrintDebug(part)
   local lines = DW.Lines(part)
   DW.Show(lines)
-  if ns.Print then ns.Print("Debug copié dans la fenêtre (Ctrl+C pour copier, Échap pour fermer).") end
+  if ns.Print then ns.Print(Tr["Debug copié dans la fenêtre (Ctrl+C pour copier, Échap pour fermer)."]) end
   return lines
 end

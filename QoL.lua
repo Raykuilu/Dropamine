@@ -3,15 +3,17 @@
 -- dans les options (/drop options) et par commande. Secret-safe, rien en combat
 -- qui touche à l'équipement.
 local ADDON, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local Q = {}
 ns.QoL = Q
 
 local function N(v) return ns.N(v) end
+-- 3.6.0 : sans table temporaire (appelé sur les événements fréquents : survol,
+-- barres de nom, cible) et sans troncature aux valeurs nil intermédiaires.
+local function Ret(ok, ...) if not ok then return nil end return ... end
 local function Call(fn, ...)
   if type(fn) ~= "function" then return nil end
-  local r = { pcall(fn, ...) }
-  if not r[1] then return nil end
-  return unpack(r, 2)
+  return ns.Unsecret(Ret(pcall(fn, ...)))
 end
 local function Str(v)
   if type(v) ~= "string" or ns.IsSecret(v) then return nil end
@@ -59,7 +61,7 @@ local function toggleCmd(key, label)
   return function(rest)
     local v = ns.ParseOnOff(rest, ns.Opt(key))
     if ns.Options then ns.Options.Set(key, v) else ns.SetOpt(key, v) end
-    ns.Print(label .. (v and " : activé." or " : désactivé."))
+    ns.Print(Tr[label] .. (v and Tr[" : activé."] or Tr[" : désactivé."]))
   end
 end
 ns.SlashExt.eta = toggleCmd("eta", "estimation du temps")
@@ -99,7 +101,10 @@ function Q.OnSnapshot(snap)
   for _, d in ipairs(snap.tiles or {}) do
     if d.id and N(d.current) and not d.placeholder then ranks[d.id] = N(d.current) end
   end
-  c.history[day] = { total = total, ranks = ranks }
+  -- 3.6.0 : la journée garde ses autres champs (Progress.lua : pts, cat, skills)
+  local h = c.history[day]
+  if type(h) ~= "table" then h = {} c.history[day] = h end
+  h.total, h.ranks = total, ranks
   Q.PruneHistory(c)
   -- alts
   c.lastTotal = total
@@ -118,14 +123,14 @@ function Q.OnSnapshot(snap)
         if cur >= m and not c.milestones[key] then
           c.milestones[key] = d.id
           if not first and ns.Opt("jalons") then
-            Drop(d.icon, "Jalon : premier " .. m .. " !", (d.name or "") .. " " .. cur, { variant = "gold", kind = "jalon", hint = "Premier métier à " .. m .. " sur ce personnage" })
+            Drop(d.icon, Tr["Jalon : premier "] .. m .. " !", (d.name or "") .. " " .. cur, { variant = "gold", kind = "jalon", hint = Tr["Premier métier à "] .. m .. Tr[" sur ce personnage"] })
           end
         end
       end
       if cap > 0 and cur >= cap - Q.PRE_PALIER_GAP and cur < cap and c.prePaliers[d.id] ~= cap then
         c.prePaliers[d.id] = cap
         if not first and ns.Opt("prepalier") then
-          Drop(d.icon, "Bientôt le palier : " .. (d.name or "") .. " " .. cur .. "/" .. cap, "Prévois le passage chez le maître", { kind = "prepalier", hint = "Encore " .. (cap - cur) .. " rang(s)" })
+          Drop(d.icon, Tr["Bientôt le palier : "] .. (d.name or "") .. " " .. cur .. "/" .. cap, Tr["Prévois le passage chez le maître"], { kind = "prepalier", hint = Tr["Encore "] .. (cap - cur) .. Tr[" rang(s)"] })
         end
       end
     end
@@ -135,18 +140,32 @@ function Q.OnSnapshot(snap)
     if total >= m and not c.milestones[key] then
       c.milestones[key] = true
       if not first and ns.Opt("jalons") then
-        Drop(ns.LEVEL_ICON, "Jalon : niveau total " .. m .. " !", "Niveau total " .. total, { variant = "gold", kind = "jalon" })
+        Drop(ns.LEVEL_ICON, Tr["Jalon : niveau total "] .. m .. " !", Tr["Niveau total "] .. total, { variant = "gold", kind = "jalon" })
       end
     end
   end
   c.milestonesSeeded = true
 end
 
+Q.HISTORY_DAYS = 35   -- 3.6.0 : 35 jours (fenêtre Progression : 30 jours + marge)
+-- Journée d'historique : agrégats seulement (pts, cat, skills, total, ranks, xp).
+function Q.SlimHistoryDay(h)
+  if type(h) ~= "table" then return h end
+  h.events, h.log, h.raw, h.curve, h.hour, h.samples = nil, nil, nil, nil, nil, nil
+  return h
+end
 function Q.PruneHistory(c)
+  if type(c) ~= "table" or type(c.history) ~= "table" then return 0 end
   local keys = {}
-  for k in pairs(c.history) do keys[#keys + 1] = k end
+  for k, h in pairs(c.history) do
+    keys[#keys + 1] = k
+    Q.SlimHistoryDay(h)
+  end
+  if #keys <= Q.HISTORY_DAYS then return 0 end
   table.sort(keys)
-  while #keys > 30 do c.history[table.remove(keys, 1)] = nil end
+  local n = 0
+  while #keys > Q.HISTORY_DAYS do c.history[table.remove(keys, 1)] = nil n = n + 1 end
+  return n
 end
 
 -- Série des 7 derniers jours connus (valeur du total ou d'une compétence).
@@ -219,7 +238,7 @@ function Q.UpdateGraph(f, d)
     end
   end
   local delta = series[#series].value - series[1].value
-  g.label:SetText(#series .. " derniers jours : " .. ((delta >= 0) and "+" or "") .. delta)
+  g.label:SetText(#series .. Tr[" derniers jours : "] .. ((delta >= 0) and "+" or "") .. delta)
   g.series = series
   g:Show()
   return series
@@ -234,16 +253,19 @@ function Q.ETALine(d)
     xp, maxxp = N(xp), N(maxxp)
     local spu = ns.Rate.SecondsPerUnit("xp")
     if xp and maxxp and spu and maxxp > xp then
-      return "Niveau " .. (cur + 1) .. " dans " .. ns.FormatDuration(spu * (maxxp - xp)) .. " (rythme mesuré)"
+      return Tr["Niveau "] .. (cur + 1) .. Tr[" dans "] .. ns.FormatDuration(spu * (maxxp - xp)) .. Tr[" (rythme mesuré)"]
     end
     return nil
   end
   local g = ns.GetGoal(d.id)
   local target = (g and g.rank > cur and g.rank) or N(d.apiMax)
   if not target or target <= cur then return nil end
-  local eta = ns.Rate.ETA("skill:" .. tostring(d.id), cur, target)
+  local weapon = ns.IsWeaponSkill and ns.IsWeaponSkill(d.id or d.skillID, d.kind, d.skillName or d.name)
+  local cap = N(d.apiMax)
+  local eta = ns.Rate.ETA("skill:" .. tostring(d.id), cur, target, weapon and cap or nil)
   if not eta then return nil end
-  return tostring(target) .. " dans " .. ns.FormatDuration(eta) .. " (rythme mesuré)"
+  local tag = weapon and Tr[" (~ estimation)"] or Tr[" (rythme mesuré)"]
+  return tostring(target) .. Tr[" dans "] .. ns.FormatDuration(eta) .. tag
 end
 
 -- 4. Liste de courses de l'objectif (recettes connues, composants en sac) ----
@@ -259,27 +281,28 @@ function Q.ShoppingList(d)
     if order[r.diff or ""] then useful[#useful + 1] = r end
   end
   table.sort(useful, function(a, b) return order[a.diff] > order[b.diff] end)
-  if #useful == 0 then return { "Courses : aucune recette orange / jaune / verte connue pour l'objectif." } end
-  local lines = { "Courses pour l'objectif " .. g.rank .. " (par fabrication) :" }
+  if #useful == 0 then return { Tr["Courses : aucune recette orange / jaune / verte connue pour l'objectif."] } end
+  local lines = { Tr["Courses pour l'objectif "] .. g.rank .. Tr[" (par fabrication) :"] }
   local DFR = ns.Scanner and ns.Scanner.DIFF_FR or {}
   for i = 1, math.min(3, #useful) do
     local r = useful[i]
     local parts = {}
     for _, rg in ipairs(r.reagents or {}) do
       local have = rg.id and N(Call(GetItemCount, rg.id)) or nil
-      local nm = rg.name or (rg.id and Str(Call(GetItemInfo, rg.id))) or ("objet " .. tostring(rg.id))
-      local s = nm .. " ×" .. tostring(rg.count or 1)
-      if have then s = s .. " (en sac " .. have .. ((have < (rg.count or 1)) and ", manque " .. ((rg.count or 1) - have) or "") .. ")" end
+      local nm = (ns.ItemDisplayName and ns.ItemDisplayName(rg.id, rg.name)) or rg.name or (rg.id and Str(Call(GetItemInfo, rg.id))) or Tr["composant"]
+      if ns.BareItemIdLabel and ns.BareItemIdLabel(nm) then nm = Tr["composant"] end
+      local s = nm .. Tr[" ×"] .. tostring(rg.count or 1)
+      if have then s = s .. Tr[" (en sac "] .. have .. ((have < (rg.count or 1)) and Tr[", manque "] .. ((rg.count or 1) - have) or "") .. ")" end
       parts[#parts + 1] = s
     end
-    lines[#lines + 1] = "• " .. r.name .. " (" .. (DFR[r.diff] or r.diff) .. ") : " .. table.concat(parts, ", ")
+    lines[#lines + 1] = "• " .. r.name .. " (" .. Tr[DFR[r.diff] or r.diff] .. ")" .. Tr[" : "] .. table.concat(parts, ", ")
   end
   return lines
 end
 
 ns.SlashExt.courses = function(rest)
   local low = (rest or ""):lower()
-  if low == "on" or low == "off" then return toggleCmd("courses", "liste de courses")(low) end
+  if low == "on" or low == "off" then return toggleCmd("courses", Tr["liste de courses"])(low) end
   local c = ns.CharDB()
   local any = false
   local snap = UI() and UI().snapshot or ns.Collect()
@@ -287,7 +310,7 @@ ns.SlashExt.courses = function(rest)
     local l = (not d.placeholder) and Q.ShoppingList(d) or nil
     if l then any = true for _, x in ipairs(l) do ns.Print(x) end end
   end
-  if not any then ns.Print("courses : fixe un objectif de Cuisine / Secourisme (clic droit) et ouvre le métier une fois pour lire les recettes.") end
+  if not any then ns.Print(Tr["courses : fixe un objectif de Cuisine / Secourisme (clic droit) et ouvre le métier une fois pour lire les recettes."]) end
 end
 
 -- 5. Pêche : prises par zone --------------------------------------------------
@@ -316,11 +339,11 @@ function Q.FishingLines()
   local zone = Q.Zone()
   local lines = {}
   local here = c.fishing[zone]
-  lines[#lines + 1] = "Prises ici (" .. zone .. ") : " .. (here and here.catches or 0)
+  lines[#lines + 1] = Tr["Prises ici ("] .. zone .. ") : " .. (here and here.catches or 0)
   local zs = {}
   for z, v in pairs(c.fishing) do if z ~= zone then zs[#zs + 1] = { z, v.catches } end end
   table.sort(zs, function(a, b) return a[2] > b[2] end)
-  for i = 1, math.min(3, #zs) do lines[#lines + 1] = "  " .. zs[i][1] .. " : " .. zs[i][2] end
+  for i = 1, math.min(3, #zs) do lines[#lines + 1] = "  " .. zs[i][1] .. Tr[" : "] .. zs[i][2] end
   return lines
 end
 
@@ -341,20 +364,32 @@ function Q.AltTooltip(tt)
   if not ns.Opt("alts") or not tt then return 0 end
   local db = ns.EnsureDB()
   local me = ns.CharKey()
-  local rows = {}
+  -- 3.8.1 : « Nom- » et « Nom-Royaume » sont le même personnage (cf. AllCharSheets) :
+  -- une seule ligne par nom, la fiche la plus récente, et jamais le personnage actuel.
+  local function nm(k) return tostring(k):gsub("%-.*$", ""):lower() end
+  local function stamp(c) return (type(c.sheet) == "table" and N(c.sheet.updated)) or 0 end
+  local mineName, best = nm(me), {}
   for key, c in pairs(db.chars or {}) do
-    if key ~= me and N(c.lastTotal) then rows[#rows + 1] = { key, c } end
+    local n = nm(key)
+    if n ~= mineName and N(c.lastTotal) then
+      local b = best[n]
+      if not b or stamp(c) > stamp(b[2]) or (stamp(c) == stamp(b[2]) and (N(c.lastTotal) or 0) > (N(b[2].lastTotal) or 0)) then
+        best[n] = { key, c }
+      end
+    end
   end
+  local rows = {}
+  for _, r in pairs(best) do rows[#rows + 1] = r end
   if #rows == 0 then return 0 end
   table.sort(rows, function(a, b) return (a[2].lastTotal or 0) > (b[2].lastTotal or 0) end)
   pcall(tt.AddLine, tt, " ")
-  pcall(tt.AddLine, tt, "Autres personnages", 1, 0.82, 0)
+  pcall(tt.AddLine, tt, Tr["Autres personnages"], 1, 0.82, 0)
   local mine = N(Q.C().lastTotal) or 0
   for _, r in ipairs(rows) do
     local c = r[2]
     local diff = c.lastTotal - mine
     local right = tostring(c.lastTotal) .. " (" .. ((diff >= 0) and "+" or "") .. diff .. ")"
-    local left = r[1]:gsub("%-.*$", "") .. (c.lastLevel and (" · niv. " .. c.lastLevel) or "")
+    local left = r[1]:gsub("%-.*$", "") .. (c.lastLevel and (Tr[" · niv. "] .. c.lastLevel) or "")
     pcall(tt.AddDoubleLine, tt, left, right, 1, 1, 1, 1, 1, 1)
   end
   return #rows
@@ -365,14 +400,22 @@ function Q.SessionStart()
   local c = ns.CharDB()
   c.session.startRanks = nil
   c.session.startXP = nil
+  c.session.baseline = nil
   Q._sessionXP = 0
 end
 function Q.EnsureStartRanks(snap)
   local c = ns.CharDB()
-  if c.session.startRanks or not snap or (snap.liveCount or 0) <= 0 then return end
-  local r = {}
-  for _, d in ipairs(snap.tiles or {}) do if d.id and N(d.current) then r[d.id] = { n = d.name, v = N(d.current) } end end
-  c.session.startRanks = r
+  if not snap or (snap.liveCount or 0) <= 0 then return end
+  if not c.session.startRanks then
+    local r = {}
+    for _, d in ipairs(snap.tiles or {}) do if d.id and N(d.current) then r[d.id] = { n = d.name, v = N(d.current) } end end
+    c.session.startRanks = r
+  end
+  local tot = N(snap.total)
+  local base = N(c.session.baseline)
+  if tot and tot > 0 and (base == nil or base <= 0) then
+    c.session.baseline = tot
+  end
 end
 function Q.RecapLine()
   local c = ns.CharDB()
@@ -381,9 +424,9 @@ function Q.RecapLine()
   if not snap then return nil end
   local parts = {}
   local gain = ns.SessionGain(snap.total)
-  parts[#parts + 1] = "niveau total " .. ((gain or 0) >= 0 and "+" or "") .. tostring(gain or 0)
+  parts[#parts + 1] = Tr["niveau total "] .. ((gain or 0) >= 0 and "+" or "") .. tostring(gain or 0)
   local xp = UI() and UI()._sessionXP or 0
-  if xp > 0 then parts[#parts + 1] = "+" .. xp .. " XP" end
+  if xp > 0 then parts[#parts + 1] = "+" .. xp .. Tr[" XP"] end
   local start = c.session.startRanks or {}
   for _, d in ipairs(snap.tiles or {}) do
     local s = start[d.id]
@@ -393,13 +436,49 @@ function Q.RecapLine()
   local started = N(c.session.started)
   local now = (type(time) == "function" and time()) or nil
   local dur = (started and now and now > started) and ns.FormatDuration(now - started) or nil
-  return "Session : " .. table.concat(parts, ", ") .. (dur and (" (" .. dur:gsub("^~", "") .. ")") or "")
+  return Tr["Session : "] .. table.concat(parts, ", ") .. (dur and (" (" .. dur:gsub("^~", "") .. ")") or "")
+end
+
+-- Toast de déconnexion : titre court + une ligne compacte (pas la ligne de chat entière).
+function Q.RecapToastTitle(why)
+  return Tr["Session"]
+end
+function Q.RecapShort()
+  local c = ns.CharDB()
+  local snap = UI() and UI().snapshot
+  if not snap then local ok, s2 = pcall(ns.Collect) snap = ok and s2 or nil end
+  if not snap then return nil end
+  local bits = {}
+  local gain = ns.SessionGain(snap.total)
+  if gain and gain ~= 0 then
+    bits[#bits + 1] = ((gain >= 0) and "+" or "") .. tostring(gain)
+  end
+  local xp = UI() and UI()._sessionXP or 0
+  if xp and xp > 0 then bits[#bits + 1] = "+" .. tostring(xp) .. " XP" end
+  local start, n = c.session.startRanks or {}, 0
+  for _, d in ipairs(snap.tiles or {}) do
+    local s, cur = start[d.id], N(d.current)
+    if s and cur and cur > s.v then n = n + 1 end
+  end
+  if n > 0 then
+    bits[#bits + 1] = "+" .. tostring(n) .. " " .. (n > 1 and Tr["compétences"] or Tr["compétence"])
+  end
+  local started = N(c.session.started)
+  local now = (type(time) == "function" and time()) or nil
+  local dur = (started and now and now > started) and ns.FormatDuration(now - started) or nil
+  if dur then bits[#bits + 1] = dur:gsub("^~", "") end
+  if #bits == 0 then return nil end
+  return table.concat(bits, " · ")
 end
 ns.SlashExt.recap = function(rest)
   local low = (rest or ""):lower()
-  if low == "on" or low == "off" then return toggleCmd("recapLogout", "récap à la déconnexion")(low) end
+  if low == "on" or low == "off" then return toggleCmd("recapLogout", Tr["récap à la déconnexion"])(low) end
+  if ns.ProgressUI and ns.ProgressUI.OpenRecap then
+    pcall(ns.ProgressUI.OpenRecap, "current")
+    return
+  end
   local l = Q.RecapLine()
-  ns.Print(l or "récap indisponible (compétences pas encore lues).")
+  ns.Print(l or Tr["récap indisponible (compétences pas encore lues)."])
 end
 
 -- 8. Maj+clic : insérer « Dépeçage 161/225 » dans la zone de saisie du chat ---
@@ -453,7 +532,7 @@ function Q.CheckUnlearnedWeapon()
   if not info then return nil end
   local id = ns.MapWeaponSubtype(info.subType, N(info.classID), N(info.subclassID))
   if not id then return nil end
-  local snap = ns.SkillRankSnapshot and ns.SkillRankSnapshot() or {}
+  local snap = (ns.SkillRankSnapshotCached and ns.SkillRankSnapshotCached()) or (ns.SkillRankSnapshot and ns.SkillRankSnapshot()) or {}
   local e = ns.CatalogById(id)
   if not e then return nil end
   local live = snap[ns.Fold(e.name)]
@@ -462,7 +541,7 @@ function Q.CheckUnlearnedWeapon()
   if not m then return nil end  -- rien de vu en jeu : pas de rappel
   if Q._warnedWeapon[id] then return nil end
   Q._warnedWeapon[id] = true
-  Drop(info.texture or e.icon, e.name .. " : compétence non apprise", "Maître d'armes vu : " .. m.npc, { kind = "maitre", hint = m.zone })
+  Drop(info.texture or e.icon, ns.CatalogDisplayName(e) .. Tr[" : compétence non apprise"], Tr["Maître d'armes vu : "] .. m.npc, { kind = "maitre", hint = m.zone })
   return m
 end
 
@@ -474,32 +553,32 @@ function Q.MainWeaponHint()
   if not mw or not mw.id then return nil end
   local cur = N(Call(GetInventoryItemID, "player", ns.GetInventorySlot("main")))
   if cur == mw.id then return nil end
-  return "Arme principale : " .. tostring(mw.name or mw.id) .. " — /drop arme pour la remettre (hors combat)"
+  return Tr["Arme principale : "] .. tostring(mw.name or mw.id) .. Tr[" — /drop arme pour la remettre (hors combat)"]
 end
 ns.SlashExt.arme = function(rest)
   local low = (rest or ""):lower()
   local c = ns.CharDB()
-  if low == "on" or low == "off" then return toggleCmd("armePrincipale", "rappel de l'arme principale")(low) end
+  if low == "on" or low == "off" then return toggleCmd("armePrincipale", Tr["rappel de l'arme principale"])(low) end
   if low == "principale" or low == "set" or low == "memoriser" or low == "mémoriser" then
     local info = ns.GetEquippedItemInfo(ns.GetInventorySlot("main"))
-    if not info or not N(info.id) then ns.Print("aucune arme en main.") return end
+    if not info or not N(info.id) then ns.Print(Tr["aucune arme en main."]) return end
     c.mainWeapon = { id = N(info.id), name = Str(info.name) }
-    ns.Print("arme principale mémorisée : " .. tostring(info.name or info.id) .. ".")
+    ns.Print(Tr["arme principale mémorisée : "] .. tostring(info.name or info.id) .. ".")
     return
   end
   local mw = c.mainWeapon
-  if not mw then ns.Print("aucune arme principale. Équipe-la puis /drop arme principale.") return end
-  if InCombat() then ns.Print("en combat : remets " .. tostring(mw.name or mw.id) .. " après le combat.") return end
+  if not mw then ns.Print(Tr["aucune arme principale. Équipe-la puis /drop arme principale."]) return end
+  if InCombat() then ns.Print(Tr["en combat : remets "] .. tostring(mw.name or mw.id) .. Tr[" après le combat."]) return end
   local cur = N(Call(GetInventoryItemID, "player", ns.GetInventorySlot("main")))
-  if cur == mw.id then ns.Print(tostring(mw.name or mw.id) .. " est déjà en main.") return end
-  if N(Call(GetItemCount, mw.id)) == 0 then ns.Print(tostring(mw.name or mw.id) .. " n'est pas dans tes sacs.") return end
+  if cur == mw.id then ns.Print(tostring(mw.name or mw.id) .. Tr[" est déjà en main."]) return end
+  if N(Call(GetItemCount, mw.id)) == 0 then ns.Print(tostring(mw.name or mw.id) .. Tr[" n'est pas dans tes sacs."]) return end
   local ok = pcall(EquipItemByName, mw.id)
-  ns.Print(ok and ("arme principale remise : " .. tostring(mw.name or mw.id) .. ".") or "échange refusé par le jeu.")
+  ns.Print(ok and (Tr["arme principale remise : "] .. tostring(mw.name or mw.id) .. ".") or Tr["échange refusé par le jeu."])
 end
 
 -- 11. Défense : adversaire gris (une fois par session) -------------------------
 function Q.CheckDefenseTarget()
-  if not ns.Opt("defense") or Q._defenseWarned then return nil end
+  if not ns.Opt("defense") then Q._defenseTip = nil return nil end
   if not Call(UnitCanAttack, "player", "target") then return nil end
   local lvl = N(Call(UnitLevel, "target"))
   if not lvl or lvl <= 0 then return nil end
@@ -509,16 +588,16 @@ function Q.CheckDefenseTarget()
   if not isGray and type(col) == "table" and type(trivial) == "table" then
     isGray = N(col.r) == N(trivial.r) and N(col.g) == N(trivial.g) and N(col.b) == N(trivial.b)
   end
-  if not isGray then return nil end
-  local snap = ns.SkillRankSnapshot and ns.SkillRankSnapshot() or {}
+  if not isGray then Q._defenseTip = nil return nil end
+  local snap = (ns.SkillRankSnapshotCached and ns.SkillRankSnapshotCached()) or (ns.SkillRankSnapshot and ns.SkillRankSnapshot()) or {}
   local def = snap[ns.Fold("Défense")]
   if not def then return nil end
   local cur, maxv = N(def.rank) or 0, N(def.max) or 0
   if maxv <= 0 then maxv = (N(ns.GetPlayerLevel()) or 0) * (ns.WEAPON_RANK_PER_LEVEL or 5) end
   if cur >= maxv then return nil end
   Q._defenseWarned = true
-  local e = ns.CatalogById("defense")
-  Drop(e and e.icon, "Défense " .. cur .. "/" .. maxv, "Adversaire gris (niveau " .. lvl .. ")", { kind = "defense", light = true })
+  -- Pas de toast : le rappel reste sur l'infobulle de la case Défense.
+  Q._defenseTip = Tr["Défense "] .. cur .. "/" .. maxv .. " — " .. Tr["Adversaire gris (niveau "] .. lvl .. ")"
   return true
 end
 
@@ -534,17 +613,29 @@ if ns.On then
   ns.On("PLAYER_EQUIPMENT_CHANGED", function() pcall(Q.CheckUnlearnedWeapon) end)
   ns.On("PLAYER_TARGET_CHANGED", function() if not InCombat() then pcall(Q.CheckDefenseTarget) end end)
   ns.On("PLAYER_REGEN_DISABLED", function() pcall(Q.CheckDefenseTarget) end)
+
+if ns.Compact and ns.Compact.TooltipModel then
+  local baseTip = ns.Compact.TooltipModel
+  function ns.Compact.TooltipModel(d)
+    local m = baseTip(d)
+    local tip = Q._defenseTip
+    if tip and m and m.lines and d and (d.kind == "defense" or d.id == "defense") then
+      m.lines[#m.lines + 1] = { tip, 0.85, 0.85, 0.85, true }
+    end
+    return m
+  end
+end
   -- 3.3.16 : le récap n'est plus écrit à PLAYER_LOGOUT (caché par l'écran de
   -- chargement) mais au DÉBUT du compte à rebours de déconnexion / sortie :
   -- toast visible pendant le décompte + ligne de chat ; annulé par LOGOUT_CANCEL.
-  ns.On("PLAYER_CAMPING", function() Q.LogoutRecap("déconnexion") end)
-  ns.On("PLAYER_QUITING", function() Q.LogoutRecap("sortie du jeu") end)
+  ns.On("PLAYER_CAMPING", function() Q.LogoutRecap(Tr["déconnexion"]) end)
+  ns.On("PLAYER_QUITING", function() Q.LogoutRecap(Tr["sortie du jeu"]) end)
   ns.On("LOGOUT_CANCEL", function() Q.CancelLogoutRecap() end)
   if type(hooksecurefunc) == "function" then
     -- crochets POST-appel (sûrs, rien n'est remplacé) : déconnexion instantanée
     -- (auberge) ou client qui n'envoie pas l'événement
     for _, fn in ipairs({ "Logout", "Quit" }) do
-      if type(_G[fn]) == "function" then pcall(hooksecurefunc, fn, function() Q.LogoutRecap(fn == "Quit" and "sortie du jeu" or "déconnexion") end) end
+      if type(_G[fn]) == "function" then pcall(hooksecurefunc, fn, function() Q.LogoutRecap(fn == "Quit" and Tr["sortie du jeu"] or Tr["déconnexion"]) end) end
     end
   end
 end
@@ -565,11 +656,16 @@ function Q.LogoutRecap(why)
   Q._recapToast = false
   local U = UI()
   if U and U.SpawnDrop and not InCombat() then
-    local body = l:gsub("^Session : ", "")
-    local okT, t = pcall(U.SpawnDrop, U, "Interface\\AddOns\\Dropamine\\Media\\SkillsTab",
-      "Récap de session — " .. tostring(why or "déconnexion"), body, nil, nil, "",
+    local title = (Q.RecapToastTitle and Q.RecapToastTitle(why)) or Tr["Session"]
+    local body = (Q.RecapShort and Q.RecapShort()) or l:gsub("^" .. (Tr["Session : "]:gsub("%p", "%%%0")), "")
+    local icon = "Interface\\AddOns\\Dropamine\\Media\\SkillsTab"
+    local okT, t = pcall(U.SpawnDrop, U, icon, title, body, nil, nil, "",
       { hold = Q.LOGOUT_SECONDS, dedupeKey = "osrs-logout-recap", kind = "recap" })
-    if okT and t then Q._recapToast = t end
+    if okT and t then
+      t._fullTitle = Tr["Récap de session — "] .. tostring(why or Tr["déconnexion"])
+      t._fullSub = l
+      Q._recapToast = t
+    end
   end
   return Q._recapToast
 end

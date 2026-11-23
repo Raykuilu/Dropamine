@@ -28,6 +28,7 @@ end
 
 function J.Schedule(why)
   if why then J._why = why end
+  if why ~= "nouvel essai (fenêtre Métiers)" then J._mtries = nil end
   if J._armed then return end
   J._armed = true
   local gen = (J._gen or 0) + 1
@@ -147,6 +148,13 @@ function J.Run()
   if ns.Style and ns.Style.Probe then pcall(ns.Style.Probe, false) end
   local A = ns.Activity
   if A and A.OnWindow then pcall(A.OnWindow, A._jobEv or J._why or "job") end
+  -- 3.5.8 : client récent (C_TradeSkillUI, fenêtre Métiers) : lecture directe
+  local Sc = ns.Scanner
+  local craftOpen = (A and A._craftOpen) or (type(_G.CraftFrame) == "table" and _G.CraftFrame.IsShown and _G.CraftFrame:IsShown())
+  if not craftOpen and Sc and Sc.ModernTrade and Sc.ReadRecipes then
+    local okM, modern = pcall(Sc.ModernTrade)
+    if okM and modern then return J.RunModern() end
+  end
   local id, n, rank, kind, name = J.Identity()
   if not id or not n or n <= 0 then
     -- une fois : le titre de la fenêtre n'est pas encore rempli. Une liste vide
@@ -166,27 +174,62 @@ function J.Run()
   J.Begin(id, n, rank, kind, key, name)
 end
 
--- Tests : exécute le travail en attente et finit les tranches. Invalide le
--- C_Timer déjà posé pour qu'un flush ultérieur ne relance pas le scan.
-function J.Flush()
-  if J._armed then
-    J._gen = (J._gen or 0) + 1
-    J._armed = false
-    J._go = nil
-    J.Run()
+-- 3.5.8 : lecture par C_TradeSkillUI (une passe ; quelques dizaines de
+-- recettes). Fenêtre pas encore prête / métier pas encore nommé : jusqu'à 4
+-- nouvelles tentatives espacées. Même clé de cache (métier, nombre, rang).
+J.MODERN_RETRIES = 4
+function J.RunModern()
+  local Sc = ns.Scanner
+  local okI, id, n, rank, name = pcall(Sc.ModernIdentity)
+  if not okI then id, n = nil, 0 end
+  local T = _G.C_TradeSkillUI
+  local ready = true
+  if type(T) == "table" and type(T.IsTradeSkillReady) == "function" then
+    local okR, r = pcall(T.IsTradeSkillReady)
+    if okR and r == false then ready = false end
   end
-  local guard = 0
-  while J._scan and guard < 80 do
-    J.PumpBody()
-    guard = guard + 1
+  J.modern = { id = id, n = n, rank = rank, name = name, ready = ready }
+  if not id or not n or n <= 0 or not ready then
+    J._mtries = (J._mtries or 0) + 1
+    if J._mtries <= J.MODERN_RETRIES then J.Schedule("nouvel essai (fenêtre Métiers)") end
+    return
   end
-  J.StopPump()
+  J._mtries = nil
+  local key = "m:" .. tostring(id) .. ":" .. tostring(n) .. ":" .. tostring(rank)
+  if J.cache[id] == key then
+    J.stats.skipped = (J.stats.skipped or 0) + 1
+    return
+  end
+  local t0 = Ms()
+  local ok, rid, rn = pcall(Sc.ReadRecipes)
+  local ms = Ms() - t0
+  if ms < 0 then ms = 0 end
+  J.stats.scans = (J.stats.scans or 0) + 1
+  J.stats.lastMs = ms
+  J.stats.scanMs = (J.stats.scanMs or 0) + ms
+  if ok and rid then J.cache[id] = key end
+  Sc.lastRead = ok and (tostring(rid) .. " : " .. tostring(rn)) or ("erreur : " .. tostring(rid))
+  Sc.reads = (Sc.reads or 0) + 1
+  J.modern.result = Sc.lastRead
+  local A = ns.Activity
+  if A and A.Refresh then pcall(A.Refresh, "scan") end
 end
 
 if ns.On then
   ns.On("PLAYER_REGEN_ENABLED", function()
     if J._combat then J._combat = nil J.Schedule("fin de combat") end
   end)
+end
+
+ns.DebugExt = ns.DebugExt or {}
+ns.DebugExt[#ns.DebugExt + 1] = function()
+  local Sc = ns.Scanner
+  local okM, modern = pcall(function() return Sc and Sc.ModernTrade and Sc.ModernTrade() end)
+  local m = J.modern
+  return { string.format("— Lecture des métiers (3.5.8) — API %s ; dernière fenêtre : %s ; résultat : %s",
+    (okM and modern) and "C_TradeSkillUI (fenêtre Métiers)" or "classique (GetTradeSkillInfo)",
+    m and string.format("%s (%s), %s recettes, rang %s, prête %s", tostring(m.name), tostring(m.id), tostring(m.n), tostring(m.rank), m.ready and "oui" or "non") or "aucune",
+    tostring(m and m.result or (Sc and Sc.lastRead) or "—")) }
 end
 
 if ns.Gather and ns.Gather.PerfLines then

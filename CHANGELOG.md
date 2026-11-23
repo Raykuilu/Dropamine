@@ -1,8 +1,460 @@
 # Changelog
 
+## 3.8.1
+
+### New
+- `/drop check`: a quick health check (modules, secret-value protection, data collection, icon state), in a copyable window.
+- `/drop resume`: your total on one line, ready to paste (Ctrl+C).
+- `/drop paliers`: next total milestone and skills at their cap.
+- Overview tab: the duplicate histogram is replaced by a "Today" card (points today by category, vs yesterday, last 7 days); the Charts tab keeps the full chart. The "Last achievement" and "Best spot" cards now open their tab on click.
+- Overview tab: a "Next milestone" card with progress, and an estimated time to reach it at your current pace, and a breakdown of where points remain (Level, Weapons & defense, Professions). The session curve moved out of the overview.
+- `/drop records`: best session, hour, day and combo, with the current hour compared to your best. The records tooltip in the overview shows the same.
+- `/drop collection`: what the scanner has learned (creatures, skinnable, nodes, recipes), as X / Y when the base allows.
+- Characters tab redesign: class icon and class-colored name, total points, and bars for Level, top 2 professions and top 2 weapon/defense skills (skills at 0 are hidden). Characters are sorted from highest to lowest level.
+- Achievements follow the known milestones: total 1500 and 2250 added (matching 500/1000/1500/2000/2250), and skill achievements at 150, 225 and 300 (new "Journeyman" and "Expert"). "Double gatherer" / "Double crafter" became "Double profession" (two professions at 150) and "Double expert" (two at 225), so any profession pair can complete them.
+- New pace-independent achievements: 60-day streak, 10 and 20 active days out of the last 30, and 5 / 10 skills at their cap. They stay reachable at high level, unlike per-session speed records.
+- `/drop records` also shows your best day over the last 30 days.
+- Achievements list reorganised in a consistent order (sessions, regularity, total, skills, exploration) and the 300 skill achievement is now "Master", completing Journeyman (150) / Expert (225) / Master (300).
+- Total level "ding": crossing a total milestone (500, 1000, 1500, 2000, 2250, max) plays the big level-up animation (gold toast, flare, overflowing droplet), once per milestone.
+- Hunt tab: an equipment grid. Click a slot to pick the item to hunt from the Dungeon Journal data (read live, nothing bundled; filter by class armor, search by name). Boss kills are detected from loot messages, so attempts are real kills, not opened loot windows. Items can also be added by name, link or ID, or from the last loot.
+- Hunt (wanted items, attempts, cumulative drop chance; `/drop chasse`) and Collection (X / Y) are available at every level. Endgame mode (automatic at max level, or `/drop mode endgame` to preview) turns the first two Overview cards into shortcuts to them. The tabs are regrouped: Charts + Weekly, and Spots + Efficiency (now "Farm"), switched from the footer.
+- The Collection tab is now a real log: a list with section subtitles (dungeons by level bracket, professions, discoveries), and per dungeon the bosses with item icons (obtained in colour, missing greyed out), read live from Dungeon Journal.
+- About page (`?` button in the Progression header, `/drop about`): version, author, GitHub and bug-report links in copyable boxes, inspired by Old School RuneScape for skill tracking and the collection log (unaffiliated); thanks to Flare UI (visual inspiration) and Exehn (Dungeon Journal data and favourites access).
+- Rare loot alert: a toast with the item icon when you receive an epic or better item (or rare, in Options > Hunt > "Rare loot: from"). `/drop rare <link or id>` previews it for any item.
+- The rare loot toast title uses the item's quality colour (rare blue, epic purple, legendary orange).
+- Clicking a "wanted item found" or "rare loot" toast opens the item card (like a chat link, with equipment comparison).
+- The Efficiency sub-tab only appears once there is measured data; "Weapons and Defense" is now spelled the same everywhere.
+- Total tooltip: a "class maximum" line for classes that lack a second useful weapon skill (paladin and shaman: no ranged weapon; priest, mage, warlock: only the wand levels), as X / 2160 · %.
+- Collection log: each boss line shows an approximate kill count (≈N kills), counted from the loot of its tracked items.
+- Guided tour on first launch (once, only on accounts with no saved settings): eight short pages presenting the cells, gain toasts, level-up animation and sound, total milestones and fireworks, the Progression window, Hunt and Collection. Each feature can be tried and switched off on its page. `/drop setup` reopens it. The three new switches (total milestone, fireworks, hunt alert) are also in Options > Notifications.
+- Milestone ding: the character cheers (/cheer); the maximum total adds a gold fireworks burst. `/drop ding fx` previews the fireworks.
+- The "wanted item found" toast shows the item icon.
+- `/drop ding [tier|max]` and `/drop chasse test` replay the milestone animation and the "wanted item found" toast, for testing.
+- Hunt: removing a tracked item asks for a second click (x then ?, or right-click twice) to avoid accidents.
+- Overview (endgame): the first two cards become shortcuts to Hunt and the Collection log (X / Y). `/drop item <id>` shows where an item name comes from (diagnostic).
+- Hunt: tracked items (including Journal favourites) are placed on their equipment slot automatically; when several compete for one slot, the best one is shown on the grid.
+- Item, dungeon and boss names in Hunt and Collection now follow the game language (read from Dungeon Journal's own translations, items requested from the server when not cached yet).
+- Active-time streak: new "Half an hour straight" and "An hour straight" achievements (30 min / 1 h of play without a break longer than 5 minutes) and a "longest active streak" record. Play counts when you fight, move, cast, loot or gain a point (checked every 10 s, never while AFK), so it does not depend on how fast points come and stays reachable at max level.
+- Exploration achievements: "Explorer" now asks for 10 zones (gathering or fishing points), and a new "Globetrotter" asks for 25.
+- New achievements reachable with any profession choice: Early bird (a point between 5 and 7 AM), Night owl (midnight to 5 AM), Worldwide angler (fishing points in 5 zones), First blood (first wanted item found in Hunt), Persistent (found after more than 50 attempts), and Collector / Great collector / Dream collection (10 / 25 / 50 % of the collection log).
+- English translation completed for the new screens (Hunt, Collection log, guided tour, About, `/drop check`, Progression).
+- Collection log: a new Home page opens first instead of the first dungeon: overall progress, key figures (dungeons complete, approximate boss kills, items), a progress bar per category (click to open it) and the dungeons closest to completion.
+- Collection log: click a category title to fold or unfold it ("+" / "-"); the state is remembered, and each title shows its own X / Y.
+- Collection log wording: "Bestiary" and "Skinnable creatures" replace "Creatures / Skinnables learned", "At cap" replaces "Skills at cap" (it was cut off), and the nodes line is removed (no total to compare with).
+- Session recap: the cut-off comparison line and its tooltip are replaced by a table (active time, level / h, skill points / h, value / h) with one column per period (this session, previous, 7-day and 30-day average); this session is green above your 30-day average and red below.
+- `/drop help` lists the new commands (hunt, collection, setup, about, ding).
+- Collection log: the Home list is called "Furthest along" (it is not limited to nearly finished dungeons), and hovering a dungeon in the list shows its full name (several names were cut off alike).
+- Collection log: the Cooking and First Aid lines now list the recipes you still lack, by required skill level, with where they come from (trainer, known from the start, or drop / quest / vendor: the database does not say which). Creatures and skinnables learned are broken down by 10-level bracket, with your own bracket highlighted.
+- Collection log: a "Recipes" line for each crafting or gathering profession your character has learned (alchemy, blacksmithing, enchanting, engineering, leatherworking, tailoring, mining, herbalism, skinning, fishing, plus cooking and first aid): known recipes out of the total. Open a profession window once so its recipes are read.
+
+### Fixes
+- Status icons (bags full, AFK, fishing...) no longer flicker or vanish when hovering the total tile.
+- Characters tab: each character is listed once. A character could appear twice (with and without realm) when the realm name was empty at login; the most recent profile is shown and no saved data is deleted.
+- Hunt and Collection are full features: their tabs in the Progress window show at every level (no more max-level-only mode), and their settings have their own "Hunt" tab.
+- Settings: removed the "Progress window mode" (Auto/Route/Endgame) and "Session goal" sliders to free space; `/drop mode` and `/drop but <n>` still work.
+- Removed the "Seasonal tint" option and `/drop saison` (it did nothing useful); toasts keep their standard gold.
+- Classic theme: the total bar no longer shows a black gap before its first segment.
+- Total tooltip no longer errors for classes without a useful weapon skill (warlock, priest, mage, paladin, shaman), which also garbled the tooltip.
+- Collection achievements show whole numbers instead of a long decimal; the "Hunt" wording is now "the Hunt tab".
+- `/drop records on|off` and `/drop collection on|off` work again (the new report commands had replaced the switches); without on|off they show the report.
+- Clicking a tab while the session recap is open now closes the recap.
+- Session recap: the tab you came from is no longer left highlighted while the recap is open, and the bottom sub-page selectors are hidden.
+- Characters tab: gold is no longer reset to 0 on login/logout.
+- Total tooltip: "Other characters" lists each character once and no longer repeats the current one.
+- Level tooltip: both XP percentages now round the same way.
+
+### Other
+- Settings panel now has tabs (Display, Toasts, Sounds, Professions, Progress, Advanced): one family at a time, no more endless scrolling.
+- Settings reorganised: every section is split into titled sub-groups (Look, Layout, Transparency, Gain toasts, Celebrations, Highlighting, Goals and achievements, Weapon reminders…), each option lives in exactly one place, and the tour/Progress options moved next to their topic. No setting, command or saved value changed.
+- Tile and character-tab drop: same clean logo (no more drop inside the drop).
+- Progress window: larger, sharper logo in the header (64 px source) and no second drop repeated in the total banner.
+- New theme **FlareUI (New)**: the FlareUI chat window frame (thick border and the knotted line along the top and bottom, taken from the game's own art, no header). The previous look is now **FlareUI (Old School)**; existing accounts keep it. `/drop theme flare2`. Border texture from FlareUI (MIT, license in Media/LICENSE-FlareUI-Border.txt).
+- Guided tour: the "Cells" page now lets you pick the panel look (Light, FlareUI New/Old, Classic); new installations start with Light, existing accounts keep their theme.
+- Logo: the "+1" and the small drop inside the big drop are removed; only the three level layers remain.
+- Total tooltip: the 7-day mini chart now uses the same rounded border as the tooltip above it.
+- Total tooltip: shows a short summary by default; hold Shift to expand everything (or tick "Full total tooltip" in Options › Professions).
+- The guided tour can now be reopened from the Options panel ("Replay the tour") and from the About window, which also gets a "Settings" button; the tour's last page opens the settings.
+- Options that have no slash command no longer show "/drop setup" as their command.
+
+## 3.7.3
+
+### Fixes
+- Dungeons and raids: fixed Lua errors on protected (secret) text values — NPC names while hovering or targeting, and creature types after a spell cast (skinning check), and AFK / combat state reads.
+- Dungeons and raids: calm mode now silences the +1, tile glow and spark too, not just toasts.
+- Auto calm mode no longer rewrites your saved setting, so a reload or crash inside an instance can't leave it stuck.
+
+## 3.7.2
+
+### Changes
+- Bigger total level number with a smaller, muted “/ max” (like the skill tiles), centered between the icon and the bar.
+
+### Other
+- Removed sleeping bag tracking (it did not display reliably).
+
+## 3.7.1
+
+### Fixes
+- Much lower memory growth and CPU while idle or resting (especially in capitals): player buffs are read once per aura change instead of up to 40 times per refresh, and travel detection is no longer recomputed several times per poll.
+- No more forced garbage-collection steps every 2 seconds.
+
+## 3.7.0
+This release is the 3.6.3 work shipped as 3.7.0 (the 3.6.3 tag was never created).
+
+### New
+- Dark toast tints in red (XP), blue (weapons and Defense) and green (professions). The toast opacity setting applies to the background, tint and border; at 0% only the icon and text remain.
+- A short session recap toast (“Session” plus one compact line).
+- A full “New spells / Visit your class trainer” toast.
+- A colored +1 flies from the toast’s icon to that skill’s tile. When it lands, a matching colored veil plays on the tile.
+- Tiles that will rank up in combat get a thin border in the gain color — no fill and no +1 until the point actually lands.
+- The total row shows the drop-vial icon at rest, an hourglass in flight, a combat icon in combat, and a smaller rest “Z” while resting. Eating, fishing, swimming, dead and sleeping-bag states have their own icons too.
+- XP milestone toasts at 25%, 50% and 75% of the current level, plus the existing level-up toast. Quest turn-in XP still gets a toast. Ordinary mob kills no longer fire an XP toast. The “next rank at the trainer” toast appears only when you enter a capital city.
+- “Delay before rest” can be set to Never.
+- The Progression window’s Characters tab is a card layout again, with a snapshot for every character on the account.
+- Per-character notification width (Auto follows the panel, or a fixed width). Icons, fonts and bars scale with the panel size.
+
+### Fixes
+- Grey-mob Defense reminders no longer show an empty toast (the reminder stays in the tooltip only).
+- The session recap toast no longer overflows: text wraps on up to two lines and the toast grows to fit.
+- The new-spell toast is a normal full-height toast, not a thin empty bar.
+- The panel can no longer shrink smaller than its content. A saved size or scale below the minimum is raised on load.
+- Toast opacity at 0% is fully transparent, not a black box.
+- Empty title-and-body toasts are no longer shown.
+
+### Other
+- At the minimum size, left, right, top and bottom margins are equal. At larger sizes the skill grid stays horizontally centered.
+- The total-row vial is a bare drop-vial (no frame or backdrop), aligned with the first tile column. Spacing above and below the total row matches the rest of the panel.
+- Memory use is much lower (about 37 MB down to about 12 MB): history keeps 30-day aggregates only, and cleanup runs only out of combat.
+- In combat, heavy bag, buff and profession scans are deferred until you leave combat. Animations stay smooth.
+- Saved 1-column layouts are migrated to 2 columns (2, 3, 5 or 10 only).
+- The campfire vial state and a few obsolete options are removed. The sleeping-bag icon shows only while a charge is in progress.
+- The public build no longer includes `/drop test` or the Options Test (DEV) section.
+
+## 3.6.2
+- Weapon skill tooltips (tile and native skill list row): hit, crit and glancing values are back, in a short two-tone block ("Hit & crit (same lvl): 4.04% · 5.00%", boss line, "Glancing: 40% · -35% dmg"). The values are read from the game's skill detail pane, never computed; lines that cannot be read are left out. Root cause: the pane reader had been stubbed since 3.2.0, and cached values were looked up under the wrong key (and EN headers were not recognised). The parser now works by position, so colour-split text (Polearms, Feral Combat) reads correctly. The native description is no longer shown twice.
+- New **Rested XP animation** on the Level tile (Options › Display, on by default): white-blue z's with a dark shadow (1, 2 or 3 depending on rested XP) only while you are resting, and a translucent blue liquid that fills the portrait up to rested / 1.5 levels, with a clearly visible wave while it is recharging at an inn or in a city; as soon as you leave the rest area it fades (0.8 s) to a light, almost still liquid. Hidden at max level, in combat, in quiet mode or when the option is off. The z's go away when you leave the rest area (events plus a 2 s check that stops on its own when the panel is hidden).
+- Level tooltip: "Rested XP: 12,345 (45% of a level)", replacing the old rested line (no duplicate).
+- Level tile: the liquid is drawn inside the portrait, under its frame, and clipped by the theme mask, so it no longer spills over the top or bottom of the tile, in all themes and layouts. The z's stay in the portrait's corner.
+- Progress window: gridlines and axis labels no longer appear below the window. The scale comes from the actual maximum (for example +98 / +31 / +3) and no longer overwrites the chart's top margin after the first redraw. The chart is clipped to its frame.
+- Progress window: the empty-chart and empty-curve messages wrap on 2 lines inside their card instead of overflowing on the right.
+
+---
+
+- Infobulles des armes (case et ligne de la liste native des compétences) : les valeurs de toucher, crit et coups déviés sont de retour, en un bloc court bicolore (« Toucher & crit (même niv.) : 4,04 % · 5,00 % », ligne boss, « Coups déviés : 40 % · -35 % dégâts »). Les valeurs sont lues dans le volet de détail du jeu, jamais calculées ; une ligne illisible est omise. Cause : la lecture du volet était neutralisée depuis la 3.2.0, et les valeurs étaient cherchées sous la mauvaise clé (en-têtes anglais non reconnus). Le parseur travaille désormais par position : le texte découpé par couleurs (Armes d'hast, Combat farouche) est bien lu. La description native n'apparaît plus en double.
+- Nouvelle **animation XP de repos** sur la case Niveau (Options › Affichage, active par défaut) : des z blanc bleuté ombrés (1, 2 ou 3 selon l'XP de repos) seulement quand tu te reposes, et un liquide bleu translucide qui remplit le portrait jusqu'à repos / 1,5 niveau, avec une vague bien visible pendant qu'il se recharge à l'auberge ou en ville ; dès que tu sors de la zone de repos, il passe en fondu (0,8 s) à un liquide léger, presque immobile. Caché au niveau maximum, en combat, en mode calme ou si l'option est décochée. Les z disparaissent en quittant la zone de repos (événements + contrôle toutes les 2 s, qui s'arrête de lui-même quand le panneau est caché).
+- Infobulle du Niveau : « XP de repos : 12 345 (45 % d'un niveau) », à la place de l'ancienne ligne (pas de doublon).
+- Case Niveau : le liquide est dessiné dans le portrait, sous son cadre, et découpé par le masque du thème : il ne déborde plus en haut ni en bas de la case, dans tous les thèmes et dispositions. Les z restent dans le coin du portrait.
+- Fenêtre Progression : les lignes de graduation et leurs libellés ne s'affichent plus sous la fenêtre. L'échelle vient du vrai maximum (ex. +98 / +31 / +3) et n'écrase plus la marge haute du graphe après le premier rendu. Le graphe est découpé à son cadre.
+- Fenêtre Progression : les messages « aucune donnée » du graphe et de la courbe passent sur 2 lignes dans leur carte au lieu de déborder à droite.
+
+## 3.6.1
+- Wide (bar) layout: the total row (flask, "total / max" text and bar) no longer turns white on hover or click. The square tile keeps its usual hover highlight.
+- Progress window: the chart title ("7-day progress" / "30-day progress") is fitted to the space and no longer clipped; the records line ("Best session +X · Best hour +X") no longer gets cut off and switches to a short form ("Sess. +X · Hour +X") when space is tight.
+- Progress window: chart labels stay inside the frame (right margin, first and last day labels aligned with the edges).
+
+---
+
+- Format allongé (barre) : la rangée du total (fiole, texte « total / max » et barre) ne blanchit plus au survol ni au clic. La case carrée garde sa surbrillance habituelle au survol.
+- Fenêtre Progression : le titre du graphe (« Progression sur 7 jours » / « sur 30 jours ») s'ajuste à la place et n'est plus coupé ; la ligne des records (« Max session +X · Max heure +X ») n'est plus rognée et passe en version courte (« Sess. +X · Heure +X ») quand la place manque.
+- Fenêtre Progression : les libellés du graphe restent dans le cadre (marge à droite, premier et dernier jour alignés sur les bords).
+
+## 3.6.0
+- New **Progress window** (ProgressUI.lua): left-click the flask / total tile (Compact and UI views), the total-level bar (Wide view) or the total banner, or type /drop progress (also /drop progression). The window can be dragged, stays on screen, and closes with the X or Escape. It follows the Flare, Light and Classic themes.
+- Header with the flask, your name, class and level, and a **Share** button. Share puts your session recap in the chat input box; nothing is sent until you press Enter. Under it, a total banner (total / max) with the same 3-segment bar as the Wide view (level, weapons & defense, professions, with the same minimum widths) and one badge per category.
+- **Overview** tab: 4 cards (XP pace and time to next level, points pace, streak and records, session goal with +5 / +10 / Edit). A 7-day / 30-day / session bar chart with Total / XP/h / Categories views, a session curve (XP/h and pts/h) with the session top 4, your latest achievement and your current best farm spot.
+- **Charts** tab: a larger chart. Click a bar for that day's skill-by-skill details, or click a skill to chart it alone.
+- **Achievements (N/18)** tab: unlocked achievements in gold with their date; locked ones are muted, with a progress bar.
+- **Farm spots** tab: zone / profession / points / pace (min per point), fastest first, with an empty-state message.
+- **Weekly recap** tab: Monday–Sunday total, comparison with last week, split by category, best day, streak, day-by-day chart and top skills of the week.
+- Total tooltip (Compact, Wide, UI banner): a 7-day mini chart under the tooltip, with day initials and daily points. It hides with the tooltip, never takes the mouse and never stays on screen.
+- Options › Progress: new **Open window** button. /drop stats is unchanged; /drop progress text still prints the summary in chat; /drop progress achievements | spots | week opens that tab.
+- Also in 3.6.0: the next-point bar resets to 0% on each point and hides in combat; AtlasLoot compatibility safeguards keep the panel from closing or opening off-screen; Edit Mode follows the Settings 2.0 sections; quiet mode in dungeons and groups; per-character display profiles; session goal, daily streak, 18 achievements, gathering spots by zone, weekly recap and /drop share.
+- Safe in combat: the Progress window is never built in combat (it opens once combat ends), refreshes are throttled (0.5 s / 2 s in combat for Progress; 0.1 s / 0.5 s combat / 1 s raid for the main panel), and only textures and font strings are used (no CreateLine). All new texts are localized (FR/EN).
+
+---
+
+- Nouvelle **fenêtre Progression** (ProgressUI.lua) : clic gauche sur la fiole / case du total (vues Compacte et UI), sur la barre de niveau total (vue Wide) ou sur le bandeau du total, ou /drop progression (aussi /drop progress). La fenêtre se déplace, reste dans l'écran et se ferme avec le X ou Échap. Elle suit les thèmes Flare, Léger et Classique.
+- En-tête avec la fiole, ton nom, ta classe et ton niveau, et un bouton **Partager**. Partager pose le récap de ta session dans la zone de saisie du chat ; rien n'est envoyé tant que tu n'appuies pas sur Entrée. Dessous, un bandeau du total (total / max) avec la même barre 3 segments que la vue Wide (niveau, armes & défense, métiers, mêmes largeurs minimales) et un badge par catégorie.
+- Onglet **Vue d'ensemble** : 4 cartes (rythme XP et temps jusqu'au niveau suivant, rythme de points, série et records, objectif de session avec +5 / +10 / Éditer). Un histogramme 7 jours / 30 jours / session en vues Total / XP/h / Catégories, une courbe de session (XP/h et pts/h) avec le top 4 de la session, ton dernier succès et ton meilleur spot de farm actuel.
+- Onglet **Graphiques** : un graphique plus grand. Clic sur une barre pour le détail compétence par compétence de ce jour, ou clic sur une compétence pour la tracer seule.
+- Onglet **Succès (N/18)** : succès débloqués en or avec leur date ; les verrouillés sont atténués, avec une barre de progression.
+- Onglet **Spots de farm** : zone / métier / points / rythme (min par point), du plus rapide au plus lent, avec un message quand c'est vide.
+- Onglet **Récap hebdo** : total du lundi au dimanche, comparaison avec la semaine passée, répartition par catégorie, meilleur jour, série, histogramme jour par jour et top des compétences de la semaine.
+- Infobulle du total (Compacte, Wide, bandeau UI) : un mini-graphe 7 jours sous l'infobulle, avec les initiales des jours et les points du jour. Il se cache avec l'infobulle, ne prend jamais la souris et ne reste jamais à l'écran.
+- Réglages › Progression : nouveau bouton **Ouvrir la fenêtre**. /drop stats ne change pas ; /drop progression texte affiche toujours le résumé dans le chat ; /drop progression succes | spots | semaine ouvre l'onglet voulu.
+- Aussi en 3.6.0 : la barre du prochain point repart à 0 % à chaque point et se cache en combat ; garde-fous de compatibilité AtlasLoot (position hors écran ignorée, réouverture propre) ; le mode Édition suit les sections des Réglages 2.0 ; mode discret en donjon et en groupe ; profils d'affichage par personnage ; objectif de session, série quotidienne, 18 succès, spots de récolte par zone, récap hebdomadaire et /drop share.
+- Sûr en combat : la fenêtre Progression n'est jamais construite en combat (elle s'ouvre dès la sortie de combat), les rafraîchissements sont regroupés (0,5 s / 2 s en combat pour Progression ; 0,1 s / 0,5 s combat / 1 s raid pour le panneau principal), et seules des textures et des textes sont utilisés (pas de CreateLine). Tous les nouveaux textes sont traduits (FR/EN).
+
+
+## 3.5.22
+- Settings 2.0: the options panel now follows the native Classic look (like LayerSwap). Gold-bordered boxed sections are gone. Section titles are plain gold. Every label is left-aligned, tight against its control — no centered text and no wide fixed widths that left holes in the row.
+- One family, one section, most-used first. **Display** gathers every look and transparency setting (theme, language, columns, size, idle transparency, hover background, fade delay, number color, total-level bar, next-point bar, lock). Then **Notifications & toasts**, **Sounds**, **Professions & highlighting**, and **Advanced** (including PvP). Existing settings, /drop commands and SavedVariables keys are unchanged.
+- Live preview: while the options panel is open, changing the theme, size or transparency shows and updates the Dropamine panel immediately. In combat the preview waits until you leave combat, and never touches protected frames.
+- A **Test** button next to sound and notification settings plays the sound or shows a sample toast, even if that option is still off.
+- Each section has its own **Reset**, in addition to the global Defaults button (two-click confirm, language is never reset).
+
+---
+
+- Réglages 2.0 : le panneau d'options reprend le look natif Classic (façon LayerSwap). Plus d'encadrés à bord doré. Les titres de section sont simplement en or. Tous les libellés sont alignés à gauche, collés à leur contrôle — plus de texte centré ni de largeurs fixes qui laissaient des trous.
+- Une famille, une section, les plus utilisés en premier. **Affichage** rassemble tous les réglages d'apparence et de transparence (thème, langue, colonnes, taille, transparence au repos, fond au survol, délai avant repos, couleur des chiffres, barre de niveau total, barre du prochain point, verrou). Puis **Notifications et toasts**, **Sons**, **Métiers & surlignage**, et **Avancé** (y compris le JcJ). Les réglages, les commandes /drop et les clés de sauvegarde restent les mêmes.
+- Aperçu en direct : tant que les options sont ouvertes, changer le thème, la taille ou la transparence affiche et met à jour le panneau Dropamine tout de suite. En combat, l'aperçu attend la sortie de combat et ne touche jamais un cadre protégé.
+- Un bouton **Tester** à côté des sons et des notifications joue le son ou montre un toast d'exemple, même si l'option est encore décochée.
+- Chaque section a son propre **Réinitialiser**, en plus du bouton général Valeurs par défaut (confirmation en deux clics, la langue n'est jamais remise à zéro).
+
+
+## 3.5.21
+- Total-level bar: the fill now sits cleanly flush inside the frame on every theme, with per-theme insets, so the Flare rounded corners no longer hide the red (character level) segment or leave a dark gap before it. Flare / Light: 1 px inset all around. Classic: 3 px left and right, 1 px top and bottom.
+- The red character-level segment scales its minimum visible width by level (1 px at levels 1–15, 2 px at 16–30, 3 px at 31–45, 4 px at 46–59, 5 px at 60), while weapons/defense (blue) and professions (green) keep a 5 px minimum when non-zero.
+- The skills panel (tiles and total-level bar) now updates live in combat. Only protected-frame operations (SetPoint / Show / Hide / SetFrameLevel, opening the native SkillFrame) are deferred until combat ends. FontString text, bar fills and textures on already-laid-out tiles refresh immediately. Unreadable secret values keep the last known rank / level / XP so the grid does not drop to 0.
+
+---
+
+- Barre de niveau total : le remplissage démarre collé au bord intérieur du cadre sur les trois thèmes (marge de 1 px tout autour sur Flare / Léger ; 3 px gauche/droite et 1 px haut/bas sur Classique) pour garder le segment rouge du niveau bien visible sans trou noir avant lui.
+- Le segment rouge adapte sa largeur minimale au niveau (1 px du 1 au 15, 2 px du 16 au 30, 3 px du 31 au 45, 4 px du 46 au 59, 5 px au niveau 60), tandis que les armes/défense (bleu) et les métiers (vert) gardent 5 px minimum.
+- Le panneau des compétences (cases et barre de niveau total) se met maintenant à jour en combat. Seules les opérations sur les cadres protégés (SetPoint / Show / Hide / SetFrameLevel, ouverture de la fenêtre native) attendent la fin du combat. Les textes, le remplissage des jauges et les textures des cases déjà posées sont rafraîchis tout de suite. Une valeur secrète illisible garde le dernier rang / niveau / XP connu, pour que la grille ne retombe pas à 0.
+
+## 3.5.20
+- In-game logo updated to "La Fiole": the minimap button, the addon-list icon (IconTexture), the character skills tab, the total-level tile, the session recap toast and the classic view toggle now use the new flask instead of the old drop / three pillars.
+- Textures: Media/Dropamine-Icon.tga is now 128×128 (detailed master, addon list); Media/SkillsTab.tga and SkillsTab.png are 64×64 (simplified master, in-game uses); new Media/Dropamine-Icon-32.tga (32×32, minimap fallback); Media/Dropamine-Logo.png is the 512×512 detailed flask. All TGA files are 32-bit uncompressed, power-of-two, with alpha.
+- The flask is drawn with its own transparency: no 8% crop and no round mask on the minimap / total-bar icon, so the tip of the vial is not cut off.
+
+---
+
+- Logo en jeu mis à jour : « La Fiole ». Le bouton de minicarte, l'icône de la liste d'addons (IconTexture), l'onglet Compétences, la case de niveau total, le toast de récap de session et le basculeur de vue classique utilisent maintenant la nouvelle fiole, à la place de l'ancienne goutte / des trois piliers.
+- Textures : Media/Dropamine-Icon.tga passe en 128×128 (master détaillé, liste d'addons) ; Media/SkillsTab.tga et SkillsTab.png font 64×64 (master simplifié, usages en jeu) ; nouveau Media/Dropamine-Icon-32.tga (32×32, repli de la minicarte) ; Media/Dropamine-Logo.png est la fiole détaillée en 512×512. Tous les TGA sont 32 bits non compressés, en puissance de 2, avec alpha.
+- La fiole est dessinée avec sa propre transparence : plus de recadrage de 8 % ni de masque rond sur l'icône de minicarte / barre total, pour ne pas couper la pointe de la fiole.
+
+## 3.5.19
+- All of the addon's own texts now follow the game language: toasts, tooltips, panel and tile labels, session recap, chat messages, /drop help and the options panel. French client → French (word for word as before); English client (enUS / enGB) → English; any other client language → English.
+- New setting "Language" (Options › Display & theme) and command /drop lang auto|en|fr (also /drop langue). Saved per account (DropamineDB.ui.lang), "auto" by default; "Defaults" does not reset it. After a change, a popup offers /reload so texts already on screen are translated too.
+- Locale tables: Locales/enUS.lua and Locales/frFR.lua (key = original French text, missing keys fall back to French text). 868 texts translated + 39 skill names of the catalog (tiles such as "Skinning", "Two-Handed Swords", "Total level").
+- Names given by the game (professions, skills, items, recipes, creatures read from the client) stay exactly as the client returns them. Recipe and item names from the addon's own Forever database follow the client language (English names on non-French clients).
+- English aliases for commands, French ones still work: /drop columns, size, opacity, lock, alerts, activity, recipes, links, unlearned, tooltip, open, tiers, reminder, bar, challenge, sounds, sound, fade, bg, pretier, history, milestones, fishing, shopping, share, master, weapon; arguments light, green, yellow, tier, above, below, detach, up, down, full, skill, duration, icons, compact, default, main…
+- Parsing of game messages uses the client's own templates first (ERR_SKILL_UP_SI for skill-ups, LOOT_ITEM_SELF / LOOT_ITEM_PUSHED_SELF for loot, ITEM_MIN_SKILL for "Requires Mining (75)"), then the built-in French / English patterns as before.
+- Decimal comma only in French (K/D 2,5 / K/D 2.5; character stats).
+- /drop debug reports and /drop perf stay in French (developer diagnostics).
+
+---
+
+- Tous les textes propres à l'addon suivent maintenant la langue du jeu : toasts, infobulles, libellés du panneau et des cases, récap de session, messages dans le chat, aide /drop et panneau d'options. Client français → français (mot pour mot comme avant) ; client anglais (enUS / enGB) → anglais ; toute autre langue du client → anglais.
+- Nouveau réglage « Langue » (Options › Affichage & thème) et commande /drop lang auto|en|fr (aussi /drop langue). Enregistré par compte (DropamineDB.ui.lang), « auto » par défaut ; « Valeurs par défaut » ne le change pas. Après un changement, une fenêtre propose /reload pour traduire aussi les textes déjà affichés.
+- Tables de langue : Locales/enUS.lua et Locales/frFR.lua (clé = texte français d'origine, clé absente → texte français). 868 textes traduits + 39 noms de compétences du catalogue (cases « Skinning », « Two-Handed Swords », « Total level »…).
+- Les noms donnés par le jeu (métiers, compétences, objets, recettes, créatures lus dans le client) restent exactement tels que le client les renvoie. Les noms de recettes et d'objets de la base Forever de l'addon suivent la langue du client (noms anglais hors client français).
+- Alias anglais des commandes, les commandes françaises restent valables : /drop columns, size, opacity, lock, alerts, activity, recipes, links, unlearned, tooltip, open, tiers, reminder, bar, challenge, sounds, sound, fade, bg, pretier, history, milestones, fishing, shopping, share, master, weapon ; arguments light, green, yellow, tier, above, below, detach, up, down, full, skill, duration, icons, compact, default, main…
+- La lecture des messages du jeu utilise d'abord les modèles du client (ERR_SKILL_UP_SI pour les montées de compétence, LOOT_ITEM_SELF / LOOT_ITEM_PUSHED_SELF pour le butin, ITEM_MIN_SKILL pour « Requiert Minage (75) »), puis les motifs français / anglais intégrés comme avant.
+- Virgule décimale seulement en français (K/D 2,5 / K/D 2.5 ; caractéristiques).
+- Les rapports /drop debug et /drop perf restent en français (diagnostic développeur).
+
+## 3.5.18
+- Fix: weapon skill toasts and tiles no longer show the red "?" icon. On Forever weapon skills have singular names ("Masse", "Hache", "Épée", "Dague", "Arc"…), which the catalog did not know (it only had "Masses", "Maces"…), so "Masse +5" fell back to the question mark. Every weapon skill now resolves by exact name (French and English, singular and plural, "à une main" / "one-handed", ’ or ' apostrophes, accents), then by skill line ID (Axes 44, Maces 54, Swords 43, Daggers 173, Bows 45…), then a generic weapon icon: never a "?" and never a blank weapon tile. Dual Wield ("Ambidextrie") has its own icon. All icons checked against the game's file list.
+- Weapon skills matched by these names now also feed the melee / ranged tiles (rank of the right weapon).
+- /drop debug: "Icônes des armes (3.5.18)" line, each weapon skill read with its skill line, resolved icon and how it was found.
+
+---
+
+- Correctif : les toasts et cases de compétences d'armes n'affichent plus l'icône « ? » rouge. Sur Forever, les compétences d'armes ont des noms au singulier (« Masse », « Hache », « Épée », « Dague », « Arc »…) que le catalogue ne connaissait pas (il n'avait que « Masses », « Maces »…) : « Masse +5 » retombait sur le point d'interrogation. Chaque compétence d'arme est maintenant trouvée par son nom exact (français et anglais, singulier et pluriel, « à une main » / « one-handed », apostrophes ’ ou ', accents), puis par l'identifiant de sa ligne de compétence (Haches 44, Masses 54, Épées 43, Dagues 173, Arcs 45…), puis une icône d'arme générique : jamais de « ? » ni de case d'arme vide. L'Ambidextrie a sa propre icône. Toutes les icônes vérifiées dans la liste des fichiers du jeu.
+- Les compétences d'armes reconnues par ces noms alimentent aussi les cases Mêlée / Distance (rang de la bonne arme).
+- /drop debug : ligne « Icônes des armes (3.5.18) », chaque compétence d'arme lue avec sa ligne de compétence, l'icône résolue et la façon dont elle a été trouvée.
+
+## 3.5.17 (test build)
+- Recipe toast click goes through a secure button: the game runs a macro calling the same function as its own "new recipe" alert, "/run ProfessionsUtil.OpenProfessionFrameToRecipe(<id>)". The ID is Forever's recipe ID, found by NAME in C_TradeSkillUI.GetAllRecipeIDs / GetRecipeInfo when the toast is created (profession window open) or when the toast is hovered, otherwise the toast's spell ID. The button's attributes are set out of combat only, on hover and again at the click. In combat: nothing happens and the toast stays.
+- Removed: every insecure selection from the click path (C_TradeSkillUI.OpenRecipe, the verification loop, reading the Professions window). That loop was the likely cause of "Échec d'une action d'interface liée à un programme d'interface personnalisée".
+- If ProfessionsUtil is missing, or with /drop toast off: the toast only opens the profession (secure spell), with no selection.
+- On by default in this test build. /drop toast on|off.
+- /drop debug: "clic toast sécurisé (3.5.17)" line (state, recipe name, resolved ID and its source, macro text, combat).
+- 3.5.16 pixel-snap fixes kept.
+
+---
+
+- Le clic sur le toast de recette passe par un bouton sécurisé : le jeu exécute une macro qui appelle la même fonction que sa propre alerte « nouvelle recette », « /run ProfessionsUtil.OpenProfessionFrameToRecipe(<id>) ». L'identifiant est celui de la recette sur Forever, trouvé par le NOM dans C_TradeSkillUI.GetAllRecipeIDs / GetRecipeInfo à la création du toast (fenêtre du métier ouverte) ou au survol, sinon l'identifiant de sort du toast. Les attributs du bouton ne sont posés que hors combat, au survol puis au clic. En combat : rien, et le toast reste.
+- Retiré : toute sélection non sécurisée du chemin du clic (C_TradeSkillUI.OpenRecipe, la boucle de vérification, la lecture de la fenêtre Métiers). Cette boucle était la cause probable de « Échec d'une action d'interface liée à un programme d'interface personnalisée ».
+- Si ProfessionsUtil est absent, ou avec /drop toast off : le toast ouvre seulement le métier (sort sécurisé), sans sélection.
+- Actif par défaut dans cette version de test. /drop toast on|off.
+- /drop debug : ligne « clic toast sécurisé (3.5.17) » (état, nom de la recette, id résolu et sa provenance, texte de la macro, combat).
+- Corrections au pixel de 3.5.16 conservées.
+
+## 3.5.16
+- Recipe toast click: the recipe is now found and checked by NAME. On Forever the Professions window uses a recipe ID different from the spell ID kept by the toast (e.g. 3763 vs 1229432 for "Ceinture élégante en cuir"): the recipe was selected on screen, but our ID check failed and OpenRecipe was called 5 times. Now: when the window is ready, C_TradeSkillUI.GetAllRecipeIDs / GetRecipeInfo find the recipe whose name matches the toast (then the toast's ID, then the crafted item); the recipe shown is read by name (rank "[1]" ignored); we stop as soon as it matches. The first call now waits until the recipe list has been filled (TRADE_SKILL_LIST_UPDATE + 0.25 s, or 1.2 s after the window is ready): before, it could leave before the list and the window stayed on the first recipe ("Tente du camp"). At most 2 tries, 0.35 s apart; far fewer protected calls, to avoid the "interface action failed" message. The toast keeps the recipe name. Every call protected, no writes to the game's frames.
+- Main window no longer shifts by a pixel when a recipe toast appears: positions, list offset and size are rounded to whole pixels (PixelUtil at the effective scale); nothing is re-anchored or resized when nothing changed; if the window is anchored by another point than its top-left corner, that corner is put back after a size change; the saved position is stored in whole pixels. The room for the "N prêts" badge above the first row stays reserved once seen (remembered), so its appearance with a recipe toast no longer pushes the grid down.
+- /drop debug: "sélection de recette (3.5.16)" line (name searched, toast ID, resolved ID, name shown, tries, result) and a count of top-left re-pins on the Layout line.
+
+---
+
+- Clic sur le toast de recette : la recette est maintenant trouvée et vérifiée par son NOM. Sur Forever, la fenêtre Métiers utilise un identifiant de recette différent de l'identifiant du sort retenu par le toast (ex. 3763 contre 1229432 pour « Ceinture élégante en cuir ») : la recette était bien sélectionnée à l'écran, mais notre vérification par identifiant échouait et OpenRecipe était appelé 5 fois. Désormais : fenêtre prête, C_TradeSkillUI.GetAllRecipeIDs / GetRecipeInfo trouvent la recette dont le nom correspond au toast (puis l'identifiant du toast, puis l'objet fabriqué) ; la recette affichée est lue par son nom (rang « [1] » ignoré) ; arrêt dès qu'elle correspond. Le premier appel attend maintenant que la liste des recettes soit remplie (TRADE_SKILL_LIST_UPDATE + 0,25 s, ou 1,2 s après que la fenêtre est prête) : avant, il pouvait partir avant la liste et la fenêtre restait sur la 1re recette (« Tente du camp »). 2 essais au plus, à 0,35 s d'écart ; beaucoup moins d'appels, pour éviter le message « Échec d'une action d'interface ». Le toast retient le nom de la recette. Chaque appel protégé, aucune écriture dans les cadres du jeu.
+- La fenêtre principale ne se décale plus d'un pixel à l'apparition d'un toast de recette : positions, décalage de la liste et taille arrondis au pixel entier (PixelUtil à l'échelle effective) ; rien n'est ré-ancré ni redimensionné quand rien n'a changé ; si la fenêtre est ancrée par un autre point que son coin haut-gauche, ce coin est reposé après un changement de taille ; la position mémorisée est enregistrée en pixels entiers. La place de la pastille « N prêts » au-dessus de la 1re rangée reste réservée une fois vue (mémorisée) : son apparition avec un toast de recette ne pousse plus la grille vers le bas.
+- /drop debug : ligne « sélection de recette (3.5.16) » (nom cherché, id du toast, id résolu, nom affiché, tentatives, résultat) et compteur de coin haut-gauche re-fixé sur la ligne Disposition.
+
+## 3.5.15
+- Toasts: text always fully readable. After a toast is created (and when its text is updated), every line is measured (GetUnboundedStringWidth, otherwise GetStringWidth). If a line is wider than the space available, it wraps onto 2 lines at most and the toast grows taller; the stack is laid out again. Width, style and fonts unchanged. Applies to every toast (skills, level, recipes, notifications). New file ToastFit.lua.
+- "New spells" toast (even levels): shorter title, "Nouveaux sorts", body "Va voir ton maître de classe" (before: "Nouveaux sorts à apprendre  Va voir ton…", cut off).
+- /drop debug: "Textes des toasts (3.5.15)" line (toasts measured, lines wrapped, lines still too long, last fit).
+
+---
+
+- Toasts : texte toujours lisible en entier. À la création d'un toast (et quand son texte change), chaque ligne est mesurée (GetUnboundedStringWidth, sinon GetStringWidth). Si elle dépasse la place disponible, elle passe à la ligne (2 lignes au plus) et le toast grandit en hauteur ; la pile est remise en place. Largeur, style et polices inchangés. Vaut pour tous les toasts (compétences, niveau, recettes, notifications). Nouveau fichier ToastFit.lua.
+- Toast « nouveaux sorts » (niveaux pairs) : titre raccourci, « Nouveaux sorts », texte « Va voir ton maître de classe » (avant : « Nouveaux sorts à apprendre  Va voir ton… », coupé).
+- /drop debug : ligne « Textes des toasts (3.5.15) » (toasts mesurés, lignes passées à la ligne, lignes encore trop longues, dernier ajustement).
+
+## 3.5.14
+- Recipe toast ("new recipe" / "N ready"): clicking it opens the profession window AND now selects the recipe on Forever's modern Professions window. Before, the selection was sent as soon as the window appeared, before the window had finished loading and picked its own default recipe, so ours was immediately overwritten.
+- Now: wait until the window is shown on the right profession, C_TradeSkillUI.IsTradeSkillReady (when available) and the data source is stable, then a short delay; select with C_TradeSkillUI.OpenRecipe(recipeID) only (public API: the game's own code does the selection); check by reading the recipe shown, and retry a few times if needed.
+- The toast now keeps the recipe ID (spell), not the crafted item. If the ID is not in the window's list: lookup by name, then by crafted item (GetRecipeSchematic outputItemID).
+- No writes to the game's frames, no filters, no search box: the "Create" button stays safe (no taint).
+- /drop debug: "sélection de recette (3.5.14)" line (recipe, recipeID and its source, OpenRecipe calls, game response, recipe shown, result, steps).
+
+---
+
+- Toast de recette (« nouvelle recette » / « N prêts ») : le clic ouvre la fenêtre du métier ET sélectionne maintenant la recette dans la fenêtre Métiers récente de Forever. Avant, la sélection partait dès l'apparition de la fenêtre, avant qu'elle ait fini de charger et choisi sa propre recette par défaut : la nôtre était aussitôt écrasée.
+- Désormais : attente que la fenêtre soit affichée sur le bon métier, que C_TradeSkillUI.IsTradeSkillReady (s'il existe) le confirme et que les données soient stables, puis un court délai ; sélection par C_TradeSkillUI.OpenRecipe(recipeID) seulement (API publique : c'est le code du jeu qui sélectionne) ; vérification en lisant la recette affichée, quelques nouveaux essais si besoin.
+- Le toast retient maintenant l'identifiant de la recette (sort), pas l'objet fabriqué. Si cet identifiant n'est pas dans la liste de la fenêtre : recherche par le nom, puis par l'objet fabriqué (GetRecipeSchematic outputItemID).
+- Aucune écriture dans les cadres du jeu, aucun filtre, aucune zone de recherche : le bouton « Créer » reste sûr (aucune souillure).
+- /drop debug : ligne « sélection de recette (3.5.14) » (recette, recipeID et sa provenance, appels à OpenRecipe, réponse du jeu, recette affichée, résultat, étapes).
+
+## 3.5.13
+- Window size kept when hiding / showing: the window was built with a frame scale equal to the saved size, while the size is carried by the tiles since 3.3.12: the two mechanisms could disagree and the window could come back to the default size after hiding and showing. Now the window is always built at frame scale 1 with the tiles at the saved size, and every show checks the saved size, columns and list width and restores them if anything changed them (top-left corner kept). The size is still saved as soon as you resize.
+- Position kept: the "window back in view" repair no longer forgets the saved position when the window has no rectangle yet right after being shown; it first puts it back at the saved position, and only falls back to the screen centre if that position is itself off-screen.
+- Skinning tile (and Herbalism, Fishing): skill lines read from the game, parent line first (before, the first line found could be a child line); the line list is rebuilt while it is empty; if a line does not open the right profession, the next one is tried (then 393 / 182 / 356). "Already open on this profession → close" now compares the profession name (parent or child). A quick double click no longer opens and then closes the window. The profession spell button (Smelting, etc.) left on another tile is put away when the tile's own secure button is placed: never two secure buttons at once.
+- /drop debug: "Clics des cases (3.5.13)" line with the tile under the secure button, the profession spell button, the profession shown in the window and, for each gathering profession, the lines tried and the result; Layout line "taille mémorisée (3.5.13)".
+
+---
+
+- Taille de la fenêtre conservée en la masquant / affichant : la fenêtre était construite avec une échelle de cadre égale à la taille mémorisée, alors que la taille passe par les cases depuis 3.3.12 : les deux mécanismes pouvaient se contredire et la fenêtre revenir à la taille par défaut après masquer / afficher. Désormais la fenêtre est toujours construite à l'échelle 1 avec les cases à la taille mémorisée, et chaque affichage vérifie la taille, les colonnes et la largeur de liste mémorisées et les repose si quelque chose les a changées (coin haut-gauche conservé). La taille reste enregistrée dès le redimensionnement.
+- Position conservée : la réparation « panneau remis en vue » n'oublie plus la position mémorisée quand la fenêtre n'a pas encore de rectangle juste après l'affichage ; elle la repose d'abord à la position mémorisée, et ne passe au centre de l'écran que si cette position est elle-même hors écran.
+- Case Dépeçage (et Herboristerie, Pêche) : lignes de compétence lues dans le jeu, la ligne parente d'abord (avant : la première trouvée, parfois une ligne « enfant ») ; liste refaite tant qu'elle est vide ; si une ligne n'ouvre pas le bon métier, la suivante est essayée (puis 393 / 182 / 356). « Déjà ouverte sur ce métier → fermer » compare maintenant le nom du métier (parent ou enfant). Un double clic rapide n'ouvre plus puis ne referme plus la fenêtre. Le bouton de sort des métiers (Fondre, etc.) resté sur une autre case est rangé quand le bouton sécurisé de la case est posé : jamais deux boutons sécurisés à la fois.
+- /drop debug : ligne « Clics des cases (3.5.13) » avec la case sous le bouton sécurisé, le bouton de sort des métiers, le métier affiché dans la fenêtre et, pour chaque métier de récolte, les lignes essayées et le résultat ; ligne Disposition « taille mémorisée (3.5.13) ».
+
+## 3.5.12
+- PvP, weapon (melee, ranged, feral) and Defense tiles: a click simply opens the Character frame. The game runs "/click CharacterMicroButton" through the secure button placed over the tile, out of combat. The search for and switching of the PvP / Skills tabs is removed (it did not work on Forever), along with its chat messages, the hooks on the sheet's tabs and the related debug lines. Tooltip: "Clic : fiche du personnage".
+- Level tile: unchanged (opens or closes the Character frame).
+- Gathering tiles (Skinning, Herbalism, Fishing): on Forever they have their own profession window. A click opens it (C_TradeSkillUI.OpenTradeSkill; skill line read from the game, otherwise 393 / 182 / 356) and closes it if it is already open. Fishing no longer casts. Tooltip: "Clic : ouvrir le métier". Crafting professions and Mining (Smelting) keep their secure spell button.
+- "N prêts" badge: Skinning, Herbalism and Fishing are now included when their window has recipes (for example Skinning's "Chaise du camp").
+- Still no taint: no ToggleCharacter, ShowUIPanel or spell cast from the addon's code; the secure button's settings are only changed out of combat.
+- /drop debug: a single "Clics des cases (3.5.12)" line.
+
+---
+
+- Cases JcJ, armes (mêlée, distance, farouche) et Défense : un clic ouvre simplement la fiche du personnage. Le jeu exécute « /click CharacterMicroButton » par le bouton sécurisé posé sur la case, hors combat. La recherche et le changement des onglets JcJ / Compétences sont retirés (ils ne marchaient pas sur Forever), avec leurs messages dans le chat, les crochets sur les onglets de la fiche et les lignes de debug associées. Infobulle : « Clic : fiche du personnage ».
+- Case Niveau : inchangée (ouvre ou ferme la fiche).
+- Cases des métiers de récolte (Dépeçage, Herboristerie, Pêche) : sur Forever, elles ont leur propre fenêtre de métier. Un clic l'ouvre (C_TradeSkillUI.OpenTradeSkill ; ligne de compétence lue dans le jeu, sinon 393 / 182 / 356) et la referme si elle est déjà ouverte. La Pêche ne se lance plus. Infobulle : « Clic : ouvrir le métier ». Les métiers de fabrication et le Minage (Fondre) gardent leur bouton de sort sécurisé.
+- Pastille « N prêts » : Dépeçage, Herboristerie et Pêche sont pris en compte quand leur fenêtre a des recettes (par exemple « Chaise du camp » au Dépeçage).
+- Toujours aucune souillure : ni ToggleCharacter, ni ShowUIPanel, ni lancer de sort depuis le code de l'addon ; les réglages du bouton sécurisé ne changent que hors combat.
+- /drop debug : une seule ligne « Clics des cases (3.5.12) ».
+
+## 3.5.11
+- Level tile: a click opens or closes the Character frame. The game itself runs "/click CharacterMicroButton" through a secure button placed over the tile on hover, out of combat.
+- Fishing tile: a click casts Fishing (secure spell button; the localized spell name is read from its ID, otherwise "Pêche" / "Fishing").
+- Weapon skill tiles (melee, ranged, feral) and Defense: a click opens the Character frame on its Skills tab, with the same secure macro as the PvP tab.
+- PvP and Skills tabs are now recognised automatically, read-only and without running any game script: from their icon (honor icon = PvP; "jack of all trades" icon, otherwise the stats icon = Skills), their fields, the tooltip seen on hover or your own click (remembered). The macro can only click a tab that is, or contains, a named button. Otherwise the sheet opens and you click the tab yourself.
+- Hint messages ("clique sur l'onglet…") are shown only once per session, no longer on every click.
+- Tooltips only advertise clicks that work: "Clic : fiche du personnage", "Clic : pêcher", "Clic : onglet Compétences", and "Clic : ouvrir le métier" for professions with a window (Mining = Smelting). Skinning and Herbalism have no click action and show no click line.
+- /drop debug: for each side tab, its icon, what it was recognised as and whether /click is possible, plus every named button under the Character frame.
+- Still no taint: no ToggleCharacter, ShowUIPanel or spell cast from the addon's code; the secure buttons' settings are only changed out of combat.
+
+---
+
+- Case Niveau : un clic ouvre ou ferme la fiche du personnage. C'est le jeu qui exécute « /click CharacterMicroButton », par un bouton sécurisé posé sur la case au survol, hors combat.
+- Case Pêche : un clic lance Pêche (bouton de sort sécurisé ; nom du sort lu par son identifiant, sinon « Pêche » / « Fishing »).
+- Cases d'armes (mêlée, distance, farouche) et Défense : un clic ouvre la fiche sur l'onglet Compétences, avec la même macro sécurisée que l'onglet JcJ.
+- Les onglets JcJ et Compétences sont maintenant reconnus automatiquement, en lecture seule et sans exécuter de script du jeu : par leur icône (icône honneur = JcJ ; icône « touche-à-tout », sinon l'icône statistiques = Compétences), leurs champs, l'infobulle vue au survol ou ton propre clic (retenu). La macro ne peut cliquer qu'un onglet qui est, ou contient, un bouton nommé. Sinon, la fiche s'ouvre et tu cliques toi-même sur l'onglet.
+- Les messages d'aide (« clique sur l'onglet… ») ne s'affichent qu'une fois par session, plus à chaque clic.
+- Les infobulles n'annoncent que les clics qui marchent : « Clic : fiche du personnage », « Clic : pêcher », « Clic : onglet Compétences », et « Clic : ouvrir le métier » pour les métiers qui ont une fenêtre (Minage = Fondre). Dépeçage et Herboristerie n'ont pas d'action au clic et n'affichent aucune ligne de clic.
+- /drop debug : pour chaque onglet latéral, son icône, ce qu'il a été reconnu comme et si /click est possible, plus tous les boutons nommés sous la fiche.
+- Toujours aucune souillure : ni ToggleCharacter, ni ShowUIPanel, ni lancer de sort depuis le code de l'addon ; les réglages des boutons sécurisés ne changent que hors combat.
+
+## 3.5.10
+- Fix (taint): the errors "attempt to compare a secret number value (execution tainted by 'Dropamine')" when pressing C or when the mouse leaves the player health bar came from 3.5.8, which opened the Character frame from the addon's own code. Fields written then (lockShow of the health bar) stayed tainted for the whole session. A /reload clears them, and since 3.5.9 the addon never opens the sheet itself.
+- Audit: Dropamine no longer runs any script of the Character frame tabs. The PvP tab is no longer clicked by the addon, and its tooltip is no longer forced open. The tooltip is read passively when you hover a tab, and the tab is learned when you click it yourself; both are read-only hooks. That tab is remembered and then clicked by the secure macro when it is a named button. Otherwise the sheet opens and a short message asks you to click the PvP tab once.
+- Audit result: no global or Blizzard function is replaced (only post-hooks), no SetScript on game frames, no SetCVar, no UIPanelWindows change, and the panel is never anchored to the Character frame (its position is only read).
+
+---
+
+- Correctif (souillure) : les erreurs « attempt to compare a secret number value (execution tainted by 'Dropamine') » en appuyant sur C ou en quittant la barre de vie du joueur venaient de la 3.5.8, qui ouvrait la fiche depuis le code de l'addon. Les champs écrits à ce moment-là (lockShow de la barre de vie) restaient souillés toute la session. Un /reload les efface, et depuis la 3.5.9 l'addon n'ouvre plus jamais la fiche lui-même.
+- Audit : Dropamine n'exécute plus aucun script des onglets de la fiche. L'onglet JcJ n'est plus cliqué par l'addon et son infobulle n'est plus ouverte de force. L'infobulle est lue passivement au survol, et l'onglet est appris quand tu cliques toi-même dessus ; ce sont deux crochets en lecture seule. L'onglet est retenu, puis cliqué par la macro sécurisée s'il s'agit d'un bouton nommé. Sinon, la fiche s'ouvre et un court message te demande de cliquer une fois sur l'onglet JcJ.
+- Résultat de l'audit : aucune globale ni fonction du jeu remplacée (seulement des post-crochets), aucun SetScript sur les cadres du jeu, aucun SetCVar, UIPanelWindows jamais modifié, et le panneau n'est jamais ancré à la fiche (sa position est seulement lue).
+
+## 3.5.9
+- Fix: clicking the PvP tile no longer triggers the Lua error "attempt to compare a secret number value (execution tainted by 'Dropamine')". The addon itself opened the Character frame (ToggleCharacter), which tainted the game's own opening code. The Character frame is now opened by the game: out of combat, hovering the PvP tile places a secure button over it that runs "/click CharacterMicroButton", then clicks the PvP tab when that tab is a named button. If the sheet is already open, only the tab is switched. With no secure way to open it, a short hint is shown: "ouvre la fiche (C), puis clique à nouveau sur la case JcJ".
+- In combat: nothing is opened, just a short message.
+- Review of every open path: no more ToggleCharacter, ShowUIPanel or spell cast from the addon's own code. Profession tiles and recipe toasts already use secure buttons, and the direct call into the Professions recipe list is removed (C_TradeSkillUI.OpenRecipe is kept).
+- /drop debug: the "Onglet JcJ de la fiche" line shows the secure button, the tab used by /click and the last path taken.
+
+---
+
+- Correctif : un clic sur la case JcJ ne déclenche plus l'erreur Lua « attempt to compare a secret number value (execution tainted by 'Dropamine') ». L'addon ouvrait lui-même la fiche du personnage (ToggleCharacter), ce qui souillait l'ouverture du jeu. La fiche est maintenant ouverte par le jeu : hors combat, au survol de la case JcJ, un bouton sécurisé la recouvre et lance « /click CharacterMicroButton », puis clique sur l'onglet JcJ quand cet onglet est un bouton nommé. Si la fiche est déjà ouverte, seul l'onglet change. Sans moyen sécurisé de l'ouvrir, un court message s'affiche : « ouvre la fiche (C), puis clique à nouveau sur la case JcJ ».
+- En combat : rien n'est ouvert, juste un court message.
+- Revue de toutes les ouvertures : plus aucun ToggleCharacter, ShowUIPanel ni lancer de sort depuis le code de l'addon. Les cases de métier et les toasts de recette passent déjà par des boutons sécurisés, et l'appel direct à la liste des recettes de la fenêtre Métiers est retiré (C_TradeSkillUI.OpenRecipe est conservé).
+- /drop debug : la ligne « Onglet JcJ de la fiche » indique le bouton sécurisé, l'onglet utilisé par /click et le dernier chemin suivi.
+
+## 3.5.8
+- Fix: the "N prêts" badge and the craftable recipes in profession tooltips are back on WoW Forever. Since 3.5.0 the profession window was only read through the old API (GetTradeSkillInfo), which this client does not have: nothing was read, so no badge, and the tooltip kept asking to open the profession window. Recipes are now read from the modern Professions window (C_TradeSkillUI): learned recipes, skill-up colour (grey when the game says it no longer gives points), required reagents and the craftable count. Windows of other players, guild or NPC crafting are ignored.
+- Profession tiles ("Clic : ouvrir le métier") and recipe toasts: the modern Professions window is now recognised (no second cast that would close it), and the recipe is selected with the game's own C_TradeSkillUI.OpenRecipe.
+- /drop debug: new "Lecture des métiers (3.5.8)" line (API used, last window read, result).
+
+---
+
+- Correctif : la pastille « N prêts » et les recettes réalisables dans les infobulles des métiers reviennent sur WoW Forever. Depuis la 3.5.0, la fenêtre du métier n'était lue que par l'ancienne API (GetTradeSkillInfo), absente de ce client : rien n'était lu, donc pas de pastille, et l'infobulle demandait sans fin d'ouvrir la fenêtre du métier. Les recettes sont maintenant lues dans la fenêtre Métiers moderne (C_TradeSkillUI) : recettes apprises, couleur de progression (gris quand le jeu dit qu'elle ne donne plus de points), composants obligatoires et nombre réalisable. Les fenêtres d'un autre joueur, de guilde ou d'un PNJ sont ignorées.
+- Cases de métier (« Clic : ouvrir le métier ») et toasts de recette : la fenêtre Métiers moderne est reconnue (pas de second lancer qui la refermerait), et la recette est sélectionnée par la fonction du jeu C_TradeSkillUI.OpenRecipe.
+- /drop debug : nouvelle ligne « Lecture des métiers (3.5.8) » (API utilisée, dernière fenêtre lue, résultat).
+
+## 3.5.7
+- Fix: clicking the PvP tile no longer says "fenêtre JcJ introuvable". On WoW Forever the PvP window (season, rank, rank points, rewards) is a tab of the Character frame. The click now opens the Character frame (it never closes it if it is already open) and selects its PvP tab. The tab is recognised by its text, its tooltip or, as a last resort, by trying each tab until the sheet's title shows "JcJ" or "points de rang" appears. The tab it finds is remembered for the session.
+- In combat nothing is touched: a short message, and the tab opens when combat ends.
+- /drop debug: new "Onglet JcJ de la fiche" section (tabs found, the tab chosen and how it was checked).
+
+---
+
+- Correctif : un clic sur la case JcJ ne répond plus « fenêtre JcJ introuvable ». Sur WoW Forever, la fenêtre JcJ (saison, rang, points de rang, récompenses) est un onglet de la fiche du personnage. Le clic ouvre maintenant la fiche (sans la refermer si elle est déjà ouverte) et choisit son onglet JcJ. L'onglet est reconnu par son texte, son infobulle ou, en dernier recours, en essayant chaque onglet jusqu'à ce que le titre de la fiche affiche « JcJ » ou que « points de rang » apparaisse. L'onglet trouvé est retenu pour la session.
+- En combat, rien n'est touché : message court, l'onglet s'ouvre à la fin du combat.
+- /drop debug : nouvelle section « Onglet JcJ de la fiche » (onglets trouvés, onglet retenu et comment il a été vérifié).
+
+## 3.5.6
+- Fix: the panel could stay invisible with /drop and the minimap button (no Lua error). Its default position was anchored to the Character frame, which has no position on screen until it has been opened once (or when another addon such as FlareUI or AtlasLoot moves or hides it). The panel is now always placed on the screen itself: next to the Character frame only when that frame is open, otherwise centred, and always kept on screen.
+- Fix: a panel that was "open" but not actually visible is now opened again (and brought back into view) by the next click, instead of being closed.
+- /drop debug: the "Ouverture protégée" line now shows whether the panel is on screen and what it is anchored to.
+
+---
+
+- Correctif : le panneau pouvait rester invisible avec /drop et le bouton de minicarte (sans erreur Lua). Sa place par défaut était ancrée sur la fiche du personnage, qui n'a aucune position à l'écran tant qu'elle n'a pas été ouverte une fois (ou quand un autre addon, FlareUI ou AtlasLoot, la déplace ou la cache). Le panneau est désormais toujours placé sur l'écran lui-même : à côté de la fiche seulement si elle est ouverte, sinon au centre, et toujours retenu à l'écran.
+- Correctif : un panneau « ouvert » mais pas réellement visible est rouvert (et remis en vue) au clic suivant, au lieu d'être fermé.
+- /drop debug : la ligne « Ouverture protégée » indique si le panneau est à l'écran et sur quoi il est ancré.
+
+## 3.5.5
+- Toasts de recette : « Clic : ouvrir la recette » fonctionne. Le clic ouvre la fenêtre du métier et sélectionne la recette (catégories repliées dépliées, filtres remis à « Tout » seulement si la recette restait cachée). Sélection en un seul passage borné : aucune boucle ouvre / ferme, jamais deux lancers du sort, rien sur une fenêtre déjà ouverte.
+- Cases de métier : « Clic : ouvrir le métier » réactivé (désactivé en 3.5.0), mêmes garde-fous ; option /drop ouvrir on|off.
+- Clics sécurisés compatibles avec le réglage « Action à l'appui de la touche » (ActionButtonUseKeyDown) des clients récents : c'est probablement ce qui rendait ces clics muets.
+- Case JcJ : « Clic : fenêtre JcJ » essaie l'onglet Honneur puis les autres fenêtres JcJ, vérifie que l'une s'est ouverte, sinon le dit dans le chat ; en combat, ouverture à la fin du combat.
+- Infobulles : retrait de « Clic : détail à droite » (plus de volet de détail) ; « Maj + clic : partager » n'apparaît que si l'option est active.
+- Ouverture du panneau protégée (bouton de minicarte, /drop) : une erreur n'est plus muette (message dans le chat, détail dans /drop debug) et le panneau s'affiche quand même, remis en vue s'il était invisible ou hors écran. Vise le cas « le panneau ne s'ouvre pas avec AtlasLoot ».
+- Bouton de minicarte : un glisser relâché hors du bouton n'avale plus le clic suivant.
+- Correctif : /drop hit lisait une variable globale indéfinie.
+
+## 3.5.4
+- Records : plus d'enchaînement de « Nouveau record ! » à chaque point. Le record de session ne s'annonce qu'à des paliers croissants (25, 50, 100, 200…) et jamais sous 25 points ; le record horaire une seule fois par heure.
+- Niveaux pairs : notif « Nouveaux sorts à apprendre » sous celle du level-up, avec un son.
+
+## 3.5.3
+- Performance : plus de micro-gels au survol (cases, barre, infobulles d'unité et d'objet).
+- Rangs de compétence lus au plus une fois par seconde pour les infobulles (relus aussitôt après un gain, un niveau ou un changement d'équipement), au lieu d'une relecture complète à chaque ligne.
+- Infobulle de case mémorisée (au plus un calcul par seconde, recalculée dès que la grille change).
+- Infobulle de créature : mêmes lignes réutilisées pendant 1 s quand le jeu la rafraîchit.
+- « À apprendre bientôt » et recettes apprises : résultats mémorisés au lieu d'être recalculés à chaque survol.
+- Normalisation des noms mémorisée (des milliers de remplacements de texte en moins par infobulle).
+- Passer d'une case à l'autre ne relance plus le repeint du panneau.
+- Correctif : la lueur dorée du passage de niveau (toast et case Niveau) fait maintenant tout le tour, sur les 4 côtés, dans les 3 thèmes.
+
+## 3.5.2
+- Correctif : la barre Niveau total disparaissait au login alors que l'option était cochée.
+- Correctif : erreur Lua « secret string » à l'ouverture de la fenêtre JcJ (textes protégés ignorés).
+
+
 All notable changes to Dropamine (formerly OSRS Total Level) are documented here. The 3.3.x notes are taken from the addon's in-tree README and test headers. Command names below use `/drop` (also `/dropamine`).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## [3.5.1] — 2026-11-17
+
+### Added
+- **Segmented total-level bar.** The thin “Niveau total” gauge (all themes and layouts) is split into three sources, in native order: character level (muted red `#9D473A`), weapon skills + Defence including Feral Combat (muted blue `#54689A`), and professions, primary and secondary (muted green `#4F7F3E`). Colors are sampled from the three pillars of the total-level icon (`Media/SkillsTab`), desaturated ~40 %, slightly darkened, and warmed with a parchment-gold tint. Hovering the bar shows each source as points / max. No click action.
+- **Toast direction in free position.** Edit mode → Notifications now adds “Sens des notifs”: Vers le haut (default when the toasts are freely placed — the newest stays at the anchor, older ones move up), Vers le bas (previous downward stack), and Sur place (a card pile at the anchor, 4 px up and right, at most 3 visible, slightly faded and darkened by depth). Saved in the profile (`dropDir`). Anchored above or below the panel is unchanged. `/drop drops sens haut|bas|place`.
 
 ## [3.5.0] — 2026-11-17
 

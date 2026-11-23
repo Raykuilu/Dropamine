@@ -21,17 +21,19 @@
 -- (4 par 0,25 s, minuterie C_Timer, aucun OnUpdate), évaluations en cache par
 -- nom, repères recyclés (pool).
 local ADDON, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local S = ns.Scanner
 S.UnifiedMarkers = true
 local G = {}
 ns.Gather = G
 
 local function N(v) return ns.N(v) end
+-- 3.6.0 : sans table temporaire (appelé sur les événements fréquents : survol,
+-- barres de nom, cible) et sans troncature aux valeurs nil intermédiaires.
+local function Ret(ok, ...) if not ok then return nil end return ... end
 local function Call(fn, ...)
   if type(fn) ~= "function" then return nil end
-  local r = { pcall(fn, ...) }
-  if not r[1] then return nil end
-  return unpack(r, 2)
+  return ns.Unsecret(Ret(pcall(fn, ...)))
 end
 local function Str(v) if type(v) ~= "string" or (ns.IsSecret and ns.IsSecret(v)) or v == "" then return nil end return v end
 local function InCombat() return S and S.InCombat and S.InCombat() end
@@ -117,17 +119,17 @@ function G.State(name, level)
   local st
   local mx = G.Max()
   if mx and mx > 0 and rank >= mx then
-    st = { diff = "capped", text = "Dépeçage : plafond atteint (" .. rank .. "/" .. mx .. ") — va voir ton maître", req = req }
+    st = { diff = "capped", text = Tr["Dépeçage : plafond atteint ("] .. rank .. "/" .. mx .. Tr[") — va voir ton maître"], req = req }
   elseif req and rank < req then
-    st = { diff = "locked", text = "Dépeçage : " .. req .. " requis (actuel " .. rank .. ")", req = req }
+    st = { diff = "locked", text = Tr["Dépeçage : "] .. req .. Tr[" requis (actuel "] .. rank .. ")", req = req }
   else
     local greyAt = e.greyAt
     if greyAt and rank >= greyAt and not ((e.gainMax or -1) >= rank) then
-      st = { diff = "trivial", text = "Dépeçage : plus de point (" .. G.NO_GAIN_GREY .. " dépeçages sans gain au rang " .. greyAt .. ")", req = req }
+      st = { diff = "trivial", text = Tr["Dépeçage : plus de point ("] .. G.NO_GAIN_GREY .. Tr[" dépeçages sans gain au rang "] .. greyAt .. ")", req = req }
     elseif e.gainMax and e.gainMax >= rank - 1 then
-      st = { diff = "easy", text = "Dépeçage : +1 possible · point gagné au rang " .. e.gainMax, req = req }
+      st = { diff = "easy", text = Tr["Dépeçage : +1 possible · point gagné au rang "] .. e.gainMax, req = req }
     else
-      st = { diff = "possible", text = "Dépeçage : +1 possible" .. (req and (" · requis " .. req) or " · rang requis inconnu"), req = req }
+      st = { diff = "possible", text = Tr["Dépeçage : +1 possible"] .. (req and (Tr[" · requis "] .. req) or Tr[" · rang requis inconnu"]), req = req }
     end
   end
   st.color = G.COLORS[st.diff]
@@ -150,7 +152,7 @@ function G.ScanNative(tt)
     if txt then
       local f = txt:lower()
       if G.NATIVE[f] then native = i end
-      if txt:find("^Dépeçage : ") then ours = i end
+      if txt:find(Tr["^Dépeçage : "]) then ours = i end
     end
   end
   return native, ours
@@ -218,10 +220,6 @@ end
 ------------------------------------------------------------------------------
 G.BATCH, G.BATCH_DT = 4, 0.25
 G.queue, G.queued, G.active, G.pool = {}, {}, {}, {}
-local function PeltIcon()
-  local e = ns.CATALOG_BY_ID and ns.CATALOG_BY_ID.skinning
-  return e and e.icon or "Interface\\Icons\\INV_Misc_Pelt_Wolf_01"
-end
 -- 3.3.8 : UN repère par barre de nom, centré JUSTE AU-DESSUS du nom / de la
 -- barre de vie (quelle que soit la longueur du nom ou l'état ciblé), avec une
 -- icône par métier concerné (Dépeçage, Cuisine, Secourisme). Bordure de chaque
@@ -317,9 +315,9 @@ function G.PlateEntries(unit)
         local diff, recipe = S.CreatureDiff(c, sk)
         local mx = S.MaxOf and S.MaxOf(sk)
         if diff and diff ~= "trivial" and not (mx and mx > 0 and rank >= mx) then
-          out[#out + 1] = { skill = sk, green = true, why = "butin : " .. tostring(recipe and recipe.name or "recette") }
+          out[#out + 1] = { skill = sk, green = true, why = Tr["butin : "] .. tostring(recipe and recipe.name or Tr["recette"]) }
         elseif (c.skills and (c.skills[sk] or 0) > 0) and ns.CharDB().recipes and ns.CharDB().recipes[sk] then
-          out[#out + 1] = { skill = sk, green = false, why = (mx and mx > 0 and rank >= mx) and "plafond atteint" or "recettes connues grises" }
+          out[#out + 1] = { skill = sk, green = false, why = (mx and mx > 0 and rank >= mx) and Tr["plafond atteint"] or Tr["recettes connues grises"] }
         end
       end
     end
@@ -344,9 +342,9 @@ function G.PlateEntries(unit)
       local b = by[sk]
       local ex = have[sk]
       if ex then
-        if b.green and not ex.green then ex.green, ex.why = true, "lien : " .. tostring(b.name) end
+        if b.green and not ex.green then ex.green, ex.why = true, Tr["lien : "] .. tostring(b.name) end
       else
-        local e = { skill = sk, green = b.green, why = b.green and ("lien : " .. tostring(b.name)) or "recettes grises" }
+        local e = { skill = sk, green = b.green, why = b.green and (Tr["lien : "] .. tostring(b.name)) or Tr["recettes grises"] }
         out[#out + 1] = e
         have[sk] = e
       end
@@ -418,6 +416,7 @@ function G.Schedule()
 end
 function G.OnPlateAdded(unit)
   G.stats.events = G.stats.events + 1
+  if ns.PausedForFlight and ns.PausedForFlight() then return end
   if not G.Enabled() or InCombat() or not unit or G.queued[unit] then return end
   G.queued[unit] = true
   G.queue[#G.queue + 1] = unit
@@ -434,6 +433,7 @@ end
 function G.HideAll() for unit in pairs(G.active) do G.Release(unit) end end
 function G.Rescan()
   if InCombat() or not G.Enabled() then return end
+  if ns.PausedForFlight and ns.PausedForFlight() then return end
   local plates = type(_G.C_NamePlate) == "table" and Call(_G.C_NamePlate.GetNamePlates) or {}
   for _, p in ipairs(plates or {}) do
     local unit = p.namePlateUnitToken or (p.UnitFrame and p.UnitFrame.unit)
@@ -498,17 +498,17 @@ function S.TooltipLine(tooltip)
   for i = 2, nLines do
     local fs = _G[tname .. "TextLeft" .. i]
     local txt = fs and Str(Call(fs.GetText, fs))
-    if txt and (txt:find(" : +1 possible", 1, true) or txt:find(" requis (actuel ", 1, true) or txt:find("(relevé)", 1, true)) then return nil end
+    if txt and (txt:find(Tr[" : +1 possible"], 1, true) or txt:find(Tr[" requis (actuel "], 1, true) or txt:find(Tr["(relevé)"], 1, true)) then return nil end
   end
   local rank, e = S.RankOf(node.skill)
   if not rank or rank <= 0 then return nil end
-  local nm = e and e.name or node.skill
+  local nm = e and ns.CatalogDisplayName(e) or node.skill
   local line, cr, cg, cb
   if rank >= node.req then
-    line, cr, cg, cb = nm .. " : +1 possible (relevé : " .. node.req .. " requis)", 0.85, 0.85, 0.85
-    if node.gainRank then line = line .. " · gain vu au rang " .. node.gainRank end
+    line, cr, cg, cb = nm .. Tr[" : +1 possible (relevé : "] .. node.req .. Tr[" requis)"], 0.85, 0.85, 0.85
+    if node.gainRank then line = line .. Tr[" · gain vu au rang "] .. node.gainRank end
   else
-    line, cr, cg, cb = nm .. " : " .. node.req .. " requis (relevé) — actuel " .. rank, 1, 0.3, 0.3
+    line, cr, cg, cb = nm .. Tr[" : "] .. node.req .. Tr[" requis (relevé) — actuel "] .. rank, 1, 0.3, 0.3
   end
   S.lastNode = { name = title, skill = node.skill, t = Call(_G.GetTime) or 0 }
   pcall(tooltip.AddLine, tooltip, line, cr, cg, cb)
@@ -549,7 +549,7 @@ ns.SlashExt.alertes = function(rest)
   if rest == "on" then ns.db.ui.gatherAlerts = nil elseif rest == "off" then ns.db.ui.gatherAlerts = false
   elseif G.Enabled() then ns.db.ui.gatherAlerts = false else ns.db.ui.gatherAlerts = nil end   -- 3.3.13 : bascule (« x and false or nil » valait toujours nil)
   if not G.Enabled() then G.HideAll() else G.Rescan() end
-  print("|cffffd100Dropamine|r : alertes de récolte " .. (G.Enabled() and "activées" or "désactivées"))
+  print(Tr["|cffffd100Dropamine|r : alertes de récolte "] .. (G.Enabled() and Tr["activées"] or Tr["désactivées"]))
 end
 ns.HelpExt = ns.HelpExt or {}
 ns.HelpExt[#ns.HelpExt + 1] = "/drop alertes on|off : « Dépeçage : … » sur les bêtes / cadavres, repère de peau sur les barres de nom · /drop perf : coûts"

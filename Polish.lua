@@ -199,14 +199,25 @@ if Wd then
   Wd.BAR_H = 8
   Wd.PAD = 6
   Wd.SLIM = 0.5
-  Wd.MIN_H = 20
+  Wd.MIN_H = 25      -- rangée = glyphe de goutte (~70 % de la case 36)
+  Wd.MIN_BAR_H = 12
+  Wd.MIN_BAR_W = 100
+  Wd.MIN_FONT = nil  -- le total suit I.NumberSizes (plus petit que le rang)
+  Wd.MIN_ISZ = 25    -- 70 % de la case plancher 36 px
+  Wd.ICON_K = 0.70
+  Wd.STATE_ICON_K = 0.55
+  -- Référence 100 % (zoom uniforme au-dessus des planchers absolus).
+  Wd.REF_BAR_H = 8
+  Wd.REF_PAD = 6
+  Wd.REF_FONT = 11
+  Wd.TEXT_SIZE = nil
   Wd.FILL = ns.STYLE.BORDER               -- jeton unique #A67D45 (STYLE.md)
   Wd.SHEEN_A = 0.28                       -- reflet 1 px en haut du remplissage
   Wd.TRACK = { 0.15, 0.15, 0.15, 0.9 }    -- piste FlareUI
   Wd.EDGE_TEX = MEDIA .. "Dropamine-Thin"       -- notre filet fin (même tracé que le bord du panneau)
   Wd.EDGE_SIZE = 8                        -- FlareUI : BorderEdgeSize(Thin, 16) = 8
   Wd.EDGE_OUT = 3                         -- le filet est à 3 px du bord du cadre
-  Wd.TEXT_SIZE = 11
+  Wd.TEXT_SIZE = nil
   local function Edge(t)
     local p = t._wideParts
     if not p then return nil end
@@ -230,51 +241,67 @@ if Wd then
     local r = { basePaint(t, ...) }
     if not (t and t._wideOn and t._wideParts) then return unpack(r) end
     local p = t._wideParts
-    local h = N(t._wideH) or 20
-    -- icône : carrée, centrée, biseau compris dans la hauteur de la barre
-    local isz = math.max(8, h - 6)   -- biseau (3 px de chaque côté) compris dans la hauteur
-    if t.icon and t.icon.SetSize then
-      t.icon:ClearAllPoints()
-      t.icon:SetPoint("CENTER", t, "LEFT", math.floor(h / 2 + 0.5), 0)
-      t.icon:SetSize(isz, isz)
-    end
-    -- texte : Arial Narrow 11, même ombre que les chiffres, centré verticalement
-    pcall(p.text.SetFont, p.text, I.COUNT_PATH or "Fonts\\ARIALN.TTF", Wd.TEXT_SIZE, I.TEXT_FLAGS or "")
+    local m = Wd.Metrics and Wd.Metrics() or {}
+    local h = N(t._wideH) or m.h or 20
+    if Wd.PlaceVialIcon then Wd.PlaceVialIcon(t, m) end
+    local isz = m.isz or (Wd.IconSize and Wd.IconSize(m.tile or h)) or math.max(Wd.MIN_ISZ or 25, math.floor((m.tile or h) * 0.70 + 0.5))
+    -- police et placement : Wd.PlaceTotalRow (déjà appelé par la peinture de base).
+    -- On ne recalcule pas left/inner ici, pour ne pas écraser le plancher 40 % / overlay.
     I.CleanText(p.text)
     p.text:SetTextColor(1, 0.93, 0.80)
-    p.text:ClearAllPoints()
-    p.text:SetPoint("LEFT", t, "LEFT", h + Wd.PAD - 2, 0)
-    local tw = Width(p.text)
-    if tw <= 0 then tw = 56 end
-    local w = N(t._wideW) or 0
-    local left = h + Wd.PAD - 2 + tw + Wd.PAD + Wd.EDGE_OUT
-    local inner = math.max(10, w - left - Wd.PAD - Wd.EDGE_OUT)
-    local bh = Wd.BAR_H
-    local by = math.floor((h - bh) / 2 + 0.5)
-    local pct = (Wd.last and Wd.last.pct) or 0
-    p.track:ClearAllPoints()
-    p.track:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", left, by)
-    p.track:SetSize(inner, bh)
-    p.fill:ClearAllPoints()
-    p.fill:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", left, by)
-    p.fill:SetSize(math.max(0.01, inner * pct), bh)
+    if p.textMax and p.textMax.SetTextColor and Wd.MaxColor then
+      I.CleanText(p.textMax)
+      p.textMax:SetTextColor(Wd.MaxColor())
+    end
+    local plan = Wd.last
+    local left = (plan and plan.left) or 0
+    local inner = (plan and plan.inner) or 0
+    local bh = (plan and plan.bh) or m.bh or Wd.BAR_H
+    local by = (plan and plan.by) or 0
+    local pct = (plan and plan.pct) or 0
+    local cur = (plan and plan.cur) or 0
+    local max = (plan and plan.max) or 0
+    if p.track and p.track.ClearAllPoints then
+      p.track:ClearAllPoints()
+      p.track:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", left, by)
+      p.track:SetSize(inner, bh)
+    end
+    Wd.LayoutSegments(t, left, by, inner, bh, cur, max)
+    -- textures unies (jeton de couleur) sur chaque segment
+    local texFile = Wd.FILL_TEX or Wd.TEX
+    for i = 1, #(p.segs or {}) do
+      pcall(p.segs[i].SetTexture, p.segs[i], texFile)
+    end
     if not p._poTex then
       p._poTex = true
-      pcall(p.fill.SetTexture, p.fill, Wd.FILL_TEX)
       p.sheen = t:CreateTexture(nil, "ARTWORK", nil, 2)
       W8(p.sheen)
     end
-    p.sheen:ClearAllPoints()
-    p.sheen:SetPoint("TOPLEFT", p.fill, "TOPLEFT", 0, 0)
-    p.sheen:SetPoint("TOPRIGHT", p.fill, "TOPRIGHT", 0, 0)
-    p.sheen:SetHeight(1)
-    p.sheen:SetVertexColor(1, 0.95, 0.85, Wd.SHEEN_A)
-    if pct > 0 then p.sheen:Show() else p.sheen:Hide() end
+    -- reflet 1 px sur toute la portion remplie (du 1er au dernier segment visible)
+    local first, last
+    for i = 1, #(p.segs or {}) do
+      local s = p.segs[i]
+      if s and s.IsShown and s:IsShown() then
+        if not first then first = s end
+        last = s
+      end
+    end
+    if first and last and pct > 0 then
+      p.sheen:ClearAllPoints()
+      p.sheen:SetPoint("TOPLEFT", first, "TOPLEFT", 0, 0)
+      p.sheen:SetPoint("TOPRIGHT", last, "TOPRIGHT", 0, 0)
+      p.sheen:SetHeight(1)
+      p.sheen:SetVertexColor(1, 0.95, 0.85, Wd.SHEEN_A)
+      p.sheen:Show()
+    else
+      p.sheen:Hide()
+    end
     local e = Edge(t)
     if e then
       e:ClearAllPoints()
-      e:SetPoint("TOPLEFT", p.track, "TOPLEFT", -Wd.EDGE_OUT, Wd.EDGE_OUT)
-      e:SetPoint("BOTTOMRIGHT", p.track, "BOTTOMRIGHT", Wd.EDGE_OUT, -Wd.EDGE_OUT)
+      local edge = (Wd.last and Wd.last.edgeOut) or Wd.EDGE_OUT or 3
+      e:SetPoint("TOPLEFT", p.track, "TOPLEFT", -edge, edge)
+      e:SetPoint("BOTTOMRIGHT", p.track, "BOTTOMRIGHT", edge, -edge)
       if e.SetFrameLevel and t.GetFrameLevel then pcall(e.SetFrameLevel, e, (t:GetFrameLevel() or 1) + 1) end
       e:Show()
     end
@@ -292,6 +319,7 @@ if Wd then
       if not t._wideOn then
         if p and p.edge then p.edge:Hide() end
         if p and p.sheen then p.sheen:Hide() end
+        if p and p.hit then p.hit:Hide() end
         if t._numShade and t.data then t._numShade:Show() end
       end
     end

@@ -12,6 +12,7 @@
 --   * Aucun écran anti-clic, aucune couche de boutons, aucune opacité 0, aucun
 --     disjoncteur qui coupe la mise en page ou la souris.
 local ADDON, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local UI = ns.UI
 local H = UI._H
 local Text, FillTexture, TrySetTex, SetFontSafe = H.Text, H.FillTexture, H.TrySetTex, H.SetFontSafe
@@ -301,6 +302,13 @@ local function OnClick(self, button)
     return
   end
   UI:SelectTile(self.data)
+  -- 3.6.0 : clic gauche sur la goutte / case du total -> fenêtre Progression
+  -- (un glisser est déjà filtré par Theme.WireTileDrag)
+  if self.data.kind == "total" and not shift and ns.ProgressUI and ns.ProgressUI.OnTotalClick then
+    if ns.ProgressUI.HideMini then pcall(ns.ProgressUI.HideMini) end
+    if GameTooltip and self._tipShown and GameTooltip.Hide then GameTooltip:Hide() self._tipShown = nil end
+    ns.ProgressUI.OnTotalClick(self, button)
+  end
 end
 
 function V.NewTile(parent)
@@ -486,7 +494,7 @@ function UI:UpdateTile(t, d)
   t._capped = capped and true or false
   local lag = (not grey) and ns.Opt("rappel") and self:WeaponLagInfo(d) or nil
   if lag and not self:InDruidForm() then
-    t._warnText = "Compétence d'arme sous-montée : " .. tostring(lag.name) .. " " .. tostring(lag.cur) .. "/" .. tostring(lag.max)
+    t._warnText = Tr["Compétence d'arme sous-montée : "] .. tostring(lag.name) .. " " .. tostring(lag.cur) .. "/" .. tostring(lag.max)
     if ns.QoL and ns.QoL.MainWeaponHint then
       local okH, h = pcall(ns.QoL.MainWeaponHint)
       if okH and h then t._warnText = t._warnText .. "\n" .. h end
@@ -509,7 +517,9 @@ function V.PaintTile(t)
   if not t or not t.hlTex then return end
   local d = t.data
   local selected = d and UI:IsSelectedData(d)
-  local a = selected and UI.HL_SELECTED or (t._hover and UI.HL_HOVER) or nil
+  -- 3.6.1 : en barre (format allongé), pas d'aplat blanc sur la rangée
+  -- (goutte, « 1146 / 2460 », jauge). La case carrée est inchangée.
+  local a = (not t._wideOn) and (selected and UI.HL_SELECTED or (t._hover and UI.HL_HOVER) or nil) or nil
   local L = ns.NativeLook and ns.NativeLook.ProbeList and ns.NativeLook.ProbeList()
   local nh = L and L.highlight
   if nh and not t._hlNative then
@@ -536,8 +546,6 @@ function V.PaintTile(t)
 end
 function UI:PaintTileBg(t) V.PaintTile(t) end
 function UI:PaintHover(t) V.PaintTile(t) end
-function UI:EnsureTileHighlight(t) return t and t.hlTex end
-
 ------------------------------------------------------------------------------
 -- En-têtes repliables = un Button chacun
 ------------------------------------------------------------------------------
@@ -752,13 +760,42 @@ end
 
 function UI:LayoutGrid(wrap, snap)
   if not wrap or not snap then return end
+  -- 3.5.21 / 3.6.3 : SkillFrame protégé → valeurs seulement, mise en page
+  -- après le combat. Le panneau compact (W.frame) n'est pas protégé : on
+  -- relance la grille tout de suite pour recaler la hauteur du fond.
+  if ns.InCombat and ns.InCombat() and wrap._layout and wrap.tiles and #wrap.tiles > 0 then
+    local prot = (wrap.IsProtected and wrap:IsProtected())
+      or (wrap.child and wrap.child.IsProtected and wrap.child:IsProtected())
+    if prot then
+      if self.RefreshVisibleTiles then self:RefreshVisibleTiles(wrap, snap) end
+      if ns.AfterCombat then
+        ns.AfterCombat("layout-grid", function()
+          if wrap._snap then self:LayoutGrid(wrap, wrap._snap) end
+          if ns.Layout and ns.Layout.Center then pcall(ns.Layout.Center) end
+        end)
+      end
+      return
+    end
+  end
   wrap._snap = snap
   local tiles = snap.tiles or {}
   local child = wrap.child
   child:ClearAllPoints()
+  local compact = ns.Panel and ns.Panel.IsExpanded and not ns.Panel.IsExpanded()
+  local tileHGap = TILE_HGAP
+  if compact then
+    if ns.Layout and ns.Layout.SyncMetrics then pcall(ns.Layout.SyncMetrics) end
+    tileHGap = (ns.Icons and ns.Icons.HGAP) or TILE_HGAP
+  end
   local ins = (wrap == self.embed) and self:ListInsets() or nil
+  -- Le cadre compact a déjà la même marge des 4 côtés : plus d'inset interne
+  -- (20 px à droite pour une barre de défilement cachée, 6+2 en haut/bas)
+  -- qui masquait la dernière rangée (case total) une fois le cadre calé.
+  if compact then
+    ins = { left = 0, right = 0, top = 0, source = "cadre exact" }
+  end
   local pad = 8
-  local footSpace = UI.NO_FOOT and 2 or (pad + 26 + 4)   -- 3.3.4 : plus de ligne du bas (le total est une case)
+  local footSpace = compact and 0 or (UI.NO_FOOT and 2 or (pad + 26 + 4))
   if ins then
     child:SetPoint("TOPLEFT", wrap, "TOPLEFT", ins.left, -ins.top)
     child:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -ins.right, footSpace)
@@ -792,7 +829,7 @@ function UI:LayoutGrid(wrap, snap)
     return wrap.tiles[ti]
   end
   local y, rowsUsed, cells = 0, 0, {}
-  local hx = math.floor(TILE_HGAP / 2)
+  local hx = math.floor(tileHGap / 2)
   local hy = math.max(0, math.floor((step - th) / 2))
   local limit = (availH or 1e9) + 0.5
   -- un élément n'est montré que s'il tient ENTIER dans la fenêtre visible
@@ -804,7 +841,7 @@ function UI:LayoutGrid(wrap, snap)
     h:ClearAllPoints()
     h:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -math.floor(y - off))
     local cw = select(1, SizeOf(child))
-    h:SetSize((cw and cw > 40) and cw or (cols * tw + (cols - 1) * TILE_HGAP), UI.HEADER_H)
+    h:SetSize((cw and cw > 40) and cw or (cols * tw + (cols - 1) * tileHGap), UI.HEADER_H)
     h.text:SetText(g.title)
     h.groupKey = g.title
     self:SkinGroupHeader(h)
@@ -815,14 +852,33 @@ function UI:LayoutGrid(wrap, snap)
     y = y + UI.HEADER_H + UI.HEADER_GAP
     for k = 1, (collapsed and 0 or #g.tiles) do
       local col, row = (k - 1) % cols, math.floor((k - 1) / cols)
-      local cyAbs = math.floor(y + row * step + (step - th) / 2)
-      if inView(cyAbs, th) then
+      -- En compact, le cadre est calé sur rows×case + (rows-1)×écart : on
+      -- n'ajoute pas (step-th)/2, qui poussait la dernière rangée hors vue.
+      local compact = ns.Panel and ns.Panel.IsExpanded and not ns.Panel.IsExpanded()
+      local data = g.tiles[k]
+      local placeH = th
+      local Wd, Lyt = ns.Wide, ns.Layout
+      if compact and data and data.kind == "total" and Wd and Wd.ShouldWiden then
+        local nTot = (Lyt and Lyt.TileCount and select(1, Lyt.TileCount())) or 0
+        if Wd.ShouldWiden(cols, nTot) then
+          local tileH = (ns.Icons and ns.Icons.TILE) or th
+          placeH = (Wd.RowHeight and Wd.RowHeight(tileH)) or math.max(Wd.MIN_H or 14, math.floor(tileH * (Wd.SLIM or 0.45) + 0.5))
+        end
+      end
+      local cyAbs = math.floor(y + row * step + (compact and 0 or (step - th) / 2))
+      -- Ne pas masquer le total (barre fine) : inView avec une hauteur de case
+      -- pleine le faisait tomber hors cadre.
+      if (compact and data and data.kind == "total") or inView(cyAbs, placeH) then
         local t = nextTile()
         local cy = cyAbs - math.floor(off)
         t:ClearAllPoints()
-        t:SetPoint("TOPLEFT", child, "TOPLEFT", col * (tw + TILE_HGAP), -cy)
-        cells[#cells + 1] = { x = col * (tw + TILE_HGAP), y = cy, w = tw, h = th }
-        self:ResizeTile(t, tw, th)
+        local gx = col * (tw + tileHGap)
+        if compact and Lyt and Lyt.GridOriginX then
+          gx = gx + (Lyt.GridOriginX(cols) or 0)
+        end
+        t:SetPoint("TOPLEFT", child, "TOPLEFT", gx, -cy)
+        cells[#cells + 1] = { x = gx, y = cy, w = tw, h = placeH }
+        self:ResizeTile(t, tw, placeH)
         self:UpdateTile(t, g.tiles[k])
         t._cell = { x = cells[#cells].x - hx, y = cy - hy, w = tw + 2 * hx, h = th + 2 * hy }
         if t.SetHitRectInsets then t:SetHitRectInsets(-hx, -hx, -hy, -hy) end
@@ -858,6 +914,10 @@ function UI:LayoutGrid(wrap, snap)
   if wrap == self.embed then SafeStep("défilement", self.UpdateGridScrollBar, self, wrap) end
   self:ResolveSelected()
   for i = 1, #wrap.tiles do V.PaintTile(wrap.tiles[i]) end
+  if ns.Window and ns.Window.IsShown and ns.Window.IsShown()
+    and ns.Layout and ns.Layout.Center then
+    pcall(ns.Layout.Center)
+  end
 end
 
 -- Niveaux simples, posés une fois par mise en page : encadré = SkillFrame +
@@ -1874,7 +1934,7 @@ function UI:SetViewToggleText()
   local b = self.viewToggle
   if not b then return end
   local osrs = self:IsOsrsView()
-  b.tooltipText = osrs and "Vue classique" or "Vue OSRS"
+  b.tooltipText = osrs and Tr["Vue classique"] or Tr["Vue OSRS"]
   b.label = b.tooltipText
   if b.SetText then pcall(b.SetText, b, "") end
   if b.fs then b.fs:SetText("") b.fs:Hide() end
@@ -1977,13 +2037,14 @@ function UI:DetailDescriptionFor(d, live)
   local t = baseDescFor(self, d, live)
   if (t and t ~= "") or not d then return t or "" end
   local NL = ns.NativeLook
-  local cached = NL and NL.Cached and NL.Cached(d.skillName or d.name)
-  if cached and cached.desc and #cached.desc > 0 then
+  -- 3.6.2 : retrouvé aussi par identifiant ; seulement dans la langue du client
+  local nd = NL and NL.NativeDesc and NL.NativeDesc(d)
+  if nd then
     self.descSource = "détail natif lu"
-    return table.concat(cached.desc, "\n")
+    return nd
   end
   local fb = V.DESC_FR[d.id or ""] or V.DESC_KIND_FR[d.kind or ""]
-  if fb then self.descSource = "texte de l'addon" return fb end
+  if fb then self.descSource = "texte de l'addon" return Tr[fb] end
   return ""
 end
 

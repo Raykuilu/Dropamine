@@ -3,6 +3,7 @@
 -- pendant un combo, un OnUpdate seulement pendant la barre du prochain point
 -- (retiré hors de ce cas, et en combat). Pas de fichier audio : kits du jeu.
 local _, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local D = {}
 ns.Dopamine = D
 D.WINDOW = 60
@@ -56,11 +57,12 @@ D.OPTIONS = {
 }
 if ns.Options then
   local H = ns.Options.EXTRA_HOME
-  H.combo, H.nextBar = "display", "display"
+  H.combo, H.nextBar = "notif", "display"
   H.collection, H.daily = "prof", "prof"
-  H.maxFx, H.records, H.sounds = "notif", "notif", "notif"
-  H.soundSkill, H.soundPalier, H.soundMax = "notif", "notif", "notif"
-  H.soundDaily, H.soundRecord = "notif", "notif"
+  H.maxFx, H.records = "notif", "notif"
+  H.sounds = "sounds"
+  H.soundSkill, H.soundPalier, H.soundMax = "sounds", "sounds", "sounds"
+  H.soundDaily, H.soundRecord = "sounds", "sounds"
   for _, it in ipairs(D.OPTIONS) do ns.Options.EXTRA[#ns.Options.EXTRA + 1] = it end
 end
 
@@ -76,7 +78,7 @@ local function toggle(key, label, rest)
   if key == "soundSkill" or key == "soundPalier" or key == "soundMax" or key == "soundDaily" or key == "soundRecord" then cur = ns.OptOff(key) end
   local v = ns.ParseOnOff(rest, cur)
   if ns.Options then ns.Options.Set(key, v) else ns.SetOpt(key, v) end
-  if ns.Print then ns.Print(label .. (v and " : activé." or " : désactivé.")) end
+  if ns.Print then ns.Print(Tr[label] .. (v and Tr[" : activé."] or Tr[" : désactivé."])) end
   return v
 end
 ns.SlashExt = ns.SlashExt or {}
@@ -89,10 +91,10 @@ ns.SlashExt.son = function(rest)
   which = (which or ""):lower()
   local key = SOUND_KEY[which]
   if not key then
-    if ns.Print then ns.Print("usage : /drop son point|palier|max|defi|record on|off") end
+    if ns.Print then ns.Print(Tr["usage : /drop son point|palier|max|defi|record on|off"]) end
     return
   end
-  toggle(key, "son (" .. which .. ")", arg)
+  toggle(key, Tr["son ("] .. which .. ")", arg)
 end
 ns.HelpExt = ns.HelpExt or {}
 ns.HelpExt[#ns.HelpExt + 1] = "/drop combo|defi|records|barre|collection|sons on|off · /drop son point|palier|max|defi|record on|off"
@@ -112,8 +114,8 @@ D.CLASSIC = {
   soundDaily = "igQuestListComplete",
   soundRecord = "LevelUp",
 }
-function D.Play(key)
-  if not ns.SoundOk(key) then return nil end
+function D.Play(key, force)
+  if not force and not ns.SoundOk(key) then return nil end
   if type(_G.PlaySound) ~= "function" then return nil end
   local S = _G.SOUNDKIT
   if type(S) == "table" then
@@ -224,7 +226,7 @@ function D.Toast(title, sub, icon, opts)
 end
 function D.Celebrate(info)
   if not ns.Opt("maxFx") then return nil end
-  local f = D.Toast((info.name or "Compétence") .. " au maximum !", tostring(info.to) .. " / " .. tostring(info.max), info.icon,
+  local f = D.Toast((info.name or Tr["Compétence"]) .. Tr[" au maximum !"], tostring(info.to) .. " / " .. tostring(info.max), info.icon,
     { kind = "max", variant = "gold", big = true, skillId = info.id })
   local ui = ns.UI
   if f and ui and ui.AttachFlareFx then pcall(ui.AttachFlareFx, ui, f, true) end
@@ -248,17 +250,28 @@ function D.AddPoints(delta, now)
   if r.hourKey ~= hour then r.hourKey, r.hourPts = hour, 0 end
   r.hourPts = (r.hourPts or 0) + delta
   local toast
-  if r.bestSession == nil then r.bestSession = r.session
-  elseif r.session > r.bestSession then
+  -- 3.5.4 : plus d'enchaînement « Nouveau record » à chaque point. Le record
+  -- de session ne sonne qu'en franchissant des paliers croissants (25, 50,
+  -- 100, 200…) au-delà du meilleur, et jamais sous 25 points (premiers niveaux).
+  local MIN = 25
+  if r.bestSession == nil then r.bestSession = r.session end
+  if r.session > r.bestSession then
     r.bestSession = r.session
-    toast = D.Toast("Nouveau record !", r.session .. " points cette session")
-    D.Play("soundRecord")
+    local step = r.recStep or MIN
+    if r.session >= MIN and r.session >= step then
+      while step <= r.session do step = step * 2 end
+      r.recStep = step
+      toast = D.Toast(Tr["Nouveau record !"], r.session .. Tr[" points cette session"])
+      D.Play("soundRecord")
+    end
   end
-  if r.bestHour == nil then r.bestHour = r.hourPts
-  elseif r.hourPts > r.bestHour then
+  -- record horaire : une seule annonce par heure, et seulement au-delà de 25 points
+  if r.bestHour == nil then r.bestHour = r.hourPts end
+  if r.hourPts > r.bestHour then
     r.bestHour = r.hourPts
-    if not toast then
-      D.Toast("Nouveau record !", r.hourPts .. " points cette heure")
+    if not toast and r.hourPts >= MIN and r.hourRecKey ~= hour then
+      r.hourRecKey = hour
+      D.Toast(Tr["Nouveau record !"], r.hourPts .. Tr[" points cette heure"])
       D.Play("soundRecord")
     end
   end
@@ -302,10 +315,10 @@ function D.DailyLine(id, name, cur)
   if not g then return nil end
   if id ~= g.id and name ~= g.name then return nil end
   local need = (g.goal or 0) - (g.start or 0)
-  if g.done then return "Défi du jour réussi : +" .. need .. " en " .. tostring(g.name) end
+  if g.done then return Tr["Défi du jour réussi : +"] .. need .. Tr[" en "] .. tostring(g.name) end
   local prog = math.max(0, (tonumber(cur) or g.start or 0) - (g.start or 0))
   if prog > need then prog = need end
-  return string.format("Défi du jour : +%d en %s (%d/%d)", need, tostring(g.name), prog, need)
+  return string.format(Tr["Défi du jour : +%d en %s (%d/%d)"], need, tostring(g.name), prog, need)
 end
 function D.DailyProgress(info)
   local g = D.C().daily
@@ -313,7 +326,7 @@ function D.DailyProgress(info)
   if info.id ~= g.id and info.name ~= g.name then return false end
   if (info.to or 0) < (g.goal or 0) then return false end
   g.done = true
-  D.Toast("Défi du jour réussi !", "+" .. ((g.goal or 0) - (g.start or 0)) .. " en " .. tostring(g.name), info.icon,
+  D.Toast(Tr["Défi du jour réussi !"], "+" .. ((g.goal or 0) - (g.start or 0)) .. Tr[" en "] .. tostring(g.name), info.icon,
     { kind = "daily", variant = "gold" })
   D.Play("soundDaily")
   return true
@@ -354,26 +367,53 @@ function D.BarFraction(now, lastAt, spu)
   if f > 1 then f = 1 end
   return f
 end
-function D.HideBars()
+-- 3.6.0 : la barre ne montre jamais une progression périmée.
+--  * (a) chaque nouveau point remet la barre à 0 % TOUT DE SUITE (même si la
+--    pompe tournait déjà : avant, elle gardait l'ancien 100 % jusqu'à l'image
+--    suivante, et rien si la pompe était arrêtée) ;
+--  * (b) en combat : pompe arrêtée ET barre cachée ; à la sortie, soit un point
+--    reçu pendant le combat la réarme à 0 %, soit elle reste cachée si le
+--    rythme est dépassé (plus de 100 % figé) ;
+--  * au-delà de 1,5 × le rythme mesuré sans nouveau point, la barre se cache
+--    et la pompe s'arrête (le rythme ne représente plus rien) ;
+--  * pompe limitée à ~10 images/s, case mémorisée (plus de parcours de toutes
+--    les cases à chaque image).
+D.BAR_HZ = 0.1
+D.BAR_STALE = 1.5
+function D.HideBars(except)
   local tiles = ns.UI and ns.UI.embed and ns.UI.embed.tiles
   if not tiles then return end
-  for _, t in ipairs(tiles) do if t._nextBar and t._nextBar.Hide then t._nextBar:Hide() end end
+  for _, t in ipairs(tiles) do
+    if t ~= except and t._nextBar and t._nextBar.Hide then t._nextBar:Hide() end
+  end
 end
 function D.StopBar()
   if D._pump and D._pump.SetScript then pcall(D._pump.SetScript, D._pump, "OnUpdate", nil) end
   D._pumping = false
 end
+local function TileMatches(t, b)
+  local d = t and t.data
+  return d and b and (d.id == b.id or d.name == b.name or d.skillName == b.name) and true or false
+end
+function D.BarTile()
+  local b = D.bar
+  if not b or not ns.UI or not ns.UI.embed then return nil end
+  local c = D._barTile
+  if c and TileMatches(c, b) then return c end
+  D._barTile = nil
+  for _, t in ipairs(ns.UI.embed.tiles or {}) do
+    if TileMatches(t, b) then D._barTile = t return t end
+  end
+  return nil
+end
 function D.PaintBar(frac)
   local b = D.bar
   if not b or not ns.UI or not ns.UI.embed then return nil end
-  local tile
-  for _, t in ipairs(ns.UI.embed.tiles or {}) do
-    local d = t.data
-    if d and (d.id == b.id or d.name == b.name or d.skillName == b.name) then tile = t break end
-  end
-  D.HideBars()
+  local tile = D.BarTile()
+  D.HideBars(tile)
   if not tile or type(tile.CreateTexture) ~= "function" and type(_G.CreateFrame) ~= "function" then return nil end
   if not tile._nextBar and type(_G.CreateFrame) == "function" then
+    if InCombat() then return nil end   -- aucune création de cadre en combat
     local bar = CreateFrame("StatusBar", nil, tile)
     bar:SetHeight(2)
     bar:SetPoint("TOPLEFT", tile, "BOTTOMLEFT", 2, -1)
@@ -392,7 +432,37 @@ function D.PaintBar(frac)
   if not bar then return nil end
   if bar.SetValue then bar:SetValue(frac or 0) end
   if bar.Show then bar:Show() end
+  D.barValue = frac or 0
   return bar
+end
+-- Une image de la pompe (aussi appelée par les tests).
+function D.PumpStep(fr, elapsed)
+  if InCombat() or not ns.Opt("nextBar") or not D.bar then
+    D.StopBar()
+    D.HideBars()
+    return false
+  end
+  D._acc = (D._acc or 0) + (elapsed or D.BAR_HZ)
+  if D._acc < D.BAR_HZ then return true end
+  D._acc = 0
+  local spu = ns.Rate and ns.Rate.SecondsPerUnit and ns.Rate.SecondsPerUnit(D.bar.key)
+  if not spu or spu <= 0 then
+    D.StopBar()
+    D.HideBars()
+    return false
+  end
+  local raw = (Now() - (D.bar.at or 0)) / spu
+  if raw > D.BAR_STALE then
+    -- rythme dépassé : pas de 100 % figé, la barre attend le prochain point
+    D.StopBar()
+    D.HideBars()
+    D.bar.stale = true
+    return false
+  end
+  local e = ns.UI and ns.UI.embed
+  if e and e.IsVisible and not e:IsVisible() then return true end   -- panneau caché : rien à peindre
+  D.PaintBar(D.BarFraction(Now(), D.bar.at, spu))
+  return true
 end
 function D.StartBar()
   if D._pumping then return end
@@ -402,33 +472,37 @@ function D.StartBar()
     local ok, f = pcall(_G.CreateFrame, "Frame")
     if not ok then return end
     D._pump = f
+    D._pumpFn = function(fr, el) D.PumpStep(fr, el) end   -- une seule fermeture
   end
   D._pumping = true
-  D._pump:SetScript("OnUpdate", function(fr)
-    if InCombat() or not ns.Opt("nextBar") or not D.bar then
-      fr:SetScript("OnUpdate", nil)
-      D._pumping = false
-      D.HideBars()
-      return
-    end
-    local spu = ns.Rate and ns.Rate.SecondsPerUnit and ns.Rate.SecondsPerUnit(D.bar.key)
-    if not spu then
-      fr:SetScript("OnUpdate", nil)
-      D._pumping = false
-      D.HideBars()
-      return
-    end
-    D.PaintBar(D.BarFraction(Now(), D.bar.at, spu))
-  end)
+  D._acc = D.BAR_HZ   -- première image peinte aussitôt
+  D._pump:SetScript("OnUpdate", D._pumpFn)
 end
 function D.ArmBar(info)
   if not ns.Opt("nextBar") then D.bar = nil D.StopBar() D.HideBars() return nil end
   local key = "skill:" .. tostring(info.id or info.fold or info.name)
   local spu = ns.Rate and ns.Rate.SecondsPerUnit and ns.Rate.SecondsPerUnit(key)
   D.bar = { id = info.id, name = info.name, at = Now(), key = key, spu = spu }
+  D._barTile = nil
   if not spu then D.StopBar() D.HideBars() return nil end
+  if InCombat() then D.StopBar() D.HideBars() return 0 end
+  -- (a) remise à 0 % immédiate, que la pompe tourne déjà ou non
+  D.PaintBar(0)
   D.StartBar()
   return D.BarFraction(Now(), D.bar.at, spu)
+end
+-- (b) sortie de combat : réarmée proprement ou cachée, jamais un 100 % périmé
+function D.ResumeBar()
+  if not (D.bar and D.bar.spu and ns.Opt("nextBar")) then D.HideBars() return false end
+  local spu = ns.Rate and ns.Rate.SecondsPerUnit and ns.Rate.SecondsPerUnit(D.bar.key)
+  local raw = spu and spu > 0 and (Now() - (D.bar.at or 0)) / spu or nil
+  if not raw or raw >= 1 then
+    D.HideBars()
+    return false
+  end
+  D.PaintBar(D.BarFraction(Now(), D.bar.at, spu))
+  D.StartBar()
+  return true
 end
 
 function D.OnRise(info)
@@ -471,6 +545,7 @@ end
 
 local SKIN_SPELLS = { [8613] = true, [8617] = true, [8618] = true, [10768] = true }
 local function IsSkinSpell(spellID)
+  if ns.IsSecret and ns.IsSecret(spellID) then return false end
   local id = tonumber(spellID)
   if id and SKIN_SPELLS[id] then return true end
   local A = ns.Activity
@@ -480,18 +555,21 @@ local function IsSkinSpell(spellID)
   return false
 end
 local function Str(v)
-  if type(v) ~= "string" or v == "" or (ns.IsSecret and ns.IsSecret(v)) then return nil end
+  if type(v) ~= "string" or (ns.IsSecret and ns.IsSecret(v)) or v == "" then return nil end
   return v
 end
 
 if ns.On then
   ns.On("PLAYER_REGEN_ENABLED", function()
+    local before = D.bar
     D.FlushQueue()
-    if D.bar and D.bar.spu and ns.Opt("nextBar") then D.StartBar() end
+    -- un point reçu en combat vient d'être réarmé à 0 % par FlushQueue ;
+    -- sinon : reprise seulement si le rythme n'est pas dépassé
+    if D.bar == before then D.ResumeBar() end
   end)
-  ns.On("PLAYER_REGEN_DISABLED", function() D.StopBar() end)
+  ns.On("PLAYER_REGEN_DISABLED", function() D.StopBar() D.HideBars() end)
   ns.On("PLAYER_ENTERING_WORLD", function(_, isLogin)
-    if isLogin == true or ns.sessionFresh then D.C().records.session = 0 end
+    if isLogin == true or ns.sessionFresh then D.C().records.session = 0 D.C().records.recStep = nil end
     D.EnsureDaily(D.SkillList())
   end)
   ns.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, _, spellID)
@@ -528,13 +606,13 @@ if ns.Compact and ns.Compact.TooltipModel then
     end
     add(D.DailyLine(d.id, d.name or d.skillName, tonumber(d.current)))
     if ns.Opt("collection") and (d.id == "skinning" or d.id == "fishing") then
-      add(tostring(D.DiscoverCount(d.id)) .. " découverts")
+      add(tostring(D.DiscoverCount(d.id)) .. Tr[" découverts"])
     end
     if ns.Opt("combo") and D.bar and (D.bar.id == d.id or D.bar.name == d.name) then
       local n = D.LiveCombo()
       if n >= 2 then
         local best = D.C().bestCombo
-        add("Combo x" .. n .. (best and (" · record x" .. best) or ""))
+        add(Tr["Combo x"] .. n .. (best and (Tr[" · record x"] .. best) or ""))
       end
     end
     return m

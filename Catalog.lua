@@ -8,7 +8,25 @@ if type(ns) ~= "table" then
   ADDON = ADDON or "Dropamine"
 end
 
+-- 3.5.3 : résultat mémorisé par chaîne (≈ 60 gsub par appel ; appelé des
+-- milliers de fois par infobulle). Cache vidé au-delà de 4000 entrées.
+local foldCache, foldN = {}, 0
 function ns.Fold(s)
+  if ns.IsSecret and ns.IsSecret(s) then return "" end  -- 3.5.2 : texte protégé par le client
+  local key = (type(s) == "string") and s or nil
+  if key then
+    local hit = foldCache[key]
+    if hit then return hit end
+  end
+  s = ns.FoldRaw(s)
+  if key then
+    if foldN >= 4000 then foldCache, foldN = {}, 0 end
+    foldCache[key] = s
+    foldN = foldN + 1
+  end
+  return s
+end
+function ns.FoldRaw(s)
   s = tostring(s or "")
   s = s:gsub("É", "e"):gsub("È", "e"):gsub("Ê", "e"):gsub("Ë", "e")
   s = s:gsub("é", "e"):gsub("è", "e"):gsub("ê", "e"):gsub("ë", "e")
@@ -31,7 +49,7 @@ function ns.Fold(s)
   return s
 end
 
-ns.FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
+ns.FALLBACK_ICON = "Interface\\AddOns\\Dropamine\\Media\\Fallback-Icon"
 
 -- kind : "level" | "stat" | "profession" | "secondary" | "melee" | "ranged" | "defense" | "class"
 -- countsInTotal (hors armes) : true/false. Les armes passent par la règle « 2 meilleures ».
@@ -40,7 +58,7 @@ local CATALOG = {
   -- Général
   { id = "level", name = "Niveau", aliases = { "level", "character level" }, section = "Général",
     kind = "level", capKind = "level", countsInTotal = true,
-    icon = "Interface\\Icons\\INV_Misc_Book_11" },
+    icon = "Interface\\AddOns\\Dropamine\\Media\\XP-Icon" },
 
   -- Caractéristiques (affichées, pas dans le total fictif : aucun plafond documenté)
   { id = "stat1", name = "Force", aliases = { "strength" }, section = "Caractéristiques",
@@ -133,9 +151,9 @@ local CATALOG = {
   { id = "daggers", name = "Dagues", aliases = { "daggers" }, section = "Armes",
     kind = "melee", capKind = "weapon", countsInTotal = false,
     icon = "Interface\\Icons\\INV_Weapon_ShortBlade_05" },
-  { id = "unarmed", name = "Mains nues", aliases = { "unarmed" }, section = "Armes",
+  { id = "unarmed", name = "Mains nues", aliases = { "unarmed", "unarmed combat", "combat a mains nues", "combat à mains nues" }, section = "Armes",
     kind = "melee", capKind = "weapon", countsInTotal = false,
-    icon = "Interface\\Icons\\Ability_MeleeDamage" },
+    icon = "Interface\\Icons\\INV_Gauntlets_04" },
   -- Compétence vue en jeu sur Forever (druide, onglet Comp.) : sous Compétences d'armes.
   { id = "feral", name = "Combat farouche", aliases = { "feral combat" }, section = "Armes",
     kind = "melee", capKind = "weapon", countsInTotal = false,
@@ -205,6 +223,53 @@ ns.LANGUAGE_HEADERS = LANGUAGE_HEADERS
 ns.ARMOR_HEADERS = ARMOR_HEADERS
 ns.ARMOR_NAMES = ARMOR_NAMES
 
+-- 3.5.18 : noms exacts des compétences d'armes renvoyés par le client Forever
+-- (singulier « Masse », « Masses à une main », variantes anglaises, apostrophes
+-- ’ / ' et accents gérés par ns.Fold). Correspondance EXACTE seulement (pas
+-- dans Style.SkillIdForText : « arc » ou « masse » apparaîtraient dans d'autres
+-- textes). Lignes de compétence : identifiants standard.
+ns.WEAPON_EXACT = {
+  axes = { line = 44, "hache", "haches a une main", "hache a une main", "one handed axes", "one-handed axes", "axe" },
+  axes2h = { line = 172, "hache a deux mains", "haches 2m", "two handed axe", "two-handed axe" },
+  maces = { line = 54, "masse", "masses a une main", "masse a une main", "one handed maces", "one-handed maces", "mace" },
+  maces2h = { line = 160, "masse a deux mains", "two handed mace", "two-handed mace" },
+  swords = { line = 43, "epee", "epees a une main", "epee a une main", "one handed swords", "one-handed swords", "sword" },
+  swords2h = { line = 55, "epee a deux mains", "two handed sword", "two-handed sword" },
+  polearms = { line = 229, "arme d hast", "hast", "polearm" },
+  staves = { line = 136, "baton", "batons de combat" },
+  fist = { line = 473, "arme de pugilat", "pugilat", "fist weapon" },
+  daggers = { line = 173, "dague", "dagger" },
+  unarmed = { line = 162, "main nue", "mains nues", "combat a mains nues" },
+  feral = { "combat farouche", "farouche" },
+  bows = { line = 45, "arc", "bow" },
+  guns = { line = 46, "arme a feu", "fusil", "fusils", "gun" },
+  crossbows = { line = 226, "arbalete", "crossbow" },
+  thrown = { line = 176, "arme de jet", "jet", "throwing", "throwing weapons" },
+  wands = { line = 228, "baguette", "wand" },
+  defense = { line = 95, "defense" },
+}
+-- compétences d'arme hors catalogue (aucune case) : icône seulement
+ns.EXTRA_SKILL_ICONS = {
+  ["ambidextrie"] = "Interface\\Icons\\Ability_DualWield", ["dual wield"] = "Interface\\Icons\\Ability_DualWield",
+}
+ns.EXTRA_SKILL_LINES = { [118] = "Interface\\Icons\\Ability_DualWield" }
+-- icône générique d'arme (jamais de case vide ni de point d'interrogation)
+ns.WEAPON_FALLBACK_ICON = "Interface\\Icons\\Ability_Warrior_WeaponMastery"
+ns.EXACT_ONLY = {}
+ns.CATALOG_BY_LINE = {}
+for i = 1, #CATALOG do
+  local e = CATALOG[i]
+  local x = ns.WEAPON_EXACT[e.id]
+  if x then
+    e.aliases = e.aliases or {}
+    for _, a in ipairs(x) do
+      e.aliases[#e.aliases + 1] = a
+      ns.EXACT_ONLY[ns.FoldRaw(a)] = true
+    end
+    if x.line then e.skillLine = x.line ns.CATALOG_BY_LINE[x.line] = e end
+  end
+end
+
 local aliasMap = {}
 local idMap = {}
 for i = 1, #CATALOG do
@@ -234,8 +299,18 @@ function ns.IsLanguageOrArmorJunk(name, header, maxRank)
   return false
 end
 
-function ns.IsWeaponKind(kind)
-  return kind == "melee" or kind == "ranged"
+-- Armes, défense, farouche : chance dégressive jusqu'au plafond (capKind weapon).
+function ns.IsWeaponSkill(id, kind, name)
+  if kind == "melee" or kind == "ranged" or kind == "defense" or kind == "feral" then
+    return true
+  end
+  local e
+  if id and ns.CatalogById then e = ns.CatalogById(id) end
+  if not e and name and ns.LookupCatalog then e = ns.LookupCatalog(name) end
+  if e and (e.capKind == "weapon" or e.kind == "melee" or e.kind == "ranged" or e.kind == "defense") then
+    return true
+  end
+  return false
 end
 
 -- En-têtes natifs → section d'accueil pour une compétence hors catalogue.
@@ -251,10 +326,6 @@ local HEADER_TO_SECTION = {
   ["defense"] = "Défense",
 }
 
-function ns.SectionForHeader(header)
-  return HEADER_TO_SECTION[ns.Fold(header or "")] or "Autres"
-end
-
 -- Deviner mêlée / distance pour une arme hors catalogue.
 local RANGED_HINTS = {
   ["arcs"] = true, ["bows"] = true, ["bow"] = true,
@@ -263,13 +334,3 @@ local RANGED_HINTS = {
   ["armes de jet"] = true, ["thrown"] = true, ["throwing"] = true,
   ["baguettes"] = true, ["wands"] = true, ["wand"] = true,
 }
-
-function ns.GuessWeaponKind(name, header)
-  local n = ns.Fold(name or "")
-  if RANGED_HINTS[n] then return "ranged" end
-  local h = ns.Fold(header or "")
-  if h == "competences d armes" or h == "weapon skills" then
-    return "melee" -- par défaut, une arme inconnue est traitée comme mêlée
-  end
-  return nil
-end

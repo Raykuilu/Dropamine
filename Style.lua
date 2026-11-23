@@ -163,13 +163,57 @@ local function TextOf(fs)
 end
 
 -- Associe un texte (« Cuisine 78/150 », « Travail du cuir ») à un id du catalogue.
+-- 3.6.0 : teinte saisonnière discrète (option « seasonal », coupée par défaut).
+-- Neutre côté faction : hiver givré, printemps vert tendre, été or pâle,
+-- automne ambre. Rien n'est peint ici : la Phase 2 (fenêtre Progression) et
+-- les toasts dorés lisent Style.SeasonalTint() ; nil = pas de teinte.
+Style.SEASONS = {
+  winter = { 0.70, 0.84, 1.00, 0.18 },
+  spring = { 0.62, 0.90, 0.58, 0.16 },
+  summer = { 1.00, 0.88, 0.52, 0.16 },
+  autumn = { 0.95, 0.62, 0.30, 0.18 },
+}
+function Style.SeasonFor(month)
+  month = tonumber(month)
+  if not month then
+    local fn = (type(_G.date) == "function" and _G.date) or (type(os) == "table" and os.date) or nil
+    local ok, t = false, nil
+    if fn then ok, t = pcall(fn, "*t") end
+    month = ok and type(t) == "table" and tonumber(t.month) or 1
+  end
+  if month == 12 or month <= 2 then return "winter" end
+  if month <= 5 then return "spring" end
+  if month <= 8 then return "summer" end
+  return "autumn"
+end
+function Style.SeasonalTint(month)
+  do return nil end   -- 3.8.1 : option retirée (inutile) ; les toasts gardent leur or standard
+  local key = Style.SeasonFor(month)
+  return Style.SEASONS[key], key
+end
+
+-- 3.7.1 : résultat mémorisé par texte (catalogue statique) ; l'ancien calcul
+-- créait une table par entrée du catalogue à chaque barre de nom / infobulle.
+local skillTextCache, skillTextN, NOHIT = {}, 0, {}
 function Style.SkillIdForText(text)
   if type(text) ~= "string" then return nil end
+  local hit = skillTextCache[text]
+  if hit ~= nil then if hit == NOHIT then return nil end return hit end
+  local r = Style.SkillIdForTextRaw(text)
+  if skillTextN >= 2000 then skillTextCache, skillTextN = {}, 0 end
+  skillTextCache[text] = (r == nil) and NOHIT or r
+  skillTextN = skillTextN + 1
+  return r
+end
+function Style.SkillIdForTextRaw(text)
   local f = Fold(text)
   local best, bestLen
   for _, e in ipairs(ns.CATALOG or {}) do
     local names = { e.name }
-    for _, a in ipairs(e.aliases or {}) do names[#names + 1] = a end
+    for _, a in ipairs(e.aliases or {}) do
+      -- 3.5.18 : noms d'armes courts (« arc », « masse »…) en correspondance exacte seulement
+      if not (ns.EXACT_ONLY and ns.EXACT_ONLY[Fold(a)]) then names[#names + 1] = a end
+    end
     for _, nm in ipairs(names) do
       local fn = Fold(nm)
       if fn ~= "" and f:find(fn, 1, true) and (not bestLen or #fn > bestLen) then best, bestLen = e.id, #fn end
@@ -355,19 +399,6 @@ function Style.BarFor(skillId)
   return nil
 end
 
-local function SetTex(t, info)
-  if not t or not info then return false end
-  if info.atlas and t.SetAtlas then
-    local ok = pcall(t.SetAtlas, t, info.tex)
-    if ok then return true end
-  end
-  if t.SetTexture then
-    local ok = pcall(t.SetTexture, t, info.tex)
-    return ok
-  end
-  return false
-end
-
 local function Gradient(t, top, bottom)
   if not t then return end
   pcall(t.SetTexture, t, "Interface\\Buttons\\WHITE8X8")
@@ -415,6 +446,7 @@ end
 -- Texture en 9 tranches avec SetTexCoord (API 16001, aucun NineSlice requis).
 -- tex : chemin ; tw, th : taille de la texture ; c : taille des coins (px texture) ;
 -- size : taille affichée des coins ; out : débord hors du cadre (lueur).
+Style.NINE_ORDER = { "TL", "TR", "BL", "BR", "T", "B", "L", "R" }
 function Style.Nine(frame, key, tex, tw, th, c, size, layer, sub, out)
   if type(frame) ~= "table" or not frame.CreateTexture then return nil end
   frame._flare = frame._flare or {}
@@ -427,7 +459,10 @@ function Style.Nine(frame, key, tex, tw, th, c, size, layer, sub, out)
     L = { 0, u, v, 1 - v }, M = nil, R = { 1 - u, 1, v, 1 - v },
     BL = { 0, u, 1 - v, 1 }, B = { u, 1 - u, 1 - v, 1 }, BR = { 1 - u, 1, 1 - v, 1 },
   }
-  for name, tc in pairs(parts) do
+  -- 3.5.3 : coins d'abord, puis bords (les bords s'ancrent aux coins ; avec
+  -- pairs(), un bord créé avant son coin s'ancrait au parent → lueur partielle)
+  for _, name in ipairs(Style.NINE_ORDER) do
+    local tc = parts[name]
     local t = set[name]
     if not t then t = frame:CreateTexture(nil, layer or "BORDER") set[name] = t end
     if t.SetDrawLayer then pcall(t.SetDrawLayer, t, layer or "BORDER", sub or 0) end
@@ -501,39 +536,6 @@ function Style.TexLoaded(path)
   return Style.flareLoaded[path]
 end
 
--- Encadré : TOUJOURS le dégradé brun clair façon Métiers (#211C18 → #3A2C24,
--- WHITE8X8 + SetGradient, garanti) + filet bronze 1 px (trait sombre dehors) ;
--- le bord or FlareUI (Border.tga) se pose par-dessus seulement s'il est chargé.
-function Style.ApplySection(frame, bgKey)
-  if type(frame) ~= "table" or not frame.CreateTexture then return nil end
-  if frame._osrsSection then return frame._osrsSection end
-  if frame.SetBackdrop then pcall(frame.SetBackdrop, frame, nil) end
-  local S = Style.SECTION
-  frame._osrsSecBg = frame._osrsSecBg or Pix(frame, "BACKGROUND", -8)
-  local bg = frame._osrsSecBg
-  bg:ClearAllPoints()
-  bg:SetPoint("TOPLEFT", frame, "TOPLEFT", 1, -1)
-  bg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, 1)
-  Gradient(bg, S.top, S.bottom)
-  bg._gradient = { S.top, S.bottom }
-  bg:Show()
-  frame._osrsSecOuter = frame._osrsSecOuter or {}
-  frame._osrsSecEdge = frame._osrsSecEdge or {}
-  Edge(frame, frame._osrsSecOuter, 0, S.outer, "BORDER")
-  Edge(frame, frame._osrsSecEdge, 1, S.bronze, "BORDER")
-  local flare = Style.TexLoaded(Style.FLARE.border)
-  -- Bord du drop (composant de référence) si l'UI le fournit, sinon FlareUI.
-  local hook = Style.SectionBorderHook
-  local hooked = hook and select(2, pcall(hook, frame)) or nil
-  if hooked then flare = false
-  elseif flare then Style.FlareBorder(frame, "BORDER", 2) end
-  frame._osrsSecDropBorder = hooked
-  frame._osrsSecFlare = flare
-  frame._osrsSection = "encadré : dégradé #211C18 → #3A2C24 + filet bronze #634D36" .. (hooked and (" + bord du drop (" .. tostring(hooked) .. ")") or (flare and " + bord or FlareUI (Border.tga)" or " (Border.tga non chargée : filet seul)"))
-  Style.applyCount = (Style.applyCount or 0) + 1
-  return frame._osrsSection
-end
-
 -- Filet 1 px #796345 (sous un en-tête).
 function Style.Divider(parent, key)
   parent[key or "_flareDivider"] = parent[key or "_flareDivider"] or Pix(parent, "ARTWORK", 1)
@@ -544,79 +546,6 @@ function Style.Divider(parent, key)
   t:SetHeight(1)
   t._color = c
   return t
-end
-
--- Case à cocher FlareUI (CheckBox.tga + CheckMark.tga), API CheckButton standard.
-function Style.SkinCheck(cb)
-  if type(cb) ~= "table" then return nil end
-  local F = Style.FLARE
-  if cb.SetNormalTexture then pcall(cb.SetNormalTexture, cb, F.check) end
-  if cb.SetPushedTexture then pcall(cb.SetPushedTexture, cb, F.check) end
-  if cb.SetCheckedTexture then pcall(cb.SetCheckedTexture, cb, F.mark) end
-  if cb.SetDisabledCheckedTexture then pcall(cb.SetDisabledCheckedTexture, cb, F.mark) end
-  if cb.SetHighlightTexture then pcall(cb.SetHighlightTexture, cb, F.glow, "ADD") end
-  cb._flare = cb._flare or {}
-  cb._flare.check = F.check
-  return true
-end
-
--- Choix de radio en onglet FlareUI : bouton gris liseré or ; choisi = texte blanc.
-function Style.SkinTab(btn, fs)
-  if type(btn) ~= "table" then return nil end
-  local set = Style.Nine(btn, "tab", Style.FLARE.button, 64, 32, 6, 6, "BACKGROUND", 1)
-  if btn.SetNormalTexture then pcall(btn.SetNormalTexture, btn, "") end
-  if btn.SetCheckedTexture then pcall(btn.SetCheckedTexture, btn, "") end
-  if btn.SetHighlightTexture then pcall(btn.SetHighlightTexture, btn, Style.FLARE.glow, "ADD") end
-  btn._flareTab = set
-  btn._flareFS = fs
-  return set
-end
-function Style.TabState(btn, checked)
-  local fs = btn and btn._flareFS
-  local P = Style.PALETTE
-  if fs and fs.SetTextColor then
-    local c = checked and P.labelWhite or P.titleYellow
-    fs:SetTextColor(c[1], c[2], c[3])
-  end
-  local set = btn and btn._flareTab
-  if set then
-    local v = checked and 1 or 0.78
-    for _, t in pairs(set) do if type(t) == "table" and t.SetVertexColor then pcall(t.SetVertexColor, t, v, v, v, 1) end end
-  end
-end
-
--- Curseur FlareUI : piste SliderTrack.tga + losange SliderThumb.tga.
-function Style.SkinSlider(sl)
-  if type(sl) ~= "table" then return nil end
-  local F = Style.FLARE
-  if sl.SetBackdrop then pcall(sl.SetBackdrop, sl, nil) end
-  sl._flareTrack = sl._flareTrack or (sl.CreateTexture and sl:CreateTexture(nil, "BACKGROUND"))
-  local t = sl._flareTrack
-  if t then
-    pcall(t.SetTexture, t, F.track)
-    t.texPath = F.track
-    t:ClearAllPoints()
-    t:SetPoint("LEFT", sl, "LEFT", 0, 0)
-    t:SetPoint("RIGHT", sl, "RIGHT", 0, 0)
-    t:SetHeight(16)
-    t:Show()
-  end
-  if sl.SetThumbTexture then pcall(sl.SetThumbTexture, sl, F.thumb) end
-  local th = sl.GetThumbTexture and sl:GetThumbTexture()
-  if th and th.SetSize then pcall(th.SetSize, th, 24, 24) end
-  sl._flareThumb = F.thumb
-  return true
-end
-
--- Ascenseur FlareUI (ScrollThumb.tga) sur un UIPanelScrollFrameTemplate à nous.
-function Style.SkinScrollBar(scroll)
-  local bar = scroll and (scroll.ScrollBar or (scroll.GetName and scroll:GetName() and _G[scroll:GetName() .. "ScrollBar"]))
-  if type(bar) ~= "table" then return nil end
-  if bar.SetThumbTexture then pcall(bar.SetThumbTexture, bar, Style.FLARE.scroll) end
-  local th = bar.GetThumbTexture and bar:GetThumbTexture()
-  if th and th.SetSize then pcall(th.SetSize, th, 12, 40) end
-  bar._flareThumb = Style.FLARE.scroll
-  return true
 end
 
 -- Masque rond : seulement si le client le propose (CreateMaskTexture vérifié).
@@ -646,16 +575,24 @@ function Style.IconRing(slot, icon)
       mode = "ronde"
     end
   end
+  local size = (slot.GetWidth and slot:GetWidth()) or slot._slotSize or 32
+  size = tonumber(size) or 32
+  local inset = math.max(2, math.floor(size * 3 / 32 + 0.5))
+  slot._ringInset = inset
   if mode == "ronde" then
     pcall(r.SetTexture, r, F.ring) r.texPath = F.ring
-    if icon then icon:ClearAllPoints() icon:SetPoint("TOPLEFT", slot, "TOPLEFT", 3, -3) icon:SetPoint("BOTTOMRIGHT", slot, "BOTTOMRIGHT", -3, 3) end
+    if icon then
+      icon:ClearAllPoints()
+      icon:SetPoint("TOPLEFT", slot, "TOPLEFT", inset, -inset)
+      icon:SetPoint("BOTTOMRIGHT", slot, "BOTTOMRIGHT", -inset, inset)
+    end
   else
     mode = "biseautée"
     pcall(r.SetTexture, r, F.frame) r.texPath = F.frame
     if icon then
       icon:ClearAllPoints()
-      icon:SetPoint("TOPLEFT", slot, "TOPLEFT", 3, -3)
-      icon:SetPoint("BOTTOMRIGHT", slot, "BOTTOMRIGHT", -3, 3)
+      icon:SetPoint("TOPLEFT", slot, "TOPLEFT", inset, -inset)
+      icon:SetPoint("BOTTOMRIGHT", slot, "BOTTOMRIGHT", -inset, inset)
       if icon.SetTexCoord then pcall(icon.SetTexCoord, icon, 0.08, 0.92, 0.08, 0.92) end
     end
   end

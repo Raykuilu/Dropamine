@@ -13,20 +13,22 @@
 -- après le combat. Aucune fonction protégée, aucun cadre Blizzard modifié
 -- (lecture de textes seulement), nos cadres sont enfants d'UIParent.
 local _, ns = ...
+local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 local UI = ns.UI
 local PV = {}
 ns.PvP = PV
 
 local function N(v) return ns.N and ns.N(v) or tonumber(v) end
 local function InCombat() return ns.InCombat and ns.InCombat() or false end
+-- 3.6.0 : sans table temporaire (appelé sur les événements fréquents : survol,
+-- barres de nom, cible) et sans troncature aux valeurs nil intermédiaires.
+local function Ret(ok, ...) if not ok then return nil end return ... end
 local function Call(fn, ...)
   if type(fn) ~= "function" then return nil end
-  local r = { pcall(fn, ...) }
-  if not r[1] then return nil end
-  return unpack(r, 2)
+  return ns.Unsecret(Ret(pcall(fn, ...)))
 end
 local function Fold(s) return ns.Fold and ns.Fold(tostring(s or "")) or tostring(s or ""):lower() end
-local function Say(m) print("|cffffd100Dropamine|r : " .. m) end
+local function Say(m) print(Tr["|cffffd100Dropamine|r : "] .. m) end
 local function After(dt, fn) if type(_G.C_Timer) == "table" and type(_G.C_Timer.After) == "function" then _G.C_Timer.After(dt, fn) return true end fn() return false end
 
 PV.GREEN, PV.GREY = { 0.25, 0.95, 0.25 }, { 0.55, 0.55, 0.55 }
@@ -161,7 +163,7 @@ local function ScanText(f, depth, out)
         local okS, sh = pcall(r.IsShown, r)
         local okT, t = pcall(r.GetText, r)
         out.n = out.n + 1
-        if okS and sh and okT and type(t) == "string" then out[#out + 1] = t end
+        if okS and sh and okT and type(t) == "string" and not (ns.IsSecret and ns.IsSecret(t)) then out[#out + 1] = t end
       end
     end
   end
@@ -174,7 +176,8 @@ end
 function PV.ParseTexts(list)
   local r = {}
   for i, t in ipairs(list) do
-    local f = Fold(t)
+    local okF, f = pcall(Fold, t)
+    if not okF or type(f) ~= "string" then f = "" end
     local a, b = f:match("points de rang%s*:?%s*([%d%s%.]+)%s*/%s*([%d%s%.]+)")
     if not a then a, b = f:match("rank points%s*:?%s*([%d,%.]+)%s*/%s*([%d,%.]+)") end
     if a then r.pts, r.cap = N((a:gsub("[^%d]", ""))), N((b:gsub("[^%d]", ""))) end
@@ -182,7 +185,8 @@ function PV.ParseTexts(list)
     if inc then r.inc = N((inc:gsub("[^%d]", ""))) end
     -- « Points de rang : » seul, valeur dans la région suivante
     if not r.pts and (f:find("points de rang", 1, true) or f:find("rank points", 1, true)) and list[i + 1] then
-      local x, y = Fold(list[i + 1]):match("([%d%s%.]+)%s*/%s*([%d%s%.]+)")
+      local okN, nf = pcall(Fold, list[i + 1])
+      local x, y = (okN and type(nf) == "string" and nf or ""):match("([%d%s%.]+)%s*/%s*([%d%s%.]+)")
       if x then r.pts, r.cap = N((x:gsub("[^%d]", ""))), N((y:gsub("[^%d]", ""))) end
     end
   end
@@ -244,7 +248,7 @@ function PV.Read()
   local cdb = CDB()
   if s.lastToday ~= nil and cdb.goalDay == Today() and cdb.goal and (s.hkToday or 0) >= cdb.goal and cdb.goalDone ~= Today() then
     cdb.goalDone = Today()
-    PV.Toast(string.format("Objectif JcJ atteint : %d VH aujourd'hui", cdb.goal), "objectif")
+    PV.Toast(string.format(Tr["Objectif JcJ atteint : %d VH aujourd'hui"], cdb.goal), "objectif")
   end
   s.lastToday = s.hkToday
   return s
@@ -256,13 +260,15 @@ end
 function PV.FmtRatio(k, d)
   k, d = N(k) or 0, N(d) or 0
   if d <= 0 then return string.format("K/D %d/0", k) end
-  return "K/D " .. (string.format("%.1f", k / d):gsub("%.", ","))
+  local r = string.format("%.1f", k / d)
+  if ns.IsFrench and ns.IsFrench() then r = r:gsub("%.", ",") end   -- 3.5.19 : virgule décimale en français seulement
+  return "K/D " .. r
 end
 function PV.KD()
   local k = S.statHK or S.hkLife or 0
-  local d, how = S.statDF, "morts par la faction adverse"
-  if d == nil then d, how = S.statDP, "morts par d'autres joueurs" end
-  if d == nil then d, how = CDB().deaths or 0, "morts comptées par l'addon (toutes causes)" end
+  local d, how = S.statDF, Tr["morts par la faction adverse"]
+  if d == nil then d, how = S.statDP, Tr["morts par d'autres joueurs"] end
+  if d == nil then d, how = CDB().deaths or 0, Tr["morts comptées par l'addon (toutes causes)"] end
   local sk = S.session.kills
   local sd = (S.statDF and S.sessionBaseDF) and (S.statDF - S.sessionBaseDF) or S.session.deaths
   return { k = k, d = d, text = PV.FmtRatio(k, d), how = how, sk = sk, sd = sd, stext = PV.FmtRatio(sk, sd) }
@@ -280,6 +286,7 @@ function PV.RankIcon()
 end
 function PV.Tile()
   local d = PV.tile
+  d.name = Tr["JcJ"]   -- 3.5.19 : nom affiché selon la langue
   d.icon = PV.RankIcon()
   local cdb = CDB()
   if S.rankPts and S.rankCap then d.current, d.apiMax, d.gauge = S.rankPts, S.rankCap, "rang"
@@ -313,32 +320,32 @@ if C and C.TooltipModel then
   local baseModel = C.TooltipModel
   function C.TooltipModel(d)
     if not (d and d.kind == "pvp") then return baseModel(d) end
-    local m = { title = "JcJ", lines = {} }
+    local m = { title = Tr["JcJ"], lines = {} }
     local L = m.lines
     local G = { 1, 0.82, 0 }
     local function add(t, r, g, b) if t and t ~= "" then L[#L + 1] = { t, r or 1, g or 1, b or 1, false } end end
     local function header(t) L[#L + 1] = { " ", 1, 1, 1, false, spacer = true } L[#L + 1] = { t, G[1], G[2], G[3], false, header = true } end
     local s = S
-    add("Rang : " .. tostring(s.rankName or "—") .. " (rang " .. tostring(s.rankNum or 0) .. ")")
+    add(Tr["Rang : "] .. tostring(s.rankName or "—") .. Tr[" (rang "] .. tostring(s.rankNum or 0) .. ")")
     if s.rankPts and s.rankCap then
-      add(string.format("Points de rang : %d / %d", s.rankPts, s.rankCap))
-      if s.capInc then add(string.format("Augmentation du plafond cette semaine : %d", s.capInc), 0.8, 0.8, 0.8) end
+      add(string.format(Tr["Points de rang : %d / %d"], s.rankPts, s.rankCap))
+      if s.capInc then add(string.format(Tr["Augmentation du plafond cette semaine : %d"], s.capInc), 0.8, 0.8, 0.8) end
     else
-      add("Points de rang : ouvre la fenêtre JcJ pour les lire", 0.7, 0.7, 0.7)
+      add(Tr["Points de rang : ouvre la fenêtre JcJ pour les lire"], 0.7, 0.7, 0.7)
     end
-    header("Honneur")
-    if s.honor then add(string.format("Points d'honneur : %d%s", s.honor, s.honorMax and s.honorMax > 0 and (" / " .. s.honorMax) or "")) end
-    add(string.format("Victoires honorables : %d aujourd'hui · %d cette semaine", s.hkToday or 0, s.hkWeek or 0))
-    if s.statHK or s.hkLife then add(string.format("Total : %d", s.statHK or s.hkLife), 0.8, 0.8, 0.8) end
+    header(Tr["Honneur"])
+    if s.honor then add(string.format(Tr["Points d'honneur : %d%s"], s.honor, s.honorMax and s.honorMax > 0 and (" / " .. s.honorMax) or "")) end
+    add(string.format(Tr["Victoires honorables : %d aujourd'hui · %d cette semaine"], s.hkToday or 0, s.hkWeek or 0))
+    if s.statHK or s.hkLife then add(string.format(Tr["Total : %d"], s.statHK or s.hkLife), 0.8, 0.8, 0.8) end
     local kd = PV.KD()
-    header("Combat")
+    header(Tr["Combat"])
     add(kd.text .. string.format("  (%d / %d)", kd.k, kd.d), 1, 1, 1)
-    add("Session : " .. kd.stext .. string.format("  (%d / %d)", kd.sk, kd.sd), 0.8, 0.8, 0.8)
-    add(string.format("Série : %d sans mourir (record %d)", S.streak, CDB().bestStreak or 0))
+    add(Tr["Session : "] .. kd.stext .. string.format("  (%d / %d)", kd.sk, kd.sd), 0.8, 0.8, 0.8)
+    add(string.format(Tr["Série : %d sans mourir (record %d)"], S.streak, CDB().bestStreak or 0))
     local cdb = CDB()
-    if cdb.goal and cdb.goalDay == Today() then add(string.format("Objectif : %d / %d VH aujourd'hui", s.hkToday or 0, cdb.goal), 0.4, 1, 0.4) end
-    header("Clics")
-    add("Clic : fenêtre JcJ · clic droit : objectif VH du jour", 0.7, 0.7, 0.7)
+    if cdb.goal and cdb.goalDay == Today() then add(string.format(Tr["Objectif : %d / %d VH aujourd'hui"], s.hkToday or 0, cdb.goal), 0.4, 1, 0.4) end
+    header(Tr["Clics"])
+    add(Tr["Clic : fiche du personnage (hors combat) · clic droit : objectif VH du jour"], 0.7, 0.7, 0.7)
     return m
   end
 end
@@ -349,12 +356,51 @@ function UI:SelectTile(d, ...)
   if d and d.kind == "pvp" then return PV.OpenWindow() end
   return baseSelect(self, d, ...)
 end
-function PV.OpenWindow()
-  if InCombat() then return "combat" end
-  for _, fn in ipairs({ "TogglePVPFrame", "TogglePVPUI" }) do
-    if type(_G[fn]) == "function" then pcall(_G[fn]) return fn end
+-- 3.5.5 : chaque moyen est ESSAYÉ puis VÉRIFIÉ (une des fenêtres JcJ change
+-- d'état) ; sinon on passe au suivant. Avant, la 1re fonction trouvée était
+-- appelée sans contrôle (sans effet sur Forever : TogglePVPFrame peut exister
+-- sans rien ouvrir), et le clic semblait mort.
+local function PvPShownState()
+  local st = {}
+  for _, nm in ipairs(PV.UI_FRAMES) do
+    local f = _G[nm]
+    if type(f) == "table" and f.IsShown then
+      local ok, v = pcall(f.IsShown, f)
+      st[nm] = ok and v and true or false
+    end
   end
-  if type(_G.ToggleCharacter) == "function" and _G.HonorFrame then pcall(_G.ToggleCharacter, "HonorFrame") return "HonorFrame" end
+  return st
+end
+local function PvPChanged(before)
+  local after = PvPShownState()
+  for nm, v in pairs(after) do
+    if nm ~= "CharacterFrame" and v ~= (before[nm] or false) then return true end
+  end
+  return false
+end
+function PV.OpenWindow()
+  if InCombat() then
+    if ns.Print then ns.Print(Tr["en combat : la fenêtre JcJ s'ouvrira à la fin du combat."]) end
+    if ns.AfterCombat then ns.AfterCombat("pvpwindow", function() PV.OpenWindow() end) end
+    return "combat"
+  end
+  local tries = {}
+  if type(_G.ToggleCharacter) == "function" and type(_G.HonorFrame) == "table" then
+    tries[#tries + 1] = { "HonorFrame", function() _G.ToggleCharacter("HonorFrame") end }
+  end
+  for _, fn in ipairs({ "TogglePVPFrame", "TogglePVPUI" }) do
+    if type(_G[fn]) == "function" then tries[#tries + 1] = { fn, _G[fn] } end
+  end
+  if type(_G.ToggleCharacter) == "function" and type(_G.PVPFrame) == "table" then
+    tries[#tries + 1] = { "PVPFrame", function() _G.ToggleCharacter("PVPFrame") end }
+  end
+  for _, t in ipairs(tries) do
+    local before = PvPShownState()
+    local ok = pcall(t[2])
+    if ok and PvPChanged(before) then PV.lastOpen = t[1] return t[1] end
+  end
+  PV.lastOpen = "aucune"
+  if ns.Print then ns.Print(Tr["fenêtre JcJ introuvable sur ce client (touche H du jeu)."]) end
   return nil
 end
 function PV.SetGoal(n)
@@ -371,8 +417,8 @@ function PV.EnsurePopup()
   local function editOf(p) return p and (p.editBox or p.EditBox or (p.GetName and _G[(p:GetName() or "") .. "EditBox"])) end
   local function accept(p) local eb = editOf(p) if eb and eb.GetText then PV.SetGoal(eb:GetText()) end end
   _G.StaticPopupDialogs.OSRS_TOTALLEVEL_PVPGOAL = {
-    text = "Objectif JcJ : victoires honorables aujourd'hui (actuellement %s)",
-    button1 = _G.OKAY or "OK", button2 = _G.CANCEL or "Annuler", button3 = "Effacer",
+    text = Tr["Objectif JcJ : victoires honorables aujourd'hui (actuellement %s)"],
+    button1 = _G.OKAY or "OK", button2 = _G.CANCEL or Tr["Annuler"], button3 = Tr["Effacer"],
     hasEditBox = 1, maxLetters = 4, timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
     OnShow = function(p) local eb = editOf(p) local c = CDB() if eb and eb.SetText then eb:SetText(tostring((c.goalDay == Today() and c.goal) or "")) end end,
     OnAccept = accept,
@@ -428,7 +474,7 @@ function PV.FlushToasts()
   local kills = PV.pendingKills
   PV.pendingKills = 0
   if PV._dirty then PV.Read() end
-  if kills > 0 then PV.Toast(string.format("+%d victoire%s honorable%s", kills, kills > 1 and "s" or "", kills > 1 and "s" or ""), "kill", string.format("%d aujourd'hui", S.hkToday or 0)) end
+  if kills > 0 then PV.Toast(string.format(Tr["+%d victoire%s honorable%s"], kills, kills > 1 and "s" or "", kills > 1 and "s" or ""), "kill", string.format(Tr["%d aujourd'hui"], S.hkToday or 0)) end
   for _, e in ipairs(q) do PV.Toast(e[1], e[2], e[3]) end
   if UI.Refresh then pcall(UI.Refresh, UI, true) end
 end
@@ -480,11 +526,11 @@ function PV.OnKill(delta)
     if ns.AfterCombat then ns.AfterCombat("pvptoasts", PV.FlushToasts) end
   else
     PV.Read()
-    PV.Toast(delta > 1 and string.format("+%d victoires honorables", delta) or "+1 victoire honorable", "kill", string.format("%d aujourd'hui", S.hkToday or 0))
+    PV.Toast(delta > 1 and string.format(Tr["+%d victoires honorables"], delta) or Tr["+1 victoire honorable"], "kill", string.format(Tr["%d aujourd'hui"], S.hkToday or 0))
     if UI.Refresh then pcall(UI.Refresh, UI, true) end
   end
   for _, step in ipairs(PV.STREAK_STEPS) do
-    if before < step and S.streak >= step then PV.Toast(string.format("Série : %d victoires sans mourir", S.streak), "serie") end
+    if before < step and S.streak >= step then PV.Toast(string.format(Tr["Série : %d victoires sans mourir"], S.streak), "serie") end
   end
 end
 function PV.OnKillsChanged()
@@ -544,22 +590,6 @@ if ns.On then ns.On("ADDON_LOADED", function() pcall(PV.HookWindows) end) end
 -- Repères sur les barres de nom des joueurs ennemis
 ------------------------------------------------------------------------------
 PV.active, PV.pool, PV.pending = {}, {}, {}
--- Gris = niveau trivial (formule Classic de Target.GreyLevel). GetQuestDifficultyColor
--- n'existe pas sur tous les clients 1.x : on ne bloque plus le repère s'il manque.
--- S'il existe et contredit la formule, la formule gagne (26 contre 27 n'est pas gris).
-function PV.IsGrey(unit)
-  local lvl = N(Call(_G.UnitLevel, unit))
-  if not lvl then return nil end
-  if lvl <= 0 then return false end
-  local pl = N(Call(_G.UnitLevel, "player")) or 1
-  if ns.Target and ns.Target.GreyLevel then return lvl <= ns.Target.GreyLevel(pl) end
-  if type(_G.GetQuestDifficultyColor) ~= "function" then return nil end
-  local col = Call(_G.GetQuestDifficultyColor, lvl)
-  local trivial = _G.QuestDifficultyColors and _G.QuestDifficultyColors.trivial
-  if type(col) ~= "table" or type(trivial) ~= "table" then return nil end
-  if col == trivial then return true end
-  return N(col.r) == N(trivial.r) and N(col.g) == N(trivial.g) and N(col.b) == N(trivial.b)
-end
 -- true = honneur, false = ennemi mais gris, nil = pas un joueur ennemi.
 -- Table (cible déjà lue) ou unité.
 function PV.HonorFromTarget(tg)
@@ -617,6 +647,10 @@ function PV.Release(unit)
   PV.pool[#PV.pool + 1] = m
 end
 function PV.Evaluate(unit)
+  if ns.PausedForFlight and ns.PausedForFlight() then
+    if unit and PV.Release then pcall(PV.Release, unit) end
+    return nil
+  end
   if InCombat() then PV.pending[unit] = true return nil end
   if not (PV.Enabled() and ns.Opt and ns.Opt("pvpMarks")) then PV.Release(unit) return nil end
   local honor = PV.HonorFor(unit)
@@ -663,18 +697,18 @@ ns.SlashExt.pvp = function(rest)
   local a, b = (rest or ""):match("^%s*(%S*)%s*(%S*)")
   a = (a or ""):lower()
   if a == "on" or a == "off" then
-    Say("module JcJ " .. (PV.SetEnabled(a == "on") and "activé" or "désactivé"))
+    Say(Tr["module JcJ "] .. (PV.SetEnabled(a == "on") and Tr["activé"] or Tr["désactivé"]))
   elseif a == "objectif" or a == "goal" then
     local g = PV.SetGoal(b)
-    Say(g and ("objectif JcJ : " .. g .. " VH aujourd'hui") or "objectif JcJ effacé")
+    Say(g and (Tr["objectif JcJ : "] .. g .. Tr[" VH aujourd'hui"]) or Tr["objectif JcJ effacé"])
   elseif a == "marques" or a == "reperes" then
     if b == "off" then ns.db.ui.pvpMarks = false else ns.db.ui.pvpMarks = nil end
     for u in pairs(PV.active) do PV.Release(u) end
-    Say("repères JcJ sur les barres de nom : " .. (ns.Opt("pvpMarks") and "on" or "off"))
+    Say(Tr["repères JcJ sur les barres de nom : "] .. (ns.Opt("pvpMarks") and "on" or "off"))
   else
     PV.Read()
     local kd = PV.KD()
-    Say(string.format("JcJ : %d VH aujourd'hui, %d cette semaine, %s, série %d (usage : /drop pvp on|off · objectif N · marques on|off)", S.hkToday or 0, S.hkWeek or 0, kd.text, S.streak))
+    Say(string.format(Tr["JcJ : %d VH aujourd'hui, %d cette semaine, %s, série %d (usage : /drop pvp on|off · objectif N · marques on|off)"], S.hkToday or 0, S.hkWeek or 0, kd.text, S.streak))
   end
 end
 ns.SlashExt.jcj = ns.SlashExt.pvp
