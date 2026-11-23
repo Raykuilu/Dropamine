@@ -126,8 +126,10 @@ function C.ContributionLine(d)
   if not d then return "" end
   if d.kind == "stat" then return Tr["Non inclus dans le total (caractéristique)."] end
   if d.excludedMonte then return Tr["Affichée mais non incluse : aucun plafond de Monte n'est documenté."] end
-  if d.combatTile and d.skillName and d.skillName ~= d.name then
-    return Tr["Compte dans le total : +"] .. tostring(d.current or 0) .. "  (" .. d.skillName .. ")"
+  local sk = d.skillName and ns.LocSkillName and ns.LocSkillName(d.skillName) or d.skillName
+  local nm = d.name and ns.LocSkillName and ns.LocSkillName(d.name) or d.name
+  if d.combatTile and sk and sk ~= nm then
+    return Tr["Compte dans le total : +"] .. tostring(d.current or 0) .. "  (" .. sk .. ")"
   end
   if d.inTotal then return Tr["Compte dans le total : +"] .. tostring(d.current or 0) end
   return ""

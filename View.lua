@@ -2039,7 +2039,7 @@ function UI:DetailDescriptionFor(d, live)
   local NL = ns.NativeLook
   -- 3.6.2 : retrouvé aussi par identifiant ; seulement dans la langue du client
   local nd = NL and NL.NativeDesc and NL.NativeDesc(d)
-  if nd then
+  if nd and not (UI.ForeignText and UI.ForeignText(nd)) then
     self.descSource = "détail natif lu"
     return nd
   end

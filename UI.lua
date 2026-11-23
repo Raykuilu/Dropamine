@@ -306,8 +306,10 @@ local function ContributionLine(d)
   if d.excludedMonte then
     return Tr["Affichée mais non incluse : aucun plafond de Monte n'est documenté."]
   end
-  if d.combatTile and d.skillName and d.skillName ~= d.name then
-    return Tr["Compte dans le total : +"] .. tostring(d.current or 0) .. "  (" .. d.skillName .. ")"
+  local sk = d.skillName and ns.LocSkillName and ns.LocSkillName(d.skillName) or d.skillName
+  local nm = d.name and ns.LocSkillName and ns.LocSkillName(d.name) or d.name
+  if d.combatTile and sk and sk ~= nm then
+    return Tr["Compte dans le total : +"] .. tostring(d.current or 0) .. "  (" .. sk .. ")"
   end
   if d.inTotal then
     return Tr["Compte dans le total : +"] .. tostring(d.current or 0)
@@ -2778,17 +2780,28 @@ function UI:EnsureOwnDetail(detail)
   return f
 end
 
+-- 3.8.2 : nom affiché dans la langue de l'addon, même si le rang vient du cache d'un client dans une autre langue
+local function LocName(n) return (n and ns.LocSkillName and ns.LocSkillName(n)) or n end
+-- vrai si une description en cache est en français alors que l'addon est en anglais
+-- (le nom peut venir du cache et la description du jeu, ou l'inverse : on juge le texte lui-même)
+local function ForeignText(s)
+  if not (ns.LangCode and ns.LangCode() == "en") or type(s) ~= "string" then return false end
+  if s:find("[\195][\160-\191]") then return true end  -- lettres accentuées (é, è, à, ç…) en UTF-8
+  local low = " " .. s:lower() .. " "
+  return (low:find(" vos ") or low:find(" les ") or low:find(" des ") or low:find(" une ")) and true or false
+end
+UI.ForeignText = ForeignText
 function UI:DetailLabelFor(d)
   if not d then return "" end
-  if d.combatTile and d.skillName then return d.skillName end
-  return d.name or ""
+  if d.combatTile and d.skillName then return LocName(d.skillName) end
+  return LocName(d.name) or ""
 end
 
 function UI:DetailDescriptionFor(d, liveInfo)
-  if liveInfo and type(liveInfo.description) == "string" and liveInfo.description ~= "" then
+  if liveInfo and type(liveInfo.description) == "string" and liveInfo.description ~= "" and not ForeignText(liveInfo.description) then
     return liveInfo.description
   end
-  if d and type(d.description) == "string" and d.description ~= "" then
+  if d and type(d.description) == "string" and d.description ~= "" and not ForeignText(d.description) then
     return d.description
   end
   if not d then return "" end
@@ -5446,7 +5459,19 @@ function UI:WireDropMouse(f)
     else
       local shift = (type(_G.IsShiftKeyDown) == "function" and _G.IsShiftKeyDown())
         or (type(_G.IsModifiedClick) == "function" and _G.IsModifiedClick("CHATLINK"))
-      if shift and self._craft and self._craft.item then
+      -- 3.8.2 : toast d'objet (chasse, butin rare) : clic = fiche de l'objet. Géré ici et non par un
+      -- SetScript à part : les toasts sont recyclés et ce gestionnaire est reposé à chaque affichage.
+      local ic = self._itemClick
+      local now = (type(GetTime) == "function" and GetTime()) or 0
+      if ic and ic.id and button == "LeftButton" and now <= (ic.till or 0) and not shift then
+        local name = tostring((ns.Hunt and ns.Hunt.DisplayName and ns.Hunt.DisplayName(ic.id, ic.nm)) or ic.nm or ic.id)
+        local link = "|Hitem:" .. ic.id .. "::::::::::::|h[" .. name .. "]|h"
+        if type(_G.SetItemRef) == "function" then pcall(_G.SetItemRef, "item:" .. ic.id, link, "LeftButton") end
+      elseif shift and ic and ic.id then
+        local ok, _, lk = pcall(_G.GetItemInfo, ic.id)
+        local link = (ok and lk) or ("item:" .. tostring(ic.id))
+        if type(_G.ChatEdit_InsertLink) == "function" then pcall(_G.ChatEdit_InsertLink, link) end
+      elseif shift and self._craft and self._craft.item then
         local link
         if type(_G.GetItemInfo) == "function" then
           local ok, results = pcall(function()
@@ -5872,7 +5897,8 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   if titleFS.SetWordWrap then titleFS:SetWordWrap(false) end
   if type(titleFS.SetMaxLines) == "function" then pcall(titleFS.SetMaxLines, titleFS, 1) end
   titleFS:SetText(title or "")
-  local tc = (variant and variant.title) or GOLD
+  -- 3.8.2 : opts.titleColor (butin rare : couleur de la qualité) prime sur la variante
+  local tc = (type(opts.titleColor) == "table" and opts.titleColor) or (variant and variant.title) or GOLD
   titleFS:SetTextColor(tc[1], tc[2], tc[3])
   -- Vivier : toujours remettre la police (un level-up laissait GameFontNormalLarge).
   do
@@ -5980,6 +6006,7 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   f._kills = opts.accumulate and opts.accumulate.kills or nil
   f._quest = opts.accumulate and opts.accumulate.quest or nil
   f._target = { kind = opts.kind, skillId = opts.skillId, skillName = opts.skillName }
+  f._itemClick = nil  -- cadre recyclé : jamais le lien d'objet d'un ancien toast
   if not f._restart then
     f._restart = function() UI.ToastRestart(f) end
   end

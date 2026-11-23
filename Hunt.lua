@@ -61,6 +61,15 @@ H.TILES = {
   { "trinket1", "Bijou", "Trinket" }, { "trinket2", "Bijou", "Trinket" }, { "weapon", "Arme", "Weapon" },
   { "offhand", "Main g.", "Offhand" }, { "ranged", "Distance", "Ranged" },
 }
+-- Libellé affiché d'une case (3.8.2) : pas via Tr[], « Taille » y vaut déjà « Size » (taille du panneau).
+local TILE_EN = { head = "Head", neck = "Neck", shoulder = "Shoulder", back = "Back", chest = "Chest", wrist = "Wrist",
+  hands = "Hands", waist = "Waist", legs = "Legs", feet = "Feet", finger1 = "Finger", finger2 = "Finger",
+  trinket1 = "Trinket", trinket2 = "Trinket", weapon = "Weapon", offhand = "Off-hand", ranged = "Ranged" }
+function H.TileLabel(t)
+  if not t then return "" end
+  if ns.LangCode and ns.LangCode() == "en" then return TILE_EN[t[1]] or t[3] or t[2] end
+  return t[2]
+end
 local GROUP = {
   Head = "Head", Neck = "Neck", Shoulder = "Shoulder", Back = "Back", Chest = "Chest", Wrist = "Wrist", Hands = "Hands",
   Waist = "Waist", Legs = "Legs", Feet = "Feet", Finger = "Finger", Trinket = "Trinket",
@@ -426,20 +435,12 @@ end
 -- Les toasts sont recyclés : le lien expire après 12 s pour qu'un clic ne rouvre jamais un ancien objet.
 local function MakeClickable(f, id, nm)
   if not (f and f.EnableMouse and id) then return end
+  -- 3.8.2 : le clic est traité par le gestionnaire commun des toasts (UI:WireDropMouse), reposé à chaque
+  -- affichage ; un SetScript ici était écrasé dès que le cadre était recyclé (ça ne marchait qu'une fois).
   f._itemClick = { id = id, nm = nm, till = ((_G.GetTime and _G.GetTime()) or 0) + 12 }
   pcall(f.EnableMouse, f, true)
-  if not f._itemClickHooked then
-    f._itemClickHooked = true
-    f:SetScript("OnMouseUp", function(self, btn)
-      local c = self._itemClick
-      local now = (_G.GetTime and _G.GetTime()) or 0
-      if not c or now > c.till or btn ~= "LeftButton" then return end
-      local name = tostring(H.DisplayName(c.id, c.nm) or c.nm or c.id)
-      local link = "|Hitem:" .. c.id .. "::::::::::::|h[" .. name .. "]|h"
-      if type(_G.SetItemRef) == "function" then pcall(_G.SetItemRef, "item:" .. c.id, link, "LeftButton") end
-    end)
-  end
 end
+H.MakeClickable = MakeClickable
 local function Found(s, it)
   local stamp = (type(time) == "function" and time()) or 0
   if it.last and stamp - it.last <= 2 then return end
@@ -457,7 +458,8 @@ local function Found(s, it)
   end
   if P and P.Toast and ns.Opt("huntAlert") then
     local okT, tf = pcall(P.Toast, Tr["Objet recherché trouvé : "] .. tostring(H.DisplayName(it.id, it.name) or it.id),
-      string.format(Tr["Après %d tentatives"], Attempts(s, it)), { kind = "achievement", variant = "gold" }, "hunt-" .. tostring(it.id or it.name), true, it.id and H.Icon(it.id) or nil)
+      string.format(Tr["Après %d tentatives"], Attempts(s, it)), { kind = "achievement", variant = "gold", titleColor = H.QualityRGB(it.id) },
+      "hunt-" .. tostring(it.id or it.name), true, it.id and H.Icon(it.id) or nil)
     if okT then MakeClickable(tf, it.id, it.name) end
   end
 end
@@ -511,41 +513,108 @@ local function SelfPatterns()
   return selfPatterns
 end
 local killAt = {}
--- couleur du lien -> rang (3 rare, 4 épique, 5 légendaire, 6 artefact) ; seuil réglable (Options)
+-- couleur du lien -> rang (3 rare, 4 épique, 5 légendaire, 6 artefact)
 local RARE_COLOR = { ["0070dd"] = { 3, "Rare" }, a335ee = { 4, "Épique" }, ff8000 = { 5, "Légendaire" }, e6cc80 = { 6, "Artefact" } }
 local rareAt = {}
-local function RareMin()
-  local v = ns.db and ns.db.ui and ns.db.ui.rareMin
-  return v == "rare" and 3 or 4
+-- 3.8.2 : alertes de butin par qualité cochée (Options, liste à cases : rare, épique, légendaire ; pas d'inhabituel,
+-- trop fréquent et souvent pas encore en cache), enregistrées en chiffres : « 45 » = épique + légendaire.
+-- Reprise des anciens réglages : alerte décochée → aucune ; « à partir de rare » → rare, épique, légendaire.
+H.LOOT_QUALITIES = { 3, 4, 5 }
+function H.LootQualString()
+  local ui = ns.db and ns.db.ui
+  if not ui then return "45" end
+  local v = ui.lootQual
+  if type(v) ~= "string" then
+    if ui.rareAlert == false then v = "" elseif ui.rareMin == "rare" then v = "345" else v = "45" end
+    ui.lootQual = v
+  end
+  return v
+end
+function H.SetLootQualString(v)
+  v = tostring(v or "")
+  local out = ""
+  for _, q in ipairs(H.LOOT_QUALITIES) do if v:find(tostring(q), 1, true) then out = out .. q end end
+  local ui = ns.db and ns.db.ui
+  if ui then ui.lootQual = out end
+  return out
+end
+function H.LootQualityOn(q)
+  if not q then return false end
+  if q > 5 then q = 5 end  -- artefact : suit le légendaire
+  return H.LootQualString():find(tostring(q), 1, true) ~= nil
+end
+-- Objet d'exemple réel d'une qualité (bouton Tester) : Thunderfury pour légendaire, sinon une arme
+-- de cette qualité du Journal des donjons (le plus haut donjon, puis le plus petit id : toujours le même).
+local SAMPLE_FIXED = { [5] = 19019 }
+function H.SampleItem(q)
+  if SAMPLE_FIXED[q] then return SAMPLE_FIXED[q] end
+  local ix = BuildIndex()
+  local best, bestLvl
+  for _, e in ipairs(ix and ix.list or {}) do
+    if e.q == q and e.group == "Weapon" then
+      local lvl = (e.src and e.src[1] and e.src[1].level) or 0
+      if not best or lvl > bestLvl or (lvl == bestLvl and e.id < best.id) then best, bestLvl = e, lvl end
+    end
+  end
+  return best and best.id or nil, best and best.name or nil
+end
+function H.LootQualityTop()
+  local s, top = H.LootQualString(), nil
+  for _, q in ipairs(H.LOOT_QUALITIES) do if s:find(tostring(q), 1, true) then top = q end end
+  return top
 end
 -- toast d'alerte : force = test (ignore le seuil et le délai)
 local RARE_RGB = { [3] = { 0, 0.44, 0.87 }, [4] = { 0.64, 0.21, 0.93 }, [5] = { 1, 0.5, 0 }, [6] = { 0.9, 0.8, 0.5 } }
-local function ColorTitle(f, rgb)
-  if not (f and f.titleFS and f.titleFS.SetTextColor and rgb) then return end
-  local function apply() f.titleFS:SetTextColor(rgb[1], rgb[2], rgb[3]) end
-  apply()
-  if _G.C_Timer and _G.C_Timer.After then _G.C_Timer.After(0.15, apply) end
+-- 3.8.2 : couleur de qualité d'un objet (titre des toasts de chasse et de butin), nil si inconnue
+local QUALITY_RGB = { [0] = { 0.62, 0.62, 0.62 }, [1] = { 1, 1, 1 }, [2] = { 0.12, 1, 0 } }
+function H.QualityOf(id)
+  if not id then return nil end
+  local okQ, _, _, q = pcall(_G.GetItemInfo, id)
+  q = okQ and tonumber(q)
+  if not q and _G.C_Item and _G.C_Item.GetItemQualityByID then
+    local ok2, q2 = pcall(_G.C_Item.GetItemQualityByID, id)
+    q = ok2 and tonumber(q2)
+  end
+  if not q then
+    local _, e = H.SourceOf(id)
+    q = e and tonumber(e.q)
+  end
+  return q
+end
+function H.QualityRGB(id, q)
+  q = q or H.QualityOf(id)
+  if not q then return nil end
+  local C = _G.ITEM_QUALITY_COLORS and _G.ITEM_QUALITY_COLORS[q]
+  if C and C.r then return { C.r, C.g, C.b } end
+  return RARE_RGB[q] or QUALITY_RGB[q]
 end
 local RARE_TITLE = { [3] = "Butin rare : ", [4] = "Butin épique : ", [5] = "Butin légendaire : ", [6] = "Butin d'artefact : " }
-function H.RareAlert(id, nm, force, tier)
+function H.RareAlert(id, nm, force, tier, retried)
   local now = (type(time) == "function" and time()) or 0
-  if not force and now - (rareAt[id] or 0) <= 2 then return end
-  rareAt[id] = now
+  if not retried then
+    if not force and now - (rareAt[id] or 0) <= 2 then return end
+    rareAt[id] = now
+  end
   local P = ns.Progress
   if not (P and P.Toast) then return end
+  -- objet pas encore en cache (ex. /drop rare <id>) : on demande ses données et on réessaie une fois
+  local name = H.DisplayName(id, nm) or nm
+  if not name and not retried and _G.C_Timer and _G.C_Timer.After then
+    local CI = _G.C_Item
+    if CI and CI.RequestLoadItemDataByID then pcall(CI.RequestLoadItemDataByID, id) end
+    _G.C_Timer.After(0.6, function() H.RareAlert(id, nm, force, tier, true) end)
+    return
+  end
   if not tier then
-    local okQ, _, _, q = pcall(_G.GetItemInfo, id)
-    tier = (okQ and tonumber(q)) or 4
+    tier = H.QualityOf(id) or 4
     if tier < 3 then tier = 3 end
+    if tier > 6 then tier = 6 end
   end
   local src = H.SourceOf(id)
   local sub = src and (tostring(H.LocBoss(src.boss)) .. " · " .. tostring(H.LocDungeon(src.dungeon))) or Tr[RARE_TITLE[tier] and RARE_TITLE[tier]:gsub(" : $", "") or "Butin rare"]
-  local okT, tf = pcall(P.Toast, Tr[RARE_TITLE[tier] or RARE_TITLE[4]] .. tostring(H.DisplayName(id, nm) or nm), sub,
-    { kind = "achievement", variant = "gold" }, "rare-" .. id, true, H.Icon(id))
-  if okT then
-    MakeClickable(tf, id, nm)
-    ColorTitle(tf, RARE_RGB[tier] or RARE_RGB[4])
-  end
+  local okT, tf = pcall(P.Toast, Tr[RARE_TITLE[tier] or RARE_TITLE[4]] .. (name or ("#" .. tostring(id))), sub,
+    { kind = "achievement", variant = "gold", titleColor = H.QualityRGB(id, tier) or RARE_RGB[4] }, "rare-" .. id, true, H.Icon(id))
+  if okT then MakeClickable(tf, id, name or nm) end
 end
 local function OnChatLoot(msg, author)
   if not Plain(msg) or type(msg) ~= "string" then return end
@@ -578,11 +647,11 @@ local function OnChatLoot(msg, author)
   for _, it in ipairs(s.items) do
     if Matches(it, id, nm) then Found(s, it) tracked = true end
   end
-  -- alerte de rareté : épique ou mieux (couleur du lien, fiable même si l'objet n'est pas en cache)
-  if not tracked and ns.Opt("rareAlert") then
+  -- alerte de butin : qualités cochées (couleur du lien, fiable même si l'objet n'est pas en cache)
+  if not tracked then
     local col = (link:match("|cff(%x%x%x%x%x%x)") or ""):lower()
     local tier = RARE_COLOR[col]
-    if tier and tier[1] >= RareMin() then H.RareAlert(id, nm, false, tier[1]) end
+    if tier and H.LootQualityOn(tier[1]) then H.RareAlert(id, nm, false, tier[1]) end
   end
   Refresh()
 end
@@ -857,7 +926,7 @@ end
 ns.SlashExt.rare = function(rest)
   rest = rest or ""
   local id = tonumber(rest:match("item:(%d+)")) or tonumber(rest:match("^%s*(%d+)%s*$"))
-  if not id then if ns.Print then ns.Print("/drop rare <lien ou id> : teste l'alerte de butin rare") end return end
+  if not id then if ns.Print then ns.Print(Tr["/drop rare <lien ou id> : teste l'alerte de butin rare"]) end return end
   H.RareAlert(id, rest:match("%[(.-)%]"), true)
 end
 ns.SlashExt.chasse = function(rest)
@@ -872,8 +941,11 @@ ns.SlashExt.chasse = function(rest)
   if sub == "test" then
     local P = ns.Progress
     if P and P.Toast then
-      pcall(P.Toast, Tr["Objet recherché trouvé : "] .. "Sifflet de chien", string.format(Tr["Après %d tentatives"], 12),
-        { kind = "achievement", variant = "gold" }, "hunt-test", true, (H.List()[1] and H.List()[1].id) and H.Icon(H.List()[1].id) or nil)
+      -- exemple : le premier objet de la liste de chasse (nom localisé), sinon un nom générique traduit
+      local first = H.List()[1]
+      local okT, tf = pcall(P.Toast, Tr["Objet recherché trouvé : "] .. ((first and first.name) or Tr["Sifflet de chien"]), string.format(Tr["Après %d tentatives"], 12),
+        { kind = "achievement", variant = "gold", titleColor = first and H.QualityRGB(first.id) or nil }, "hunt-test", true, (first and first.id) and H.Icon(first.id) or nil)
+      if okT and first and first.id then MakeClickable(tf, first.id, first.name) end
     end
     return
   end

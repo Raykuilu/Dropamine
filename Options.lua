@@ -96,10 +96,12 @@ Options.SECTIONS = {
     { type = "check", key = "levelUpAnim", label = "Animation de niveau", default = true, cmd = "/drop anim on|off", help = "Grande animation à chaque niveau." },
     { type = "check", key = "totalDing", label = "Palier du total", default = true, cmd = "Réglage de ce panneau et de la visite guidée (/drop setup)", help = "Toast doré et émote quand le niveau total franchit un palier." },
     { type = "check", key = "fireworks", label = "Feu d'artifice (maximum)", default = true, cmd = "Réglage de ce panneau et de la visite guidée (/drop setup)", help = "Gerbes dorées quand le niveau total maximum est atteint." },
-    { type = "check", key = "rareAlert", label = "Alerte de butin rare", default = true, cmd = "Réglage de ce panneau et de la visite guidée (/drop setup)", help = "Toast quand tu reçois un objet épique ou mieux." },
-    { type = "radio", key = "rareMin", label = "Butin rare : à partir de", default = "epic",
-      choices = { { "epic", "Épique" }, { "rare", "Rare (bleu)" } }, cmd = "Réglage de ce panneau et de la visite guidée (/drop setup)",
-      help = "Qualité minimale qui déclenche l'alerte de butin rare." },
+    -- 3.8.2 : une liste à cases remplace « Alerte de butin rare » + « à partir de »
+    { type = "radio", multi = true, key = "lootAlerts", label = "Alertes de butin", default = "45", cmd = "Réglage de ce panneau",
+      choices = { { 3, "Rare" }, { 4, "Épique" }, { 5, "Légendaire" } },
+      help = "Toast quand tu reçois un objet d'une qualité cochée, dans la couleur de l'objet.",
+      get = function() return ns.Hunt and ns.Hunt.LootQualString and ns.Hunt.LootQualString() or "45" end,
+      set = function(v) if ns.Hunt and ns.Hunt.SetLootQualString then ns.Hunt.SetLootQualString(v) end end },
     { type = "check", key = "huntAlert", label = "Alerte de chasse", default = true, cmd = "Réglage de ce panneau et de la visite guidée (/drop setup)", help = "Toast quand un objet de ta liste de chasse tombe." },
     { type = "slider", key = "dropWidth", label = "Largeur des notifs", default = 0, min = 0, max = 480, step = 10, unit = "pxauto",
       help = "Auto : suit la largeur du panneau, avec un minimum lisible (260 px à l'échelle). Une valeur fixe impose la largeur. Si le toast est plus large que le panneau, il s'aligne sur le bord du panneau du côté de l'écran, sans dépasser." },
@@ -248,7 +250,7 @@ Options.MAP = {
     { "Suivi", { "peche", "courses" } },
   },
   hunt = {
-    { "Chasse", { "huntAlert", "rareAlert", "rareMin" } },
+    { "Chasse", { "huntAlert", "lootAlerts" } },
     { "Collection", { "collection" } },
   },
   progress = {
@@ -454,7 +456,7 @@ Options.LAYOUT = {
   TEST_W = 64,
   RESET_W = 110,
 }
-Options.WHEEL_STEP = 40
+Options.WHEEL_STEP = 90   -- 3.8.2 : défilement plus rapide (40 avant)
 
 -- Conservé pour les tests / le repli autonome, mais plus utilisé pour le chrome.
 Options.BOX_EDGE = "Interface\\Tooltips\\UI-Tooltip-Border"
@@ -482,6 +484,10 @@ function Options.Scroll(delta)
   if not sc or not sc.SetVerticalScroll then return end
   local cur = (sc.GetVerticalScroll and sc:GetVerticalScroll()) or 0
   local max = (sc.GetVerticalScrollRange and sc:GetVerticalScrollRange()) or 0
+  -- 3.8.2 : borne calculée sur la page affichée (la plage du ScrollFrame pouvait rester celle de
+  -- toutes les pages empilées : on descendait alors dans le vide)
+  local own = Options.MaxScroll and Options.MaxScroll()
+  if own and own < max then max = own end
   local v = cur - (delta or 0) * Options.WHEEL_STEP
   if v < 0 then v = 0 end
   if v > max then v = max end
@@ -514,7 +520,21 @@ local function MakeDropdown(box, it, x, y)
   if type(_G.UIDropDownMenu_SetWidth) == "function" then pcall(_G.UIDropDownMenu_SetWidth, dd, W) end
   dd.choices = it.choices
   dd.key = it.key
+  -- 3.8.2 : menu à cases (it.multi) : valeur = chiffres des choix cochés (« 45 »), « Aucun » en tête
+  local function has(v, c) return type(v) == "string" and v:find(tostring(c), 1, true) ~= nil end
+  local function hexOf(c)
+    local rgb = it.multi and ns.Hunt and ns.Hunt.QualityRGB and ns.Hunt.QualityRGB(nil, c)
+    if not rgb then return nil end
+    return string.format("|cff%02x%02x%02x", math.floor(rgb[1] * 255 + 0.5), math.floor(rgb[2] * 255 + 0.5), math.floor(rgb[3] * 255 + 0.5))
+  end
   local function label(v)
+    if it.multi then
+      local parts = {}
+      for _, ch in ipairs(it.choices) do
+        if has(v, ch[1]) then local hx = hexOf(ch[1]) parts[#parts + 1] = hx and (hx .. Tr[ch[2]] .. "|r") or Tr[ch[2]] end
+      end
+      return #parts > 0 and table.concat(parts, ", ") or Tr["Aucun"]
+    end
     for _, ch in ipairs(it.choices) do if ch[1] == v then return Tr[ch[2]] end end
     return tostring(v)
   end
@@ -523,9 +543,34 @@ local function MakeDropdown(box, it, x, y)
     if type(_G.UIDropDownMenu_SetText) == "function" then pcall(_G.UIDropDownMenu_SetText, self, label(v)) end
     self.selected = v
   end
+  local function initMulti(level)
+    local none = _G.UIDropDownMenu_CreateInfo()
+    none.text, none.notCheckable = Tr["Aucun"], true
+    none.func = function()
+      Options.Set(it.key, "")
+      dd:Refresh()
+      if type(_G.CloseDropDownMenus) == "function" then pcall(_G.CloseDropDownMenus) end
+    end
+    _G.UIDropDownMenu_AddButton(none, level)
+    for _, ch in ipairs(it.choices) do
+      local info = _G.UIDropDownMenu_CreateInfo()
+      info.text, info.value = Tr[ch[2]], ch[1]
+      info.colorCode = hexOf(ch[1])
+      info.isNotRadio, info.keepShownOnClick = true, true
+      info.checked = has(Options.Get(it.key), ch[1])
+      info.func = function()
+        local cur = tostring(Options.Get(it.key) or "")
+        if has(cur, ch[1]) then cur = cur:gsub(tostring(ch[1]), "") else cur = cur .. tostring(ch[1]) end
+        Options.Set(it.key, cur)
+        dd:Refresh()
+      end
+      _G.UIDropDownMenu_AddButton(info, level)
+    end
+  end
   local function init(self, level)
     if ns.InCombat and ns.InCombat() then return end
     if type(_G.UIDropDownMenu_CreateInfo) ~= "function" then return end
+    if it.multi then return initMulti(level) end
     for _, ch in ipairs(it.choices) do
       local info = _G.UIDropDownMenu_CreateInfo()
       info.text, info.value = Tr[ch[2]], ch[1]
@@ -599,6 +644,9 @@ Options.TEST = {
   scannerSound = "sound",
   -- 3.6.0 (Progress.lua) : les tests passent outre le mode calme (force)
   goalToast = "sessiongoal", achievements = "achievement", weeklyRecap = "weekly", quietToasts = "skill",
+  -- 3.8.2 : chaque notification a son bouton « Tester »
+  totalDing = "totalding", fireworks = "fireworks", lootAlerts = "rare", huntAlert = "hunt",
+  trainerRankToast = "rankup", daily = "daily",
 }
 
 local function WeaponTestSkill()
@@ -784,6 +832,7 @@ local function TestToast(kind)
   end
   local icon = ns.LEVEL_ICON or "Interface\\Icons\\INV_Misc_QuestionMark"
   local title, sub, cur, maxv, opts = Tr["Toast d'exemple"], "", nil, nil, { force = true, kind = "test" }
+  local sample  -- objet réel de l'exemple (clic = fiche de l'objet)
   if kind == "xp" then
     title, sub, cur, maxv = Tr["Expérience +250"], Tr["Niveau 32"], 250, 2500
     opts.kind = "xp"
@@ -849,12 +898,68 @@ local function TestToast(kind)
     title = Tr["Niveau "] .. tostring(level) .. Tr[" atteint !"]
     sub = (ui.LevelTotalLine and ui:LevelTotalLine()) or ""
     opts.kind, opts.variant, opts.big = "levelup", "gold", true
+  elseif kind == "totalding" or kind == "fireworks" then
+    local tmax = tonumber(ns.TOTAL_MAX) or 2460
+    local hit = kind == "fireworks" and tmax or 1500
+    title = Tr["Niveau total "] .. tostring(hit) .. Tr[" atteint !"]
+    sub = kind == "fireworks" and Tr["Maximum atteint !"] or Tr["Palier du total franchi"]
+    opts.kind, opts.variant, opts.big = "levelup", "gold", true
+  elseif kind == "rare" or kind == "hunt" then
+    -- exemple : le premier objet de la liste de chasse s'il y en a un (nom localisé, vraie icône)
+    local H = ns.Hunt
+    local first = H and H.List and H.List()[1]
+    local nm = first and first.name
+    if first and first.id and H.Icon then icon = H.Icon(first.id) end
+    if not (first and first.id) then icon = "Interface\\Icons\\INV_Sword_39" end
+    -- titre : couleur de qualité de l'objet lié
+    local q = first and first.id and H.QualityOf and H.QualityOf(first.id)
+    local rgb = first and first.id and H.QualityRGB and H.QualityRGB(first.id, q)
+    if kind == "rare" then
+      -- alerte de butin : vrai objet d'exemple dans la plus haute qualité cochée ; aucune cochée = pas d'alerte
+      q = H.LootQualityTop and H.LootQualityTop()
+      if not q then
+        if ns.Print then ns.Print(Tr["Alertes de butin : aucune qualité cochée, pas de toast."]) end
+        return nil
+      end
+      local sid, snm = H.SampleItem and H.SampleItem(q)
+      if sid and _G.C_Item and _G.C_Item.RequestLoadItemDataByID then pcall(_G.C_Item.RequestLoadItemDataByID, sid) end
+      local RT = { [3] = "Butin rare : ", [4] = "Butin épique : ", [5] = "Butin légendaire : " }
+      local lbl = RT[q] or RT[4]
+      local shown = sid and H.DisplayName and H.DisplayName(sid, snm) or snm
+      title, sub = Tr[lbl] .. (shown or Tr["Objet d'exemple"]), Tr[(lbl:gsub(" : $", ""))]
+      opts.titleColor = (H.QualityRGB and H.QualityRGB(nil, q)) or { 0.64, 0.21, 0.93 }
+      icon = (sid and H.Icon and H.Icon(sid)) or "Interface\\Icons\\INV_Sword_39"
+      sample = sid and { id = sid, name = shown } or nil
+    else
+      title, sub = Tr["Objet recherché trouvé : "] .. (nm or Tr["Sifflet de chien"]), string.format(Tr["Après %d tentatives"], 12)
+      opts.titleColor = rgb
+    end
+    opts.kind, opts.variant = "achievement", "gold"
+  elseif kind == "rankup" then
+    local RT = ns.RankToast
+    local list = { { id = "skinning", name = Tr["Dépeçage"] } }
+    title = (RT and RT.Title and RT.Title(list)) or string.format(Tr["%s : rang supérieur disponible chez le maître"], Tr["Dépeçage"])
+    sub = nil
+    opts.kind, opts.skillId = "rank-trainer", "skinning"
+    icon = ProfIcon("skinning", "Interface\\Icons\\INV_Misc_Pelt_Wolf_01")
+  elseif kind == "daily" then
+    title, sub = Tr["Défi du jour réussi !"], "+5" .. Tr[" en "] .. Tr["Dépeçage"]
+    opts.kind, opts.variant = "daily", "gold"
+    icon = ProfIcon("skinning", "Interface\\Icons\\INV_Misc_Pelt_Wolf_01")
   end
   opts.force, opts.test = true, true
   local f = ui:SpawnDrop(icon, title, sub, cur, maxv, nil, opts)
   if f then
     f._testToast = true
-    if (kind == "levelup" or kind == "max") and ui.AttachFlareFx then pcall(ui.AttachFlareFx, ui, f, true) end
+    -- butin rare / chasse : clic = fiche de l'objet, comme les vraies notifications
+    if kind == "hunt" and ns.Hunt and ns.Hunt.MakeClickable and ns.Hunt.List then
+      local first = ns.Hunt.List()[1]
+      if first and first.id then pcall(ns.Hunt.MakeClickable, f, first.id, first.name) end
+    elseif kind == "rare" and sample and ns.Hunt and ns.Hunt.MakeClickable then
+      pcall(ns.Hunt.MakeClickable, f, sample.id, sample.name)
+    end
+    if (kind == "levelup" or kind == "max" or kind == "totalding" or kind == "fireworks") and ui.AttachFlareFx then pcall(ui.AttachFlareFx, ui, f, true) end
+    if kind == "fireworks" and ns.Progress and ns.Progress.Fireworks then pcall(ns.Progress.Fireworks) end
     PreviewTileFx(opts, f)
   end
   return f
@@ -1135,6 +1240,8 @@ function Options.Build()
   if scroll.SetScrollChild then scroll:SetScrollChild(content) end
   if scroll.EnableMouseWheel then scroll:EnableMouseWheel(true) end
   scroll:SetScript("OnMouseWheel", function(self, delta) Options.Scroll(delta) end)
+  -- 3.8.2 : barre de défilement et flèches aussi bornées à la page affichée
+  if scroll.HookScript then scroll:HookScript("OnVerticalScroll", function() if Options.ClampScroll then Options.ClampScroll() end end) end
   panel.scroll, panel.content = scroll, content
   Options.scroll, Options.content = scroll, content
   Options.boxes = {}
@@ -1275,6 +1382,12 @@ function Options.Build()
           l.font = "GameFontNormal"
           l:SetPoint("TOPLEFT", box, "TOPLEFT", cx, -by)
           if l.SetJustifyH then l:SetJustifyH("LEFT") end
+          -- 3.8.2 : bouton « Tester » aussi sur un menu (Alertes de butin)
+          if Options.TEST[it.key] then
+            local tb = MakeTestButton(box, it, cx, by - 2)
+            Options.testButtons[it.key] = tb
+            Rect(box, cx + Options.COL_W - L.TEST_W, by - 2, L.TEST_W, 20, it.key .. ":test")
+          end
           local hy = by + 16
           if it.help then
             local hf = Label(box, Tr[it.help], "GameFontHighlightSmall")
@@ -1386,9 +1499,51 @@ function Options.Build()
         u.rst:ClearAllPoints() u.rst:SetPoint("TOPRIGHT", content, "TOPLEFT", L.MARGIN + boxW, 0)
         u.box:ClearAllPoints() u.box:SetPoint("TOPLEFT", content, "TOPLEFT", L.MARGIN, -L.TITLE_H)
         content:SetHeight(L.TITLE_H + u.hgt + L.SECTION_GAP + L.MARGIN)
+        if scroll.UpdateScrollChildRect then pcall(scroll.UpdateScrollChildRect, scroll) end
+        -- 3.8.2 : hauteur réelle (plus de vide en bas) : mesurée une fois la page posée
+        After(0, function() Options.FitContent(u.box) end)
       end
     end
     if scroll.SetVerticalScroll then scroll:SetVerticalScroll(0) end
+  end
+  -- Hauteur du défilement = bas du dernier élément visible de la page (l'estimation par lignes
+  -- surestimait les aides et laissait un grand vide sous les réglages).
+  -- défilement maximal de la page affichée = hauteur du contenu - hauteur visible
+  function Options.MaxScroll()
+    local sc = Options.scroll
+    if not (sc and sc.GetHeight and content.GetHeight) then return nil end
+    local ch, vh = content:GetHeight(), sc:GetHeight()
+    if not (ch and vh and vh > 0) then return nil end
+    return math.max(0, ch - vh)
+  end
+  function Options.ClampScroll()
+    local sc = Options.scroll
+    local mx = Options.MaxScroll()
+    if sc and mx and sc.GetVerticalScroll and sc:GetVerticalScroll() > mx then sc:SetVerticalScroll(mx) end
+  end
+  function Options.FitContent(box)
+    Options.ClampScroll()
+    if not (box and box.GetTop and box:IsShown()) then return end
+    local top = box:GetTop()
+    if not top then return end
+    local low = top
+    local function scan(list)
+      for _, r in ipairs(list) do
+        if r and r.IsShown and r:IsShown() and r.GetBottom then
+          local b = r:GetBottom()
+          if b and b < low then low = b end
+        end
+      end
+    end
+    scan({ box:GetChildren() })
+    scan({ box:GetRegions() })
+    local real = top - low
+    if real > 20 then
+      content:SetHeight(L.TITLE_H + real + L.MARGIN * 2)
+      local sc = Options.scroll
+      if sc and sc.UpdateScrollChildRect then pcall(sc.UpdateScrollChildRect, sc) end
+      Options.ClampScroll()
+    end
   end
   for i, sec in ipairs(order) do
     local tb2 = CreateFrame("Button", "DropamineOptTab_" .. sec.id, panel)
@@ -1416,6 +1571,9 @@ function Options.Build()
   panel:SetScript("OnShow", function()
     Options.Sync()
     Options.EnsurePreviewVisible()
+    -- la page n'a de position qu'une fois affichée : mesurer sa vraie hauteur à ce moment
+    local u = Options.secUI[Options._tab or ""]
+    if u then After(0, function() Options.FitContent(u.box) end) end
   end)
   panel:SetScript("OnHide", function()
     Options.EndPreview()

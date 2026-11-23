@@ -1,5 +1,22 @@
 # Changelog
 
+## 3.8.2
+
+### Fixes
+- English client: the rare loot alert title ("Epic loot: …", "Legendary loot: …") was still in French.
+- Rare loot alert: no more "nil" item name when the item was not cached yet (the alert now waits for the item data), and the colour follows the real item quality (a legendary is no longer shown as epic).
+- English client: the Collection log groups ("Dungeons lvl 10-29"…) and a few `/drop` help lines were still in French.
+- Hunt and rare loot toasts: clicking to open the item only worked on the first toast (recycled toasts lost the click), and a rare loot colour could leak onto the next toast. The toast title now always uses the linked item's quality colour.
+- English client: the Hunt tab equipment slots were in French, and the waist slot read "Size".
+- Characters tab and tile tooltips: class and skill names saved by a client in another language (e.g. "Combat farouche", "Bâtons", "Guerrier") now show in the addon language; a skill description cached in French is replaced by the English one.
+- `/drop chasse test`: the sample toast now uses the first item of your hunt list, in your language, and is clickable like a real hunt toast (opens the item card).
+
+### New
+- Loot alerts: one dropdown with a checkbox per quality (Rare, Epic, Legendary) and a "None" entry replaces "Rare loot alert" + "Rare loot: from". The toast title uses the quality colour. Your previous choice is kept (default: Epic and Legendary).
+- The guided tour opens once for everyone after this update, with a new page about loot alerts. Once finished or skipped, it does not come back (`/drop setup` reopens it).
+- Settings: no more empty space at the bottom of each tab, and the mouse wheel scrolls faster.
+- Settings: every notification now has its Test button (total milestone, fireworks, rare loot alert, hunt alert, trainer rank toast, daily challenge).
+
 ## 3.8.1
 
 ### New

@@ -378,7 +378,7 @@ function I.OnEnter(self)
   if d and GameTooltip then
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     local g = GOLDC()
-    GameTooltip:SetText(d.name or "?", g[1], g[2], g[3])
+    GameTooltip:SetText((ns.LocSkillName and ns.LocSkillName(d.name, d.id)) or d.name or "?", g[1], g[2], g[3])
     for _, l in ipairs(I.TooltipLines(d)) do GameTooltip:AddLine(l[1], l[2], l[3], l[4]) end
     if self._warnText then GameTooltip:AddLine(self._warnText, 1, 0.82, 0.2, true) end
     if self._capped then GameTooltip:AddLine(Tr["Palier atteint : va voir ton maître."], 0.25, 1, 0.25, true) end

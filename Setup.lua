@@ -40,6 +40,12 @@ end
 local function TestTier() local P = ns.Progress if P and P.DingFx then P.DingFx(1500, TotalMax(), true) end end
 local function TestMax() local P = ns.Progress if P and P.DingFx then P.DingFx(TotalMax(), TotalMax(), true) end end
 local function TestHunt() if ns.SlashExt and ns.SlashExt.chasse then ns.SlashExt.chasse("test") end end
+local function TestLoot() local O = ns.Options if O and O.PlayTestNow then pcall(O.PlayTestNow, "lootAlerts") end end
+local function OpenLootSettings()
+  local O = ns.Options
+  if O and O.Open then pcall(O.Open) end
+  if O and O.SelectTab then pcall(O.SelectTab, "hunt") end
+end
 local function OpenPanel() if ns.UI and ns.UI.Toggle then pcall(ns.UI.Toggle, ns.UI) end end
 local function OpenProgress(tab) if ns.ProgressUI and ns.ProgressUI.Open then pcall(ns.ProgressUI.Open, tab) end end
 
@@ -68,8 +74,12 @@ S.STEPS = {
     actions = { { "Ouvrir la fenêtre", function() OpenProgress() end } } },
   { title = "Chasse et collection",
     text = "Suis un objet précis (ou importe tes favoris du Journal des donjons) : Dropamine compte tes tentatives et te prévient quand il tombe. Le collection log montre ce que tu as déjà obtenu.",
-    checks = { { "huntAlert", true, "Alerte quand un objet suivi tombe" }, { "rareAlert", true, "Alerte de butin rare (épique ou mieux)" } },
+    checks = { { "huntAlert", true, "Alerte quand un objet suivi tombe" } },
     actions = { { "Tester l'alerte", TestHunt }, { "Ouvrir la Chasse", function() OpenProgress("hunt") end } } },
+  -- 3.8.2 : nouveauté présentée à tous (la visite est relancée une fois, voir S.TOUR_VERSION)
+  { title = "Nouveau : alertes de butin",
+    text = "Un toast dans la couleur de l'objet quand tu reçois un objet rare, épique ou légendaire. Choisis les qualités dans les réglages (onglet Chasse), ou « Aucun » pour couper. Clic sur le toast : fiche de l'objet.",
+    actions = { { "Tester l'alerte de butin", TestLoot }, { "Choisir les qualités", OpenLootSettings } } },
   { title = "C'est prêt !",
     text = "Tout se règle dans les Options. Commandes utiles : /drop (panneau), /drop progression, /drop chasse, /drop setup (rouvrir cette visite). Bon jeu !",
     actions = { { "Ouvrir les réglages", function() if ns.Options and ns.Options.Open then pcall(ns.Options.Open) end end } } },
@@ -140,8 +150,16 @@ function S.Show(i)
   if PU and PU.PaintButton then PU.PaintButton(frame.nextBtn) PU.PaintButton(frame.prev) PU.PaintButton(frame.skip) end
 end
 
+-- 3.8.2 : version de la visite. Si elle est plus récente que celle validée sur le compte, la visite
+-- s'ouvre une fois au prochain chargement, y compris pour les joueurs existants ; validée (« C'est parti ! »
+-- ou « Passer »), elle ne revient plus jusqu'à la prochaine version.
+S.TOUR_VERSION = 2
 function S.Close(done)
-  if done then UIDB().setupDone = true end
+  if done then
+    local ui = UIDB()
+    ui.setupDone = true
+    ui.tourVersion = S.TOUR_VERSION
+  end
   if frame then frame:Hide() end
 end
 
@@ -243,8 +261,9 @@ end
 ns.On("ADDON_LOADED", function(_, name)
   if name ~= ADDON then return end
   local ui = UIDB()
-  if ui.setupDone == nil and next(ui) ~= nil then ui.setupDone = true end   -- compte existant : jamais
-  S.pending = ui.setupDone == nil
+  if ui.setupDone == nil and next(ui) ~= nil then ui.setupDone = true end   -- compte existant : pas la 1re visite…
+  -- …mais une visite d'une version plus récente s'affiche une fois à tout le monde
+  S.pending = ui.setupDone == nil or (tonumber(ui.tourVersion) or 1) < S.TOUR_VERSION
 end)
 ns.On("PLAYER_ENTERING_WORLD", function()
   if not S.pending then return end

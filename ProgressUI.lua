@@ -1718,7 +1718,7 @@ function PU.ListJoin(items, n)
   for i = 1, math.min(n, #items) do
     local it = items[i]
     if type(it) == "table" then
-      local name = it.name or "?"
+      local name = (ns.LocSkillName and ns.LocSkillName(it.name, it.id)) or it.name or "?"
       local rk = tonumber(it.rank)
       parts[#parts + 1] = rk and (name .. " " .. tostring(rk)) or name
     else
@@ -1772,14 +1772,15 @@ function PU.CharTip(s)
     xp = (s.xp and s.xp > 0) and tostring(s.xp) or "—"
   end
   local lines = {}
-  lines[#lines + 1] = (s.class and (s.class .. " · ") or "") .. Tr["Niveau "] .. tostring(s.level or 0)
+  local cls = ns.LocClassName and ns.LocClassName(s.class, s.classFile) or s.class
+  lines[#lines + 1] = (cls and (cls .. " · ") or "") .. Tr["Niveau "] .. tostring(s.level or 0)
   lines[#lines + 1] = "XP : " .. xp
   lines[#lines + 1] = Tr["Or"] .. " : " .. gold
   lines[#lines + 1] = Tr["Métiers"] .. " : " .. PU.ListJoin(s.professions, 12)
   local arms = PU.ListJoin(s.weapons, 12)
   if s.defense and (s.defense.name or s.defense.rank) then
     local d = s.defense
-    local dtxt = (d.name or Tr["Défense"]) .. " " .. tostring(d.rank or 0)
+    local dtxt = ((d.name and ns.LocSkillName and ns.LocSkillName(d.name, d.id)) or d.name or Tr["Défense"]) .. " " .. tostring(d.rank or 0)
     arms = (arms ~= "—" and (arms .. ", " .. dtxt)) or dtxt
   end
   lines[#lines + 1] = Tr["Armes"] .. " : " .. arms
@@ -1907,14 +1908,15 @@ function PU.RefreshChars(p)
       local col, row = (shown - 1) % cols, math.floor((shown - 1) / cols)
       Place(c, p.child, col * (cw + gap), row * (ch + gap), cw, ch)
       local gold = (money and money(s.gold or 0, false)) or tostring(s.gold or 0)
-      local sub = ((s.class and (s.class .. " · ")) or "") .. Tr["Niveau "] .. tostring(s.level or 0)
+      local cls = ns.LocClassName and ns.LocClassName(s.class, s.classFile) or s.class
+      local sub = ((cls and (cls .. " · ")) or "") .. Tr["Niveau "] .. tostring(s.level or 0)
       if s.realm and s.realm ~= "" then sub = sub .. " · " .. s.realm end
       local who = s.name or s.key or "?"
       PU.SetClipped(c.name, who, math.floor(textW * 0.5))
       PU.SetClipped(c.sub, sub, textW - 30)
       PU.SetClipped(c.gold, gold, math.floor(textW * 0.45))
       -- couleur et icône de classe (affichage seul)
-      local cf = s.classFile
+      local cf = s.classFile or (ns.ClassCode and ns.ClassCode(s.class))
       if not cf and s.class then  -- anciennes fiches : retrouver le code depuis le nom localisé
         for _, tbl in ipairs({ _G.LOCALIZED_CLASS_NAMES_MALE, _G.LOCALIZED_CLASS_NAMES_FEMALE }) do
           if type(tbl) == "table" and not cf then
@@ -1952,11 +1954,11 @@ function PU.RefreshChars(p)
       local items = { { name = Tr["Niveau"], v = N(s.level) or 0, mx = cap, col = seg[1] } }
       for i, it in ipairs(top(s.professions)) do
         if i > 2 then break end
-        items[#items + 1] = { name = it.name, v = it.rank, mx = (N(it.max) or 0) > 0 and it.max or 300, col = seg[3] }
+        items[#items + 1] = { name = ns.LocSkillName and ns.LocSkillName(it.name, it.id) or it.name, v = it.rank, mx = (N(it.max) or 0) > 0 and it.max or 300, col = seg[3] }
       end
       for i, it in ipairs(top(s.weapons, s.defense)) do
         if i > 2 then break end
-        items[#items + 1] = { name = it.name or Tr["Défense"], v = it.rank, mx = (N(it.max) or 0) > 0 and it.max or math.max(it.rank, 1), col = seg[2] }
+        items[#items + 1] = { name = (it.name and ns.LocSkillName and ns.LocSkillName(it.name, it.id)) or it.name or Tr["Défense"], v = it.rank, mx = (N(it.max) or 0) > 0 and it.max or math.max(it.rank, 1), col = seg[2] }
       end
       for r, e in ipairs(c.rows) do
         local it = items[r]
@@ -2014,7 +2016,7 @@ function PU.BuildHunt(f)
     b.edge = Edge(b)
     b.lab = FS(b, "GameFontDisableSmall", "sub")
     b.lab:SetPoint("CENTER", b, "CENTER", 0, 0)
-    b.lab:SetText(Tr[t[2]])
+    b.lab:SetText(ns.Hunt.TileLabel(t))
     b.ok = FS(b, "GameFontNormalSmall", "title")
     b.ok:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -2, 2)
     b.tile = t
@@ -2031,7 +2033,7 @@ function PU.BuildHunt(f)
         tt:AddLine(string.format(Tr["%d tentatives · %d trouvé(s)"], it.attempts, it.drops), 0.8, 0.8, 0.8)
         tt:AddLine(Tr["Clic droit : retirer"], 0.6, 0.6, 0.6)
       else
-        tt:AddLine(Tr[self.tile[2]], 1, 0.82, 0)
+        tt:AddLine(ns.Hunt.TileLabel(self.tile), 1, 0.82, 0)
         tt:AddLine(Tr["Clic : choisir l'objet à chasser"], 1, 1, 1)
       end
       tt:Show()
@@ -2244,7 +2246,7 @@ function PU.RefreshHunt(p)
     for _, t in ipairs(H.TILES) do if t[1] == c.ui.tile then tile = t end end
     c.hint:Hide() c.empty:Hide()
     for _, e in ipairs(c.rows) do e.name:Hide() e.info:Hide() e.del:Hide() e.bar.track:Hide() e.bar.fill:Hide() end
-    c.pickTitle:SetText(Tr["Choisir : "] .. Tr[tile and tile[2] or ""])
+    c.pickTitle:SetText(Tr["Choisir : "] .. H.TileLabel(tile))
     c.pickTitle:Show() c.search:Show() c.mineBtn:Show() c.backBtn:Show()
     c.mineBtn.fs:SetText(c.ui.mine and Tr["Armure : classe"] or Tr["Armure : toutes"])
     if not H.HasSource() then

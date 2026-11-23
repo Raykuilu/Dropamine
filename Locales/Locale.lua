@@ -81,6 +81,54 @@ function ns.SkillDisplayName(id)
   return id and tostring(id) or nil
 end
 
+-- 3.8.2 : noms enregistrés dans une autre langue (fiches de personnages, rangs en cache) :
+-- « Dépeçage » lu sur un client français s'affiche « Skinning » en anglais, et inversement.
+local skillByName
+local function FoldName(s)
+  s = tostring(s or "")
+  if ns.Fold then local ok, v = pcall(ns.Fold, s) if ok and type(v) == "string" then return v end end
+  return s:lower()
+end
+function ns.LocSkillName(name, id)
+  if id and ns.SkillDisplayName then
+    local e = ns.CatalogById and ns.CatalogById(id) or (ns.CATALOG_BY_ID and ns.CATALOG_BY_ID[id])
+    if e then return ns.CatalogDisplayName(e) end
+  end
+  if type(name) ~= "string" or name == "" then return name end
+  if not skillByName and type(ns.CATALOG) == "table" then
+    skillByName = {}
+    for _, e in ipairs(ns.CATALOG) do
+      if e.id then
+        if e.name then skillByName[FoldName(e.name)] = e end
+        if ns.CATALOG_EN[e.id] then skillByName[FoldName(ns.CATALOG_EN[e.id])] = e end
+        for _, a in ipairs(e.aliases or {}) do skillByName[FoldName(a)] = skillByName[FoldName(a)] or e end
+      end
+    end
+  end
+  local e = skillByName and skillByName[FoldName(name)]
+  return e and ns.CatalogDisplayName(e) or name
+end
+
+-- Classe d'une fiche : nom dans la langue de l'addon, d'après le code (WARRIOR…) ou le nom enregistré.
+local CLASS_EN = { WARRIOR = "Warrior", PALADIN = "Paladin", HUNTER = "Hunter", ROGUE = "Rogue", PRIEST = "Priest",
+  SHAMAN = "Shaman", MAGE = "Mage", WARLOCK = "Warlock", DRUID = "Druid" }
+local CLASS_FR = { WARRIOR = "Guerrier", PALADIN = "Paladin", HUNTER = "Chasseur", ROGUE = "Voleur", PRIEST = "Prêtre",
+  SHAMAN = "Chaman", MAGE = "Mage", WARLOCK = "Démoniste", DRUID = "Druide" }
+local CLASS_FR_ALT = { ["Chasseresse"] = "HUNTER", ["Voleuse"] = "ROGUE", ["Prêtresse"] = "PRIEST", ["Chamane"] = "SHAMAN",
+  ["Druidesse"] = "DRUID", ["Guerrière"] = "WARRIOR", ["Paladine"] = "PALADIN", ["Démoniste"] = "WARLOCK" }
+function ns.ClassCode(className, classFile)
+  if type(classFile) == "string" and CLASS_EN[classFile] then return classFile end
+  if type(className) ~= "string" then return nil end
+  for code, n in pairs(CLASS_EN) do if n == className then return code end end
+  for code, n in pairs(CLASS_FR) do if n == className then return code end end
+  return CLASS_FR_ALT[className]
+end
+function ns.LocClassName(className, classFile)
+  local code = ns.ClassCode(className, classFile)
+  if not code then return className end
+  return (ns.LangCode() == "en" and CLASS_EN or CLASS_FR)[code]
+end
+
 -- Modèles de texte du client (ERR_SKILL_UP_SI, LOOT_ITEM_SELF, ITEM_MIN_SKILL…) :
 -- « %s » / « %d » (et « %1$s ») deviennent des captures, dans l'ordre des arguments.
 local patCache = {}
