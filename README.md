@@ -1,266 +1,273 @@
 # Dropamine
 
-Frozen your brain too much? Take some micro dopamine between big loots and level-ups!
+<div align="center">
+<img src="https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/header-en.png" alt="Dropamine — every skill, every drop" width="100%" />
+</div>
 
-**All your skills. One box.**
+&nbsp;
 
-Dropamine is the perfect companion addon for every session — every mob you kill on the way becomes 100% useful grind, whether you're leveling or PvP roaming.
+*[Version française plus bas](#français)*
 
-Every +1, you earned it. Solo, no shortcuts — just you, the grid, and the grind.
+**Dropamine 3.8** puts every skill on screen, celebrates each +1 like Old School RuneScape, and now tracks the gear you are farming: a **Collection log** for every dungeon and raid, and a **BiS hunt** that reads your **Dungeon Journal favourites**.
 
-![All your skills. One box.](docs/img/features-overview-clean-en.png)
+For **WoW Forever** only (`Interface: 16001`). The native Skills tab is never hidden, moved or rewritten. FlareUI is not required.
 
-## Every skill. Your total
+## New in 3.8: Collection log
 
-![Every skill. Your total.](docs/img/feat-grid-en.png)
+![Collection log.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/collection-log-en.png)
 
-Weapon skills, Defence, professions, level: all in one box, with your total right underneath. No more opening the Skills window just to see what you've earned.
+![Your progress.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/collection-home-en.png)
 
-## Know before you swing
+Your Old School RuneScape-style collection log, for WoW Forever dungeons and raids.
 
-![Know before you swing.](docs/img/feat-highlight-en.png)
+- **Every dungeon and raid**, grouped by level bracket. Each boss shows its items with their icons: the ones you own in colour, the missing ones greyed out.
+- **Approximate kill count per boss** (≈N kills), counted from the loot of its tracked items.
+- **A Home page** opens first: overall progress, dungeons completed, boss kills, items, one progress bar per category (click to open it), and the dungeons you are furthest along in.
+- **Professions too:** known recipes out of the total for every profession you have learned. For Cooking and First Aid, the missing recipes are listed by required skill and source.
+- **Discoveries:** the bestiary and skinnable creatures you have met, by 10-level bracket, with your own bracket highlighted.
+- Categories fold and unfold, and each one shows its own X / Y. Item, dungeon and boss names follow your game language.
 
-Your target lights up the tiles it will rank in green. You pick the fight, you earn the point. No wasted swings.
+![Recipes.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/recipes-cooking-en.png)
 
-## Every profession +1, on top of the panel
+`/drop collection` · Collection achievements: Collector (10 %), Great collector (25 %), Dream collection (50 %).
 
-![Every profession +1, on top of the panel.](docs/img/feat-toast-metier-en.png)
+## New in 3.8: BiS hunt, linked to Dungeon Journal favourites
 
-Craft or gather: a toast tells you how many you can make right now — “N × … possibles (+1)” — and the point flies to its tile. You see the point. You earned it.
+![BiS hunt.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/bis-hunt-en.png)
 
-## The XP, and what's left
+Pick the item you want, then go get it.
 
-![The XP, and what's left.](docs/img/feat-toast-xp-en.png)
+- **Your Dungeon Journal favourites become your hunt list.** Every item you starred is placed on its equipment slot automatically. When several items compete for the same slot, the best one is shown on the grid.
+- **An equipment grid.** Click a slot to choose the item from the Dungeon Journal data (filter by your class's armour, search by name). You can also add an item by name, link or ID, or from your last loot.
+- **Real attempts.** Boss kills are detected from loot messages, so an attempt is a real kill, not an opened loot window. For each item: attempts, and the cumulative chance it should have dropped by now.
+- **It dropped!** A toast with the item icon. Click it to open the item card, with the equipment comparison.
+- **Rare loot alert:** a toast in the item's quality colour for every epic (or rare, if you choose) drop.
+![It dropped!](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/it-dropped-en.png)
 
-An XP toast tells you how much you just gained, and how long is left before the next level — “+120 XP, Level 28 in ~15 min.” Mid-farm, you always know where you stand.
+- First blood (first wanted item found) and Persistent (found after more than 50 attempts) achievements.
 
-## Level up
+`/drop chasse` · Data is read live from the **Dungeon Journal** addon (optional, nothing bundled). Thanks to Exehn for the data and access to favourites.
 
-![Level up.](docs/img/feat-levelup-en.png)
+## Every skill. Every +1.
 
-When you ding, a toast celebrates it — “Level 28 reached! Total level: 980 (+1).” Every level, counted in the total.
+![Know before you swing.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/know-before-you-swing-en.png)
 
-## Farm on autopilot
+**1. You target a mob or a player.** The tiles that will rank up light up: the weapon in your hand, Feral Combat, Defence, a profession that can still gain on this target.
 
-![Farm on autopilot.](docs/img/feat-nameplate-en.png)
+**2. You hit, you skin, you cook.** A coloured +1 flies from the toast to its tile and lands with a veil of the same colour: red for XP, blue for weapons and Defence, green for professions.
 
-Profession icons sit on the nameplate — “First Aid +1.” Pull the ones that pay. The farm runs itself.
+**3. You hover a tile or a creature.** The tooltip shows the rank, the cap, what is still to learn, and the linked professions.
 
-## “N ready” badge
+![Skill-up, live.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/skill-up-live-en.png)
 
-![“N ready” badge.](docs/img/feat-ready-en.png)
+![Every gain, live.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/every-gain-en.png)
 
-The badge tells you how many recipes you can craft right now to rank the skill — 16 ready, and the tooltip marks “craft now (+1).” You craft, it goes up. That's it.
-
-## Rank, cap, points left
-
-![Rank, cap, points left.](docs/img/feat-tooltip-en.png)
-
-The tooltip shows your rank, your cap, and how many points are left before your current maximum — “42 points left before your cap (135).” You know exactly where you stand.
-
-## PvP, in the box
-
-![PvP, in the box.](docs/img/feat-pvp-en.png)
-
-Honor, honorable kills, K/D, streak: the PvP tile keeps your session score, right in the box.
-
-## At rest, the panel fades
-
-![At rest, the panel fades.](docs/img/feat-afk-en.png)
-
-At rest, the panel fades so it never buries your UI. Hover or a gain brings it right back.
-
-## Edit mode
-
-![Edit mode.](docs/img/feat-edit-en.png)
-
-Place the panel on an alignment grid and tune theme, columns, size and rest transparency in seconds.
-
-## Display modes
-
-![Display modes.](docs/img/feat-layouts-en.png)
-
-Two columns, three columns, or a horizontal bar with the total progress bar. Fits any UI corner — sidebar or bottom bar.
-
-## Session recap
-
-![Session recap.](docs/img/feat-session-en.png)
-
-When you log out, a toast tells you exactly what the session earned — total level +49, +956 XP, Melee +2, Defence +3 (19 min) — and the same line is written to chat. Every +1 is counted.
-
-## Dopamine 3.5.0
-
-![Dopamine 3.5.0.](docs/img/feat-dopamine-en.png)
-
-Session combo, daily challenge, your personal records, the next-point bar, the “N discovered” collection, and a celebration when a skill hits its max. Sounds are off by default. It's your grind, and yours alone.
+![The tooltip.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/tooltip-en.png)
 
 ## Progression window
 
-Left-click the droplet or type `/drop progression`: overview, charts, achievements, farm spots and efficiency, your other characters. Skill tracking and the collection log are inspired by Old School RuneScape (unaffiliated project).
+Left-click the droplet, or type `/drop progression`.
 
-## Hunt and Collection log
+![Progress.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/progress-en.png)
 
-Pick the item you want from a dungeon boss on an equipment grid (data read live from Dungeon Journal, nothing bundled), and Dropamine counts your real boss kills, the cumulative drop chance, and warns you with a clickable toast when it drops. The Collection log lists every dungeon and raid with obtained items in colour, approximate kills per boss, recipes known out of the total per profession, and how much of the creature database you have discovered. A Home page shows your overall progress and the dungeons closest to completion.
+- **Overview:** a "Today" card (points by category, vs yesterday, last 7 days), your next total milestone with an estimated time at your current pace, and where your remaining points are.
+- **Charts, weekly recap, farm spots and efficiency.**
+- **Characters:** every character on the account, with class icon, total points, and their best professions and weapon skills.
+- **Achievements:** streaks, active-time runs (30 min and 1 h without a break), exploration, collection, total milestones at 500 / 1000 / 1500 / 2000 / 2250. They stay reachable at any level and with any profession choice.
+- **Total milestones:** a big gold animation, a cheer, and fireworks at the maximum.
+- **Session recap:** this session against your previous one and your 7-day and 30-day averages.
 
-## Achievements and milestones
+![Achievements.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/achievements-en.png)
 
-Achievements that stay reachable at any level and any profession choice: streaks, active-time runs, exploration, collection, total-level milestones (with a gold toast, a cheer and fireworks at the maximum). A rare-loot alert shows epic drops with the item icon and quality colour.
+![Total milestones.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/total-milestones-en.png)
 
-## Guided tour
+![Characters.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/characters-en.png)
 
-On first launch, a short step-by-step tour presents each feature, lets you test it and switch it off. Reopen it any time with `/drop setup`; `/drop about` shows the version and links.
+![Session recap.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/session-recap-en.png)
 
-## Three themes
+## Themes
 
-![Three themes.](docs/img/feat-themes-en.png)
+![Themes.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/themes-en.png)
 
-FlareUI (New or Old School), Léger or Classic: pick the look, keep the same grid. Dropamine also sits seamlessly in a FlareUI layout, next to the quest tracker and the Threat and Damage meters.
+`/drop theme leger|flare2|flare|classic`
 
-`/drop` opens the panel. `/drop debug` is diagnostics.
+| Theme | What you get |
+| --- | --- |
+| **Léger** (default on new installs) | Just the tiles: no frame, no background. |
+| **FlareUI (New)** | The FlareUI chat frame: a thick border and the knotted line along the top and bottom. Border texture from FlareUI (MIT). |
+| **FlareUI (Old School)** | Dark fill, rounded bronze border. |
+| **Classic** | In-game Blizzard textures. Nothing is copied into the addon. |
 
-100% free. WoW Forever only. Dropamine is the perfect companion addon for every session — every mob you kill on the way becomes 100% useful grind, whether you're leveling or PvP roaming. Install it, go farm, and feel every +1 you earned.
+## First launch
+
+A short guided tour shows each feature, lets you try it and switch it off. `/drop setup` replays it. `/drop about` shows the version and links.
+
+## Commands
+
+`/drop` shows or hides the panel. `/drop help` lists the main commands.
+
+- `/drop progression` · `/drop collection` · `/drop chasse` — the Progression window, the Collection log, the hunt
+- `/drop records` · `/drop paliers` · `/drop resume` — records, next milestone, your total on one line to paste
+- `/drop options` · `/drop setup` · `/drop about`
+- `/drop theme leger|flare2|flare|classic` · `/drop colonnes 2|3|5|10` · `/drop verrou`
+- `/drop check` · `/drop debug` · `/drop perf` — health check and diagnostics
+
+## Performance
+
+Everything runs on game events. Nothing runs while idle, heavy scans wait until combat ends, and calm mode quiets the panel in dungeons and raids. `/drop perf` and `/drop check` show what it costs.
+
+## FAQ
+
+**Which game is this for?** WoW Forever only. It is not tested on official clients.
+
+**Do I need Dungeon Journal?** No. The skills grid, toasts and the Progression window work without it. Dungeon Journal adds the boss loot tables to the Collection log and the hunt, and your favourites.
+
+**Does it replace the native Skills tab?** No. Dropamine draws its own window.
+
+**Are there sounds?** All off by default. `/drop sons` is the master switch.
+
+## Install
+
+Unzip into `World of Warcraft\_forever_\Interface\AddOns\`, so you have `AddOns\Dropamine\Dropamine.toc`.
+
+Author: **Raykuilu**. License: **MIT**. Source: [github.com/Raykuilu/Dropamine](https://github.com/Raykuilu/Dropamine).
+
+Skill tracking and collection log inspired by Old School RuneScape (unaffiliated, no Jagex assets). Visual inspiration from FlareUI by Malkkav. Dungeon Journal data and favourites access: thanks to Exehn. World of Warcraft and Blizzard textures referenced by path are © Blizzard Entertainment.
 
 ---
 
 ## Français
 
-Le farm t'a gelé le cerveau ? Prends une dose de micro-dopamine entre deux gros loots et deux level-up !
+<div align="center">
+<img src="https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/header-fr.png" alt="Dropamine — chaque compétence, chaque drop" width="100%" />
+</div>
 
-**Toutes tes compétences. Une seule boîte.**
+&nbsp;
 
-L'addon parfait à garder ouvert à chaque session : chaque monstre croisé en chemin devient du grind 100 % utile, que tu pexes ou que tu roam en PvP.
+**Dropamine 3.8** garde toutes tes compétences à l'écran, fête chaque +1 comme dans Old School RuneScape, et suit maintenant l'équipement que tu farmes : un **journal de collection** pour chaque donjon et raid, et une **chasse BiS** qui lit tes **favoris du Dungeon Journal**.
 
-Chaque +1, tu l'as gagné. Seul, sans raccourci — juste toi, la grille, et le grind.
+Pour **WoW Forever** uniquement (`Interface: 16001`). L'onglet Compétences natif n'est jamais caché, déplacé ni réécrit. FlareUI n'est pas nécessaire.
 
-![Toutes tes compétences. Une seule boîte.](docs/img/features-overview-clean-fr.png)
+## Nouveau en 3.8 : le journal de collection
 
-## Toute ta grille, ton total
+![Journal de collection.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/collection-log-fr.png)
 
-![Toute ta grille, ton total.](docs/img/feat-grid-fr.png)
+Ton collection log façon Old School RuneScape, pour les donjons et raids de WoW Forever.
 
-Armes, défense, métiers, niveau : tout dans une seule boîte, avec ton total juste en dessous. Plus besoin d'ouvrir la fenêtre Compétences pour voir ce que tu as gagné.
+- **Chaque donjon et raid**, classés par tranche de niveau. Chaque boss affiche ses objets avec leur icône : en couleur ceux que tu as, en gris ceux qui manquent.
+- **Nombre approximatif de kills par boss** (≈N kills), compté à partir du butin de ses objets suivis.
+- **Une page d'accueil** s'ouvre en premier : progression globale, donjons complets, kills de boss, objets, une barre par catégorie (un clic l'ouvre) et les donjons où tu es le plus avancé.
 
-## Tu sais avant de frapper
+![Ta progression.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/collection-home-fr.png)
 
-![Tu sais avant de frapper.](docs/img/feat-highlight-fr.png)
+- **Les métiers aussi :** recettes connues sur le total, pour chaque métier appris. Pour la Cuisine et le Secourisme, les recettes manquantes sont listées par rang requis et par origine.
+- **Découvertes :** le bestiaire et les créatures dépeçables rencontrées, par tranche de 10 niveaux, avec ta tranche mise en avant.
+- Les catégories se plient et se déplient, et chacune affiche son propre X / Y. Les noms d'objets, de donjons et de boss suivent la langue du jeu.
 
-Ta cible allume en vert les cases qu'elle va faire monter. Tu choisis le combat, tu gagnes le point. Pas un coup pour rien.
+![Recettes.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/recipes-cooking-fr.png)
 
-## Chaque +1 de métier, au-dessus du panneau
+`/drop collection` · Succès de collection : Collectionneur (10 %), Grand collectionneur (25 %), Collection de rêve (50 %).
 
-![Chaque +1 de métier, au-dessus du panneau.](docs/img/feat-toast-metier-fr.png)
+## Nouveau en 3.8 : la chasse BiS, liée aux favoris du Dungeon Journal
 
-Tu crafts ou tu récoltes : un toast te dit combien tu peux en faire maintenant — « N × … possibles (+1) » — et le point rejoint sa case. Tu vois le point. Tu l'as gagné.
+![Chasse BiS.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/bis-hunt-fr.png)
 
-## L'XP, et ce qu'il reste
+Choisis l'objet que tu veux, puis va le chercher.
 
-![L'XP, et ce qu'il reste.](docs/img/feat-toast-xp-fr.png)
+- **Tes favoris du Dungeon Journal deviennent ta liste de chasse.** Chaque objet mis en favori se place tout seul sur son emplacement d'équipement. Si plusieurs objets visent le même emplacement, la grille affiche le meilleur.
+- **Une grille d'équipement.** Clique sur un emplacement pour choisir l'objet dans les données du Dungeon Journal (filtre sur l'armure de ta classe, recherche par nom). Tu peux aussi ajouter un objet par nom, lien ou ID, ou depuis ton dernier butin.
+- **De vrais essais.** Les kills de boss sont détectés à partir des messages de butin : un essai est un vrai kill, pas une fenêtre de butin ouverte. Pour chaque objet : le nombre d'essais et la chance cumulée qu'il soit déjà tombé.
+- **Trouvé !** Un toast avec l'icône de l'objet. Un clic ouvre la fiche de l'objet, avec la comparaison d'équipement.
+- **Alerte butin rare :** un toast dans la couleur de qualité de l'objet pour chaque butin épique (ou rare, si tu le choisis).
 
-Un toast XP te dit ce que tu viens de gagner, et ce qu'il reste avant le prochain niveau — « +120 XP, Niveau 28 dans ~15 min ». En plein farm, tu sais où tu en es.
+![Trouvé !](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/it-dropped-fr.png)
 
-## Passage de niveau
+- Succès Premier sang (premier objet recherché trouvé) et Persévérant (trouvé après plus de 50 essais).
 
-![Passage de niveau.](docs/img/feat-levelup-fr.png)
+`/drop chasse` · Les données sont lues en direct dans l'addon **Dungeon Journal** (facultatif, rien n'est embarqué). Merci à Exehn pour les données et l'accès aux favoris.
 
-Quand tu ding, un toast le célèbre : « Niveau 28 atteint ! Niveau total : 980 (+1). » Chaque niveau, compté dans le total.
+## Chaque compétence. Chaque +1.
 
-## Le farm en automatique
+![Tu sais avant de frapper.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/know-before-you-swing-fr.png)
 
-![Le farm en automatique.](docs/img/feat-nameplate-fr.png)
+**1. Tu cibles un monstre ou un joueur.** Les cases qui vont monter s'allument : l'arme en main, Combat farouche, Défense, un métier qui peut encore gagner sur cette cible.
 
-Tes icônes de métier s'affichent sur les barres de nom — « Secourisme +1 ». Tu tires ceux qui paient. Le farm tourne tout seul.
+**2. Tu frappes, tu dépèces, tu cuisines.** Un +1 coloré vole du toast jusqu'à sa case et s'y pose avec un voile de la même couleur : rouge pour l'XP, bleu pour les armes et la Défense, vert pour les métiers.
 
-## Le badge « N prêts »
+**3. Tu survoles une case ou une créature.** L'infobulle donne le rang, le plafond, ce qui reste à apprendre et les métiers liés.
 
-![Le badge « N prêts ».](docs/img/feat-ready-fr.png)
+![Chaque +1, en direct.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/skill-up-live-fr.png)
 
-Le badge te dit combien de recettes tu peux crafter maintenant pour faire monter le métier — 16 prêts, et le tooltip le marque « à fabriquer maintenant (+1) ». Tu crafts, ça monte. C'est tout.
+![Chaque gain, en direct.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/every-gain-fr.png)
 
-## Rang, plafond, encore N points
-
-![Rang, plafond, encore N points.](docs/img/feat-tooltip-fr.png)
-
-Le tooltip montre ton rang, ton plafond, et combien de points il reste avant ton maximum actuel — « encore 42 points avant ton maximum (135) ». Tu sais exactement où tu en es.
-
-## Le JcJ, dans la boîte
-
-![Le JcJ, dans la boîte.](docs/img/feat-pvp-fr.png)
-
-Honneur, victoires honorables, K/D, série : la case JcJ garde le score de ta session, dans la même boîte.
-
-## Au repos, le panneau s'efface
-
-![Au repos, le panneau s'efface.](docs/img/feat-afk-fr.png)
-
-Au repos, le panneau devient transparent pour ne jamais recouvrir ton interface. Un survol ou un gain, et il revient.
-
-## Mode édition
-
-![Mode édition.](docs/img/feat-edit-fr.png)
-
-Place le panneau sur une grille d'alignement et règle thème, colonnes, taille et transparence au repos en quelques secondes.
-
-## Modes d'affichage
-
-![Modes d'affichage.](docs/img/feat-layouts-fr.png)
-
-Deux colonnes, trois colonnes, ou une barre horizontale avec la barre de total. Ça se glisse dans n'importe quel coin — en colonne ou en barre du bas.
-
-## Récap de session
-
-![Récap de session.](docs/img/feat-session-fr.png)
-
-À la déconnexion, un toast te dit exactement ce que la session a rapporté — niveau total +49, +956 XP, Mêlée +2, Défense +3 (19 min) — et la même ligne s'écrit dans le chat. Chaque +1 est compté.
-
-## Dopamine 3.5.0
-
-![Dopamine 3.5.0.](docs/img/feat-dopamine-fr.png)
-
-Combo de session, défi du jour, tes records personnels, la barre du prochain point, la collection « N découverts », et une célébration quand une compétence atteint son max. Les sons sont désactivés par défaut. C'est ton grind, et le tien seul.
+![L'infobulle.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/tooltip-fr.png)
 
 ## Fenêtre Progression
 
-Clic gauche sur la goutte ou `/drop progression` : vue d'ensemble, graphiques, succès, spots de farm et efficacité, tes autres personnages. Le suivi des compétences et le collection log s'inspirent d'Old School RuneScape (projet non affilié).
+Clic gauche sur la goutte, ou `/drop progression`.
 
-## Chasse et Collection log
+![Progression.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/progress-fr.png)
 
-Choisis l'objet que tu veux d'un boss de donjon sur une grille d'équipement (données lues en direct dans Dungeon Journal, rien d'embarqué) : Dropamine compte tes vrais kills de boss, la chance cumulée de drop, et te prévient par un toast cliquable quand il tombe. Le collection log liste chaque donjon et raid avec les objets obtenus en couleur, les kills approximatifs par boss, les recettes connues sur le total de chaque métier, et la part de la base de créatures découverte. Une page d'accueil montre ta progression globale et les donjons les plus proches de la fin.
+- **Vue d'ensemble :** une carte « Aujourd'hui » (points par catégorie, comparés à hier et aux 7 derniers jours), ton prochain palier avec un temps estimé à ton rythme actuel, et où il te reste des points.
+- **Graphiques, récap hebdo, spots de farm et efficacité.**
+- **Personnages :** tous les personnages du compte, avec l'icône de classe, le total de points, et leurs meilleurs métiers et compétences d'arme.
+- **Succès :** séries, sessions actives (30 min et 1 h sans pause), exploration, collection, paliers du total à 500 / 1000 / 1500 / 2000 / 2250. Ils restent atteignables à tout niveau, quels que soient tes métiers.
+- **Paliers du total :** une grande animation dorée, ton personnage qui applaudit, et un feu d'artifice au maximum.
+- **Récap de session :** cette session comparée à la précédente et à tes moyennes sur 7 et 30 jours.
 
-## Succès et paliers
+![Succès.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/achievements-fr.png)
 
-Des succès atteignables à tout niveau et quel que soit ton choix de métiers : séries, temps actif d'affilée, exploration, collection, paliers du niveau total (toast doré, émote et feu d'artifice au maximum). Une alerte de butin rare affiche les drops épiques avec l'icône et la couleur de qualité.
+![Paliers du total.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/total-milestones-fr.png)
 
-## Visite guidée
+![Personnages.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/characters-fr.png)
 
-Au premier lancement, une courte visite pas à pas présente chaque fonction, te laisse l'essayer et la désactiver. Rouvre-la quand tu veux avec `/drop setup` ; `/drop about` affiche la version et les liens.
+![Récap de session.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/session-recap-fr.png)
 
-## Trois thèmes
+## Thèmes
 
-![Trois thèmes.](docs/img/feat-themes-fr.png)
+![Thèmes.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/themes-fr.png)
 
-FlareUI (New ou Old School), Léger ou Classic : tu choisis le look, tu gardes la même grille. Dropamine s'intègre aussi parfaitement à FlareUI, entre le suivi de quêtes et les compteurs Menace et Dégâts.
+`/drop theme leger|flare2|flare|classic`
 
-`/drop` ouvre le panneau. `/drop debug` sert au diagnostic.
-
-100 % gratuit. WoW Forever only. L'addon parfait à garder ouvert à chaque session : chaque monstre croisé en chemin devient du grind 100 % utile, que tu pexes ou que tu roam en PvP. Installe-le, va farmer, et ressens chaque +1 que tu as gagné.
-
-## Install
-
-Unzip `Dropamine` into `World of Warcraft\_forever_\Interface\AddOns\`. This addon is for **WoW Forever** only.
-
-## Commands
-
-| Command | What it does |
+| Thème | Ce que tu obtiens |
 | --- | --- |
-| `/drop` | Show or hide the panel |
-| `/dropamine` | Same as `/drop` |
-| `/drop progression` | Open the Progression window |
-| `/drop chasse` | Hunt list (wanted items, attempts, drop chance) |
-| `/drop collection` | What the scanner has learned |
-| `/drop records` | Best session, hour, day, combo, active streak |
-| `/drop setup` | Reopen the guided tour |
-| `/drop about` | Version, links, thanks |
+| **Léger** (par défaut sur une nouvelle installation) | Juste les cases : ni cadre, ni fond. |
+| **FlareUI (New)** | Le cadre du chat FlareUI : bordure épaisse et ligne nouée en haut et en bas. Texture de bordure issue de FlareUI (MIT). |
+| **FlareUI (Old School)** | Fond sombre, bordure bronze arrondie. |
+| **Classique** | Les textures Blizzard du jeu. Rien n'est copié dans l'addon. |
 
-## License
+## Premier lancement
 
-[MIT](LICENSE) — © 2026 Raykuilu. The default look is inspired by FlareUI (Malkkav). The only FlareUI file included is its MIT-licensed border texture (`Media/Dropamine-Frame-Thick.tga`, licence in `Media/LICENSE-FlareUI-Border.txt`), used by the "FlareUI (New)" theme. The grid idea comes from Old School RuneScape; no Jagex assets are included.
+Une courte visite guidée présente chaque fonction, te laisse l'essayer et la couper. `/drop setup` la relance. `/drop about` affiche la version et les liens.
+
+## Commandes
+
+`/drop` affiche ou cache le panneau. `/drop help` liste les commandes principales.
+
+- `/drop progression` · `/drop collection` · `/drop chasse` : la fenêtre Progression, le journal de collection, la chasse
+- `/drop records` · `/drop paliers` · `/drop resume` : records, prochain palier, ton total sur une ligne à coller
+- `/drop options` · `/drop setup` · `/drop about`
+- `/drop theme leger|flare2|flare|classic` · `/drop colonnes 2|3|5|10` · `/drop verrou`
+- `/drop check` · `/drop debug` · `/drop perf` : bilan de santé et diagnostic
+
+## Performances
+
+Tout fonctionne sur les événements du jeu. Rien ne tourne au repos, les analyses lourdes attendent la fin du combat, et le mode calme apaise le panneau en donjon et en raid. `/drop perf` et `/drop check` montrent ce que ça coûte.
+
+## FAQ
+
+**Pour quel jeu ?** WoW Forever uniquement. L'addon n'est pas testé sur les clients officiels.
+
+**Faut-il Dungeon Journal ?** Non. La grille, les toasts et la fenêtre Progression fonctionnent sans. Dungeon Journal ajoute les tables de butin des boss au journal de collection et à la chasse, ainsi que tes favoris.
+
+**Ça remplace l'onglet Compétences natif ?** Non. Dropamine dessine sa propre fenêtre.
+
+**Il y a des sons ?** Tous coupés par défaut. `/drop sons` est l'interrupteur général.
+
+## Installation
+
+Décompresse l'archive dans `World of Warcraft\_forever_\Interface\AddOns\`, pour obtenir `AddOns\Dropamine\Dropamine.toc`.
+
+Auteur : **Raykuilu**. Licence : **MIT**. Source : [github.com/Raykuilu/Dropamine](https://github.com/Raykuilu/Dropamine).
+
+Suivi des compétences et journal de collection inspirés d'Old School RuneScape (projet non affilié, aucun asset Jagex). Inspiration visuelle : FlareUI de Malkkav. Données et favoris du Dungeon Journal : merci à Exehn. World of Warcraft et les textures Blizzard référencées par chemin sont © Blizzard Entertainment.
