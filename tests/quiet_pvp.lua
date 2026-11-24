@@ -27,5 +27,10 @@ check(P.RecomputeQuiet(true) == false, "option coupée : pas de calme en champ d
 inst = { true, "party" } ui.quietAutoPvp = nil
 on, why = P.RecomputeQuiet(true)
 check(on == true and why == "donjon", "donjon : toujours le calme auto des donjons")
+-- bouton Tester : 15 s simulées, même case décochée
+inst = { false, "none" } ui.quietAutoPvp = false
+P.SimPvp(15)
+on, why = P.RecomputeQuiet(true)
+check(on == true and why == "champ de bataille", "simulation : calme actif malgré la case décochée")
 print(fail == 0 and "OK : calme auto en champ de bataille" or (fail .. " échec(s)"))
 os.exit(fail == 0 and 0 or 1)

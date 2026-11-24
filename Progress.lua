@@ -1033,6 +1033,20 @@ function P.InPvp()
   local inInst, kind = Call(_G.IsInInstance)
   return (inInst and (kind == "pvp" or kind == "arena")) and kind or nil
 end
+-- 3.9.0 : bouton Tester de « Calme auto en champ de bataille » : 15 s simulées (message d'entrée,
+-- toasts réduits), puis retour à la normale ; passe outre la case comme les autres tests
+function P.SimPvp(seconds)
+  local stamp = {}
+  P._simPvpStamp, P._simInstance, P._simPvpForce = stamp, "pvp", true
+  P.RecomputeQuiet(false)
+  local function back()
+    if P._simPvpStamp ~= stamp then return end
+    P._simInstance, P._simPvpForce, P._simPvpStamp = nil, nil, nil
+    P.RecomputeQuiet(false)
+  end
+  if _G.C_Timer and _G.C_Timer.After then _G.C_Timer.After(seconds or 15, back) end
+  return true
+end
 function P.RecomputeQuiet(silent)
   local mode = P.QuietSetting()
   local inst, grouped = P.InInstanceGroup()
@@ -1043,7 +1057,7 @@ function P.RecomputeQuiet(silent)
   -- 3.9.0 : calme auto en champ de bataille / arène (réglage à part, coché par défaut)
   if not on then
     local pvp = P.InPvp()
-    if pvp and not (ns.Opt and ns.Opt("quietAutoPvp") == false) then on, why = true, (pvp == "arena") and "arène" or "champ de bataille" end
+    if pvp and (P._simPvpForce or not (ns.Opt and ns.Opt("quietAutoPvp") == false)) then on, why = true, (pvp == "arena") and "arène" or "champ de bataille" end
   end
   local was = P._quiet
   P._quiet, P._quietWhy = on, why

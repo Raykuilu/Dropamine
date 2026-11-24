@@ -12,6 +12,7 @@ local function Obj()
   end })
 end
 _G.CreateFrame = function() local f = Obj() f._shown = true return f end
+_G.UIParent = Obj()
 _G.ForeverDungeonJournal_NS = { DB = {} }
 local links = { [11] = "|cffa335ee|Hitem:1001::::::::|h[Wanted Sword]|h|r", [12] = "|cff0070dd|Hitem:2002::::::::|h[Other Helm]|h|r" }
 _G.GetLootRollItemLink = function(rid) return links[rid] end
@@ -36,5 +37,10 @@ ui.huntRoll = false
 GroupLootFrame1.rollID = 13 links[13] = links[11]
 H.ScanRolls()
 check(toasts == 1, "option coupée : pas de toast")
+-- bouton Tester : fausse fenêtre de jet + toast
+ui.huntRoll = nil
+local before = toasts
+check(H.TestRoll() ~= nil, "TestRoll montre une fausse fenêtre")
+check(toasts == before + 1, "TestRoll donne un toast")
 print(fail == 0 and "OK : objet recherché repéré au jet de groupe" or (fail .. " échec(s)"))
 os.exit(fail == 0 and 0 or 1)

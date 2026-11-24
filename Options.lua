@@ -762,6 +762,7 @@ Options.TEST = {
   totalDing = "totalding", fireworks = "fireworks", lootAlerts = "rare", huntAlert = "hunt",
   trainerRankToast = "rankup", daily = "daily",
   -- 3.8.3 : listes à cases : un exemple par case cochée, à la suite
+  huntRoll = "huntroll", quietAutoPvp = "quietpvp",
   grpGains = "group", grpReminders = "group", grpCelebr = "group", grpSounds = "group", grpAnnounce = "group",
 }
 
@@ -1202,6 +1203,9 @@ function Options.PlayTestNow(key)
   local kind = Options.TEST[key]
   if not kind then return end
   if kind == "sound" then return Options.PlayTestSound(key) end
+  -- 3.9.0 : tests qui ne sont pas de simples toasts
+  if kind == "huntroll" then return ns.Hunt and ns.Hunt.TestRoll and ns.Hunt.TestRoll() end
+  if kind == "quietpvp" then return ns.Progress and ns.Progress.SimPvp and ns.Progress.SimPvp(15) end
   return TestToast(kind)
 end
 

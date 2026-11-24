@@ -738,6 +738,56 @@ function H.ScanRolls()
     end
   end
 end
+-- 3.9.0 : bouton Tester de « Repérer l'objet au butin » : la vraie fenêtre de jet ne s'ouvre pas sans
+-- vrai jet ; on montre une fausse fenêtre (icône, nom, Besoin / Cupidité) avec le cadre doré, et le toast.
+function H.TestRoll()
+  if not (_G.CreateFrame and _G.UIParent) then return nil end
+  local first = H.List()[1]
+  local id, nm = first and first.id, first and first.name
+  if not id then id, nm = H.SampleItem(4) nm = H.DisplayName(id, nm) or nm end
+  if not id then if ns.Print then ns.Print(Tr["Ta liste de chasse est vide : ajoute un objet pour tester."]) end return nil end
+  local f = H._testRollFrame
+  if not f then
+    f = CreateFrame("Frame", "DropamineTestRoll", UIParent, "BackdropTemplate")
+    f:SetSize(260, 56)
+    f:SetPoint("CENTER", UIParent, "CENTER", 0, 160)
+    f:SetFrameStrata("DIALOG")
+    if f.SetBackdrop then
+      pcall(f.SetBackdrop, f, { bgFile = "Interface\\Tooltips\\UI-Tooltip-Background", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+      pcall(f.SetBackdropColor, f, 0.05, 0.05, 0.05, 0.92)
+    end
+    f.icon = f:CreateTexture(nil, "ARTWORK")
+    f.icon:SetSize(36, 36)
+    f.icon:SetPoint("LEFT", f, "LEFT", 10, 0)
+    f.name = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    f.name:SetPoint("TOPLEFT", f.icon, "TOPRIGHT", 8, -2)
+    f.name:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+    f.name:SetJustifyH("LEFT")
+    f.sub = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    f.sub:SetPoint("BOTTOMLEFT", f.icon, "BOTTOMRIGHT", 8, 2)
+    f.sub:SetText(Tr["Besoin · Cupidité · Passer (exemple)"])
+    H._testRollFrame = f
+  end
+  pcall(f.icon.SetTexture, f.icon, H.Icon(id))
+  f.name:SetText(tostring(nm or id))
+  local rgb = H.QualityRGB and H.QualityRGB(id)
+  if rgb then f.name:SetTextColor(rgb[1], rgb[2], rgb[3]) end
+  f:Show()
+  H.Glow(f, true)
+  local P = ns.Progress
+  if P and P.Toast then
+    local okT, tf = pcall(P.Toast, Tr["Objet recherché en jeu : "] .. tostring(nm or id), Tr["Fais « Besoin » !"],
+      { kind = "achievement", variant = "gold", titleColor = rgb, test = true }, "hunt-roll-test", true, H.Icon(id))
+    if okT then MakeClickable(tf, id, nm) end
+  end
+  local stamp = {}
+  H._testRollStamp = stamp
+  if _G.C_Timer and _G.C_Timer.After then
+    _G.C_Timer.After(8, function() if H._testRollStamp == stamp then H.Glow(f, false) f:Hide() end end)
+  end
+  return f
+end
 -- fenêtre de butin : boutons classiques (LootButton1..N) et liste récente (LootFrame.ScrollBox)
 function H.ScanLootWindow()
   local on = RollOn()
