@@ -62,6 +62,14 @@ Options.SECTIONS = {
       help = "Empêche de déplacer le panneau et le bouton par erreur.",
       get = function() return DBui().locked and true or false end,
       set = function(v) DBui().locked = v and true or nil if LayoutM() and LayoutM().PlaceGrip then pcall(LayoutM().PlaceGrip) end end },
+    -- 3.9.0 : liseré des cases selon la cible (Niveau, armes, Défense, métiers), à part des alertes de récolte
+    { type = "check", key = "targetGlow", label = "Liseré selon la cible", default = true, cmd = "Réglage de ce panneau",
+      help = "En ciblant une créature : liseré rouge sur le Niveau si elle donne de l'XP, bleu sur les armes et la Défense, vert sur les métiers qui peuvent monter.",
+      set = function(v)
+        ns.SetOpt("targetGlow", v and true or false)
+        local T = ns.Target
+        if T then if v then pcall(T.Refresh, "option") else pcall(T.Clear) end end
+      end },
     { type = "check", key = "pauseFlying", label = "Pause pendant le vol", default = true, cmd = "/drop vol on|off",
       help = "Met le suivi et les toasts en pause sur un trajet aérien, un bateau, un zeppelin ou le tram. Rien n'est mis en file : à l'arrivée, pas de rattrapage.",
       get = function() return not (DBui().pauseFlying == false) end,
@@ -126,8 +134,8 @@ Options.SECTIONS = {
       help = "Petit son avec le toast « recette possible »." },
   } },
   { id = "prof", title = "Métiers & surlignage", tab = "Métiers", desc = "Surlignage vert, infobulles, fenêtre des métiers et suivi.", items = {
-    { type = "check", key = "gatherAlerts", label = "Surligner selon la cible", default = true, cmd = "/drop alertes on|off",
-      help = "Vert sur les cases que ta cible peut faire monter.",
+    { type = "check", key = "gatherAlerts", label = "Alertes de récolte", default = true, cmd = "/drop alertes on|off",
+      help = "Lignes « Dépeçage / Minage / Herboristerie » dans les infobulles des créatures et des nœuds, et repère de dépeçage.",
       get = function() return not (DBui().gatherAlerts == false) end,
       set = function(v)
         if v then DBui().gatherAlerts = nil else DBui().gatherAlerts = false end   -- 3.3.13 : « (not v) and false or nil » valait toujours nil
@@ -193,7 +201,7 @@ Options.SECTIONS = {
     { type = "check", key = "rappel", label = "Rappel arme en retard", default = true, cmd = "/drop rappel on|off", help = "Signale discrètement une arme en main sous-montée." },
     -- 3.9.0 : niveaux de monstres conseillés sur les cases d'arme / Défense (liste « Rappels d'armes »)
     { type = "check", key = "weaponLevels", label = "Niveaux de monstres conseillés", default = true, cmd = "/drop armes",
-      help = "Sur les cases d'arme et de Défense pas au maximum : la plage de niveaux qui fait monter, et un avertissement si ta cible est grise." },
+      help = "Sur les cases d'arme et de Défense pas au maximum : les niveaux de monstres qui font monter (arme : sous 5 × le niveau du monstre ; Défense : monstre non gris)." },
   } },
 }
 -- Lignes ajoutées par d'autres modules (QoL, Dopamine) : rangées dans le bon groupe,
@@ -258,7 +266,7 @@ Options.MAP = {
     { "Apparence", { "theme", "lang", "colorMode" } },
     { "Disposition", { "cols", "scale", "showTotal", "nextBar", "smartSort" } },
     { "Transparence", { "opacity", "bgAlpha", "fadeDelay" } },
-    { "Comportement", { "locked", "charProfile", "pauseFlying", "grpSlots" } },
+    { "Comportement", { "locked", "charProfile", "targetGlow", "pauseFlying", "grpSlots" } },
   },
   notif = {
     { "Affichage des toasts", { "dropsEnabled", "notifMode", "dropDir", "dropStyle", "dropWidth", "dropDuration", "dropBgAlpha", "flyAnim" } },
@@ -308,11 +316,11 @@ Options.GROUPS = {
     items = { { "soundSkill", "Chaque point" }, { "soundPalier", "Palier" }, { "soundMax", "Maximum" }, { "levelUpSound", "Montée de niveau" },
       { "soundDaily", "Défi du jour" }, { "soundRecord", "Record" }, { "scannerSound", "Créature à ingrédient" } } },
   grpTiles = { label = "Sur les cases", help = "Ce que les cases de métier montrent d'elles-mêmes.",
-    items = { { "gatherAlerts", "Vert selon la cible" }, { "activity", "Vert pour le métier en cours" }, { "craftNotify", "Pastille « N prêts »" } } },
+    items = { { "activity", "Vert pour le métier en cours" }, { "craftNotify", "Pastille « N prêts »" } } },
   grpPlates = { label = "Icônes sur les créatures", help = "Au-dessus du nom des créatures : vert = +1 possible.",
     items = { { "plateSkin", "Dépeçage" }, { "scannerIcons", "Recettes (Cuisine, Secourisme…)" } } },
   grpTips = { label = "Infobulles", help = "Ce que les infobulles ajoutent.",
-    items = { { "nextBest", "Prochain +1 conseillé" }, { "links", "Liens entre métiers (« Utilisé par »)" }, { "unlearned", "Recettes pas encore apprises" },
+    items = { { "gatherAlerts", "Récolte (dépeçage, minage, herboristerie)" }, { "nextBest", "Prochain +1 conseillé" }, { "links", "Liens entre métiers (« Utilisé par »)" }, { "unlearned", "Recettes pas encore apprises" },
       { "tipCompact", "Version courte (Maj : détail)" }, { "tipTotalFull", "Total toujours complet" } } },
   grpAnnounce = { label = "Annonces", help = "Les toasts de la fenêtre Progression.",
     items = { { "goalToast", "Objectif de session atteint" }, { "achievements", "Succès" }, { "daily", "Défi du jour" },

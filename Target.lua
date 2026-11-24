@@ -51,7 +51,9 @@ T.LEATHER = { [2934] = true, [783] = true, [2318] = true, [2319] = true, [4232] 
 T.MATERIAL_SKILL = { cloth = "tailoring", leather = "leatherworking" }
 T.MATERIAL_FR = { cloth = "tissu", leather = "cuir" }
 
-function T.Enabled() return not (ns.Gather and not ns.Gather.Enabled()) end
+-- 3.9.0 : réglage à part « Liseré selon la cible » (avant : lié aux alertes de récolte, rangées côté métiers ;
+-- les décocher éteignait aussi le liseré du Niveau, des armes et de la Défense)
+function T.Enabled() return ns.Opt("targetGlow") end
 
 -- Niveau gris (Classic) : la cible ne donne PAS d'XP si niveau ≤ ce seuil.
 function T.GreyLevel(pl)

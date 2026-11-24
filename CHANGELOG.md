@@ -5,13 +5,15 @@
 ### New
 - Hunt: your hunted item is spotted in the loot window and in group rolls (gold frame + "Hunted item!"), with a clickable toast for the roll. Option "Spot the item when looting" (Hunt tab).
 - Professions: when nothing in your bags gives a point, the tile tooltip suggests the next +1: the most worthwhile known recipe, what is missing, and the monsters of your level that drop it. Option "Suggested next +1" (Tooltips list).
-- Weapons: weapon and Defense tiles below max show the monster levels that give points, and warn when your target is grey. New `/drop armes` lists weapons to level, furthest behind first.
+- Weapons: weapon and Defense tiles below max show the monster levels that give points (weapon: below 5 × the monster level, grey ones included; Defense: non-grey monsters). New `/drop armes` lists weapons to level, furthest behind first, with their levels.
 - Collection log: a progress bar under each dungeon, "Sort: level / %", and a Share button that puts "Collection Log · Dungeon 12/39 (31 %)" in your chat.
 - Quiet mode turns on automatically in battlegrounds and arenas (option, on by default).
+- Test buttons for the hunted-item roll (a sample roll frame with the gold frame, and the toast) and for battleground quiet mode (15 s simulated).
 - Settings: a search box at the top (jumps to the setting and highlights it; Enter for the next match), and export / import of all your settings as one line of text (Advanced > Profile, `/drop export`, `/drop import`).
 - `/drop bug`: a full report to copy (versions, settings, check, recent errors, loaded add-ons) and a GitHub issue form to paste it into.
 
 ### Fixes
+- Target outline on tiles (red Level, blue weapons / Defense, green professions) now has its own setting, "Target outline" (Display > Behaviour). It was tied to the gathering alerts, so unticking those in the Professions tab also switched off the combat outline. The gathering option is now named "Gathering (skinning, mining, herbalism)" in the Tooltips list.
 - Lines added to tile tooltips by the reminders (Defense against grey enemies) never showed up: they were hooked before the tooltip code was loaded.
 
 ### Under the hood

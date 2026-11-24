@@ -612,10 +612,14 @@ function ns.GreyLevel(p)
   elseif p <= 59 then return p - math.floor(p / 5) - 1 end
   return p - 9
 end
--- plage conseillée : du premier niveau non gris à 2 niveaux au-dessus du joueur
-function Q.WeaponLevelRange()
+-- plage conseillée (règle Forever, cf. Target.lua) : une arme / le Combat farouche monte tant que la
+-- compétence reste sous 5 × le niveau du monstre, même gris ; la Défense exige en plus un monstre non gris.
+-- Haut de la plage : 2 niveaux au-dessus du joueur.
+function Q.WeaponLevelRange(cur, kind)
   local p = N(ns.GetPlayerLevel and ns.GetPlayerLevel()) or 1
-  return math.max(1, ns.GreyLevel(p) + 1), p + 2
+  local lo = math.max(1, math.ceil(((N(cur) or 0) + 1) / 5))
+  if kind == "defense" then lo = math.max(lo, ns.GreyLevel(p) + 1) end
+  return math.min(lo, p + 2), p + 2
 end
 local COMBAT = { melee = true, ranged = true, feral = true, defense = true }
 function Q.SnapEntry(snap, e)
@@ -639,7 +643,7 @@ function Q.WeaponsToLevel()
         local mx = N(v.max) or 0
         if mx <= 0 then mx = cap end
         if cur < mx then
-          out[#out + 1] = { id = e.id, name = (ns.CatalogDisplayName and ns.CatalogDisplayName(e)) or e.name, cur = cur, max = mx, gap = mx - cur }
+          out[#out + 1] = { id = e.id, kind = e.kind, name = (ns.CatalogDisplayName and ns.CatalogDisplayName(e)) or e.name, cur = cur, max = mx, gap = mx - cur }
         end
       end
     end
@@ -651,9 +655,11 @@ ns.SlashExt = ns.SlashExt or {}
 ns.SlashExt.armes = function()
   local list = Q.WeaponsToLevel()
   if #list == 0 then ns.Print(Tr["Toutes tes armes et ta Défense sont au maximum."]) return end
-  local lo, hi = Q.WeaponLevelRange()
-  ns.Print(string.format(Tr["Armes à monter (monstres niv. %d à %d) :"], lo, hi))
-  for _, w in ipairs(list) do ns.Print(string.format("  %s %d/%d  (-%d)", tostring(w.name), w.cur, w.max, w.gap)) end
+  ns.Print(Tr["Armes à monter (de la plus en retard) :"])
+  for _, w in ipairs(list) do
+    local lo, hi = Q.WeaponLevelRange(w.cur, w.kind)
+    ns.Print(string.format(Tr["  %s %d/%d (-%d) : monstres niv. %d à %d"], tostring(w.name), w.cur, w.max, w.gap, lo, hi))
+  end
 end
 ns.SlashExt.weapons = ns.SlashExt.armes
 ns.HelpExt = ns.HelpExt or {}
@@ -684,16 +690,14 @@ local function HookCompactTip()
     if tip and m and m.lines and d and (d.kind == "defense" or d.id == "defense") then
       m.lines[#m.lines + 1] = { tip, 0.85, 0.85, 0.85, true }
     end
-    -- 3.9.0 : cases d'arme et de Défense pas au maximum : où monter, et cible grise = pas de point
+    -- 3.9.0 : cases d'arme et de Défense pas au maximum : niveaux de monstres qui font monter
+    -- (cible grise : seule la Défense ne monte pas, rappel déjà donné plus haut)
     if m and m.lines and d and COMBAT[d.kind] and ns.Opt("weaponLevels") then
       local cur, mx = N(d.current) or 0, N(d.apiMax) or 0
       if mx <= 0 then mx = (N(ns.GetPlayerLevel and ns.GetPlayerLevel()) or 1) * (ns.WEAPON_RANK_PER_LEVEL or 5) end
       if cur > 0 and cur < mx then
-        local lo, hi = Q.WeaponLevelRange()
+        local lo, hi = Q.WeaponLevelRange(cur, d.kind)
         m.lines[#m.lines + 1] = { string.format(Tr["Monte sur des monstres niv. %d à %d"], lo, hi), 0.85, 0.85, 0.85, true }
-        if Q._greyTarget and d.kind ~= "defense" and ns.Opt("defense") then
-          m.lines[#m.lines + 1] = { string.format(Tr["Cible grise (niveau %d) : pas de point"], Q._greyTarget), 1, 0.5, 0.3, true }
-        end
       end
     end
     return m
