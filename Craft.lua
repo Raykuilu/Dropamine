@@ -503,7 +503,11 @@ function Craft.DetailText(skill)
   if not st then return nil end
   Craft.state[skill] = st
   local L = {}
-  if #st.list == 0 then L[1] = Craft.Verb(skill) .. Tr[" : rien qui fasse progresser avec tes sacs."]
+  if #st.list == 0 then
+    L[1] = Craft.Verb(skill) .. Tr[" : rien qui fasse progresser avec tes sacs."]
+    -- 3.9.0 : la recette la plus proche, ce qui manque et où le trouver
+    local okN, nb = pcall(Craft.NextBestLines, skill)
+    if okN and nb then for _, l in ipairs(nb) do L[#L + 1] = l end end
   else
     L[1] = Craft.Verb(skill) .. Tr[" :"]
     for _, e in ipairs(st.list) do L[#L + 1] = Craft.Paint(e.diff, string.format(Tr["%s ×%d (+1)"], tostring(e.recipe.name), e.n)) end
@@ -513,6 +517,80 @@ function Craft.DetailText(skill)
     for _, e in ipairs(st.greys) do L[#L + 1] = string.format(Tr["|cff808080%s ×%d (sans gain)|r"], tostring(e.recipe.name), e.n) end
   end
   return table.concat(L, "\n")
+end
+
+-- 3.9.0 : prochain meilleur +1 quand rien ne fait progresser avec les sacs : la recette connue la plus
+-- rentable (chance de point selon sa couleur, divisée par ce qu'il reste à réunir), ses composants
+-- manquants et, pour ceux de la base (Cuisine, Secourisme, Dépeçage), les meilleurs monstres de ton niveau.
+Craft.POINT_CHANCE = { optimal = 1, medium = 0.75, easy = 0.25 }
+function Craft.NextBest(skill)
+  local rec = ns.CharDB().recipes and ns.CharDB().recipes[skill]
+  if not (rec and rec.list) then return nil end
+  local rank = S and S.RankOf and S.RankOf(skill)
+  local best, bestScore
+  for _, r in ipairs(rec.list) do
+    local d = Craft.Diff(r, rank)
+    local p = d and Craft.POINT_CHANCE[d]
+    if p and type(r.reagents) == "table" and #r.reagents > 0 then
+      local known = true
+      for _, rg in ipairs(r.reagents) do if not rg.id then known = false break end end
+      local miss = known and Craft.MissingReagents(r) or {}
+      if known and #miss > 0 then
+        local total = 0
+        for _, m in ipairs(miss) do total = total + (m.need - m.have) end
+        local score = p / (1 + total)
+        if not best or score > bestScore then best, bestScore = { recipe = r, diff = d, missing = miss }, score end
+      end
+    end
+  end
+  return best
+end
+-- monstres qui lâchent un objet de la base, triés par chance, près du niveau du joueur
+function Craft.SourcesOf(itemID, max)
+  local DB = ns.ScannerDB
+  if not (DB and DB.drops and DB.npcs and itemID) then return {} end
+  if not Craft._byItem then
+    local byItem = {}
+    for npc, s in pairs(DB.drops) do
+      for id, ch in tostring(s):gmatch("(%d+):(%d+)") do
+        id = tonumber(id)
+        byItem[id] = byItem[id] or {}
+        byItem[id][#byItem[id] + 1] = { npc = npc, chance = tonumber(ch) / 10 }
+      end
+    end
+    Craft._byItem = byItem
+  end
+  local plevel = N(Call(_G.UnitLevel, "player")) or 60
+  local out = {}
+  for _, e in ipairs(Craft._byItem[itemID] or {}) do
+    local row = DB.npcs[e.npc]
+    if row then
+      local en, fr, lo, hi = tostring(row):match("^([^|]*)|([^|]*)|(%d+)|(%d+)")
+      lo, hi = tonumber(lo), tonumber(hi)
+      -- à ta portée : pas plus de 3 niveaux au-dessus, pas plus de 12 en dessous (gris, mais ça lâche quand même)
+      if lo and hi and hi >= plevel - 12 and lo <= plevel + 3 then
+        out[#out + 1] = { name = (ns.GameName and ns.GameName(en, fr)) or en, lo = lo, hi = hi, chance = e.chance }
+      end
+    end
+  end
+  table.sort(out, function(a, b) if a.chance ~= b.chance then return a.chance > b.chance end return a.lo > b.lo end)
+  for i = #out, (max or 2) + 1, -1 do out[i] = nil end
+  return out
+end
+function Craft.NextBestLines(skill)
+  if not ns.Opt("nextBest") then return nil end
+  local nb = Craft.NextBest(skill)
+  if not nb then return nil end
+  local L = { Tr["Prochain +1 : "] .. Craft.Paint(nb.diff, tostring(nb.recipe.name)) }
+  local parts = {}
+  for _, m in ipairs(nb.missing) do parts[#parts + 1] = string.format("%s ×%d", tostring(m.name), m.need - m.have) end
+  L[#L + 1] = Tr["Il manque : "] .. table.concat(parts, ", ")
+  for _, m in ipairs(nb.missing) do
+    for _, src in ipairs(Craft.SourcesOf(m.id, 2)) do
+      L[#L + 1] = string.format(Tr["  %s : %s (niv. %d-%d, %d %%)"], tostring(m.name), src.name, src.lo, src.hi, math.floor(src.chance + 0.5))
+    end
+  end
+  return L
 end
 
 function Craft.Ready(skill)

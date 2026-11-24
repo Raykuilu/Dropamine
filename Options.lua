@@ -145,6 +145,9 @@ Options.SECTIONS = {
       help = "Nombre de recettes que tes sacs permettent de faire pour un +1." },
     { type = "check", key = "links", label = "Liens entre métiers", default = true, cmd = "/drop liens on|off",
       help = "« Utilisé par » dans l'infobulle des objets et des créatures." },
+    -- 3.9.0 : prochain meilleur +1 dans l'infobulle des cases de métier (liste « Infobulles »)
+    { type = "check", key = "nextBest", label = "Prochain +1 conseillé", default = true, cmd = "Réglage de ce panneau",
+      help = "Quand rien ne fait progresser avec tes sacs : la recette la plus proche, ce qui manque et où le trouver." },
     { type = "check", key = "unlearned", label = "Recettes à apprendre", default = true, cmd = "/drop nonapprises on|off",
       help = "Montre aussi les recettes pas encore apprises (rang requis)." },
     -- 3.8.2 : icônes au-dessus des barres de nom des créatures : un interrupteur général + les recettes à part
@@ -298,7 +301,7 @@ Options.GROUPS = {
   grpPlates = { label = "Icônes sur les créatures", help = "Au-dessus du nom des créatures : vert = +1 possible.",
     items = { { "plateSkin", "Dépeçage" }, { "scannerIcons", "Recettes (Cuisine, Secourisme…)" } } },
   grpTips = { label = "Infobulles", help = "Ce que les infobulles ajoutent.",
-    items = { { "links", "Liens entre métiers (« Utilisé par »)" }, { "unlearned", "Recettes pas encore apprises" },
+    items = { { "nextBest", "Prochain +1 conseillé" }, { "links", "Liens entre métiers (« Utilisé par »)" }, { "unlearned", "Recettes pas encore apprises" },
       { "tipCompact", "Version courte (Maj : détail)" }, { "tipTotalFull", "Total toujours complet" } } },
   grpAnnounce = { label = "Annonces", help = "Les toasts de la fenêtre Progression.",
     items = { { "goalToast", "Objectif de session atteint" }, { "achievements", "Succès" }, { "daily", "Défi du jour" },
