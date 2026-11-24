@@ -51,10 +51,20 @@ function DW.Build()
   eb:SetWidth(DW.W - 50)
   P(eb, "SetMaxLetters", 0)
   eb:SetScript("OnEscapePressed", function() f:Hide() end)
-  -- lecture seule : toute frappe remet le texte et le resélectionne
+  -- lecture seule : toute frappe remet le texte et le resélectionne (sauf en mode saisie, 3.9.0)
   eb:SetScript("OnTextChanged", function(self, user)
-    if user and DW.text then self:SetText(DW.text) P(self, "HighlightText") end
+    if user and DW.text and not DW.editable then self:SetText(DW.text) P(self, "HighlightText") end
   end)
+  -- 3.9.0 : bouton de validation du mode saisie (import d'un profil)
+  local ok = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+  ok:SetSize(110, 22)
+  ok:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 10)
+  ok:SetScript("OnClick", function()
+    local fn = DW.onAccept
+    if fn and fn(eb:GetText() or "") ~= false then f:Hide() end
+  end)
+  ok:Hide()
+  DW.accept = ok
   eb:SetScript("OnEditFocusGained", function(self) P(self, "HighlightText") end)
   P(sf, "SetScrollChild", eb)
   DW.edit = eb
@@ -69,8 +79,21 @@ function DW.Build()
   return f
 end
 
-function DW.Show(lines)
+-- mise en page : place libre en bas pour le bouton en mode saisie
+local function Layout(editable)
+  local sf = DW.scroll
+  sf:ClearAllPoints()
+  sf:SetPoint("TOPLEFT", DW.frame, "TOPLEFT", 14, -34)
+  sf:SetPoint("BOTTOMRIGHT", DW.frame, "BOTTOMRIGHT", -32, editable and 40 or 14)
+  if editable then DW.accept:Show() else DW.accept:Hide() end
+end
+
+-- opts.title (3.9.0) : titre de la fenêtre (sinon celui du debug)
+function DW.Show(lines, opts)
   local f = DW.Build()
+  DW.editable, DW.onAccept = nil, nil
+  Layout(false)
+  DW.title:SetText((opts and opts.title) or Tr["Dropamine — debug (Ctrl+C pour copier)"])
   DW.lines = lines
   DW.text = table.concat(lines, "\n")
   local eb = DW.edit
@@ -79,6 +102,20 @@ function DW.Show(lines)
   f:Show()
   P(eb, "SetFocus")
   P(eb, "HighlightText")
+  return f
+end
+
+-- 3.9.0 : même fenêtre, en saisie : texte vide à remplir, bouton de validation (onAccept(texte) ;
+-- renvoyer false garde la fenêtre ouverte)
+function DW.ShowEdit(title, button, onAccept)
+  local f = DW.Build()
+  DW.editable, DW.onAccept, DW.text = true, onAccept, nil
+  Layout(true)
+  DW.title:SetText(title or "")
+  DW.accept:SetText(button or "OK")
+  DW.edit:SetText("")
+  f:Show()
+  P(DW.edit, "SetFocus")
   return f
 end
 

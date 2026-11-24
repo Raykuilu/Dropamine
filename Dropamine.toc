@@ -51,6 +51,7 @@ Activity.lua
 ProfJob.lua
 Dopamine.lua
 DebugWindow.lua
+Profile.lua
 SafeOpen.lua
 ToastFit.lua
 Progress.lua

@@ -180,6 +180,13 @@ Options.SECTIONS = {
       set = function(v) if ns.PvP then ns.PvP.SetEnabled(v and true or false) else if v then DBui().pvp = nil else DBui().pvp = false end end end },
     { type = "check", key = "pvpMarks", label = "Repères sur les ennemis", default = true, cmd = "/drop pvp marques on|off",
       help = "Vert : rapporte de l'honneur ; gris : ne rapporte rien." },
+    -- 3.9.0 : copier tous les réglages vers un autre compte ou personnage
+    { type = "button", key = "profileExport", label = "Exporter mes réglages", button = "Exporter", cmd = "/drop export",
+      help = "Une ligne de texte à copier : tous les réglages de ce panneau (ni la progression, ni la chasse, ni la langue).",
+      run = function() if ns.Profile then ns.Profile.OpenExport() end end },
+    { type = "button", key = "profileImport", label = "Importer des réglages", button = "Importer", cmd = "/drop import",
+      help = "Colle une ligne « DROP1:… » exportée ailleurs : les réglages connus de cette version sont appliqués.",
+      run = function() if ns.Profile then ns.Profile.OpenImport() end end },
     { type = "check", key = "scanner", label = "Apprendre le butin", default = true, cmd = "/drop scanner on|off",
       help = "Mémorise ce que lâchent les créatures (à laisser activé)." },
     { type = "check", key = "session", label = "Gains du jour", default = true, cmd = "/drop session on|off", help = "« +N aujourd'hui » dans l'infobulle des cases." },
@@ -276,6 +283,7 @@ Options.MAP = {
     { "JcJ", { "pvp", "pvpMarks" } },
     { "Armes", { "grpWeapons" } },
     { "Données", { "scanner", "peche", "courses" } },
+    { "Profil", { "profileExport", "profileImport" } },
   },
 }
 
@@ -1081,6 +1089,83 @@ local function TestToast(kind)
   return f
 end
 
+-- 3.9.0 : recherche dans les réglages (libellé, aide, cases des listes, en français et en anglais)
+local function FoldS(s)
+  s = tostring(s or "")
+  if ns.Fold then local ok, v = pcall(ns.Fold, s) if ok and type(v) == "string" then return v end end
+  return s:lower()
+end
+function Options.SearchMatches(q)
+  q = FoldS(q):gsub("^%s+", ""):gsub("%s+$", "")
+  local out = {}
+  if #q < 2 then return out end
+  for _, sec in ipairs(Options.SECTIONS) do
+    for _, it in ipairs(Options.SectionItems(sec)) do
+      local hay = { it.label, it.label and Tr[it.label], it.help, it.help and Tr[it.help], it.key }
+      for _, ch in ipairs(it.choices or {}) do hay[#hay + 1] = ch[2] hay[#hay + 1] = Tr[ch[2]] end
+      for _, h in ipairs(hay) do
+        if type(h) == "string" and FoldS(h):find(q, 1, true) then out[#out + 1] = { sec = sec.id, key = it.key } break end
+      end
+    end
+  end
+  return out
+end
+function Options.Search(text)
+  Options._matches = Options.SearchMatches(text)
+  Options._matchI = 0
+  if #Options._matches == 0 then
+    if Options.searchCount then Options.searchCount:SetText((#(text or "") >= 2) and Tr["aucun résultat"] or "") end
+    return
+  end
+  Options.SearchNext()
+end
+function Options.SearchNext()
+  local list = Options._matches
+  if not (list and #list > 0) then return end
+  Options._matchI = (Options._matchI or 0) % #list + 1
+  local m = list[Options._matchI]
+  if Options.searchCount then Options.searchCount:SetText(Options._matchI .. "/" .. #list) end
+  if Options._tab ~= m.sec and Options.SelectTab then Options.SelectTab(m.sec) end
+  After(0.05, function() Options.RevealRow(m.sec, m.key) end)
+end
+-- fait défiler jusqu'à la ligne et la fait briller en doré (fondu sur 1,5 s)
+function Options.RevealRow(secId, key)
+  local u = Options.secUI and Options.secUI[secId]
+  local box = u and u.box
+  if not (box and box._rects) then return end
+  local r
+  for _, rr in ipairs(box._rects) do if rr.what == key then r = rr break end end
+  if not r then return end
+  local sc = Options.scroll
+  if sc and sc.SetVerticalScroll then
+    local target = math.max(0, r.y + (Options.LAYOUT.TITLE_H or 22) - 30)
+    local mx = Options.MaxScroll and Options.MaxScroll()
+    if mx then target = math.min(target, mx) end
+    pcall(sc.SetVerticalScroll, sc, target)
+  end
+  local fl = box._searchFlash
+  if not fl then
+    fl = box:CreateTexture(nil, "BACKGROUND")
+    pcall(fl.SetTexture, fl, "Interface\\Buttons\\WHITE8X8")
+    fl:SetVertexColor(1, 0.82, 0.1, 0.25)
+    box._searchFlash = fl
+  end
+  fl:ClearAllPoints()
+  fl:SetPoint("TOPLEFT", box, "TOPLEFT", r.x - 4, -(r.y - 2))
+  fl:SetSize(math.max(40, (r.w or 0) + 8), math.max(18, (r.h or 0) + 4))
+  fl:SetAlpha(1)
+  fl:Show()
+  local stamp = {}
+  box._flashStamp = stamp
+  for i = 1, 10 do
+    After(i * 0.15, function()
+      if box._flashStamp ~= stamp then return end
+      fl:SetAlpha(1 - i / 10)
+      if i == 10 then fl:Hide() end
+    end)
+  end
+end
+
 -- 3.8.2 : icônes des barres de nom : on retire tout, puis on repose selon les réglages (hors combat)
 function Options.RefreshPlates()
   local G, S = ns.Gather, ns.Scanner
@@ -1352,10 +1437,22 @@ function Options.Build()
   panel:Hide()
   local title = Label(panel, "Dropamine", "GameFontNormalLarge")
   title:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -16)
-  local subt = Label(panel, Tr["Survole un réglage pour voir sa commande /drop."], "GameFontHighlightSmall")
-  subt:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
-  if subt.SetWidth then subt:SetWidth(Options.CONTENT_W - 340) end
-  if subt.SetJustifyH then subt:SetJustifyH("LEFT") end
+  -- 3.9.0 : recherche (à la place de la ligne d'aide, qui passe dans l'infobulle de la case)
+  local sb = TryCreate("EditBox", "DropamineOptionsSearch", panel, { "SearchBoxTemplate", "InputBoxTemplate" })
+  sb:SetSize(220, 18)
+  sb:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 6, -4)
+  if sb.SetAutoFocus then sb:SetAutoFocus(false) end
+  if sb.Instructions and sb.Instructions.SetText then sb.Instructions:SetText(Tr["Rechercher un réglage…"]) end
+  local count = Label(panel, "", "GameFontHighlightSmall")
+  count:SetPoint("LEFT", sb, "RIGHT", 8, 0)
+  sb:SetScript("OnTextChanged", function(self, user)
+    if self.Instructions and self.Instructions.SetShown then self.Instructions:SetShown((self:GetText() or "") == "") end
+    if user ~= false then Options.Search(self:GetText() or "") end
+  end)
+  sb:SetScript("OnEnterPressed", function() Options.SearchNext() end)
+  sb:SetScript("OnEscapePressed", function(self) self:SetText("") self:ClearFocus() end)
+  TipOn(sb, Tr["Rechercher un réglage…"], Tr["Tape un mot : le panneau va au premier réglage trouvé ; Entrée pour le suivant. Survole un réglage pour voir sa commande /drop."])
+  panel.search, Options.searchBox, Options.searchCount = sb, sb, count
   -- 3.3.8 : « Valeurs par défaut » (deux clics : le 1er demande confirmation)
   local rb = TryCreate("Button", "DropamineOptionsReset", panel, { "UIPanelButtonTemplate" })
   rb:SetSize(150, 22)
@@ -1526,6 +1623,24 @@ function Options.Build()
           if it.help then TipOn(l, Tr[it.label], Tr[it.help]) end
           Rect(box, cx, by, Options.COL_W - (L.TEST_W + 8), L.ROW, it.key)
           Rect(box, cx + Options.COL_W - L.TEST_W, by + 2, L.TEST_W, 20, it.key .. ":test")
+          advance(L.ROW, true)
+        elseif it.type == "button" then
+          -- 3.9.0 : ligne d'action (libellé + bouton), ex. export / import du profil
+          sameKind("button")
+          if col == 1 then endRow() end
+          local cx = cell()
+          local BW = 96
+          local l = Label(box, Tr[it.label], "GameFontNormal")
+          l:SetPoint("TOPLEFT", box, "TOPLEFT", cx, -by - 4)
+          if l.SetWidth then l:SetWidth(Options.COL_W - (BW + 8)) end
+          if l.SetJustifyH then l:SetJustifyH("LEFT") end
+          local b = TryCreate("Button", "DropamineOptBtn_" .. it.key, box, { "UIPanelButtonTemplate" })
+          b:SetSize(BW, 20)
+          b:SetPoint("TOPRIGHT", box, "TOPLEFT", cx + Options.COL_W - 4, -(by + 2))
+          b:SetText(Tr[it.button or "OK"])
+          b:SetScript("OnClick", function() if it.run then pcall(it.run) end end)
+          if it.help then TipOn(b, Tr[it.label], Tr[it.help]) TipOn(l, Tr[it.label], Tr[it.help]) end
+          Rect(box, cx, by, Options.COL_W, L.ROW, it.key)
           advance(L.ROW, true)
         elseif it.type == "radio" then
           sameKind("radio")
