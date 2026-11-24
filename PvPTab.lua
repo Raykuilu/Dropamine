@@ -49,7 +49,7 @@ function PT.ModeOf(d)
   end
   return nil
 end
-PT.HINTS = { sheet = "Clic : fiche du personnage", prof = "Clic : ouvrir le métier" }
+PT.HINTS = { sheet = "Clic : fiche du personnage", prof = "Clic : ouvrir / fermer le métier" }
 
 -- Métiers sans sort d'ouverture (récolte) : fenêtre du métier par sa ligne de
 -- compétence. Sur Forever, Dépeçage, Herboristerie et Pêche ont leur fenêtre
@@ -140,11 +140,17 @@ function PT.OpenProf(id)
   if now > 0 and now < PT._profBusy then PT.lastProf[id] = tostring(PT.lastProf[id]) .. " ; clic ignoré (essai en cours)" return false end
   -- déjà ouverte sur CE métier (comparaison par nom, parent ou enfant) : on la referme
   local shown = PT.ShownProf()
-  if shown == id and type(T.CloseTradeSkill) == "function" then
-    pcall(T.CloseTradeSkill)
+  -- 3.8.2 : aussi quand la fenêtre est celle que cette case a ouverte (Pêche : nom illisible ou différent)
+  if ProfFrameShown() and (shown == id or (PT._opened == id and (shown == nil or shown == id))) then
+    if type(T.CloseTradeSkill) == "function" then pcall(T.CloseTradeSkill) end
+    local pf = rawget(_G, "ProfessionsFrame")
+    if ProfFrameShown() and type(_G.HideUIPanel) == "function" then pcall(_G.HideUIPanel, pf) end
+    if ProfFrameShown() and pf.Hide then pcall(pf.Hide, pf) end
+    PT._opened = nil
     PT.lastProf[id] = "fermée (déjà ouverte sur ce métier)"
     return true
   end
+  PT._opened = id
   if type(T.OpenTradeSkill) ~= "function" then PT.lastProf[id] = "OpenTradeSkill absent" return false end
   local cands = PT.Candidates(id)
   local log = { "avant : " .. tostring(shown or (ProfFrameShown() and "autre fenêtre" or "fermée")) }
@@ -286,6 +292,8 @@ if ns.On then
     local b = PT.btn
     if b then b._tile = nil pcall(b.Hide, b) end
   end)
+  -- 3.8.2 : fenêtre fermée par le joueur : la case n'a plus rien d'ouvert
+  ns.On("TRADE_SKILL_CLOSE", function() PT._opened = nil end)
   -- anciens réglages des versions 3.5.10 / 3.5.11 (onglets appris) : effacés
   ns.On("PLAYER_LOGIN", function()
     if ns.db and ns.db.ui then ns.db.ui.pvpTab, ns.db.ui.skillsTab = nil, nil end

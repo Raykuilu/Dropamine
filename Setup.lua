@@ -86,7 +86,7 @@ S.STEPS = {
 }
 
 -- Choix du thème (page « Les cases ») : Léger par défaut sur une nouvelle installation
-S.THEMES = { { "leger", "Léger" }, { "flare2", "FlareUI New" }, { "flare", "FlareUI Old" }, { "classic", "Classique" } }
+S.THEMES = { { "leger", "Léger" }, { "flare2", "FlareUI" }, { "flare", "Moderne" }, { "classic", "Classique" } }
 local function ThemeMode() return (ns.Theme and ns.Theme.Choice and ns.Theme.Choice()) or "flare" end
 local function PaintThemeButtons(f)
   if not (f and f.themeBtns) then return end

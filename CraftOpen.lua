@@ -103,8 +103,23 @@ function CO.PrepareCast(b, skill)
   end
   CO.SetSpell(b, name)
   CO._lastCast = t
+  CO._opened = skill   -- 3.8.2 : métier ouvert par la case (le nom affiché n'est pas toujours lisible)
+  CO._pending = { skill = skill, t = t }
   CO.stats.casts = (CO.stats.casts or 0) + 1
   return true
+end
+-- une fenêtre de métier (n'importe laquelle) est-elle affichée ?
+function CO.AnyWindowShown(skill)
+  local function on(f) return type(f) == "table" and f.IsShown and f:IsShown() and true or false end
+  if CO.CRAFT_UI[skill] then return on(_G.CraftFrame) end
+  return on(rawget(_G, "ProfessionsFrame")) or on(_G.TradeSkillFrame)
+end
+-- 2e clic sur la case : fermer si la fenêtre montre ce métier, ou si c'est ce métier que la case a ouvert
+-- (Pêche, Cuisine : le nom lu dans la fenêtre ne correspond pas toujours, la fenêtre restait ouverte)
+function CO.ShouldClose(skill)
+  if not skill then return false end
+  if CO.WindowOpenFor(skill) then return CO.AnyWindowShown(skill) end
+  return CO._opened == skill and CO.AnyWindowShown(skill)
 end
 
 function CO.SpellName(skill)
@@ -142,6 +157,29 @@ function CO.WindowOpenFor(skill)
   if not (f and f.IsShown and f:IsShown()) then return false end
   local line = type(_G.GetTradeSkillLine) == "function" and _G.GetTradeSkillLine()
   return line == nil or Norm(line) == Norm(name) or (skill == "mining" and Norm(line) == Norm(CO.SPELLS.mining[2]))
+end
+
+-- 3.8.2 : 2e clic sur la case = fermer la fenêtre du métier (fermer n'est pas protégé)
+function CO.CloseWindow(skill)
+  local function hide(f)
+    if f and f.IsShown and f:IsShown() then
+      if type(_G.HideUIPanel) == "function" then pcall(_G.HideUIPanel, f) end
+      if f:IsShown() and f.Hide then pcall(f.Hide, f) end
+    end
+  end
+  if CO.CRAFT_UI[skill] then
+    if type(_G.CloseCraft) == "function" then pcall(_G.CloseCraft) end
+    hide(_G.CraftFrame)
+    return
+  end
+  local pf = rawget(_G, "ProfessionsFrame")
+  if type(pf) == "table" and pf.IsShown and pf:IsShown() then
+    local T = _G.C_TradeSkillUI
+    if T and type(T.CloseTradeSkill) == "function" then pcall(T.CloseTradeSkill) end
+    hide(pf)
+  end
+  if type(_G.CloseTradeSkill) == "function" and _G.TradeSkillFrame and _G.TradeSkillFrame:IsShown() then pcall(_G.CloseTradeSkill) end
+  hide(_G.TradeSkillFrame)
 end
 
 -- index de la recette dans la fenêtre ouverte (en-têtes ignorés)
@@ -375,6 +413,13 @@ if ns.On then
   ns.On("TRADE_SKILL_UPDATE", kick)
   ns.On("CRAFT_SHOW", kick)
   ns.On("CRAFT_UPDATE", kick)
+  -- 3.8.2 : fenêtre fermée (Échap, croix…) : la case n'a plus rien d'ouvert
+  ns.On("TRADE_SKILL_CLOSE", function() CO._opened = nil end)
+  ns.On("CRAFT_CLOSE", function() CO._opened = nil end)
+  -- changement de métier : l'ancienne fenêtre se ferme après le clic ; la nouvelle reprend le métier cliqué
+  local function shown() local pd = CO._pending if pd and (Now() - (pd.t or 0)) < 3 then CO._opened = pd.skill end end
+  ns.On("TRADE_SKILL_SHOW", shown)
+  ns.On("CRAFT_SHOW", shown)
   -- 3.5.14 : fenêtre Métiers récente
   -- 3.5.16 : la liste des recettes a été (re)remplie : moment de référence du
   -- premier appel (avant, il partait avant la liste et restait sur la 1re recette)
@@ -630,7 +675,7 @@ end
 
 -- Cases du panneau : métiers qui ont une fenêtre (CO.SPELLS). Pas Dépeçage,
 -- Herboristerie, Pêche, ni les autres cases. Hors combat seulement.
-CO.TILE_HINT = "Clic : ouvrir le métier"
+CO.TILE_HINT = "Clic : ouvrir / fermer le métier"
 function CO.Openable(d)
   if not (d and d.id and not d.placeholder and CO.SPELLS[d.id]) then return nil end
   -- 3.5.5 : réactivé (désactivé en 3.5.0 pour un clignotement). Option /drop ouvrir on|off.
@@ -653,11 +698,23 @@ function CO.TileButton()
     if button ~= "LeftButton" or shift or not self._tileSkill or not CO.ActingPhase(down) then
       CO.SetSpell(self, nil)
     else
-      CO.PrepareCast(self, self._tileSkill)   -- déjà ouverte / clic trop rapproché → pas de sort
+      -- 3.8.2 : fenêtre déjà ouverte sur ce métier → ce clic la fermera (PostClick)
+      self._closeAfter = CO.ShouldClose(self._tileSkill) and self._tileSkill or nil
+      if self._closeAfter then CO.SetSpell(self, nil)
+      else CO.PrepareCast(self, self._tileSkill) end   -- déjà ouverte / clic trop rapproché → pas de sort
     end
   end)
   b:HookScript("PostClick", function(self, button, down)
     if down then return end
+    if self._closeAfter then
+      local sk = self._closeAfter
+      self._closeAfter = nil
+      CO.CloseWindow(sk)
+      CO._opened = nil
+      CO.stats.tileClosed = (CO.stats.tileClosed or 0) + 1
+      if not InCombat() then CO.SetSpell(self, CO.SpellName(sk)) end
+      return
+    end
     local tile = self._tile
     local data = tile and tile.data
     local shift = type(_G.IsShiftKeyDown) == "function" and _G.IsShiftKeyDown()

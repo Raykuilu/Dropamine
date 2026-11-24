@@ -208,23 +208,11 @@ if Th then
   local prevMC = Th.OnModeChanged
   function Th.OnModeChanged(m, ...)
     if prevMC then pcall(prevMC, m, ...) end
-    if UI.minimap then pcall(TI.Plate, UI.minimap) end
   end
 end
 
--- bouton de minicarte : même plaque (32 px → icône 20 px), anneau rond retiré
-local baseMM = UI.BuildMinimap
-function UI:BuildMinimap(...)
-  local r = { baseMM(self, ...) }
-  local b = self.minimap
-  if b and not b._tiDone then
-    b._tiDone = true
-    TI.Plate(b)
-    TI.WireHover(b)
-    if b.overlay then b.overlay:Hide() end
-  end
-  return unpack(r)
-end
+-- 3.8.2 : le bouton de minicarte garde le gabarit rond standard (UI:BuildMinimap) ; plus de plaque
+-- carrée ni d'anneau retiré, pour qu'il ressemble aux autres boutons de la minicarte.
 
 function TI.DebugLine()
   local p = {}

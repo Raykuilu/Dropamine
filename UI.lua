@@ -1261,6 +1261,8 @@ end
 function UI:UpdateCraftBadge(t, d)
   local C = ns.Craft
   local n = (C and d and d.id and C.SKILLS[d.id]) and C.Ready(d.id) or 0
+  -- 3.8.2 : l'option « Pastille « N prêts » » cache aussi la pastille (avant : seulement le toast)
+  if not ns.Opt("craftNotify") then n = 0 end
   if n <= 0 then
     if t.craftBadge then t.craftBadge:Hide() end
     return 0
@@ -4268,23 +4270,38 @@ function UI:BuildMinimap()
   if self.minimap then return end
   local parent = Minimap or UIParent
   local b = TryCreate("Button", "DropamineMinimapButton", parent, "BackdropTemplate")
-  b:SetSize(32, 32)
+  -- 3.8.2 : même gabarit que les boutons de minicarte standard (LibDBIcon) : 31 px, fond rond,
+  -- icône ronde 17 px, anneau doré 53 px. Les addons d'habillage les traitent alors comme les autres.
+  b:SetSize(31, 31)
   b:SetFrameStrata("MEDIUM")
   if b.SetFrameLevel and parent.GetFrameLevel then
     pcall(b.SetFrameLevel, b, (parent:GetFrameLevel() or 0) + 8)
   end
   b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
-  -- 3.5.20 : icône « La Goutte » (master simplifié 32 px) ; ToggleIcon la reprend ensuite.
-  local icon = b:CreateTexture(nil, "BACKGROUND")
-  icon:SetSize(20, 20)
-  icon:SetPoint("CENTER")
+  local bg = b:CreateTexture(nil, "BACKGROUND")
+  bg:SetSize(20, 20)
+  bg:SetPoint("CENTER", b, "CENTER", 0, 1)
+  pcall(bg.SetTexture, bg, "Interface\\Minimap\\UI-Minimap-Background")
+  b.background = bg
+  local icon = b:CreateTexture(nil, "ARTWORK")
+  icon:SetSize(17, 17)
+  -- 3.8.2 : ancrée au CENTRE (un habillage qui agrandit le bouton la laissait collée en haut à gauche)
+  icon:SetPoint("CENTER", b, "CENTER", 0, 1)
   pcall(icon.SetTexture, icon, "Interface\\AddOns\\Dropamine\\Media\\Dropamine-Icon-32")
+  -- icône ronde (masque du portrait) ; repli : léger recadrage des bords
+  if not (icon.SetMask and pcall(icon.SetMask, icon, "Interface\\CharacterFrame\\TempPortraitAlphaMask")) then
+    pcall(icon.SetTexCoord, icon, 0.05, 0.95, 0.05, 0.95)
+  end
   b.icon = icon
   local overlay = b:CreateTexture(nil, "OVERLAY")
   overlay:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-  overlay:SetSize(54, 54)
-  overlay:SetPoint("TOPLEFT")
+  overlay:SetSize(53, 53)
+  -- même position que le gabarit standard (coin haut-gauche du bouton de 31 px), mais calée sur le centre
+  overlay:SetPoint("TOPLEFT", b, "CENTER", -15.5, 15.5)
   b.overlay = overlay
+  -- enfoncé : l'icône descend d'un pixel, comme les autres boutons
+  b:HookScript("OnMouseDown", function(self) self.icon:ClearAllPoints() self.icon:SetPoint("CENTER", self, "CENTER", 1, 0) end)
+  b:HookScript("OnMouseUp", function(self) self.icon:ClearAllPoints() self.icon:SetPoint("CENTER", self, "CENTER", 0, 1) end)
   b:RegisterForClicks("LeftButtonUp")
   b:RegisterForDrag("LeftButton")
   b:SetScript("OnClick", function(self)

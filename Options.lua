@@ -16,7 +16,7 @@ local function LayoutM() return ns.Layout end
 Options.SECTIONS = {
   { id = "display", title = "Affichage", desc = "Apparence, disposition, transparence et icônes d'état.", items = {
     { type = "radio", key = "theme", label = "Thème", default = "flare", cmd = "/drop theme flare|flare2|leger|classic",
-      choices = { { "flare2", "FlareUI (New) : comme le cadre du chat" }, { "flare", "FlareUI (Old School)" }, { "leger", "Léger (cases seules, sans cadre)" }, { "classic", "Classique (look Blizzard)" } },
+      choices = { { "flare2", "FlareUI" }, { "flare", "Moderne" }, { "leger", "Léger (cases seules, sans cadre)" }, { "classic", "Classique (look Blizzard)" } },
       help = "Change l'habillage du panneau, des cases et des toasts.",
       get = function() return ns.Theme and ns.Theme.Choice() or "flare" end,
       set = function(v) if ns.Theme then ns.Theme.Set(v) end end },
@@ -97,7 +97,7 @@ Options.SECTIONS = {
     { type = "check", key = "totalDing", label = "Palier du total", default = true, cmd = "Réglage de ce panneau et de la visite guidée (/drop setup)", help = "Toast doré et émote quand le niveau total franchit un palier." },
     { type = "check", key = "fireworks", label = "Feu d'artifice (maximum)", default = true, cmd = "Réglage de ce panneau et de la visite guidée (/drop setup)", help = "Gerbes dorées quand le niveau total maximum est atteint." },
     -- 3.8.2 : une liste à cases remplace « Alerte de butin rare » + « à partir de »
-    { type = "radio", multi = true, key = "lootAlerts", label = "Alertes de butin", default = "45", cmd = "Réglage de ce panneau",
+    { type = "radio", multi = true, qualityColors = true, key = "lootAlerts", label = "Alertes de butin", default = "45", cmd = "Réglage de ce panneau",
       choices = { { 3, "Rare" }, { 4, "Épique" }, { 5, "Légendaire" } },
       help = "Toast quand tu reçois un objet d'une qualité cochée, dans la couleur de l'objet.",
       get = function() return ns.Hunt and ns.Hunt.LootQualString and ns.Hunt.LootQualString() or "45" end,
@@ -109,8 +109,13 @@ Options.SECTIONS = {
       help = "Temps pendant lequel un toast reste visible." },
     { type = "slider", key = "dropBgAlpha", label = "Fond des toasts", default = 0.68, min = 0, max = 1, step = 0.05, cmd = "/drop drops opacite <0-100>", unit = "%",
       help = "Opacité du fond des toasts (Classique / repli)." },
-    { type = "check", key = "scannerToast", label = "Toast « recette possible »", default = false, cmd = "/drop scanner toast on|off",
-      help = "Toast quand une créature proche donne un ingrédient utile." },
+    -- 3.8.3 : créatures qui donnent un ingrédient : une case par métier (liste à cases, « Aucun » en tête).
+    -- Avant : une seule case « recette possible » (viande et étoffes : très répétitif en balade).
+    { type = "radio", multi = true, key = "scannerToasts", label = "Créatures à ingrédients", default = "", cmd = "/drop scanner toast on|off",
+      choices = { { 1, "Cuisine" }, { 2, "Secourisme" } },
+      help = "Toast quand une créature proche donne un ingrédient d'une recette que tu connais, une fois par type de créature.",
+      get = function() return ns.Scanner and ns.Scanner.ToastSkillsString and ns.Scanner.ToastSkillsString() or "" end,
+      set = function(v) if ns.Scanner and ns.Scanner.SetToastSkills then ns.Scanner.SetToastSkills(v) end end },
   } },
   { id = "sounds", title = "Sons", desc = "Un interrupteur général, puis chaque son à part.", items = {
     { type = "check", key = "levelUpSound", label = "Son de niveau", default = false, cmd = "/drop anim son on|off", help = "Joue un son avec l'animation de niveau." },
@@ -133,21 +138,27 @@ Options.SECTIONS = {
         if v then DBui().activity = nil else DBui().activity = false end
         if ns.Target and ns.Target.Paint then pcall(ns.Target.Paint) end
       end },
-    { type = "check", key = "craftNotify", label = "Pastille « N prêts »", default = true, cmd = "/drop recettes on|off",
+    { type = "check", key = "craftNotify", label = "Pastille « N prêts »", default = true, cmd = "/drop recettes on|off", refresh = true,
       help = "Nombre de recettes que tes sacs permettent de faire pour un +1." },
     { type = "check", key = "links", label = "Liens entre métiers", default = true, cmd = "/drop liens on|off",
       help = "« Utilisé par » dans l'infobulle des objets et des créatures." },
     { type = "check", key = "unlearned", label = "Recettes à apprendre", default = true, cmd = "/drop nonapprises on|off",
       help = "Montre aussi les recettes pas encore apprises (rang requis)." },
-    { type = "check", key = "scannerIcons", label = "Icônes sur les créatures", default = true, cmd = "/drop scanner icones on|off",
-      help = "Petite icône de métier au-dessus du nom : vert = +1 possible." },
+    -- 3.8.2 : icônes au-dessus des barres de nom des créatures : un interrupteur général + les recettes à part
+    -- 3.8.3 : icône de Dépeçage au-dessus du nom des créatures (liste « Icônes sur les créatures »)
+    { type = "check", key = "plateSkin", label = "Dépeçage sur les créatures", default = true, cmd = "Réglage de ce panneau",
+      help = "Icône de Dépeçage au-dessus du nom des créatures que tu peux dépecer.",
+      set = function(v) ns.SetOpt("plateSkin", v and true or false) Options.RefreshPlates() end },
+    { type = "check", key = "scannerIcons", label = "Recettes sur les créatures", default = true, cmd = "/drop scanner icones on|off",
+      help = "Icônes Cuisine, Secourisme et autres métiers quand la créature donne un ingrédient de recette : vert = +1 possible.",
+      set = function(v) ns.SetOpt("scannerIcons", v and true or false) Options.RefreshPlates() end },
     { type = "check", key = "tipCompact", label = "Infobulle courte", default = true, cmd = "/drop infobulle compacte|detail",
       help = "Une ligne par métier ; maintiens Maj pour le détail.",
       set = function(v) ns.SetOpt("tipCompact", v and true or false) if ns.Tip then ns.Tip.Sync() end end },
     { type = "check", key = "styleMetiers", label = "Habiller la fenêtre Métiers", default = true, cmd = "/drop style on|off",
       help = "Barres et encadrés au style de Dropamine dans la fenêtre du jeu." },
-    { type = "check", key = "openProf", label = "Clic : ouvrir le métier", default = true, cmd = "/drop ouvrir on|off",
-      help = "Clic gauche sur une case de métier ouvre sa fenêtre, hors combat.",
+    { type = "check", key = "openProf", label = "Clic : ouvrir / fermer le métier", default = true, cmd = "/drop ouvrir on|off",
+      help = "Clic gauche sur une case de métier : ouvre sa fenêtre, un 2e clic la ferme. Hors combat.",
       get = function() return not (DBui().openProf == false) end,
       set = function(v) if v then DBui().openProf = nil else DBui().openProf = false end end },
   } },
@@ -188,10 +199,10 @@ Options.EXTRA_HELP = { historique = "Gains des 7 derniers jours dans l'infobulle
 -- 3.5.22 : ordre d'affichage dans chaque famille (les extras s'y insèrent).
 Options.ITEM_ORDER = {
   display = { "theme", "lang", "charProfile", "cols", "scale", "opacity", "bgAlpha", "fadeDelay", "colorMode", "showTotal", "nextBar", "smartSort", "locked", "pauseFlying" },
-  notif = { "dropsEnabled", "notifMode", "dropDir", "dropStyle", "dropWidth", "xpDrops", "skillDrops", "weaponTest", "flyAnim", "paliers", "objectifs", "levelUpAnim", "dropDuration", "dropBgAlpha", "scannerToast", "combo", "maxFx", "records", "prepalier", "jalons", "recapLogout", "quietMode", "quietToasts" },
+  notif = { "dropsEnabled", "notifMode", "dropDir", "dropStyle", "dropWidth", "xpDrops", "skillDrops", "weaponTest", "flyAnim", "paliers", "objectifs", "levelUpAnim", "dropDuration", "dropBgAlpha", "scannerToasts", "combo", "maxFx", "records", "prepalier", "jalons", "recapLogout", "quietMode", "quietToasts" },
   sounds = { "sounds", "quietSounds", "soundSkill", "soundPalier", "soundMax", "soundDaily", "soundRecord", "levelUpSound", "scannerSound" },
   progress = { "goalToast", "achievements", "weeklyRecap" },
-  prof = { "gatherAlerts", "activity", "craftNotify", "links", "unlearned", "scannerIcons", "tipCompact", "styleMetiers", "openProf", "collection", "daily", "peche", "courses" },
+  prof = { "gatherAlerts", "activity", "craftNotify", "links", "unlearned", "plateSkin", "scannerIcons", "tipCompact", "styleMetiers", "openProf", "collection", "daily", "peche", "courses" },
   advanced = { "pvp", "pvpMarks", "scanner", "session", "rappel", "eta", "historique", "alts", "partage", "defense", "maitreArmes", "armePrincipale" },
 }
 
@@ -226,51 +237,106 @@ end
 -- n'apparaît qu'à un seul endroit, quel que soit le module qui l'a ajoutée. Une ligne absente du plan
 -- (module futur) tombe en bas de sa famille d'origine, sous « Autres ».
 Options.MAP = {
+  -- 3.8.3 : réglages réorganisés. Une famille de cases = une liste à cases (Options.GROUPS, clés « grp… »).
   display = {
     { "Apparence", { "theme", "lang", "colorMode" } },
-    { "Disposition", { "cols", "scale", "charProfile", "smartSort", "showTotal", "nextBar" } },
+    { "Disposition", { "cols", "scale", "showTotal", "nextBar", "smartSort" } },
     { "Transparence", { "opacity", "bgAlpha", "fadeDelay" } },
-    { "Comportement", { "locked", "pauseFlying", "restedAnim" } },
-    { "Icônes d'état sur les cases", { "slotDeath", "slotFlight", "slotAfk", "slotBags", "slotFishing", "slotSwimming", "slotDurability", "slotTrainer" } },
+    { "Comportement", { "locked", "charProfile", "pauseFlying", "grpSlots" } },
   },
   notif = {
-    { "Toasts de gain", { "dropsEnabled", "notifMode", "dropDir", "dropStyle", "dropWidth", "dropDuration", "dropBgAlpha", "flyAnim", "weaponTest" } },
-    { "Quoi annoncer", { "xpDrops", "skillDrops", "paliers", "prepalier", "trainerRankToast", "objectifs", "scannerToast" } },
-    { "Célébrations", { "levelUpAnim", "maxFx", "fireworks", "totalDing", "combo", "records" } },
+    { "Affichage des toasts", { "dropsEnabled", "notifMode", "dropDir", "dropStyle", "dropWidth", "dropDuration", "dropBgAlpha", "flyAnim" } },
+    { "Quoi annoncer", { "grpGains", "grpReminders", "grpCelebr" } },
     { "Mode calme", { "quietMode", "quietToasts", "quietAuto" } },
   },
   sounds = {
-    { "Général", { "sounds", "quietSounds" } },
-    { "Un son par événement", { "soundSkill", "soundPalier", "soundMax", "soundDaily", "soundRecord", "levelUpSound", "scannerSound" } },
+    { "Sons", { "sounds", "quietSounds", "grpSounds" } },
   },
   prof = {
-    { "Surlignage", { "gatherAlerts", "activity", "craftNotify", "scannerIcons" } },
-    { "Infobulles et liens", { "links", "unlearned", "tipCompact", "tipTotalFull" } },
-    { "Fenêtre des métiers", { "styleMetiers", "openProf" } },
-    { "Suivi", { "peche", "courses" } },
+    { "Cases et créatures", { "grpTiles", "grpPlates", "scannerToasts" } },
+    { "Fenêtre et infobulles", { "styleMetiers", "openProf", "grpTips" } },
   },
   hunt = {
     { "Chasse", { "huntAlert", "lootAlerts" } },
     { "Collection", { "collection" } },
   },
   progress = {
-    { "Objectifs et succès", { "goalToast", "achievements", "daily", "jalons" } },
-    { "Récaps", { "weeklyRecap", "recapLogout" } },
-    { "Dans l'infobulle des cases", { "session", "eta", "historique", "alts", "partage" } },
+    { "Progression", { "grpAnnounce", "grpTileTip", "partage" } },
   },
   advanced = {
     { "JcJ", { "pvp", "pvpMarks" } },
-    { "Rappels d'armes", { "rappel", "defense", "maitreArmes", "armePrincipale" } },
-    { "Données", { "scanner" } },
+    { "Armes", { "grpWeapons" } },
+    { "Données", { "scanner", "peche", "courses" } },
   },
 }
+
+-- 3.8.3 : listes à cases. Chaque case reste un réglage à part (même clé, même commande /drop) ;
+-- la liste n'est qu'une façon de les ranger. « Aucun » en tête décoche tout ; Tester joue un exemple
+-- de chaque case cochée, l'une après l'autre.
+Options.GROUPS = {
+  grpSlots = { label = "Icônes d'état", help = "Petites icônes dans la goutte et sur les cases quand il se passe quelque chose.",
+    items = { { "slotDeath", "Mort" }, { "slotFlight", "Vol" }, { "slotAfk", "Absence (AFK)" }, { "slotBags", "Sacs pleins" },
+      { "slotFishing", "Pêche" }, { "slotSwimming", "Nage" }, { "slotDurability", "Équipement usé" },
+      { "slotTrainer", "Maître à proximité" }, { "restedAnim", "XP de repos" } } },
+  grpGains = { label = "Gains", help = "Un toast à chaque gain. La montée de niveau est dans Célébrations.",
+    items = { { "xpDrops", "XP (quêtes, jalons du niveau)" }, { "skillDrops", "Compétences (+1)" } },
+    extraTests = { skillDrops = { "weaponTest" } } },
+  grpReminders = { label = "Rappels", help = "Pour ne rien rater chez le maître ou sur tes objectifs.",
+    items = { { "paliers", "Palier atteint (va voir ton maître)" }, { "prepalier", "5 points avant le palier" },
+      { "trainerRankToast", "Rang à apprendre (en capitale)" }, { "objectifs", "Objectif d'une case atteint" } } },
+  grpCelebr = { label = "Célébrations", help = "Les grands moments, avec un toast doré.",
+    items = { { "levelUpAnim", "Montée de niveau" }, { "maxFx", "Compétence au maximum" }, { "totalDing", "Palier du niveau total" },
+      { "fireworks", "Feu d'artifice (total maximum)" }, { "combo", "Combo de session" }, { "records", "Records personnels" } } },
+  grpSounds = { label = "Un son pour…", help = "Chaque son se coche à part ; ils sont coupés par défaut.",
+    items = { { "soundSkill", "Chaque point" }, { "soundPalier", "Palier" }, { "soundMax", "Maximum" }, { "levelUpSound", "Montée de niveau" },
+      { "soundDaily", "Défi du jour" }, { "soundRecord", "Record" }, { "scannerSound", "Créature à ingrédient" } } },
+  grpTiles = { label = "Sur les cases", help = "Ce que les cases de métier montrent d'elles-mêmes.",
+    items = { { "gatherAlerts", "Vert selon la cible" }, { "activity", "Vert pour le métier en cours" }, { "craftNotify", "Pastille « N prêts »" } } },
+  grpPlates = { label = "Icônes sur les créatures", help = "Au-dessus du nom des créatures : vert = +1 possible.",
+    items = { { "plateSkin", "Dépeçage" }, { "scannerIcons", "Recettes (Cuisine, Secourisme…)" } } },
+  grpTips = { label = "Infobulles", help = "Ce que les infobulles ajoutent.",
+    items = { { "links", "Liens entre métiers (« Utilisé par »)" }, { "unlearned", "Recettes pas encore apprises" },
+      { "tipCompact", "Version courte (Maj : détail)" }, { "tipTotalFull", "Total toujours complet" } } },
+  grpAnnounce = { label = "Annonces", help = "Les toasts de la fenêtre Progression.",
+    items = { { "goalToast", "Objectif de session atteint" }, { "achievements", "Succès" }, { "daily", "Défi du jour" },
+      { "jalons", "Jalons personnels" }, { "weeklyRecap", "Récap du lundi" }, { "recapLogout", "Récap à la déconnexion" } } },
+  grpTileTip = { label = "Dans l'infobulle des cases", help = "Lignes en plus quand tu survoles une case.",
+    items = { { "session", "Gains du jour" }, { "eta", "Temps estimé jusqu'au rang" }, { "historique", "Historique 7 jours" }, { "alts", "Autres personnages" } } },
+  grpWeapons = { label = "Rappels d'armes", help = "Petits rappels discrets sur tes armes.",
+    items = { { "rappel", "Arme en retard" }, { "defense", "Défense (ennemis gris)" }, { "maitreArmes", "Arme pas apprise" }, { "armePrincipale", "Remettre l'arme principale" } } },
+}
+-- lignes rangées ailleurs (bouton de test seul, joué par la liste « Gains »)
+Options.HIDDEN = { weaponTest = true }
+Options._groupItems = {}
+function Options.GroupItem(k)
+  local g = Options.GROUPS[k]
+  if not g then return nil end
+  local it = Options._groupItems[k]
+  if not it then
+    it = { type = "radio", multi = true, checklist = true, key = k, label = g.label, help = g.help, choices = g.items, noReset = true }
+    Options._groupItems[k] = it
+  end
+  return it
+end
+function Options.InGroup()
+  local m = {}
+  for _, g in pairs(Options.GROUPS) do for _, ch in ipairs(g.items) do m[ch[1]] = true end end
+  for k in pairs(Options.HIDDEN) do m[k] = true end
+  return m
+end
+-- réglage brut (rangé dans une liste ou non), pour Find / Get / Set
+function Options.RawItem(key)
+  for _, s2 in ipairs(Options.SECTIONS) do for _, it in ipairs(s2.items) do if it.key == key then return it end end end
+  for _, it in ipairs(Options.EXTRA) do if it.key == key then return it end end
+end
 
 function Options.SectionItems(sec)
   local map = Options.MAP and Options.MAP[sec.id]
   if not map then return Options.LegacySectionItems(sec) end
-  local byKey, mapped = {}, {}
+  local byKey, mapped = {}, Options.InGroup()
   for _, s2 in ipairs(Options.SECTIONS) do for _, it in ipairs(s2.items) do if it.key then byKey[it.key] = it end end end
   for _, it in ipairs(Options.EXTRA) do if it.key and not byKey[it.key] then byKey[it.key] = it end end
+  for k in pairs(Options.GROUPS) do byKey[k] = Options.GroupItem(k) end
   for _, g in pairs(Options.MAP) do for _, grp in ipairs(g) do for _, k in ipairs(grp[2]) do mapped[k] = true end end end
   local list, seen = {}, {}
   local function add(it, group)
@@ -288,9 +354,13 @@ end
 
 -- Liste à plat, dans l'ordre d'affichage (Find / Get / debug).
 function Options.All()
-  local out = {}
+  local out, seen = {}, {}
   for _, sec in ipairs(Options.SECTIONS) do
-    for _, it in ipairs(Options.SectionItems(sec)) do out[#out + 1] = it end
+    for _, it in ipairs(Options.SectionItems(sec)) do out[#out + 1] = it seen[it.key or ""] = true end
+  end
+  -- 3.8.3 : les réglages rangés dans une liste restent trouvables (valeur, défaut, réinitialisation)
+  for k in pairs(Options.InGroup()) do
+    if not seen[k] then local it = Options.RawItem(k) if it then out[#out + 1] = it seen[k] = true end end
   end
   return out
 end
@@ -521,9 +591,23 @@ local function MakeDropdown(box, it, x, y)
   dd.choices = it.choices
   dd.key = it.key
   -- 3.8.2 : menu à cases (it.multi) : valeur = chiffres des choix cochés (« 45 »), « Aucun » en tête
-  local function has(v, c) return type(v) == "string" and v:find(tostring(c), 1, true) ~= nil end
+  -- 3.8.3 : liste à cases (it.checklist) : chaque choix est un réglage à part (sa clé), coché = actif
+  local function has(v, c)
+    if it.checklist then return Options.Get(c) and true or false end
+    return type(v) == "string" and v:find(tostring(c), 1, true) ~= nil
+  end
+  local function toggle(c)
+    if it.checklist then Options.Set(c, not has(nil, c)) return end
+    local cur = tostring(Options.Get(it.key) or "")
+    if has(cur, c) then cur = cur:gsub(tostring(c), "") else cur = cur .. tostring(c) end
+    Options.Set(it.key, cur)
+  end
+  local function clearAll()
+    if it.checklist then for _, ch in ipairs(it.choices) do Options.Set(ch[1], false) end return end
+    Options.Set(it.key, "")
+  end
   local function hexOf(c)
-    local rgb = it.multi and ns.Hunt and ns.Hunt.QualityRGB and ns.Hunt.QualityRGB(nil, c)
+    local rgb = it.qualityColors and ns.Hunt and ns.Hunt.QualityRGB and ns.Hunt.QualityRGB(nil, c)
     if not rgb then return nil end
     return string.format("|cff%02x%02x%02x", math.floor(rgb[1] * 255 + 0.5), math.floor(rgb[2] * 255 + 0.5), math.floor(rgb[3] * 255 + 0.5))
   end
@@ -533,7 +617,11 @@ local function MakeDropdown(box, it, x, y)
       for _, ch in ipairs(it.choices) do
         if has(v, ch[1]) then local hx = hexOf(ch[1]) parts[#parts + 1] = hx and (hx .. Tr[ch[2]] .. "|r") or Tr[ch[2]] end
       end
-      return #parts > 0 and table.concat(parts, ", ") or Tr["Aucun"]
+      if #parts == 0 then return Tr["Aucun"] end
+      if #parts == #it.choices and #parts > 2 then return Tr["Tout"] end
+      -- liste longue : « 5 sur 9 » (les noms ne tiendraient pas dans le bouton)
+      if #parts > 2 then return string.format(Tr["%d sur %d"], #parts, #it.choices) end
+      return table.concat(parts, ", ")
     end
     for _, ch in ipairs(it.choices) do if ch[1] == v then return Tr[ch[2]] end end
     return tostring(v)
@@ -547,7 +635,7 @@ local function MakeDropdown(box, it, x, y)
     local none = _G.UIDropDownMenu_CreateInfo()
     none.text, none.notCheckable = Tr["Aucun"], true
     none.func = function()
-      Options.Set(it.key, "")
+      clearAll()
       dd:Refresh()
       if type(_G.CloseDropDownMenus) == "function" then pcall(_G.CloseDropDownMenus) end
     end
@@ -559,9 +647,7 @@ local function MakeDropdown(box, it, x, y)
       info.isNotRadio, info.keepShownOnClick = true, true
       info.checked = has(Options.Get(it.key), ch[1])
       info.func = function()
-        local cur = tostring(Options.Get(it.key) or "")
-        if has(cur, ch[1]) then cur = cur:gsub(tostring(ch[1]), "") else cur = cur .. tostring(ch[1]) end
-        Options.Set(it.key, cur)
+        toggle(ch[1])
         dd:Refresh()
       end
       _G.UIDropDownMenu_AddButton(info, level)
@@ -637,16 +723,18 @@ end
 Options.TEST = {
   dropsEnabled = "skill", xpDrops = "xp", skillDrops = "skill", weaponTest = "weapon", flyAnim = "skill",
   paliers = "tier", objectifs = "goal", levelUpAnim = "levelup",
-  scannerToast = "scanner", jalons = "milestone", recapLogout = "recap",
+  scannerToasts = "scanner", jalons = "milestone", recapLogout = "recap",
   maxFx = "max", records = "record", prepalier = "pretier", combo = "combo",
   soundSkill = "sound", soundPalier = "sound", soundMax = "sound",
   soundDaily = "sound", soundRecord = "sound", levelUpSound = "sound",
   scannerSound = "sound",
   -- 3.6.0 (Progress.lua) : les tests passent outre le mode calme (force)
-  goalToast = "sessiongoal", achievements = "achievement", weeklyRecap = "weekly", quietToasts = "skill",
+  goalToast = "sessiongoal", achievements = "achievement", weeklyRecap = "weekly",
   -- 3.8.2 : chaque notification a son bouton « Tester »
   totalDing = "totalding", fireworks = "fireworks", lootAlerts = "rare", huntAlert = "hunt",
   trainerRankToast = "rankup", daily = "daily",
+  -- 3.8.3 : listes à cases : un exemple par case cochée, à la suite
+  grpGains = "group", grpReminders = "group", grpCelebr = "group", grpSounds = "group", grpAnnounce = "group",
 }
 
 local function WeaponTestSkill()
@@ -859,11 +947,19 @@ local function TestToast(kind)
     opts.kind, opts.variant, opts.skillId, opts.skillName = "goal", "gold", "skinning", Tr["Dépeçage"]
     icon = ProfIcon("skinning", "Interface\\Icons\\INV_Misc_Pelt_Wolf_01")
   elseif kind == "scanner" then
-    title, sub = Tr["Recette possible"], Tr["Cuir léger"]
+    -- 3.8.3 : exemple dans le premier métier coché (Cuisine ou Secourisme) ; aucun coché = pas de toast
+    local S = ns.Scanner
+    local on = S and S.ToastSkillsString and S.ToastSkillsString() or ""
+    if on == "" then
+      if ns.Print then ns.Print(Tr["Créatures à ingrédients : aucun métier coché, pas de toast."]) end
+      return nil
+    end
+    local sk = on:find("1", 1, true) and "cooking" or "firstaid"
+    title, sub = Tr["Recette possible"], (sk == "cooking") and Tr["Viande de loup"] or Tr["Étoffe de soie"]
     opts.kind, opts.hint = "scanner", Tr["Toast d'exemple"]
-    opts.skillId = "leatherworking"
-    opts.toastData = { kind = "scanner", skill = "leatherworking" }
-    icon = ProfIcon("leatherworking", "Interface\\Icons\\Trade_LeatherWorking")
+    opts.skillId = sk
+    opts.toastData = { kind = "scanner", skill = sk }
+    icon = ProfIcon(sk, (sk == "cooking") and "Interface\\Icons\\INV_Misc_Food_15" or "Interface\\Icons\\Spell_Holy_SealOfSacrifice")
   elseif kind == "milestone" then
     title, sub = Tr["Jalons personnels"], Tr["Premier 150"]
     opts.kind, opts.variant = "milestone", "gold"
@@ -965,6 +1061,19 @@ local function TestToast(kind)
   return f
 end
 
+-- 3.8.2 : icônes des barres de nom : on retire tout, puis on repose selon les réglages (hors combat)
+function Options.RefreshPlates()
+  local G, S = ns.Gather, ns.Scanner
+  if G and G.HideAll then pcall(G.HideAll) end
+  if S and S.HideAll then pcall(S.HideAll) end
+  if G then G._plateCache = {} end
+  if ns.InCombat and ns.InCombat() then return end
+  if ns.Opt("plateSkin") or ns.Opt("scannerIcons") then
+    if G and G.Rescan then pcall(G.Rescan) end
+    if S and S.RescanPlates then pcall(S.RescanPlates) end
+  end
+end
+
 function Options.PlayTestSound(key)
   if type(_G.PlaySound) ~= "function" then return nil end
   if key == "levelUpSound" then
@@ -1019,6 +1128,21 @@ end
 function Options.RunTest(key)
   local kind = Options.TEST[key]
   if not kind then return end
+  -- 3.8.3 : liste à cases : on met en file l'exemple de chaque case cochée (joués l'un après l'autre)
+  if kind == "group" then
+    local g = Options.GROUPS and Options.GROUPS[key]
+    if not g then return end
+    local n = 0
+    for _, ch in ipairs(g.items) do
+      local k = ch[1]
+      if Options.Get(k) then
+        if Options.TEST[k] and Options.TEST[k] ~= "group" then Options.RunTest(k) n = n + 1 end
+        for _, x in ipairs((g.extraTests and g.extraTests[k]) or {}) do Options.RunTest(x) n = n + 1 end
+      end
+    end
+    if n == 0 and ns.Print then ns.Print(Tr["Rien n'est coché dans cette liste."]) end
+    return
+  end
   local now = TestNow()
   if key == Options._testLastKey and now > 0 and Options._testLastAt
     and (now - Options._testLastAt) < (Options.TEST_DEBOUNCE or 0.4) then
@@ -1044,10 +1168,17 @@ function Options.ResetSection(secId)
   if not sec then return 0 end
   local n = 0
   Options._syncing = true
-  for _, it in ipairs(Options.SectionItems(sec)) do
-    if it.key and it.default ~= nil and not it.noReset then
+  local function reset(it)
+    if it and it.key and it.default ~= nil and not it.noReset then
       local ok = pcall(Options.Set, it.key, it.default)
       if ok then n = n + 1 end
+    end
+  end
+  for _, it in ipairs(Options.SectionItems(sec)) do
+    if it.checklist then
+      for _, ch in ipairs(it.choices) do reset(Options.RawItem(ch[1])) end   -- 3.8.3 : cases d'une liste
+    else
+      reset(it)
     end
   end
   Options._syncing = false
@@ -1128,6 +1259,7 @@ local function MakeTestButton(parent, it, x, y)
   local tip
   if kind == "sound" then tip = Tr["Joue le son"]
   elseif kind == "weapon" then tip = Tr["Joue un gain bleu (toast, +1, voile et étincelle) sur une case d'arme ou de Défense."]
+  elseif kind == "group" then tip = Tr["Joue un exemple de chaque case cochée, l'un après l'autre."]
   else tip = Tr["Affiche un toast d'exemple"] end
   TipOn(b, Tr[Options.TEST_TEXT], tip)
   return b

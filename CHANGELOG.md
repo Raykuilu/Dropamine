@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.8.3
+
+### Changes
+- Minimap button: same round look as the other minimap buttons (round icon, gold ring), instead of a square plate.
+- Profession tiles: a second click closes the profession window (Fishing and Cooking included).
+- "N ready" badge setting now hides the badge on the tile too, not only the toast.
+- Creatures with ingredients: one checkbox per profession (Cooking, First Aid) in a dropdown, instead of a single "Recipe possible" toggle. One toast per ingredient per session (two creatures dropping the same Silk Cloth gave two identical toasts).
+- Toasts with an empty second line: the green line no longer overflows the bottom edge.
+- Settings reorganised: about 85 rows down to 50. Families of checkboxes are now one dropdown list with a checkbox per item and "None" on top (Status icons, Gains, Reminders, Celebrations, Sounds, On the tiles, Icons on creatures, Tooltips, Announcements, Tile tooltip, Weapon reminders). Each box is still its own setting: saved choices and /drop commands are unchanged.
+- Test buttons on lists play an example of every ticked box, one after another.
+- Icons on creatures: Skinning and Recipes can be turned off separately (Professions tab).
+- Fishing ground and shopping list options moved to Advanced.
+- Themes renamed like in FlareUI: "FlareUI" (was FlareUI New, the chat frame look) and "Modern" (was FlareUI Old School). Your saved theme is kept; `/drop theme flareui|modern` also work.
+
 ## 3.8.2
 
 ### Fixes

@@ -189,7 +189,9 @@ local function FitLine(f, fs)
       HideClip(fs._mq)
       ReparentToToast(f, fs)
     end
-    if HasFn(fs, "SetHeight") then pcall(fs.SetHeight, fs, lh) end
+    -- 3.8.3 : une ligne VIDE ne prend plus de place (avant : hauteur d'une ligne réservée, mais non
+    -- comptée dans la hauteur du toast : la ligne suivante débordait sur le bord bas)
+    if HasFn(fs, "SetHeight") then pcall(fs.SetHeight, fs, (text == "") and 1 or lh) end
     fs._tfLines = (text == "") and 0 or 1
     return
   end

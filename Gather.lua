@@ -298,11 +298,13 @@ function G.PlateEntries(unit)
   local name = Str(Call(_G.UnitName, unit))
   local level = N(Call(_G.UnitLevel, unit))
   local npc = S.UnitNpcID(unit)
+  -- 3.8.2 : « Recettes sur les créatures » (scannerIcons) fait partie de la clé : décocher vide le cache
   local key = tostring(npc or name) .. "#" .. tostring(level) .. "#" .. tostring(ns.Craft and ns.Craft._ver) .. "#" .. tostring(S._learnVer)
+    .. "#" .. tostring(ns.Opt("scannerIcons")) .. "#" .. tostring(ns.Opt("links")) .. "#" .. tostring(ns.Opt("plateSkin"))
   local hit = G._plateCache[key]
   if hit then G.stats.evalCached = G.stats.evalCached + 1 return hit end
   local out = {}
-  if name and G.Enabled() and (G.Rank() or 0) > 0 and (G.Known(name) or G.StaticSkinnable(npc)) then
+  if name and G.Enabled() and ns.Opt("plateSkin") and (G.Rank() or 0) > 0 and (G.Known(name) or G.StaticSkinnable(npc)) then
     local st = G.State(name, level)
     if st then out[#out + 1] = { skill = "skinning", green = G.GivesPoints(st), why = st.text } end
   end
@@ -325,7 +327,7 @@ function G.PlateEntries(unit)
   -- 3.3.14 : liens entre métiers (même source que l'infobulle) : une icône par
   -- métier, verte si une recette apprise donne un point, grise sinon.
   local L = ns.Links
-  if c and L and L.Lines and L.CreatureItems and ns.Opt("links") then
+  if c and L and L.Lines and L.CreatureItems and ns.Opt("links") and ns.Opt("scannerIcons") then
     local have = {}
     for _, e in ipairs(out) do have[e.skill] = e end
     local okL, _, all = pcall(L.Lines, L.CreatureItems(c), { cap = 999 })
@@ -414,9 +416,12 @@ function G.Schedule()
   G._batchPending = true
   if not After(G.BATCH_DT, G.RunBatch) then G.RunBatch() end
 end
+-- 3.8.2 : interrupteur général des icônes sur les barres de nom (dépeçage, recettes, liens)
+function G.PlatesOn() return ns.Opt("plateSkin") or ns.Opt("scannerIcons") end
 function G.OnPlateAdded(unit)
   G.stats.events = G.stats.events + 1
   if ns.PausedForFlight and ns.PausedForFlight() then return end
+  if not G.PlatesOn() then if unit then G.Release(unit) end return end
   if not G.Enabled() or InCombat() or not unit or G.queued[unit] then return end
   G.queued[unit] = true
   G.queue[#G.queue + 1] = unit

@@ -937,6 +937,31 @@ function Scanner.Enabled()
   return ns.Opt("scanner")
 end
 
+-- 3.8.3 : toast « créature à ingrédient » réglé métier par métier (liste à cases des réglages) :
+-- « 12 » = Cuisine + Secourisme. Reprise : l'ancienne case unique cochée donne les deux.
+Scanner.TOAST_CODE = { cooking = "1", firstaid = "2" }
+function Scanner.ToastSkillsString()
+  local ui = ns.db and ns.db.ui
+  if not ui then return "" end
+  local v = ui.scannerToasts
+  if type(v) ~= "string" then
+    v = (ui.scannerToast == true) and "12" or ""
+    ui.scannerToasts = v
+  end
+  return v
+end
+function Scanner.SetToastSkills(v)
+  v = tostring(v or "")
+  local out = ""
+  for _, c in ipairs({ "1", "2" }) do if v:find(c, 1, true) then out = out .. c end end
+  if ns.db and ns.db.ui then ns.db.ui.scannerToasts = out end
+  return out
+end
+function Scanner.ToastOnFor(skill)
+  local c = Scanner.TOAST_CODE[skill]
+  return c ~= nil and Scanner.ToastSkillsString():find(c, 1, true) ~= nil
+end
+
 function Scanner.OnPlateAdded(unit)
   if ns.PausedForFlight and ns.PausedForFlight() then return nil end
   if not Scanner.Enabled() or not ns.Opt("scannerIcons") or InCombat() then return nil end
@@ -974,10 +999,16 @@ function Scanner.OnPlateAdded(unit)
   -- « <créature> → <ingrédient> → <recette> (+1) », jusqu'à 3 recettes.
   local tkey = id or (seen and seen.name) or "?"
   local silent = Scanner._noToast or (ns.Flight and ns.Flight._silentLand)
-  if diff ~= "neutral" and ns.OptOff("scannerToast") and not Scanner.toasted[tkey] and ns.UI and ns.UI.SpawnDrop then
+  if diff ~= "neutral" and Scanner.ToastOnFor(skill) and not Scanner.toasted[tkey] and ns.UI and ns.UI.SpawnDrop then
     Scanner.toasted[tkey] = true
-    if not silent then
     local lines = ns.Craft and ns.Craft.MatchLines(seen and seen.name, matches) or {}
+    -- 3.8.3 : un seul toast par ingrédient et par session (deux créatures qui lâchent la même soie
+    -- donnaient deux toasts identiques)
+    local ikey = tostring(lines[1] or tkey)
+    Scanner.toastedText = Scanner.toastedText or {}
+    if Scanner.toastedText[ikey] then silent = true end
+    Scanner.toastedText[ikey] = true
+    if not silent then
     local f = ns.UI:SpawnDrop(e and e.icon, lines[1] or ((e and ns.CatalogDisplayName(e) or skill) .. Tr[" : "] .. tostring(seen and seen.name)), lines[2], nil, nil, nil,
       { kind = "scanner", hint = lines[3], hintRaw = true,
         toastData = {
@@ -1258,8 +1289,9 @@ end
 ns.SlashExt.scanner = function(rest)
   local sub, arg = (rest or ""):lower():match("^(%S*)%s*(%S*)")
   if sub == "toast" then
-    ns.SetOpt("scannerToast", ns.ParseOnOff(arg, ns.OptOff("scannerToast")))
-    ns.Print(Tr["scanner : toast "] .. (ns.OptOff("scannerToast") and Tr["activé."] or Tr["désactivé."]))
+    local on = ns.ParseOnOff(arg, Scanner.ToastSkillsString() ~= "")
+    Scanner.SetToastSkills(on and "12" or "")
+    ns.Print(Tr["scanner : toast "] .. (on and Tr["activé."] or Tr["désactivé."]))
   elseif sub == "son" or sub == "sound" then
     ns.SetOpt("scannerSound", ns.ParseOnOff(arg, ns.OptOff("scannerSound")))
     ns.Print(Tr["scanner : son "] .. (ns.OptOff("scannerSound") and Tr["activé."] or Tr["désactivé."]))
@@ -1302,7 +1334,7 @@ ns.DebugExt[#ns.DebugExt + 1] = function()
     nc = nc + 1
     for k, v in pairs(c.skills or {}) do if v > 0 then ns_[k] = (ns_[k] or 0) + 1 end end
   end
-  out[#out + 1] = string.format("  actif : %s ; icônes %s ; toast %s ; son %s", tostring(ns.Opt("scanner")), tostring(ns.Opt("scannerIcons")), tostring(ns.OptOff("scannerToast")), tostring(ns.OptOff("scannerSound")))
+  out[#out + 1] = string.format("  actif : %s ; icônes %s ; toast %s ; son %s", tostring(ns.Opt("scanner")), tostring(ns.Opt("scannerIcons")), tostring(Scanner.ToastSkillsString()), tostring(ns.OptOff("scannerSound")))
   out[#out + 1] = string.format("  créatures apprises : %d (Cuisine %d, Secourisme %d, Dépeçage %d) ; nœuds : %d", nc, ns_.cooking, ns_.firstaid, ns_.skinning, (function() local n = 0 for _ in pairs(db.nodes) do n = n + 1 end return n end)())
   local rec = ns.CharDB().recipes or {}
   for id, r in pairs(rec) do out[#out + 1] = string.format("  recettes %s : %d (%s)", id, #(r.list or {}), tostring(r.source)) end

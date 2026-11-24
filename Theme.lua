@@ -16,7 +16,7 @@ local MEDIA = "Interface\\AddOns\\Dropamine\\Media\\"
 -- défaut) et « leger » (sans cadre, sobre, cases flottantes). Alias : cadre → flare,
 -- sans → leger.
 Th.MODES = { flare = true, flare2 = true, leger = true, classic = true }   -- 3.3.17 : + « classic » (textures Blizzard)
-Th.ALIASES = { cadre = "flare", frame = "flare", avec = "flare", flareui = "flare", ancien = "flare", old = "flare", oldschool = "flare", new = "flare2", nouveau = "flare2", flareui2 = "flare2",
+Th.ALIASES = { cadre = "flare", frame = "flare", avec = "flare", flareui = "flare2", moderne = "flare", modern = "flare", ancien = "flare", old = "flare", oldschool = "flare", new = "flare2", nouveau = "flare2", flareui2 = "flare2",
   sans = "leger", ["léger"] = "leger", light = "leger", sanscadre = "leger", ["sans-cadre"] = "leger", none = "leger", aucun = "leger",
   classique = "classic", blizzard = "classic", natif = "classic", native = "classic", default = "classic", ["défaut"] = "classic" }
 Th.BRONZE = ns.STYLE.BORDER                              -- #A67D45, jeton unique (STYLE.md)
@@ -795,14 +795,14 @@ ns.SlashExt.theme = function(rest)
   local a = (rest or ""):match("^%s*(%S*)") or ""
   if a == "" then Say(Tr["thème : "] .. Th.Choice() .. Tr[" (/drop theme flare|flare2|leger|classic)"]) return end
   local m = Th.Set(a)
-  local DESC = { leger = Tr[" (léger : cases flottantes, sans fond ni bord)"], classic = Tr[" (classique : cadres et barres de l'interface Blizzard)"], flare = Tr[" (FlareUI Old School : fond sombre + bord arrondi)"], flare2 = Tr[" (FlareUI New : comme le cadre du chat FlareUI)"] }
+  local DESC = { leger = Tr[" (léger : cases flottantes, sans fond ni bord)"], classic = Tr[" (classique : cadres et barres de l'interface Blizzard)"], flare = Tr[" (Moderne : fond sombre + bord arrondi)"], flare2 = Tr[" (FlareUI : comme le cadre du chat FlareUI)"] }
   if m then Say(Tr["thème : "] .. m .. (DESC[m] or ""))
   else Say(Tr["usage : /drop theme flare|flare2|leger|classic (alias : old, new, sans, classique)"]) end
 end
 ns.SlashExt["thème"] = ns.SlashExt.theme
 
 ns.HelpExt = ns.HelpExt or {}
-ns.HelpExt[#ns.HelpExt + 1] = ("/drop theme flare|flare2|leger|classic — panneau FlareUI Old School ou New (cadre du chat), léger (cases flottantes) ou classique (textures Blizzard)")
+ns.HelpExt[#ns.HelpExt + 1] = ("/drop theme flareui|moderne|leger|classic — panneau FlareUI (cadre du chat), Moderne, léger (cases flottantes) ou classique (textures Blizzard)")
 
 ns.DebugExt = ns.DebugExt or {}
 ns.DebugExt[#ns.DebugExt + 1] = (function()
