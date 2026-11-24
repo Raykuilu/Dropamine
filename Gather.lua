@@ -304,7 +304,7 @@ function G.PlateEntries(unit)
   local hit = G._plateCache[key]
   if hit then G.stats.evalCached = G.stats.evalCached + 1 return hit end
   local out = {}
-  if name and G.Enabled() and ns.Opt("plateSkin") and (G.Rank() or 0) > 0 and (G.Known(name) or G.StaticSkinnable(npc)) then
+  if name and ns.Opt("plateSkin") and (G.Rank() or 0) > 0 and (G.Known(name) or G.StaticSkinnable(npc)) then
     local st = G.State(name, level)
     if st then out[#out + 1] = { skill = "skinning", green = G.GivesPoints(st), why = st.text } end
   end
@@ -422,7 +422,9 @@ function G.OnPlateAdded(unit)
   G.stats.events = G.stats.events + 1
   if ns.PausedForFlight and ns.PausedForFlight() then return end
   if not G.PlatesOn() then if unit then G.Release(unit) end return end
-  if not G.Enabled() or InCombat() or not unit or G.queued[unit] then return end
+  -- 3.9.0 : les icônes ne dépendent plus que de « Icônes sur les créatures » (avant : aussi des alertes de
+  -- récolte ; les décocher faisait disparaître toutes les icônes, cases de la liste cochées ou non)
+  if InCombat() or not unit or G.queued[unit] then return end
   G.queued[unit] = true
   G.queue[#G.queue + 1] = unit
   G.Schedule()
@@ -437,7 +439,7 @@ function G.OnPlateRemoved(unit)
 end
 function G.HideAll() for unit in pairs(G.active) do G.Release(unit) end end
 function G.Rescan()
-  if InCombat() or not G.Enabled() then return end
+  if InCombat() or not G.PlatesOn() then return end
   if ns.PausedForFlight and ns.PausedForFlight() then return end
   local plates = type(_G.C_NamePlate) == "table" and Call(_G.C_NamePlate.GetNamePlates) or {}
   for _, p in ipairs(plates or {}) do
@@ -553,7 +555,8 @@ ns.SlashExt.alertes = function(rest)
   rest = (rest or ""):lower()
   if rest == "on" then ns.db.ui.gatherAlerts = nil elseif rest == "off" then ns.db.ui.gatherAlerts = false
   elseif G.Enabled() then ns.db.ui.gatherAlerts = false else ns.db.ui.gatherAlerts = nil end   -- 3.3.13 : bascule (« x and false or nil » valait toujours nil)
-  if not G.Enabled() then G.HideAll() else G.Rescan() end
+  G._plateCache = {}
+  G.HideAll() G.Rescan()   -- 3.9.0 : icônes recalculées (elles ne dépendent plus de cette commande)
   print(Tr["|cffffd100Dropamine|r : alertes de récolte "] .. (G.Enabled() and Tr["activées"] or Tr["désactivées"]))
 end
 ns.HelpExt = ns.HelpExt or {}

@@ -135,12 +135,12 @@ Options.SECTIONS = {
   } },
   { id = "prof", title = "Métiers & surlignage", tab = "Métiers", desc = "Surlignage vert, infobulles, fenêtre des métiers et suivi.", items = {
     { type = "check", key = "gatherAlerts", label = "Alertes de récolte", default = true, cmd = "/drop alertes on|off",
-      help = "Lignes « Dépeçage / Minage / Herboristerie » dans les infobulles des créatures et des nœuds, et repère de dépeçage.",
+      help = "Lignes « Dépeçage / Minage / Herboristerie » dans les infobulles des créatures et des nœuds.",
       get = function() return not (DBui().gatherAlerts == false) end,
       set = function(v)
         if v then DBui().gatherAlerts = nil else DBui().gatherAlerts = false end   -- 3.3.13 : « (not v) and false or nil » valait toujours nil
-        if ns.Gather then if v then pcall(ns.Gather.Rescan) else pcall(ns.Gather.HideAll) end end
-        if ns.Target and ns.Target.Refresh then pcall(ns.Target.Refresh, "option") end
+        -- 3.9.0 : les icônes au-dessus des noms ont leur propre liste ; on les recalcule seulement
+        if Options.RefreshPlates then Options.RefreshPlates() end
       end },
     { type = "check", key = "activity", label = "Surligner le métier en cours", default = true, cmd = "/drop activite on|off",
       help = "Vert en pêchant / fabriquant ; liens discrets quand une fenêtre de métier est ouverte.",

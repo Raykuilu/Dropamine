@@ -14,6 +14,7 @@
 
 ### Fixes
 - Target outline on tiles (red Level, blue weapons / Defense, green professions) now has its own setting, "Target outline" (Display > Behaviour). It was tied to the gathering alerts, so unticking those in the Professions tab also switched off the combat outline. The gathering option is now named "Gathering (skinning, mining, herbalism)" in the Tooltips list.
+- Icons above creature names only depend on the "Icons on creatures" list. Unticking the gathering alerts used to hide every icon, Skinning and Recipes included.
 - Lines added to tile tooltips by the reminders (Defense against grey enemies) never showed up: they were hooked before the tooltip code was loaded.
 
 ### Under the hood
