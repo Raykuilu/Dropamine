@@ -256,7 +256,7 @@ Options.MAP = {
   notif = {
     { "Affichage des toasts", { "dropsEnabled", "notifMode", "dropDir", "dropStyle", "dropWidth", "dropDuration", "dropBgAlpha", "flyAnim" } },
     { "Quoi annoncer", { "grpGains", "grpReminders", "grpCelebr" } },
-    { "Mode calme", { "quietMode", "quietToasts", "quietAuto" } },
+    { "Mode calme", { "quietMode", "quietToasts", "quietAuto", "quietAutoPvp" } },
   },
   sounds = {
     { "Sons", { "sounds", "quietSounds", "grpSounds" } },

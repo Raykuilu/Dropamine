@@ -1027,6 +1027,12 @@ function P.InInstanceGroup()
   end
   return inst, grouped
 end
+-- 3.9.0 : champ de bataille ou arène (kind « pvp » / « arena » d'IsInInstance)
+function P.InPvp()
+  if P._simInstance == "pvp" or P._simInstance == "arena" then return P._simInstance end
+  local inInst, kind = Call(_G.IsInInstance)
+  return (inInst and (kind == "pvp" or kind == "arena")) and kind or nil
+end
 function P.RecomputeQuiet(silent)
   local mode = P.QuietSetting()
   local inst, grouped = P.InInstanceGroup()
@@ -1034,6 +1040,11 @@ function P.RecomputeQuiet(silent)
   if mode == "instance" and inst then on, why = true, (inst == "raid") and "raid" or "donjon"
   elseif mode == "group" and (inst or grouped) then on, why = true, inst and ((inst == "raid") and "raid" or "donjon") or "groupe"
   elseif mode == "off" and inst and P.AutoQuietOpt() then on, why = true, (inst == "raid") and "raid" or "donjon" end
+  -- 3.9.0 : calme auto en champ de bataille / arène (réglage à part, coché par défaut)
+  if not on then
+    local pvp = P.InPvp()
+    if pvp and not (ns.Opt and ns.Opt("quietAutoPvp") == false) then on, why = true, (pvp == "arena") and "arène" or "champ de bataille" end
+  end
   local was = P._quiet
   P._quiet, P._quietWhy = on, why
   if was ~= nil and was ~= on then
@@ -1305,6 +1316,9 @@ P.OPTIONS = {
   { type = "check", key = "quietAuto", label = "Calme auto en donjon", default = true,
     help = "Active le mode calme « en donjon / raid » à l'entrée, et rétablit ton réglage à la sortie. Ne change pas le défaut du mode calme (jamais).",
     set = function(v) ns.SetOpt("quietAuto", v and true or false) P.AutoQuietSync() end },
+  { type = "check", key = "quietAutoPvp", label = "Calme auto en champ de bataille", default = true,
+    help = "Active le mode calme en champ de bataille et en arène, et revient à la normale à la sortie.",
+    set = function(v) ns.SetOpt("quietAutoPvp", v and true or false) P.AutoQuietSync() end },
   { type = "radio", key = "quietToasts", label = "Toasts en mode calme", default = "reduce", cmd = "/drop calme toasts reduit|aucun|tous",
     choices = { { "reduce", "Seulement l'important" }, { "mute", "Aucun toast" }, { "keep", "Tous les toasts" } },
     help = "Seulement l'important : niveaux, maximums, objectifs, succès, récaps." },
@@ -1321,6 +1335,7 @@ if ns.Options then
   local H = ns.Options.EXTRA_HOME
   H.charProfile, H.smartSort = "display", "display"
   H.quietMode, H.quietAuto, H.quietToasts, H.quietSounds = "notif", "notif", "notif", "sounds"
+  H.quietAutoPvp = "notif"
   H.sessionGoal, H.goalToast, H.achievements, H.weeklyRecap = "progress", "progress", "progress", "progress"
   for _, it in ipairs(P.OPTIONS) do ns.Options.EXTRA[#ns.Options.EXTRA + 1] = it end
   ns.Options.ITEMS = ns.Options.All()
@@ -1519,7 +1534,7 @@ if ns.On then
   for _, ev in ipairs({ "PLAYER_REGEN_DISABLED", "LOOT_OPENED" }) do ns.On(ev, function() pcall(P.TouchRun) end) end
   ns.On("PLAYER_XP_UPDATE", function() pcall(P.OnXP) end)
   ns.On("PLAYER_LEVEL_UP", function(_, lvl) pcall(P.OnLevelUp, lvl) end)
-  for _, ev in ipairs({ "ZONE_CHANGED_NEW_AREA", "GROUP_ROSTER_UPDATE", "PARTY_MEMBERS_CHANGED", "RAID_ROSTER_UPDATE" }) do
+  for _, ev in ipairs({ "ZONE_CHANGED_NEW_AREA", "PLAYER_ENTERING_WORLD", "GROUP_ROSTER_UPDATE", "PARTY_MEMBERS_CHANGED", "RAID_ROSTER_UPDATE" }) do
     ns.On(ev, function() pcall(P.AutoQuietSync) pcall(P.RecomputeQuiet) end)
   end
   ns.On("PLAYER_LOGOUT", function()
