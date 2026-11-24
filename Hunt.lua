@@ -661,6 +661,117 @@ if ns.On then
 end
 
 ------------------------------------------------------------------------------
+-- 3.9.0 : objet recherché repéré dans les fenêtres de butin
+-- Jet de groupe (Besoin / Cupidité) et fenêtre de butin : cadre doré qui pulse + étiquette ;
+-- pour un jet, un toast cliquable en plus. Option « huntRoll ». Lecture seule, rien de protégé.
+------------------------------------------------------------------------------
+function H.IsWanted(id, name)
+  local s = Store()
+  if not (s and (id or name)) then return false end
+  for _, it in ipairs(s.items) do if Matches(it, id, name) then return true end end
+  return false
+end
+local function LinkInfo(link)
+  if type(link) ~= "string" or not Plain(link) then return nil end
+  return tonumber(link:match("item:(%d+)")), link:match("%[(.-)%]")
+end
+local glows = setmetatable({}, { __mode = "k" })
+function H.Glow(frame, on)
+  if type(frame) ~= "table" or not frame.CreateTexture or not _G.CreateFrame then return end
+  local g = glows[frame]
+  if not on then if g then g:Hide() end return end
+  if not g then
+    g = CreateFrame("Frame", nil, frame)
+    g:SetPoint("TOPLEFT", frame, "TOPLEFT", -3, 3)
+    g:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 3, -3)
+    if g.SetFrameLevel and frame.GetFrameLevel then pcall(g.SetFrameLevel, g, (frame:GetFrameLevel() or 1) + 6) end
+    if g.EnableMouse then pcall(g.EnableMouse, g, false) end
+    local function edge(p1, p2, w, h)
+      local t = g:CreateTexture(nil, "OVERLAY")
+      pcall(t.SetTexture, t, "Interface\\Buttons\\WHITE8X8")
+      t:SetVertexColor(1, 0.82, 0.1, 1)
+      t:SetPoint(p1, g, p1) t:SetPoint(p2, g, p2)
+      if w then t:SetWidth(w) end
+      if h then t:SetHeight(h) end
+    end
+    edge("TOPLEFT", "TOPRIGHT", nil, 2) edge("BOTTOMLEFT", "BOTTOMRIGHT", nil, 2)
+    edge("TOPLEFT", "BOTTOMLEFT", 2, nil) edge("TOPRIGHT", "BOTTOMRIGHT", 2, nil)
+    g.fs = g:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    g.fs:SetPoint("BOTTOM", g, "TOP", 0, 1)
+    g.fs:SetTextColor(1, 0.82, 0.1)
+    if g.CreateAnimationGroup then
+      local ag = g:CreateAnimationGroup()
+      local a = ag:CreateAnimation("Alpha")
+      a:SetFromAlpha(1) a:SetToAlpha(0.35) a:SetDuration(0.6)
+      ag:SetLooping("BOUNCE")
+      g.ag = ag
+    end
+    glows[frame] = g
+  end
+  g.fs:SetText(Tr["Objet recherché !"])
+  g:Show()
+  if g.ag and not g.ag:IsPlaying() then g.ag:Play() end
+end
+local function RollOn() return ns.Opt("huntRoll") end
+-- jets de groupe : chaque fenêtre affichée est réévaluée (les cadres sont réutilisés d'un jet à l'autre)
+H._rollToasted = {}
+function H.ScanRolls()
+  for i = 1, 8 do
+    local f = _G["GroupLootFrame" .. i]
+    if type(f) == "table" then
+      local shown = f.IsShown and f:IsShown()
+      local rid = shown and (f.rollID or (f.GetRollID and f:GetRollID()))
+      local okL, link = false, nil
+      if rid and type(_G.GetLootRollItemLink) == "function" then okL, link = pcall(_G.GetLootRollItemLink, rid) end
+      local id, nm = LinkInfo(okL and link or nil)
+      local want = RollOn() and id and H.IsWanted(id, nm)
+      H.Glow(f, want)
+      if want and not H._rollToasted[rid] then
+        H._rollToasted[rid] = true
+        local P = ns.Progress
+        if P and P.Toast then
+          local okT, tf = pcall(P.Toast, Tr["Objet recherché en jeu : "] .. tostring(H.DisplayName(id, nm) or nm), Tr["Fais « Besoin » !"],
+            { kind = "achievement", variant = "gold", titleColor = H.QualityRGB and H.QualityRGB(id) or nil }, "hunt-roll-" .. tostring(rid), true, H.Icon(id))
+          if okT then MakeClickable(tf, id, nm) end
+        end
+      end
+    end
+  end
+end
+-- fenêtre de butin : boutons classiques (LootButton1..N) et liste récente (LootFrame.ScrollBox)
+function H.ScanLootWindow()
+  local on = RollOn()
+  local function mark(btn, slot)
+    if not (btn and slot) then return end
+    local okL, link = pcall(_G.GetLootSlotLink, slot)
+    local id, nm = LinkInfo(okL and link or nil)
+    H.Glow(btn, on and id and H.IsWanted(id, nm) or false)
+  end
+  for i = 1, (_G.LOOTFRAME_NUMBUTTONS or 4) do
+    local b = _G["LootButton" .. i]
+    if type(b) == "table" and b.IsShown and b:IsShown() then mark(b, b.slot) elseif b then H.Glow(b, false) end
+  end
+  local lf = _G.LootFrame
+  local sb = type(lf) == "table" and lf.ScrollBox
+  if type(sb) == "table" and type(sb.ForEachFrame) == "function" then
+    pcall(sb.ForEachFrame, sb, function(fr)
+      local slot = (fr.GetSlotIndex and fr:GetSlotIndex()) or (fr.GetElementData and fr:GetElementData() and fr:GetElementData().slotIndex)
+      mark(fr, slot)
+    end)
+  end
+end
+if ns.On then
+  local function later(fn) if _G.C_Timer and _G.C_Timer.After then _G.C_Timer.After(0.1, function() pcall(fn) end) else pcall(fn) end end
+  ns.On("START_LOOT_ROLL", function() later(H.ScanRolls) end)
+  ns.On("CANCEL_LOOT_ROLL", function() later(H.ScanRolls) end)
+  ns.On("LOOT_OPENED", function() later(H.ScanLootWindow) end)
+  ns.On("LOOT_SLOT_CLEARED", function() later(H.ScanLootWindow) end)
+  if type(_G.hooksecurefunc) == "function" and type(_G.LootFrame_Update) == "function" then
+    pcall(_G.hooksecurefunc, "LootFrame_Update", function() pcall(H.ScanLootWindow) end)   -- changement de page
+  end
+end
+
+------------------------------------------------------------------------------
 -- Collection log : objets de donjon obtenus (par personnage), lus avec Dungeon Journal
 ------------------------------------------------------------------------------
 -- Ce que le personnage porte ou a en sac : marqué obtenu (au plus une fois toutes les 30 s).

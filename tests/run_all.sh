@@ -9,6 +9,7 @@ run "$LUA" tests/load_modules.lua
 run "$LUA" tests/check_options.lua
 run "$LUA" tests/check_globals.lua
 run "$LUA" tests/missing_translations.lua
+run "$LUA" tests/hunt_roll.lua
 for t in hunt_autotile hunt_loot_kc hunt_rare_alert hunt_missing progress_run collection_home recap_table; do
   run "$LUA" tests/$t.lua >/dev/null
 done

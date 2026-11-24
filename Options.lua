@@ -103,6 +103,9 @@ Options.SECTIONS = {
       get = function() return ns.Hunt and ns.Hunt.LootQualString and ns.Hunt.LootQualString() or "45" end,
       set = function(v) if ns.Hunt and ns.Hunt.SetLootQualString then ns.Hunt.SetLootQualString(v) end end },
     { type = "check", key = "huntAlert", label = "Alerte de chasse", default = true, cmd = "Réglage de ce panneau et de la visite guidée (/drop setup)", help = "Toast quand un objet de ta liste de chasse tombe." },
+    -- 3.9.0 : objet recherché repéré dans les fenêtres de butin et de jet de groupe
+    { type = "check", key = "huntRoll", label = "Repérer l'objet au butin", default = true, cmd = "Réglage de ce panneau",
+      help = "Cadre doré sur l'objet de ta chasse dans la fenêtre de butin et au jet de groupe, avec un toast pour le jet." },
     { type = "slider", key = "dropWidth", label = "Largeur des notifs", default = 0, min = 0, max = 480, step = 10, unit = "pxauto",
       help = "Auto : suit la largeur du panneau, avec un minimum lisible (260 px à l'échelle). Une valeur fixe impose la largeur. Si le toast est plus large que le panneau, il s'aligne sur le bord du panneau du côté de l'écran, sans dépasser." },
     { type = "slider", key = "dropDuration", label = "Durée d'affichage", default = 2.6, min = 1, max = 10, step = 0.5, cmd = "/drop drops duree <1-10>", unit = "s",
@@ -257,7 +260,7 @@ Options.MAP = {
     { "Fenêtre et infobulles", { "styleMetiers", "openProf", "grpTips" } },
   },
   hunt = {
-    { "Chasse", { "huntAlert", "lootAlerts" } },
+    { "Chasse", { "huntAlert", "huntRoll", "lootAlerts" } },
     { "Collection", { "collection" } },
   },
   progress = {
