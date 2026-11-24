@@ -1,5 +1,24 @@
 # Changelog
 
+## 3.9.0
+
+### New
+- Hunt: your hunted item is spotted in the loot window and in group rolls (gold frame + "Hunted item!"), with a clickable toast for the roll. Option "Spot the item when looting" (Hunt tab).
+- Professions: when nothing in your bags gives a point, the tile tooltip suggests the next +1: the most worthwhile known recipe, what is missing, and the monsters of your level that drop it. Option "Suggested next +1" (Tooltips list).
+- Weapons: weapon and Defense tiles below max show the monster levels that give points, and warn when your target is grey. New `/drop armes` lists weapons to level, furthest behind first.
+- Collection log: a progress bar under each dungeon, "Sort: level / %", and a Share button that puts "Collection Log · Dungeon 12/39 (31 %)" in your chat.
+- Quiet mode turns on automatically in battlegrounds and arenas (option, on by default).
+- Settings: a search box at the top (jumps to the setting and highlights it; Enter for the next match), and export / import of all your settings as one line of text (Advanced > Profile, `/drop export`, `/drop import`).
+- `/drop bug`: a full report to copy (versions, settings, check, recent errors, loaded add-ons) and a GitHub issue form to paste it into.
+
+### Fixes
+- Lines added to tile tooltips by the reminders (Defense against grey enemies) never showed up: they were hooked before the tooltip code was loaded.
+
+### Under the hood
+- Tests run on GitHub at every push, and a release is only published when they pass. No Python needed anymore (Lua only).
+- UI.lua split: the toasts live in Toasts.lua, about 1,000 lines of dead code from the old native Skills tab removed (UI.lua: 7,163 -> 3,885 lines).
+- Settings list cached; line endings normalised (LF).
+
 ## 3.8.3
 
 ### Changes

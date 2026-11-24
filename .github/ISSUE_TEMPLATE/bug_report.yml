@@ -1,0 +1,38 @@
+name: Bug report / Signaler un bug
+description: Something does not work as expected in Dropamine. / Quelque chose ne marche pas comme prévu.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time! In game, type **`/drop bug`**, press **Ctrl+C**, and paste the report below: it holds the versions, settings and recent errors I need.
+        Merci ! En jeu, tape **`/drop bug`**, fais **Ctrl+C**, puis colle le rapport ci-dessous : il contient les versions, réglages et erreurs récentes.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened? / Que s'est-il passé ?
+      description: What you saw, and what you expected instead. / Ce que tu as vu, et ce que tu attendais.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce / Comment le reproduire
+      placeholder: |
+        1. Open the Progress window (/drop progress)
+        2. Click the Hunt tab
+        3. …
+  - type: textarea
+    id: report
+    attributes:
+      label: "/drop bug report / rapport de /drop bug"
+      description: Paste the full text from /drop bug. / Colle tout le texte de /drop bug.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots / Captures
+      description: Optional, drag images here. / Facultatif, glisse tes images ici.

@@ -114,7 +114,8 @@ end
 local MODULES = { "UI", "Slot", "Progress", "ProgressUI", "Compact", "Wide", "Scanner", "Efficiency",
   "Rested", "Options", "Window", "Notif", "RankToast", "Activity", "Gather", "Target", "DebugWindow" }
 
-local function slashCheck()
+-- 3.9.0 : le contrôle rend ses lignes (réutilisées par /drop bug)
+local function CheckLines()
   local lines, bad = {}, 0
   local function add(ok, label, extra)
     if not ok then bad = bad + 1 end
@@ -165,10 +166,56 @@ local function slashCheck()
 
   lines[#lines + 1] = " "
   lines[#lines + 1] = (bad == 0) and "Résultat : tout est OK." or ("Résultat : " .. bad .. " problème(s).")
+  return lines, bad
+end
+local function slashCheck()
+  local lines, bad = CheckLines()
   Out(lines, (bad == 0) and Tr["Contrôle : tout est OK."] or (Tr["Contrôle : problèmes détectés : "] .. bad))
 end
 
 ns.SlashExt.check = slashCheck
+
+-- /drop bug (3.9.0) : rapport complet à copier dans une issue GitHub
+-- (version, jeu, langue, thème, contrôle, dernières erreurs gardées, addons chargés). Rien n'est envoyé.
+ns.BUG_URL = "https://github.com/Raykuilu/Dropamine/issues/new?template=bug_report.yml"
+function ns.BugReportLines()
+  local L = {}
+  local getMeta = (_G.C_AddOns and _G.C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
+  L[#L + 1] = "Dropamine " .. tostring(Safe(getMeta, ADDON, "Version") or "?") .. " — rapport de bug"
+  L[#L + 1] = "Copie tout (Ctrl+C) et colle-le dans : " .. ns.BUG_URL
+  L[#L + 1] = " "
+  local okB, ver, build, date, iface = pcall(_G.GetBuildInfo or function() return nil end)
+  if okB then L[#L + 1] = "jeu : " .. tostring(ver) .. " (" .. tostring(build) .. ", " .. tostring(date) .. ", interface " .. tostring(iface) .. ")" end
+  L[#L + 1] = "client : " .. tostring(Safe(_G.GetLocale) or "?") .. " ; langue de l'addon : " .. tostring(ns.LangCode and ns.LangCode() or "?")
+  L[#L + 1] = "thème : " .. tostring(ns.Theme and ns.Theme.Choice and Safe(ns.Theme.Choice) or "?")
+  L[#L + 1] = " "
+  L[#L + 1] = "— Contrôle —"
+  local okC, lines = pcall(CheckLines)
+  if okC then for _, l in ipairs(lines) do L[#L + 1] = l end else L[#L + 1] = "contrôle impossible : " .. tostring(lines) end
+  L[#L + 1] = " "
+  L[#L + 1] = "— Erreurs gardées par l'addon —"
+  local n = 0
+  for label, err in pairs((ns.UI and ns.UI.errors) or {}) do n = n + 1 L[#L + 1] = "  " .. tostring(label) .. " : " .. tostring(err) end
+  local SO = ns.SafeOpen
+  if SO and SO.lastError then n = n + 1 L[#L + 1] = "  ouverture : " .. tostring(SO.lastError) end
+  if n == 0 then L[#L + 1] = "  aucune" end
+  L[#L + 1] = " "
+  L[#L + 1] = "— Addons chargés —"
+  local A = _G.C_AddOns
+  local num = Safe((A and A.GetNumAddOns) or _G.GetNumAddOns) or 0
+  local names = {}
+  for i = 1, num do
+    local nm = Safe((A and A.GetAddOnInfo) or _G.GetAddOnInfo, i)
+    local loaded = Safe((A and A.IsAddOnLoaded) or _G.IsAddOnLoaded, i)
+    if nm and loaded then names[#names + 1] = tostring(nm) end
+  end
+  table.sort(names)
+  L[#L + 1] = "  " .. ((#names > 0) and table.concat(names, ", ") or "?")
+  return L
+end
+ns.SlashExt.bug = function() Out(ns.BugReportLines(), Tr["Rapport de bug prêt : Ctrl+C pour copier, puis colle-le sur GitHub (lien en tête du rapport)."]) end
+ns.HelpExt = ns.HelpExt or {}
+ns.HelpExt[#ns.HelpExt + 1] = "/drop bug : rapport complet à copier pour signaler un bug sur GitHub"
 ns.SlashExt.paliers = slashMilestones
 ns.SlashExt.resume = slashSummary
 ns.SlashExt["résumé"] = slashSummary

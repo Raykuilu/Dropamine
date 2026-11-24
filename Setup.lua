@@ -289,7 +289,7 @@ ns.HelpExt[#ns.HelpExt + 1] = "/drop setup : assistant de configuration et de te
 -- sans adresse n'est pas montrée : renseigne S.LINKS.twitter / S.LINKS.curseforge pour l'afficher.
 S.LINKS = {
   { id = "github", label = "GitHub", url = "https://github.com/Raykuilu/Dropamine" },
-  { id = "bug", label = "Signaler un bug", url = "https://github.com/Raykuilu/Dropamine/issues" },
+  { id = "bug", label = "Signaler un bug (/drop bug prépare le rapport)", url = "https://github.com/Raykuilu/Dropamine/issues/new?template=bug_report.yml" },
   { id = "curseforge", label = "CurseForge", url = "https://www.curseforge.com/wow/addons/dropamine" },
   { id = "twitter", label = "Twitter / X", url = "https://x.com/raykuilu" },
 }
