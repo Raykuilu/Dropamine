@@ -12,7 +12,7 @@ local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 ns.VERSION = (function()
   local f = (_G.C_AddOns and _G.C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
   if f then local ok, v = pcall(f, ADDON or "Dropamine", "Version") if ok and type(v) == "string" and v ~= "" then return v end end
-  return "3.8.2"
+  return "3.9.0"
 end)()
 -- DEV ONLY : une seule ligne à passer à true pour rétablir la section Options « Test » et /drop test.
 -- Éteint sur la version publique.
