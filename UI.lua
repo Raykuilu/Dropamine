@@ -468,11 +468,6 @@ function UI:LearnNativeCheckboxChrome()
   end
 end
 
-function UI:LearnNativeChrome()
-  self:LearnNativeBarChrome()
-  self:LearnNativeCheckboxChrome()
-  -- On n'empêche plus les essais suivants : les cadres peuvent apparaître plus tard.
-end
 
 -- Couleur du filet intérieur Forever, relevée sur le séparateur de la fiche (repli).
 local NATIVE_INSET_COLOR = { 0.53, 0.41, 0.26, 1 }
@@ -649,11 +644,6 @@ function UI:DebugInsetLines()
   return lines
 end
 
-function UI:LearnNativeChrome()
-  self:LearnNativeBarChrome()
-  self:LearnNativeCheckboxChrome()
-  self:LearnNativeInsetBorder()
-end
 
 
 local function ApplyBarFill(bar)
@@ -1727,14 +1717,6 @@ function UI:GroupTiles(tiles)
   return out
 end
 
--- En-tête de section : barre native relevée sur une ligne d'en-tête de la liste
--- Comp. (lecture seule : GetTexture/GetAtlas/GetTexCoord), mémorisée dans les
--- SavedVariables ; repli : bandeau or translucide dégradé.
-local function ObjType(o)
-  if type(o) ~= "table" or not o.GetObjectType then return nil end
-  local ok, t = pcall(o.GetObjectType, o)
-  return ok and t or nil
-end
 -- (3.0.0 : déplacé dans View.lua)
 function UI:FitGrid(wrap, n)
   -- Toujours 2 colonnes, largeur fixe (volet gauche natif). Les rangées se
@@ -1762,32 +1744,6 @@ function UI:FitGrid(wrap, n)
   return cols, tw, th, step, rows
 end
 
--- v2.8.4 : origine et largeur de la liste native : les en-têtes natifs
--- commencent à L.header (gauche/haut) et s'arrêtent avant la barre de
--- défilement. Repli : marge native + place de la barre de défilement visible.
-function UI:ListInsets()
-  local L = ns.NativeLook and ns.NativeLook.ProbeList and ns.NativeLook.ProbeList()
-  local f, embed = self.skillFrame, self.embed
-  local el, er, et = UI.RectOf(embed)
-  local ins = { left = GRID_PAD, right = GRID_PAD, top = GRID_PAD, source = "repli" }
-  if L and L.headerInset then
-    local ew = select(1, SizeOf(embed)) or 0
-    ins.left, ins.top = L.headerInset.left, L.headerInset.top
-    ins.right = ew - L.headerInset.left - (L.headerInset.width or 0)
-    ins.source = "en-tête natif"
-  elseif f and f.ScrollBar and el then
-    local sl = UI.RectOf(f.ScrollBar)
-    local okV, vis = pcall(function() return f.ScrollBar:IsShown() end)
-    if sl and okV and vis and sl > el and sl < er then ins.right = math.max(GRID_PAD, er - sl + 2) ins.source = "barre de défilement" end
-  end
-  for _, k in ipairs({ "left", "right", "top" }) do
-    local v = ns.N(ins[k]) or GRID_PAD
-    if v < 0 or v > 60 then v = GRID_PAD end
-    ins[k] = math.floor(v + 0.5)
-  end
-  self.listInsets = ins
-  return ins
-end
 
 -- (3.0.0 : déplacé dans View.lua)
 function UI:FillBreakdownTooltip(tt, snap)
@@ -1853,39 +1809,6 @@ function UI:NativeListRows()
   return out
 end
 
--- (3.0.0 : déplacé dans View.lua)
-function UI:ProbeNativeUpdateFunctions()
-  if self._updateProbed then return self.nativeUpdateNames end
-  self._updateProbed = true
-  local found = {}
-  local function add(name, fn)
-    if type(fn) == "function" then
-      found[#found + 1] = name
-    end
-  end
-  for i = 1, #NATIVE_UPDATE_CANDIDATES do
-    local name = NATIVE_UPDATE_CANDIDATES[i]
-    add(name, _G[name])
-  end
-  -- Méthodes d'objets
-  local frames = { _G.SkillFrame, _G.SkillDetailFrame, _G.CharacterFrame, self.skillFrame, self.nativeDetail }
-  local methods = { "Update", "UpdateSkills", "UpdateSkillLine", "Refresh", "UpdateDetail" }
-  for fi = 1, #frames do
-    local f = frames[fi]
-    if type(f) == "table" then
-      local fname = (f.GetName and f:GetName()) or ("frame" .. fi)
-      for mi = 1, #methods do
-        local m = f[methods[mi]]
-        if type(m) == "function" then
-          add(fname .. ":" .. methods[mi], m)
-        end
-      end
-    end
-  end
-  self.nativeUpdateNames = found
-  ns.lastNativeUpdateNames = found
-  return found
-end
 
 local function HideLegacyDetailExtras(detail)
   if not detail then return end
@@ -1944,76 +1867,8 @@ function UI:HideLegacyOverlays(root)
   end
 end
 
--- Le parent du panneau de détail : UNIQUEMENT la colonne / le cadre natif de droite,
--- jamais le SkillFrame entier (sinon le détail reste dessiné une fois la colonne repliée).
-function UI:GetDetailParent()
-  local function usable(f)
-    return type(f) == "table" and f.SetPoint and f ~= self.skillFrame and not IsOwnFrame(f)
-  end
-  if usable(_G.SkillDetailFrame) then return _G.SkillDetailFrame end
-  if usable(self.nativeDetail) then return self.nativeDetail end
-  if self.skillFrame and self.skillFrame.GetChildren then
-    local kids = { pcall(self.skillFrame.GetChildren, self.skillFrame) }
-    if kids[1] then
-      for i = 2, #kids do
-        local c = kids[i]
-        local n = (c.GetName and c:GetName()) or ""
-        if usable(c) and type(n) == "string" and string.find(string.lower(n), "detail", 1, true) then
-          return c
-        end
-      end
-    end
-  end
-  return nil
-end
 
-function UI:IsRightPaneVisible()
-  local d = self:GetDetailParent()
-  if not d then return false end
-  if d.IsShown then
-    local ok, shown = pcall(d.IsShown, d)
-    if not ok or not shown then return false end
-  end
-  local w = 0
-  if d.GetWidth then
-    local ok, v = pcall(d.GetWidth, d)
-    if ok then w = ns.N(v) or 0 end
-  end
-  return w >= 80
-end
 
-function UI:HookCollapseArrow(root)
-  if not root then return end
-  local function hookBtn(b)
-    if type(b) ~= "table" or NF(b).ArrowHooked or b == self.viewToggle then return end
-    NF(b).ArrowHooked = true
-    if b.HookScript then
-      pcall(b.HookScript, b, "OnClick", function()
-        if UI.SyncCollapsedState then UI:SyncCollapsedState() end
-      end)
-    end
-  end
-  local names = {
-    "SkillFrameCollapseButton", "SkillFrameExpandButton", "SkillDetailCollapseButton",
-    "SkillDetailFrameCollapseButton", "SkillFrameToggleButton", "CharacterFrameCollapseButton",
-  }
-  for i = 1, #names do hookBtn(_G[names[i]]) end
-  if root.GetChildren then
-    local kids = { pcall(root.GetChildren, root) }
-    if kids[1] then
-      for i = 2, #kids do
-        local c = kids[i]
-        local n = (c.GetName and c:GetName()) or ""
-        n = string.lower(tostring(n))
-        local typ = (c.GetObjectType and c:GetObjectType()) or ""
-        if typ == "Button" and (string.find(n, "collapse", 1, true) or string.find(n, "expand", 1, true)
-            or string.find(n, "toggle", 1, true) or string.find(n, "arrow", 1, true)) then
-          hookBtn(c)
-        end
-      end
-    end
-  end
-end
 
 -- v2.8.4 : un OnSizeChanged n'agit que si la taille a VRAIMENT changé
 -- (au pixel) : une mise en page qui redéclenche l'événement ne boucle plus.
@@ -2030,28 +1885,6 @@ function UI:SizeChangedFor(frame, key)
   return true
 end
 
-function UI:HookDetailVisibility(detail)
-  local function sync()
-    if UI.SyncCollapsedState then UI:SyncCollapsedState() end
-  end
-  local function syncSize(fr)
-    if UI:SizeChangedFor(fr, "sync") then sync() end
-  end
-  if detail and not NF(detail).VisHooked then
-    NF(detail).VisHooked = true
-    if detail.HookScript then
-      pcall(detail.HookScript, detail, "OnHide", sync)
-      pcall(detail.HookScript, detail, "OnShow", sync)
-    end
-  end
-  local sf = self.skillFrame
-  if sf and not NF(sf).SizeHooked then
-    NF(sf).SizeHooked = true
-    if sf.HookScript then pcall(sf.HookScript, sf, "OnSizeChanged", syncSize) end
-  end
-  self:HookCollapseArrow(sf)
-  self:HookCollapseArrow(detail)
-end
 
 -- v2.5.0 : la flèche native qui replie / déplie le panneau de droite.
 local ARROW_NAMES = {
@@ -2210,88 +2043,7 @@ local function Overlap(a, b, gap)
   return al < br + gap and ar + gap > bl and ab < bt and at > bb
 end
 UI.RectsOverlap = Overlap
-function UI:ResolveToggleOverlap()
-  local btn = self.viewToggle
-  if not btn or not UI.RectOf then return end
-  for _ = 1, 4 do
-    local hit
-    for _, b in ipairs(self:NativeSmallButtons()) do
-      if Overlap(btn, b, 1) then hit = b break end
-    end
-    if not hit then return true end
-    btn:ClearAllPoints()
-    btn:SetPoint("RIGHT", hit, "LEFT", -UI.TOGGLE_GAP, 0)
-    local n = hit.GetName and hit:GetName()
-    local hw, hh = SizeOf(hit)
-    self.toggleHitInfo = string.format("%s (%sx%s)", tostring(n or "sans nom"), tostring(hw), tostring(hh))
-    self.toggleAnchor = "à gauche de " .. tostring(n or "bouton natif sans nom") .. " (chevauchement évité)"
-    self.toggleMoved = (self.toggleMoved or 0) + 1
-  end
-  return false
-end
 
-function UI:PlaceViewToggle()
-  local btn, embed, f = self.viewToggle, self.embed, self.skillFrame
-  if not btn then return end
-  -- Parenté au SkillFrame (jamais à la grille, cachée en vue classique).
-  if f and btn.SetParent and not (btn.GetParent and btn:GetParent() == f) then pcall(btn.SetParent, btn, f) end
-  local arrow, arrowName = self:FindCollapseArrow()
-  self.collapseArrow, self.collapseArrowName = arrow, arrowName
-  self:SizeViewToggle()
-  local strata = (arrow and arrow.GetFrameStrata and arrow:GetFrameStrata())
-    or (f and f.GetFrameStrata and f:GetFrameStrata()) or "MEDIUM"
-  if btn.SetFrameStrata then pcall(btn.SetFrameStrata, btn, strata) end
-  -- Au-dessus de la liste, du défilement, du détail et de la flèche.
-  local lvl = (f and f.GetFrameLevel and f:GetFrameLevel()) or 1
-  for _, o in ipairs({ arrow, self.nativeLeft, self.nativeDetail, self:GetDetailParent(), embed, self.ownDetail }) do
-    if type(o) == "table" and o.GetFrameLevel then
-      local okL, l = pcall(o.GetFrameLevel, o)
-      if okL and ns.N(l) and l > lvl then lvl = l end
-    end
-  end
-  if btn.SetFrameLevel then pcall(btn.SetFrameLevel, btn, lvl + 10) end
-  if btn.SetToplevel then pcall(btn.SetToplevel, btn, true) end
-  if btn.EnableMouse then btn:EnableMouse(true) end
-  if btn.RegisterForClicks then pcall(btn.RegisterForClicks, btn, "LeftButtonUp") end
-  btn:ClearAllPoints()
-  if arrow then
-    -- Bord droit du bouton = bord gauche de la flèche − 4 px, même centre vertical.
-    btn:SetPoint("RIGHT", arrow, "LEFT", -UI.TOGGLE_GAP, 0)
-    self.toggleAnchor = "flèche " .. tostring(arrowName)
-  else
-    -- Pas de flèche trouvée : à gauche du panneau droit, en haut ; sinon en haut de la colonne gauche.
-    local detail = self:GetDetailParent()
-    if detail and self:IsRightPaneVisible() then
-      btn:SetPoint("TOPRIGHT", detail, "TOPLEFT", -4, -2)
-      self.toggleAnchor = "panneau droit (pas de flèche trouvée)"
-    elseif f then
-      btn:SetPoint("TOPLEFT", f, "TOPLEFT", 20, -52)
-      self.toggleAnchor = "SkillFrame TOPLEFT (pas de flèche trouvée)"
-    end
-  end
-  self:SkinViewToggle(btn)
-  self:SizeViewToggle()
-  -- v2.8.2 : aucun bouton natif ne doit chevaucher le nôtre (la flèche jaune
-  -- trouvée n'était pas toujours celle qui est affichée) : on vérifie les
-  -- rectangles réels, maintenant et une image plus tard.
-  self:ResolveToggleOverlap()
-  if type(C_Timer) == "table" and type(C_Timer.After) == "function" then
-    C_Timer.After(0.05, function() if UI.viewToggle then SafeStep("chevauchement du bouton", UI.ResolveToggleOverlap, UI) end end)
-  end
-  if f and f.HookScript and not NF(f).ToggleSizeHooked then
-    NF(f).ToggleSizeHooked = true
-    pcall(f.HookScript, f, "OnSizeChanged", function(fr) if not ns.InCombat() and UI:SizeChangedFor(fr, "toggle") then SafeStep("chevauchement du bouton", UI.ResolveToggleOverlap, UI) end end)
-  end
-  -- Panneau replié / déplié : la flèche bouge → on se recale après son clic.
-  if arrow and arrow.HookScript and not self._arrowHooked then
-    self._arrowHooked = arrow
-    pcall(arrow.HookScript, arrow, "OnClick", function()
-      if ns.InCombat and ns.InCombat() then return end
-      if UI.PlaceViewToggle then pcall(UI.PlaceViewToggle, UI) end
-    end)
-  end
-  btn:Show()
-end
 
 function UI:LayoutFooter(wrap)
   local foot = wrap and wrap.foot
@@ -2324,43 +2076,7 @@ function UI:LayoutFooter(wrap)
   end
 end
 
-function UI:LayoutForPane()
-  local f, embed = self.skillFrame, self.embed
-  if not f or not embed or not self:IsOsrsView() then return end
-  -- Même ancre TOPLEFT et même taille que la liste native, dans les deux états
-  -- du panneau droit : déplier ne fait que révéler le détail à côté.
-  local w, h = self:GetLeftPaneSize()
-  local left = self.nativeLeft
-  embed:ClearAllPoints()
-  if left and not IsOwnFrame(left) then
-    embed:SetPoint("TOPLEFT", left, "TOPLEFT", 0, 0)
-  else
-    embed:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -56)
-  end
-  embed:SetSize(w, h)
-  if embed._snap then self:LayoutGrid(embed, embed._snap) end
-  self:LayoutFooter(embed)
-  self:PlaceViewToggle()
-end
 
-function UI:SyncCollapsedState()
-  local visible = self:IsRightPaneVisible()
-  if self.ownDetail then
-    if visible and self:IsOsrsView() then
-      -- Re-remplir si on a une sélection ; sinon rester prêt.
-      if self._detailData then
-        self:FillOwnDetail(self._detailData, self._detailLive)
-      else
-        self.ownDetail:Show()
-      end
-    else
-      self.ownDetail:Hide()
-    end
-  end
-  if self:IsOsrsView() then
-    self:LayoutForPane()
-  end
-end
 
 function UI:WalkNativeDetailRegions(root, fn, depth)
   if not root or not fn or (depth or 0) > 8 then return end
@@ -2386,11 +2102,6 @@ function UI:WalkNativeDetailRegions(root, fn, depth)
   end
 end
 
-local function NativeWidgetType(obj)
-  if not obj or not obj.GetObjectType then return "" end
-  local ok, typ = pcall(obj.GetObjectType, obj)
-  return (ok and typ) or ""
-end
 
 local function IsCollapseWidget(obj)
   local n = (obj.GetName and obj:GetName()) or ""
@@ -2476,166 +2187,9 @@ function UI:NativeDetailContent()
   visit(root, 0)
   return out
 end
-function UI:VeilNativeDetailContent(hide)
-  if hide then
-    if ns.InCombat() then
-      ns.AfterCombat("veil-detail", function() if UI:IsOsrsView() then UI:VeilNativeDetailContent(true) end end)
-      return
-    end
-    local list = self:NativeDetailContent()
-    self._veiledContent = self._veiledContent or {}
-    for i = 1, #list do
-      DetailVeil(list[i], true)
-      self._veiledContent[list[i]] = true
-    end
-    self.perf = self.perf or {}
-    self.perf.contentVeil = (self.perf.contentVeil or 0) + 1
-  else
-    for o in pairs(self._veiledContent or {}) do DetailVeil(o, false) end
-    self._veiledContent = {}
-  end
-end
 
-function UI:SetNativeDetailShown(show)
-  -- v2.8.2 : le contenu natif suit toujours (voilé sous notre panneau, rendu
-  -- tel quel pour une arme / Défense que le natif affiche déjà).
-  SafeStep("contenu du détail natif", self.VeilNativeDetailContent, self, not show)
-  if not show and self._nativeHideList and not self._nativeRescan then
-    for i = 1, #self._nativeHideList do
-      local obj = self._nativeHideList[i]
-      DetailVeil(obj, true)
-    end
-    self.perf = self.perf or {}
-    self.perf.nativeQuickHide = (self.perf.nativeQuickHide or 0) + 1
-    return
-  end
-  self.perf = self.perf or {}
-  self.perf.nativeFullScan = (self.perf.nativeFullScan or 0) + 1
-  self._nativeRescan = false
-  self._nativeHideList = {}
-  for _, rec in pairs(self._nativeHidden or {}) do rec.listed = nil end
-  self:SetNativeDetailShownFull(show)
-  if show then self._nativeHideList = nil end
-end
 
-function UI:SetNativeDetailShownFull(show)
-  -- Jamais cacher le cadre-conteneur SkillDetailFrame (colonne / flèche).
-  -- En vue OSRS : masquer récursivement tout FontString / StatusBar natif
-  -- (et les widgets SkillDetail*), puis SetAlpha(0). Restaurer en vue classique.
-  self._nativeHidden = self._nativeHidden or {}
-  local function consider(obj)
-    if not obj or obj == self.ownDetail or IsDescendantOf(obj, self.ownDetail) then return end
-    if obj == self.embed or IsDescendantOf(obj, self.embed) or obj == self.viewToggle then return end
-    local typ = NativeWidgetType(obj)
-    local n = (obj.GetName and obj:GetName()) or ""
-    local isContainer = (n == "SkillDetailFrame") or (obj == self:GetDetailParent())
-    if isContainer then return end
-    if IsCollapseWidget(obj) then return end
-    local hideable = (typ == "FontString" or typ == "StatusBar" or typ == "Slider")
-    if typ == "Button" and string.find(n, "SkillDetail", 1, true) then hideable = true end
-    -- v2.5.0 : restes natifs (cadres de barre vides, flèches de défilement).
-    local ln = string.lower(n)
-    if (typ == "Button" or typ == "Frame") and (string.find(ln, "scrollbar", 1, true)
-        or string.find(ln, "scrollup", 1, true) or string.find(ln, "scrolldown", 1, true)) then
-      hideable = true
-    end
-    if typ == "Texture" then
-      if string.find(n, "SkillDetail", 1, true) then hideable = true end
-      local path = TexOrFileID(obj)
-      if type(path) == "string" then
-        local lp = string.lower(path)
-        if string.find(lp, "skills-bar", 1, true) or string.find(lp, "barborder", 1, true)
-            or string.find(lp, "scrollbar", 1, true) then
-          hideable = true
-        end
-      end
-    end
-    if typ == "Frame" and n ~= "" and string.find(n, "SkillDetail", 1, true)
-        and not string.find(n, "SkillDetailFrame", 1, true) then
-      hideable = true
-    end
-    if not hideable then return end
-    local rec = self._nativeHidden[obj]
-    if not rec then
-      rec = { shown = true, alpha = 1 }
-      if obj.IsShown then
-        local ok, sh = pcall(obj.IsShown, obj)
-        if ok then rec.shown = sh and true or false end
-      end
-      if obj.GetAlpha then
-        local ok, a = pcall(obj.GetAlpha, obj)
-        if ok and type(a) == "number" then rec.alpha = a end
-      end
-      self._nativeHidden[obj] = rec
-    end
-    if show then
-      DetailVeil(obj, false)
-    else
-      DetailVeil(obj, true)
-      if self._nativeHideList and not rec.listed then
-        rec.listed = true
-        self._nativeHideList[#self._nativeHideList + 1] = obj
-      end
-    end
-  end
 
-  for i = 1, #NATIVE_DETAIL_WIDGETS do
-    local w = _G[NATIVE_DETAIL_WIDGETS[i]]
-    if w then consider(w) end
-  end
-  -- Tout SkillDetail* global sauf le conteneur.
-  if type(_G) == "table" then
-    for k, v in pairs(_G) do
-      if type(k) == "string" and string.find(k, "SkillDetail", 1, true) and k ~= "SkillDetailFrame" then
-        if type(v) == "table" then consider(v) end
-      end
-    end
-  end
-  local parent = self:GetDetailParent()
-  if parent then self:WalkNativeDetailRegions(parent, consider, 0) end
-  self:HookNativeUpdatesForHide()
-end
-
-function UI:HookNativeUpdatesForHide()
-  self._osrsHookedUpdateNames = self._osrsHookedUpdateNames or {}
-  if type(hooksecurefunc) ~= "function" then return end
-  local function after()
-    if UI:IsOsrsView() and not UI._inRowRestore then
-      if UI._nativeAsIsKey then
-        -- natif tel quel : on relit seulement (le natif a pu changer de compétence)
-        UI:RecheckNativeAsIs()
-      else
-        UI:SetNativeDetailShown(false)
-      end
-      UI:SetNativeListRowsShown(false)
-      UI:RequestOrnamentCover("mise à jour native")
-    end
-  end
-  local names = self:ProbeNativeUpdateFunctions() or {}
-  for i = 1, #names do
-    local name = names[i]
-    if not self._osrsHookedUpdateNames[name] and not string.find(name, ":", 1, true) then
-      if type(_G[name]) == "function" then
-        if pcall(hooksecurefunc, name, after) then
-          self._osrsHookedUpdateNames[name] = true
-        end
-      end
-    end
-  end
-  -- Hook OnShow du détail : un refresh natif le réaffiche souvent.
-  local d = self:GetDetailParent()
-  if d and not NF(d).NativeHideOnShow then
-    NF(d).NativeHideOnShow = true
-    if d.HookScript then
-      pcall(d.HookScript, d, "OnShow", function()
-        if UI:IsOsrsView() then
-          if UI._nativeAsIsKey then UI:RecheckNativeAsIs() else UI:SetNativeDetailShown(false) end
-          UI:RequestOrnamentCover("détail affiché")
-        end
-      end)
-    end
-  end
-end
 
 function UI:EnsureOwnDetail(detail)
   self:HideLegacyOverlays(detail)
@@ -2820,25 +2374,6 @@ function UI:DetailDescriptionFor(d, liveInfo)
   return ""
 end
 
-function UI:WriteNativeDetail(d)
-  -- Résoudre l'index AU MOMENT du clic / survol (après ExpandSkillHeader),
-  -- pas seulement celui mémorisé à la collecte — d'où le titre bloqué sur Dépeçage.
-  if not d then return nil end
-  local lookup = d.skillName or d.name
-  local index, info
-  if ns.ResolveSkillIndexByName and lookup and d.kind ~= "level" and d.kind ~= "stat" then
-    index, info = ns.ResolveSkillIndexByName(lookup)
-  end
-  if not index then index = d.skillIndex end
-  -- v2.7.1 : lecture seule. Plus de C_SkillInfo.SetSelectedSkill ni de mise à
-  -- jour native depuis l'addon (source de souillure de la ScrollBox).
-  if index then d.skillIndex = index end
-  -- La mise à jour native réaffiche ses lignes : la grille garde la place.
-  if self:IsOsrsView() and self.embed and self.embed:IsShown() then
-    SafeStep("lignes natives", self.SetNativeListRowsShown, self, false)
-  end
-  return info
-end
 
 function UI:DetailBarWidth(f)
   local w = 0
@@ -3130,39 +2665,7 @@ function UI:FillOwnDetail(d, liveInfo)
   if isCombat and not d.placeholder then self:TryNativeAsIs(d, f) else self._nativeAsIsKey = nil end
 end
 
--- Le natif a changé de compétence pendant le mode « tel quel » : notre panneau revient.
-function UI:RecheckNativeAsIs()
-  local d = self.selected
-  if not d or ns.InCombat() then return end
-  local NL = ns.NativeLook
-  if NL and NL.NativeShows(d.skillName or d.name) then return end
-  self._nativeAsIsKey = nil
-  self._detailShownKey = nil
-  self:FillOwnDetail(d, nil)
-end
 
--- Natif tel quel pour une tuile d'arme / Défense (lecture seule ; hors combat).
-function UI:TryNativeAsIs(d, f)
-  local NL = ns.NativeLook
-  if not NL or ns.InCombat() then return false end
-  local key = self:SelectionKey(d)
-  local shows
-  if self._cachedDetailFill then
-    shows = (self._nativeAsIsKey == key)
-  else
-    shows = NL.NativeShows(d.skillName or d.name)
-  end
-  if shows then
-    self._nativeAsIsKey = key
-    self:SetNativeDetailShown(true)
-    if f then f:Hide() end
-    self.detailMode = "natif tel quel"
-    return true
-  end
-  self._nativeAsIsKey = nil
-  self.detailMode = "notre panneau (style natif)"
-  return false
-end
 
 -- Sections : barre d'en-tête native (relevée) + lignes en deux tons.
 UI.SECTION_HDR_H, UI.SECTION_GAP = 20, 6
@@ -3550,106 +3053,10 @@ function UI:AnchorEmbedDefault(embed, f)
   embed:SetSize(w, h)
 end
 
-function UI:EnsureViewToggle(f)
-  if self.viewToggle then return self.viewToggle end
-  local btn, used
-  if type(_G.DropamineViewToggle) == "table" then
-    btn, used = ReuseOrCreate("Button", "DropamineViewToggle", f)
-  else
-    for i = 1, #TOGGLE_TEMPLATES do
-      local ok, cand = pcall(CreateFrame, "Button", "DropamineViewToggle", f, TOGGLE_TEMPLATES[i])
-      if ok and cand then btn, used = cand, true cand._osrsTemplate = TOGGLE_TEMPLATES[i] break end
-    end
-    if not btn then btn, used = CreateFrame("Button", "DropamineViewToggle", f), false end
-  end
-  btn:SetSize(110, 20)
-  if btn.SetText then pcall(btn.SetText, btn, Tr["Vue classique"]) end
-  btn:SetScript("OnClick", function() UI:ToggleView() end)
-  self.viewToggle = btn
-  if not (btn.GetFontString and btn:GetFontString()) and btn.CreateFontString then
-    local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    fs:SetAllPoints()
-    fs:SetText(Tr["Vue classique"])
-    btn.fs = fs
-  end
-  return btn
-end
 
-function UI:EnsureEmbed(f)
-  if self.embed then
-    self:AnchorEmbedDefault(self.embed, f)
-    return self.embed
-  end
-  local embed = self:BuildGrid(f, "DropamineEmbed")
-  self.embed = embed
-  self:AnchorEmbedDefault(embed, f)
-  if not self:IsOsrsView() then embed:Hide() end
-  return embed
-end
 
-function UI:HookSkillFrame()
-  local f, fname = self:FindSkillFrame()
-  if not f then return false end
-  self.skillFrame, self.skillFrameName = f, fname or self.skillFrameName
 
-  -- 1. Bouton et grille : indispensables, chacun isolé.
-  SafeStep("bouton Vue classique", self.EnsureViewToggle, self, f)
-  if not self.embed then SafeStep("grille Comp.", self.EnsureEmbed, self, f) end
-  SafeStep("placement du bouton", self.PlaceViewToggle, self)
 
-  -- 2. Hooks d'ouverture : posés une seule fois, indépendamment du reste.
-  if not NF(f).ShowHooked then
-    local function onShow()
-      SafeStep("ouverture Comp.", function()
-        UI:HookSkillFrame()
-        UI:ApplyView()
-      end)
-    end
-    local okH = f.HookScript and pcall(f.HookScript, f, "OnShow", onShow)
-    if not okH then pcall(f.SetScript, f, "OnShow", onShow) end
-    NF(f).ShowHooked = true
-  end
-  if not UI._toggleCharHooked and type(hooksecurefunc) == "function" and type(_G.ToggleCharacter) == "function" then
-    local okT = pcall(hooksecurefunc, "ToggleCharacter", function(name)
-      if name == "SkillFrame" then
-        SafeStep("ToggleCharacter", function()
-          UI:HookSkillFrame()
-          if UI.skillFrame then UI:ApplyView() end
-        end)
-      end
-    end)
-    UI._toggleCharHooked = okT and true or false
-  end
-
-  -- 3. Cosmétique : jamais bloquant.
-  SafeStep("hooks collapse", self.HookDetailVisibility, self, self:GetDetailParent())
-  SafeStep("onglet (hook)", self.HookCharacterFrameForTab, self)
-  SafeStep("chrome natif", self.LearnNativeChrome, self)
-  SafeStep("icône d'onglet", self.ApplyTabIcon, self)
-  if self.HookEditMode then SafeStep("mode édition", self.HookEditMode, self) end
-  local firstHook = not NF(f).Hooked
-  NF(f).Hooked = (self.embed ~= nil)
-
-  -- /reload avec l'onglet déjà ouvert : appliquer tout de suite.
-  if firstHook and NF(f).Hooked and not self._inApplyView and f.IsShown then
-    local okS, shown = pcall(f.IsShown, f)
-    if okS and shown then SafeStep("vue", self.ApplyView, self) end
-  end
-  return self.embed ~= nil
-end
-
-function UI:IsOsrsView()
-  return not (ns.db and ns.db.ui and ns.db.ui.osrsView == false)
-end
-
-function UI:SetViewToggleText()
-  local b = self.viewToggle
-  if not b then return end
-  local label = self:IsOsrsView() and Tr["Vue classique"] or Tr["Vue OSRS"]
-  if b.SetText then pcall(b.SetText, b, label) end
-  if b.fs then b.fs:SetText(label) end
-  self:SizeViewToggle()
-end
 
 -- v2.7.1 : bouton à la taille de son texte (+ marge), même hauteur que la flèche.
 UI.TOGGLE_PAD, UI.TOGGLE_GAP = 8, 4
@@ -3685,13 +3092,6 @@ function UI:SizeViewToggle()
   self.toggleSize = { w = w, h = h, text = tw }
 end
 
-function UI:ApplyView()
-  if self._inApplyView then return end
-  self._inApplyView = true
-  local ok, err = pcall(self.ApplyViewInner, self)
-  self._inApplyView = false
-  if not ok then SafeStep("vue", error, err) end
-end
 
 -- (3.0.0 : supprimé — vue réécrite dans View.lua)
 local RAISE_DEPTH = 6   -- v2.8.1 : lignes de ScrollBox (ScrollBox > cible > ligne > enfants)
@@ -3726,13 +3126,6 @@ local function RectOf(o)
   return l, r, t, b
 end
 UI.RectOf = RectOf
-local function OrnamentLabel(o)
-  local n = o.GetName and o:GetName()
-  if type(n) == "string" and n ~= "" then return n end
-  local p = TexOrFileID(o)
-  if p ~= nil then return "texture " .. tostring(p) end
-  return tostring(o.GetObjectType and o:GetObjectType() or "région")
-end
 function UI:IsDetailOrnament(o, edge, top, bottom)
   if not o or IsOwnFrame(o) then return false end
   if o == self.viewToggle then return false end
@@ -3751,70 +3144,6 @@ function UI:IsDetailOrnament(o, edge, top, bottom)
   if math.abs(cx - edge) > UI.ORNAMENT_BAND then return false end
   if b >= top or t <= bottom then return false end   -- hors de la hauteur du panneau
   return true
-end
-function UI:CoverDetailEdge(reason)
-  if not self:IsOsrsView() then return end
-  local od = self.ownDetail
-  if not od or not od.IsShown or not od:IsShown() then return end
-  -- Notre détail au-dessus de tout le sous-arbre natif du panneau (écriture sur NOTRE cadre).
-  local parent = self:GetDetailParent()
-  if parent and od.SetFrameLevel then
-    local okP, pl = pcall(parent.GetFrameLevel, parent)
-    local lvl = math.max((okP and ns.N(pl) or 1) + 6, MaxLevel(parent, 0, 0) + 2)
-    pcall(od.SetFrameLevel, od, lvl)
-  end
-  if ns.InCombat() then
-    ns.AfterCombat("ornements", function() if UI:IsOsrsView() then UI:CoverDetailEdge("après combat") end end)
-    return
-  end
-  local l, _, t, b = RectOf(od)
-  if not l then return end
-  self._ornaments = self._ornaments or {}
-  local seen = {}
-  local found = 0
-  local function visit(o, depth)
-    if type(o) ~= "table" or depth > 6 or seen[o] then return end
-    seen[o] = true
-    if IsOwnFrame(o) or o == self.embed or o == self.ownDetail then return end
-    if self:IsDetailOrnament(o, l, t, b) then
-      DetailVeil(o, true)
-      if not self._ornaments[o] then self._ornaments[o] = OrnamentLabel(o) end
-      found = found + 1
-    end
-    if o.GetRegions then
-      local regs = { pcall(o.GetRegions, o) }
-      if regs[1] then
-        for i = 2, #regs do
-          local rg = regs[i]
-          if type(rg) == "table" and not seen[rg] then
-            seen[rg] = true
-            if self:IsDetailOrnament(rg, l, t, b) then
-              DetailVeil(rg, true)
-              if not self._ornaments[rg] then self._ornaments[rg] = OrnamentLabel(rg) end
-              found = found + 1
-            end
-          end
-        end
-      end
-    end
-    if o.GetChildren then
-      local kids = { pcall(o.GetChildren, o) }
-      if kids[1] then for i = 2, #kids do visit(kids[i], depth + 1) end end
-    end
-  end
-  visit(self.skillFrame, 0)
-  if parent and parent ~= self.skillFrame then visit(parent, 0) end
-  self.perf = self.perf or {}
-  self.perf.ornamentPass = (self.perf.ornamentPass or 0) + 1
-  -- Lecture des lignes du détail natif (pour les tuiles d'arme / Défense).
-  if ns.NativeLook then pcall(ns.NativeLook.CaptureNativeDetail) end
-  self._ornamentReason = reason
-  self:HookOrnamentSources()
-  return found
-end
-function UI:RestoreDetailEdge()
-  for o in pairs(self._ornaments or {}) do DetailVeil(o, false) end
-  self._ornaments = {}
 end
 function UI:OrnamentNames()
   local out = {}
@@ -3835,48 +3164,10 @@ function UI:HookOrnamentSources()
     end
   end
 end
--- Regroupé (0,05 s) : une rafale de mises à jour natives = un seul passage.
-function UI:RequestOrnamentCover(reason)
-  if not self:IsOsrsView() then return end
-  local tf = self:TimerFrame("ornaments")
-  if not tf then return self:CoverDetailEdge(reason) end
-  tf._acc, tf._why = 0, reason
-  tf:SetScript("OnUpdate", function(fr, el)
-    fr._acc = (fr._acc or 0) + (el or 0.05)
-    if fr._acc < 0.05 then return end
-    fr:SetScript("OnUpdate", nil)
-    SafeStep("ornements du détail", UI.CoverDetailEdge, UI, fr._why)
-  end)
-end
 
--- (3.0.0 : supprimé — vue réécrite dans View.lua)
-function UI:RefreshNativeProbe()
-  if ns.InCombat and ns.InCombat() then return end
-  local NLk = ns.NativeLook
-  if not (NLk and NLk.ProbeList) then return end
-  local L = NLk.ProbeList(true)
-  if not L or L.cached then return end
-  if not (self.nativeSkillBar and self.nativeSkillBar.fromList) then self.nativeSkillBar = nil end
-  -- surbrillances déjà créées sans la texture native : reconstruites
-  for _, t in ipairs(self.embed and self.embed.tiles or {}) do
-    if not t._hlNative and L.highlight and ns.View then ns.View.PaintTile(t) end
-  end
-  if L.pad and self.SetGridPad then self:SetGridPad(L.pad) end
-  -- hauteur d'en-tête et écart en-tête → première ligne = natifs
-  if L.header and L.header.h and L.header.h >= 12 and L.header.h <= 40 then UI.HEADER_H = math.floor(L.header.h + 0.5) end
-  if L.headerGap and L.headerGap >= 0 and L.headerGap <= 12 then UI.HEADER_GAP = math.floor(L.headerGap + 0.5) end
-end
 
 -- (3.0.0 : supprimé — vue réécrite dans View.lua)
 
-function UI:ToggleView()
-  if not ns.db then initDBSafe() end
-  if not ns.db.ui then ns.db.ui = {} end
-  ns.db.ui.osrsView = not self:IsOsrsView()
-  self:ApplyView()
-  -- Pas de Print ici : le bouton de l'onglet spamait le chat à chaque clic.
-  -- Seule la commande /drop vue affiche un message (voir le slash handler).
-end
 
 initDBSafe = function()
   DropamineDB = DropamineDB or {}
@@ -3921,71 +3212,6 @@ local function RestoreFramePos(frame, key, defaultPoint)
   frame:SetPoint(dp[1], UIParent, dp[1], dp[2] or 0, dp[3] or 0)
 end
 
-function UI:BuildStandalone()
-  if self.frame then return end
-  local f, used
-  for _, tmpl in ipairs({ "PortraitFrameTemplate", "ButtonFrameTemplate", "BasicFrameTemplateWithInset", "BackdropTemplate" }) do
-    local ok, cand = pcall(CreateFrame, "Frame", "DropamineFrame", UIParent, tmpl)
-    if ok and cand then f, used = cand, tmpl break end
-  end
-  if not f then
-    f = TryCreate("Frame", "DropamineFrame", UIParent, "BackdropTemplate")
-    used = "custom"
-  end
-  f:SetSize(420, 560)
-  f:SetFrameStrata("HIGH")
-  f:SetMovable(true)
-  f:EnableMouse(true)
-  f:RegisterForDrag("LeftButton")
-  f:SetScript("OnDragStart", f.StartMoving)
-  f:SetScript("OnDragStop", function(frame)
-    frame:StopMovingOrSizing()
-    SaveFramePos(frame, "pos")
-  end)
-  if f.SetClampedToScreen then f:SetClampedToScreen(true) end
-  f:Hide()
-  if type(UISpecialFrames) == "table" then
-    UISpecialFrames[#UISpecialFrames + 1] = "DropamineFrame"
-  end
-  if used == "custom" or used == "BackdropTemplate" then
-    if not SetBackdropSafe(f, {
-      bgFile = "Interface\\Buttons\\WHITE8X8",
-      edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-      edgeSize = 24, insets = { left = 6, right = 6, top = 6, bottom = 6 },
-    }, BROWN_BG[1], BROWN_BG[2], BROWN_BG[3], BROWN_BG[4], 0.55, 0.40, 0.18, 1) then
-      local bg = f:CreateTexture(nil, "BACKGROUND")
-      bg:SetAllPoints()
-      FillTexture(bg, BROWN_BG[1], BROWN_BG[2], BROWN_BG[3], BROWN_BG[4])
-    end
-    local close = TryCreate("Button", nil, f, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", 2, 2)
-    close:SetScript("OnClick", function() f:Hide() end)
-  end
-  local tt = f.TitleText
-  if type(tt) == "table" and tt.SetText then
-    self.title = tt
-  else
-    self.title = Text(f, "GameFontNormal", "CENTER")
-    self.title:SetPoint("TOP", 0, -8)
-  end
-  self.title:SetText(Tr["Niveau total"])
-  local portrait = (type(f.portrait) == "table" and f.portrait) or (f.PortraitContainer and f.PortraitContainer.portrait)
-  if portrait and SetPortraitTexture then pcall(SetPortraitTexture, portrait, "player") end
-  self.subtitle = Text(f, "GameFontHighlightSmall", "LEFT")
-  self.subtitle:SetPoint("TOPLEFT", 70, -32)
-  self.subtitle:SetTextColor(0.85, 0.80, 0.65)
-
-  local grid = self:BuildGrid(f, "DropamineSolo")
-  grid:SetPoint("TOPLEFT", 12, -56)
-  grid:SetPoint("BOTTOMRIGHT", -8, 8)
-  self.soloGrid = grid
-  self.frame = f
-  RestoreFramePos(f, "pos", { "CENTER", 0, 40 })
-  f:SetScript("OnShow", function()
-    if SetPortraitTexture and portrait then pcall(SetPortraitTexture, portrait, "player") end
-    UI:Refresh(true)
-  end)
-end
 
 -- 3.5.21 : en combat, mise à jour des textes et du remplissage des cases
 -- déjà posées, sans SetPoint / Show / Hide / SetFrameLevel (le wrap peut
@@ -4166,83 +3392,7 @@ end
 -- la fiche), on ouvre la fiche puis on attend le cadre au plus ~1 s ; la
 -- minuterie s'arrête dans tous les cas (aucun OnUpdate qui reste actif).
 UI.OPEN_WAIT_MAX = 1.0
-function UI:OpenSkillTab(after)
-  local f = self:FindSkillFrame()
-  if not f and not (ns.InCombat and ns.InCombat()) and type(_G.ToggleCharacter) == "function" then
-    pcall(_G.ToggleCharacter, "SkillFrame")
-    f = self:FindSkillFrame()
-    if not f then
-      local tf = self:TimerFrame("openwait")
-      if not tf then return false end
-      tf._acc = 0
-      tf:SetScript("OnUpdate", function(fr, el)
-        fr._acc = (fr._acc or 0) + (el or 0.05)
-        local sf = UI:FindSkillFrame()
-        if sf or fr._acc >= UI.OPEN_WAIT_MAX then
-          fr:SetScript("OnUpdate", nil)
-          if sf then
-            SafeStep("ouverture Comp.", function() UI:HookSkillFrame() UI:ApplyView() end)
-            if after then SafeStep("après ouverture", after) end
-          else
-            ns.Print(Tr["onglet Comp. introuvable : ouvrez la fiche du personnage (C) puis l'onglet Comp."])
-          end
-        end
-      end)
-      return "waiting"
-    end
-  end
-  if not f then return false end
-  if ns.InCombat and ns.InCombat() then
-    ns.AfterCombat("openskilltab", function() UI:OpenSkillTab() end)
-    ns.Print(Tr["en combat : la fenêtre s'ouvrira à la fin du combat."])
-    return true
-  end
-  if self.frame and self.frame.Hide then self.frame:Hide() end
-  if not ns.db then initDBSafe() end
-  ns.db.ui = ns.db.ui or {}
-  local okS, shown = pcall(f.IsShown, f)
-  local cf = _G.CharacterFrame
-  local cfShown = cf and cf.IsShown and select(2, pcall(cf.IsShown, cf))
-  if not (okS and shown and cfShown) and type(_G.ToggleCharacter) == "function" then
-    pcall(_G.ToggleCharacter, "SkillFrame")
-  end
-  SafeStep("ouverture Comp.", function()
-    UI:HookSkillFrame()
-    UI:ApplyView()
-  end)
-  if after then SafeStep("après ouverture", after) end
-  return true
-end
 
-function UI:Show()
-  if self:OpenSkillTab() then return end
-  if not self.frame then self:BuildStandalone() end
-  if self.frame then self.frame:Show() end
-end
-function UI:Hide()
-  if self.frame then self.frame:Hide() end
-end
-function UI:Toggle()
-  if self:FindSkillFrame() then
-    local f = self.skillFrame or self:FindSkillFrame()
-    local cf = _G.CharacterFrame
-    local okS, shown = pcall(f.IsShown, f)
-    local cfShown = cf and cf.IsShown and select(2, pcall(cf.IsShown, cf))
-    if okS and shown and cfShown and type(_G.ToggleCharacter) == "function" then
-      if ns.InCombat and ns.InCombat() then
-        ns.AfterCombat("closeskilltab", function() pcall(_G.ToggleCharacter, "SkillFrame") end)
-        return
-      end
-      pcall(_G.ToggleCharacter, "SkillFrame")
-      return
-    end
-    self:OpenSkillTab()
-    return
-  end
-  if not self.frame then self:BuildStandalone() end
-  if not self.frame then return end
-  if self.frame:IsShown() then self.frame:Hide() else self.frame:Show() end
-end
 
 -- Minimap -------------------------------------------------------------------
 local DEFAULT_ANGLE = 45
@@ -6976,88 +6126,11 @@ function UI:DebugTabButtons()
   return lines
 end
 
-local function TabIconTargets(btn)
-  local list = {}
-  if btn.icon then list[#list + 1] = btn.icon end
-  if btn.Icon then list[#list + 1] = btn.Icon end
-  if btn.IconTexture then list[#list + 1] = btn.IconTexture end
-  if btn.texture then list[#list + 1] = btn.texture end
-  if btn.GetNormalTexture then
-    local ok, nt = pcall(btn.GetNormalTexture, btn)
-    if ok and nt then list[#list + 1] = nt end
-  end
-  return list
-end
 
-local function SaveTabOriginal(btn)
-  if NF(btn).OrigSaved then return end
-  NF(btn).OrigSaved = true
-  if btn.GetNormalTexture then
-    local ok, nt = pcall(btn.GetNormalTexture, btn)
-    if ok and nt and nt.GetTexture then
-      local ok2, path = pcall(nt.GetTexture, nt)
-      if ok2 then NF(btn).OrigNormalPath = path end
-    end
-  end
-  local icon = btn.icon or btn.Icon or btn.IconTexture
-  if icon and icon.GetTexture then
-    local ok, path = pcall(icon.GetTexture, icon)
-    if ok then NF(btn).OrigIconPath = path end
-  end
-end
 
-local function TexturePathOf(obj)
-  if obj and obj.GetTexture then
-    local ok, path = pcall(obj.GetTexture, obj)
-    if ok then return path end
-  end
-  return nil
-end
 
-local function PathLooksLikeCustom(path)
-  if type(path) ~= "string" then return false end
-  local fold = string.lower(path):gsub("/", "\\")
-  -- 3.5.20 : SkillsTab (goutte en jeu) ou Dropamine-Icon (liste d'addons / minicarte)
-  return (string.find(fold, "skillstab", 1, true) or string.find(fold, "dropamine-icon", 1, true)) and true or false
-end
 
-local function ApplyTextureToTab(btn, path)
-  local okAny = false
-  if btn.SetNormalTexture then
-    if pcall(btn.SetNormalTexture, btn, path) then okAny = true end
-  end
-  local targets = TabIconTargets(btn)
-  for i = 1, #targets do
-    local tex = targets[i]
-    if tex and tex.SetTexture and pcall(tex.SetTexture, tex, path) then
-      okAny = true
-    end
-  end
-  -- Vérifier que le client a bien chargé notre TGA ; sinon on considère un échec.
-  local loaded = false
-  if btn.GetNormalTexture then
-    local ok, nt = pcall(btn.GetNormalTexture, btn)
-    if ok and PathLooksLikeCustom(TexturePathOf(nt)) then loaded = true end
-  end
-  for i = 1, #targets do
-    if PathLooksLikeCustom(TexturePathOf(targets[i])) then loaded = true end
-  end
-  -- Sur certains clients GetTexture ne renvoie pas le chemin : on fait confiance à Set* si ça n'a pas planté.
-  if okAny and loaded then return true, true end
-  if okAny then return true, false end
-  return false, false
-end
 
-local function RestoreTabOriginal(btn)
-  if not btn then return end
-  if NF(btn).OrigNormalPath and btn.SetNormalTexture then
-    pcall(btn.SetNormalTexture, btn, NF(btn).OrigNormalPath)
-  end
-  local icon = btn.icon or btn.Icon or btn.IconTexture
-  if icon and icon.SetTexture and NF(btn).OrigIconPath then
-    pcall(icon.SetTexture, icon, NF(btn).OrigIconPath)
-  end
-end
 
 function UI:PickSkillTabButton()
   local cands = self:FindSkillTabButtons()
@@ -7077,62 +6150,7 @@ function UI:PickSkillTabButton()
   return best
 end
 
-function UI:ApplyTabIcon()
-  if not ns.db then
-    DropamineDB = DropamineDB or {}
-    DropamineDB.ui = DropamineDB.ui or {}
-    ns.db = DropamineDB
-  end
-  ns.db.ui = ns.db.ui or {}
-  local want = (ns.db.ui.customTabIcon ~= false)
-  local btn = self.skillTabButton or self:PickSkillTabButton()
-  if not btn then return false end
-  self.skillTabButton = btn
-  SaveTabOriginal(btn)
-  if not want then
-    RestoreTabOriginal(btn)
-    return true
-  end
-  local setOk, confirmed = ApplyTextureToTab(btn, CUSTOM_TAB_TEX)
-  if not setOk then
-    -- La texture n'a pas pu être posée : on restaure l'icône native.
-    RestoreTabOriginal(btn)
-    return false
-  end
-  -- Si GetTexture nie le chemin (fichier manquant), repli natif.
-  if confirmed == false then
-    local path = nil
-    if btn.GetNormalTexture then
-      local ok, nt = pcall(btn.GetNormalTexture, btn)
-      if ok then path = TexturePathOf(nt) end
-    end
-    -- Beaucoup de clients renvoient nil juste après SetNormalTexture ; on ne
-    -- restaure que si un chemin EST renvoyé et qu'il n'est pas le nôtre.
-    if type(path) == "string" and path ~= "" and not PathLooksLikeCustom(path) then
-      RestoreTabOriginal(btn)
-      return false
-    end
-  end
-  return true
-end
 
-function UI:HookCharacterFrameForTab()
-  local cf = _G.CharacterFrame
-  if type(cf) ~= "table" or NF(cf).TabHooked then return end
-  if not cf.HookScript and not cf.SetScript then return end
-  NF(cf).TabHooked = true
-  local function onShow()
-    UI:ApplyTabIcon()
-    -- Filet de sécurité : si Comp. est déjà l'onglet actif à l'ouverture.
-    local sf = UI.skillFrame or UI:FindSkillFrame()
-    if sf and sf.IsShown then
-      local ok, shown = pcall(sf.IsShown, sf)
-      if ok and shown then SafeStep("ouverture fiche", UI.ApplyView, UI) end
-    end
-  end
-  if cf.HookScript then pcall(cf.HookScript, cf, "OnShow", onShow)
-  elseif cf.SetScript then pcall(cf.SetScript, cf, "OnShow", onShow) end
-end
 
 function UI:Init()
   if ns.Style then ns.Style.SectionBorderHook = function(f) return UI:ApplyDropFinish(f, true) end end

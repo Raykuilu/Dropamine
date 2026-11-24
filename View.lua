@@ -1450,21 +1450,6 @@ function UI:LayoutForPane()
 end
 
 -- La colonne de défilement native reste réservée (notre barre s'y place).
-local baseListInsets = UI.ListInsets
-function UI:ListInsets()
-  local ins = baseListInsets(self)
-  if ins.source == "repli" then
-    local f, e = self.skillFrame, self.embed
-    local el, er = RectOf(e)
-    local sl = f and f.ScrollBar and RectOf(f.ScrollBar)
-    if el and sl and sl > el and sl < er then
-      local v = math.floor(er - sl + 2.5)
-      if v > ins.right and v <= 60 then ins.right = v ins.source = "colonne de défilement native" end
-    end
-  end
-  self.listInsets = ins
-  return ins
-end
 
 -- (2) Défilement : barre native cachée ; la nôtre (aspect natif) n'apparaît
 -- que si le contenu déborde. Molette active seulement dans ce cas.
@@ -1682,28 +1667,8 @@ function UI:ShowDetailBreakdown(snap)
   SafeStep("un seul panneau", self.EnforceSinglePane, self, "niveau total")
   return unpack(r)
 end
-local baseRecheck = UI.RecheckNativeAsIs
-function UI:RecheckNativeAsIs()
-  self._nativeDetailVer = (self._nativeDetailVer or 0) + 1
-  baseRecheck(self)
-  SafeStep("un seul panneau", self.EnforceSinglePane, self, "natif")
-end
 -- Mise à jour native (post-crochets) hors mode « tel quel » : contenu natif
 -- (nouveaux textes compris) re-voilé.
-local baseHookUpd = UI.HookNativeUpdatesForHide
-function UI:HookNativeUpdatesForHide()
-  baseHookUpd(self)
-  if type(hooksecurefunc) ~= "function" then return end
-  self._singlePaneHooked = self._singlePaneHooked or {}
-  for name in pairs(self._osrsHookedUpdateNames or {}) do
-    if not self._singlePaneHooked[name] and type(_G[name]) == "function" then
-      if pcall(hooksecurefunc, name, function()
-        UI._nativeDetailVer = (UI._nativeDetailVer or 0) + 1
-        if UI:IsOsrsView() and not UI._nativeAsIsKey then SafeStep("un seul panneau", UI.EnforceSinglePane, UI, "natif") end
-      end) then self._singlePaneHooked[name] = true end
-    end
-  end
-end
 
 -- (3) Panneau de droite : géométrie du natif (titre AU-DESSUS du filet natif,
 -- barre à la place exacte de la barre native, texte aligné comme le natif).
@@ -1966,14 +1931,6 @@ function V.NativeButtonGap(arrow)
     end
   end
   return best
-end
-local basePlaceToggle = UI.PlaceViewToggle
-function UI:PlaceViewToggle()
-  local arrow = self:FindCollapseArrow()
-  local g = arrow and V.NativeButtonGap(arrow)
-  UI.TOGGLE_GAP = g and math.floor(g + 0.5) or 4
-  self.toggleGapSource = g and "écart natif relevé" or "repli 4"
-  return basePlaceToggle(self)
 end
 
 -- La barre du détail garde la taille de la barre native (géométrie relevée).
