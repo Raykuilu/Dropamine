@@ -16,6 +16,7 @@ Run them from the addon root (the folder with `Dropamine.toc`), with Lua 5.2+ (`
     lua tests/hunt_rare_alert.lua       # rare/epic alert by quality
     lua tests/hunt_roll.lua             # hunted item spotted in a group roll (gold frame + one toast)
     lua tests/craft_nextbest.lua        # suggested next +1: best recipe, missing reagents, creatures that drop them
+    lua tests/weapons_level.lua         # weapons to level: grey level, suggested monster levels, list by gap
     lua tests/progress_run.lua          # active-time streak and new achievements
     lua tests/hunt_missing.lua          # missing recipes and creatures by level (real database)
     lua tests/recap_table.lua           # session recap comparison table

@@ -588,6 +588,8 @@ function Q.CheckDefenseTarget()
   if not isGray and type(col) == "table" and type(trivial) == "table" then
     isGray = N(col.r) == N(trivial.r) and N(col.g) == N(trivial.g) and N(col.b) == N(trivial.b)
   end
+  -- 3.9.0 : niveau de la cible grise retenu aussi pour les cases d'arme (une arme ne monte pas non plus)
+  Q._greyTarget = isGray and lvl or nil
   if not isGray then Q._defenseTip = nil return nil end
   local snap = (ns.SkillRankSnapshotCached and ns.SkillRankSnapshotCached()) or (ns.SkillRankSnapshot and ns.SkillRankSnapshot()) or {}
   local def = snap[ns.Fold("Défense")]
@@ -600,6 +602,62 @@ function Q.CheckDefenseTarget()
   Q._defenseTip = Tr["Défense "] .. cur .. "/" .. maxv .. " — " .. Tr["Adversaire gris (niveau "] .. lvl .. ")"
   return true
 end
+
+-- 12. Armes à monter (3.9.0) ----------------------------------------------------
+-- Niveau gris (Classic) : en dessous ou égal, un adversaire ne fait monter ni arme ni Défense.
+function ns.GreyLevel(p)
+  p = N(p) or 1
+  if p <= 5 then return 0
+  elseif p <= 39 then return p - math.floor(p / 10) - 5
+  elseif p <= 59 then return p - math.floor(p / 5) - 1 end
+  return p - 9
+end
+-- plage conseillée : du premier niveau non gris à 2 niveaux au-dessus du joueur
+function Q.WeaponLevelRange()
+  local p = N(ns.GetPlayerLevel and ns.GetPlayerLevel()) or 1
+  return math.max(1, ns.GreyLevel(p) + 1), p + 2
+end
+local COMBAT = { melee = true, ranged = true, feral = true, defense = true }
+function Q.SnapEntry(snap, e)
+  local keys = { e.name, ns.CATALOG_EN and ns.CATALOG_EN[e.id] }
+  for _, a in ipairs(e.aliases or {}) do keys[#keys + 1] = a end
+  for _, k in ipairs(keys) do
+    if k then local v = snap[ns.Fold(k)] if v then return v end end
+  end
+end
+-- armes (et Défense) apprises, pas au maximum, de la plus en retard à la moins en retard
+function Q.WeaponsToLevel()
+  local snap = (ns.SkillRankSnapshotCached and ns.SkillRankSnapshotCached()) or (ns.SkillRankSnapshot and ns.SkillRankSnapshot()) or {}
+  local p = N(ns.GetPlayerLevel and ns.GetPlayerLevel()) or 1
+  local cap = p * (ns.WEAPON_RANK_PER_LEVEL or 5)
+  local out = {}
+  for _, e in ipairs(ns.CATALOG or {}) do
+    if COMBAT[e.kind] then
+      local v = Q.SnapEntry(snap, e)
+      local cur = v and N(v.rank) or 0
+      if cur > 0 then
+        local mx = N(v.max) or 0
+        if mx <= 0 then mx = cap end
+        if cur < mx then
+          out[#out + 1] = { id = e.id, name = (ns.CatalogDisplayName and ns.CatalogDisplayName(e)) or e.name, cur = cur, max = mx, gap = mx - cur }
+        end
+      end
+    end
+  end
+  table.sort(out, function(a, b) if a.gap ~= b.gap then return a.gap > b.gap end return tostring(a.name) < tostring(b.name) end)
+  return out
+end
+ns.SlashExt = ns.SlashExt or {}
+ns.SlashExt.armes = function()
+  local list = Q.WeaponsToLevel()
+  if #list == 0 then ns.Print(Tr["Toutes tes armes et ta Défense sont au maximum."]) return end
+  local lo, hi = Q.WeaponLevelRange()
+  ns.Print(string.format(Tr["Armes à monter (monstres niv. %d à %d) :"], lo, hi))
+  for _, w in ipairs(list) do ns.Print(string.format("  %s %d/%d  (-%d)", tostring(w.name), w.cur, w.max, w.gap)) end
+end
+ns.SlashExt.weapons = ns.SlashExt.armes
+ns.HelpExt = ns.HelpExt or {}
+ns.HelpExt[#ns.HelpExt + 1] = "/drop armes : armes et Défense à monter, de la plus en retard, et niveaux de monstres conseillés"
 
 -- Événements -------------------------------------------------------------------
 if ns.On then
@@ -614,7 +672,11 @@ if ns.On then
   ns.On("PLAYER_TARGET_CHANGED", function() if not InCombat() then pcall(Q.CheckDefenseTarget) end end)
   ns.On("PLAYER_REGEN_DISABLED", function() pcall(Q.CheckDefenseTarget) end)
 
-if ns.Compact and ns.Compact.TooltipModel then
+-- 3.9.0 : posé une fois tous les fichiers chargés. QoL.lua passe AVANT Compact.lua dans le .toc :
+-- au chargement, ns.Compact n'existait pas et ces lignes n'étaient jamais ajoutées.
+local function HookCompactTip()
+  if Q._tipHooked or not (ns.Compact and ns.Compact.TooltipModel) then return end
+  Q._tipHooked = true
   local baseTip = ns.Compact.TooltipModel
   function ns.Compact.TooltipModel(d)
     local m = baseTip(d)
@@ -622,9 +684,23 @@ if ns.Compact and ns.Compact.TooltipModel then
     if tip and m and m.lines and d and (d.kind == "defense" or d.id == "defense") then
       m.lines[#m.lines + 1] = { tip, 0.85, 0.85, 0.85, true }
     end
+    -- 3.9.0 : cases d'arme et de Défense pas au maximum : où monter, et cible grise = pas de point
+    if m and m.lines and d and COMBAT[d.kind] and ns.Opt("weaponLevels") then
+      local cur, mx = N(d.current) or 0, N(d.apiMax) or 0
+      if mx <= 0 then mx = (N(ns.GetPlayerLevel and ns.GetPlayerLevel()) or 1) * (ns.WEAPON_RANK_PER_LEVEL or 5) end
+      if cur > 0 and cur < mx then
+        local lo, hi = Q.WeaponLevelRange()
+        m.lines[#m.lines + 1] = { string.format(Tr["Monte sur des monstres niv. %d à %d"], lo, hi), 0.85, 0.85, 0.85, true }
+        if Q._greyTarget and d.kind ~= "defense" and ns.Opt("defense") then
+          m.lines[#m.lines + 1] = { string.format(Tr["Cible grise (niveau %d) : pas de point"], Q._greyTarget), 1, 0.5, 0.3, true }
+        end
+      end
+    end
     return m
   end
 end
+HookCompactTip()
+ns.On("PLAYER_LOGIN", HookCompactTip)
   -- 3.3.16 : le récap n'est plus écrit à PLAYER_LOGOUT (caché par l'écran de
   -- chargement) mais au DÉBUT du compte à rebours de déconnexion / sortie :
   -- toast visible pendant le décompte + ligne de chat ; annulé par LOGOUT_CANCEL.

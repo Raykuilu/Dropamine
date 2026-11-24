@@ -184,6 +184,9 @@ Options.SECTIONS = {
       help = "Mémorise ce que lâchent les créatures (à laisser activé)." },
     { type = "check", key = "session", label = "Gains du jour", default = true, cmd = "/drop session on|off", help = "« +N aujourd'hui » dans l'infobulle des cases." },
     { type = "check", key = "rappel", label = "Rappel arme en retard", default = true, cmd = "/drop rappel on|off", help = "Signale discrètement une arme en main sous-montée." },
+    -- 3.9.0 : niveaux de monstres conseillés sur les cases d'arme / Défense (liste « Rappels d'armes »)
+    { type = "check", key = "weaponLevels", label = "Niveaux de monstres conseillés", default = true, cmd = "/drop armes",
+      help = "Sur les cases d'arme et de Défense pas au maximum : la plage de niveaux qui fait monter, et un avertissement si ta cible est grise." },
   } },
 }
 -- Lignes ajoutées par d'autres modules (QoL, Dopamine) : rangées dans le bon groupe,
@@ -309,7 +312,7 @@ Options.GROUPS = {
   grpTileTip = { label = "Dans l'infobulle des cases", help = "Lignes en plus quand tu survoles une case.",
     items = { { "session", "Gains du jour" }, { "eta", "Temps estimé jusqu'au rang" }, { "historique", "Historique 7 jours" }, { "alts", "Autres personnages" } } },
   grpWeapons = { label = "Rappels d'armes", help = "Petits rappels discrets sur tes armes.",
-    items = { { "rappel", "Arme en retard" }, { "defense", "Défense (ennemis gris)" }, { "maitreArmes", "Arme pas apprise" }, { "armePrincipale", "Remettre l'arme principale" } } },
+    items = { { "rappel", "Arme en retard" }, { "weaponLevels", "Niveaux de monstres conseillés" }, { "defense", "Défense (ennemis gris)" }, { "maitreArmes", "Arme pas apprise" }, { "armePrincipale", "Remettre l'arme principale" } } },
 }
 -- lignes rangées ailleurs (bouton de test seul, joué par la liste « Gains »)
 Options.HIDDEN = { weaponTest = true }
