@@ -12,6 +12,7 @@ run "$LUA" tests/missing_translations.lua
 run "$LUA" tests/hunt_roll.lua
 run "$LUA" tests/craft_nextbest.lua
 run "$LUA" tests/weapons_level.lua
+run "$LUA" tests/collection_sort_share.lua
 for t in hunt_autotile hunt_loot_kc hunt_rare_alert hunt_missing progress_run collection_home recap_table; do
   run "$LUA" tests/$t.lua >/dev/null
 done

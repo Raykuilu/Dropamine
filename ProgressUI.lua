@@ -2316,6 +2316,15 @@ function PU.BuildCollection(f)
   c.lhead = FS(c, "GameFontNormalSmall", "label")
   c.lhead:SetPoint("TOPLEFT", c, "TOPLEFT", 10, -8)
   c.lhead:SetText(Tr["Collection"])
+  -- 3.9.0 : tri des donjons (par niveau, ou les plus avancés d'abord) ; gardé d'une session à l'autre
+  c.sortBtn = PU.Button(c, 70, 16, "", "small", function()
+    local ui = ns.db and ns.db.ui
+    if ui then ui.logSort = (ui.logSort == "pct") and nil or "pct" end
+    PU.RefreshCollection()
+  end)
+  c.sortBtn:SetPoint("TOPLEFT", c, "TOPLEFT", 120, -5)
+  -- 3.9.0 : partage de la page affichée dans le chat (texte inséré, tu valides avec Entrée)
+  c.shareBtn = PU.Button(c, 70, 16, Tr["Partager"], "small", function() PU.ShareCollection() end)
   -- séparateur vertical
   c.sep = Tex(c, "ARTWORK", 1)
   Place(c.sep, c, 196, 6, 1, PU.CONTENT_H - 12)
@@ -2338,6 +2347,7 @@ function PU.BuildCollection(f)
     b:SetScript("OnLeave", function() if _G.GameTooltip then _G.GameTooltip:Hide() end end)
     b.val = FS(b, "GameFontNormalSmall", "title")
     b.val:SetPoint("RIGHT", b, "RIGHT", -4, 0)
+    b.bar = PU.NewBar(b, 6, 17, 172, 2)   -- 3.9.0 : progression du donjon, sous le nom
     b:SetScript("OnClick", function(self)
       if self.entry then c.ui.sel = self.entry.key c.ui.rOff = 0 PU.RefreshCollection()
       elseif self.head then
@@ -2360,6 +2370,7 @@ function PU.BuildCollection(f)
   if c.rtitle.SetJustifyH then c.rtitle:SetJustifyH("LEFT") end
   c.rcount = FS(c, "GameFontNormal", "text")
   c.rcount:SetPoint("TOPRIGHT", c, "TOPRIGHT", -10, -10)
+  c.shareBtn:SetPoint("RIGHT", c.rcount, "LEFT", -8, 0)
   if c.rcount.SetJustifyH then c.rcount:SetJustifyH("RIGHT") end
   c.rbar = PU.NewBar(c, RX, 32, RW, 5)
   c.rlines = {}
@@ -2456,6 +2467,23 @@ function PU.BuildCollection(f)
   return p
 end
 
+-- 3.9.0 : « [Dropamine] Collection Log · Shadowfang Keep 12/39 (31 %) » inséré dans le chat
+function PU.CollectionShareText(e)
+  if not (e and e.y and e.y > 0) then return nil end
+  local pct = math.floor(math.min(1, e.x / e.y) * 100 + 0.5)
+  return string.format(Tr["[Dropamine] Collection Log · %s %d/%s%d (%d %%)"], tostring(e.label), e.x, e.approx and "≈" or "", e.y, pct)
+end
+function PU.ShareCollection()
+  local p = PU.frame and PU.frame.pages and PU.frame.pages.collection
+  local e = p and p.card and p.card.ui and p.card.ui.cur
+  local text = PU.CollectionShareText(e)
+  if not text then return false end
+  local eb = type(_G.ChatEdit_GetActiveWindow) == "function" and _G.ChatEdit_GetActiveWindow()
+  if type(eb) == "table" and eb.Insert then pcall(eb.Insert, eb, text) return true end
+  if type(_G.ChatFrame_OpenChat) == "function" then pcall(_G.ChatFrame_OpenChat, text) return true end
+  return false
+end
+
 -- Accueil du collection log : total, chiffres clés, une barre par catégorie, donjons presque terminés.
 function PU.RefreshCollectionHome(c, secs, pal, H)
   local tx, ty, kills, full, nd = 0, 0, 0, 0, 0
@@ -2532,6 +2560,12 @@ function PU.RefreshCollection(p)
   pcall(H.ScanOwned)
   Paint(c.sep, pal.line1 or pal.grid)
   local secs = H.LogSections()
+  if c.sortBtn then
+    local pct = ns.db and ns.db.ui and ns.db.ui.logSort == "pct"
+    c.sortBtn.fs:SetText(pct and Tr["Tri : %"] or Tr["Tri : niveau"])
+    PU.PaintButton(c.sortBtn)
+  end
+  c.ui.curSecs = secs
   -- liste aplatie : sous-titres + entrées
   local flat, byKey = {}, {}
   flat[1] = { entry = { key = "home", label = Tr["Accueil"], home = true, x = 0, y = 0 } }
@@ -2554,6 +2588,7 @@ function PU.RefreshCollection(p)
     if not it then b:Hide() else
       b:Show()
       b.entry, b.head = it.entry, it.head
+      if b.bar then b.bar.track:Hide() b.bar.fill:Hide() end
       if it.head then
         b.fs:SetWidth(118)
         PU.SetClipped(b.fs, (it.folded and "+ " or "- ") .. it.head, 116)
@@ -2569,6 +2604,10 @@ function PU.RefreshCollection(p)
         TextColor(b.fs, pal.text)
         TextColor(b.val, done and pal.good or pal.title or pal.text)
         Paint(b.bg, (e.key == c.ui.sel) and (pal.pillOn or pal.accent) or { 0, 0, 0, 0 })
+        if b.bar and not e.home and e.y and e.y > 0 then
+          PU.SetBar(b.bar, e.x / e.y, done and pal.good or nil)
+          b.bar.track:Show()
+        end
       end
     end
   end
@@ -2581,6 +2620,10 @@ function PU.RefreshCollection(p)
   c.hkpi:Hide() c.hlab1:Hide() c.hlab2:Hide()
   for _, b in ipairs(c.hcat) do b:Hide() end
   for _, b in ipairs(c.halm) do b:Hide() end
+  c.ui.cur = e
+  if c.shareBtn then
+    if e and not e.home and e.y and e.y > 0 then c.shareBtn:Show() PU.PaintButton(c.shareBtn) else c.shareBtn:Hide() end
+  end
   if e and e.home then PU.RefreshCollectionHome(c, secs, pal, H) return end
   if not e then
     c.rtitle:SetText(Tr["Collection"]) c.rcount:SetText("") PU.SetBar(c.rbar, 0)

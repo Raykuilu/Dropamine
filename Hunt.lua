@@ -847,7 +847,18 @@ function H.LogSections()
         end
       end
     end
-    local function sortE(t) table.sort(t, function(a, b) if a.level ~= b.level then return a.level < b.level end return a.label < b.label end) end
+    -- 3.9.0 : tri au choix (bouton de l'onglet) : par niveau (défaut) ou les plus avancés d'abord
+    local byPct = ns.db and ns.db.ui and ns.db.ui.logSort == "pct"
+    local function sortE(t)
+      table.sort(t, function(a, b)
+        if byPct then
+          local fa, fb = a.x / math.max(1, a.y), b.x / math.max(1, b.y)
+          if fa ~= fb then return fa > fb end
+        end
+        if a.level ~= b.level then return a.level < b.level end
+        return a.label < b.label
+      end)
+    end
     for i, br in ipairs(BRACKETS) do
       if #buckets[i] > 0 then sortE(buckets[i]) secs[#secs + 1] = { header = Tr[br[1]], entries = buckets[i] } end
     end
