@@ -15,6 +15,29 @@ if not LUAC then print("luac introuvable (installe Lua 5.2+ ou donne LUAC=…)")
 local ALLOWED = { DropamineDB = true, OSRS_TotalLevelDB = true }
 local OK_READ = { ns = true, os = true }
 local bad = 0
+-- 3.9.0 : noms déclarés « local » en tête d'un fichier de l'addon (hors alias d'API du jeu « local X = X »).
+-- Lu comme global ailleurs = import oublié (ex. code déplacé de UI.lua vers Toasts.lua).
+local OWN = {}
+for line in io.lines("Dropamine.toc") do
+  local f = line:match("^([%w_/\\]+%.lua)%s*$")
+  if f and not f:match("^Locales") and not f:match("^Data") then
+    for l in io.lines((f:gsub("\\", "/"))) do
+      local fn = l:match("^local function ([%a_][%w_]*)")
+      if fn then OWN[fn] = true end
+      local names, rhs = l:match("^local ([%a_][%w_, ]-)%s*=%s*(.-)%s*$")
+      if not names then names = l:match("^local ([%a_][%w_, ]-)%s*%-%-") or l:match("^local ([%a_][%w_, ]-)%s*$") end
+      if names and not names:find("function") then
+        local alias = {}
+        if rhs then for r in rhs:gmatch("[^,]+") do alias[#alias + 1] = r:match("^%s*([%a_][%w_%.]*)%s*$") end end
+        local i = 0
+        for n in names:gmatch("[%a_][%w_]*") do
+          i = i + 1
+          if alias[i] ~= n then OWN[n] = true end
+        end
+      end
+    end
+  end
+end
 for line in io.lines("Dropamine.toc") do
   local f = line:match("^([%w_/\\]+%.lua)%s*$")
   if f then
@@ -26,6 +49,11 @@ for line in io.lines("Dropamine.toc") do
         bad = bad + 1
         print(("GLOBALE LUE (probable local oublié) : %s  (%s, ligne %s)"):format(g, f, l:match("%[(%d+)%]") or "?"))
       end
+      local o = l:match('GETTABUP%s.*; _ENV "([%a_][%w_]*)"')
+      if o and OWN[o] and not OK_READ[o] and not (g and g == o) then
+        bad = bad + 1
+        print(("NOM LOCAL DE L'ADDON LU COMME GLOBAL (import oublié ?) : %s  (%s, ligne %s)"):format(o, f, l:match("%[(%d+)%]") or "?"))
+      end
       local m = l:match('SETTABUP%s.*; _ENV "([^"]+)"')
       if m and not ALLOWED[m] then
         bad = bad + 1
@@ -35,5 +63,5 @@ for line in io.lines("Dropamine.toc") do
     h:close()
   end
 end
-print(bad == 0 and "OK : aucune écriture globale inattendue" or (bad .. " écriture(s) globale(s) à vérifier"))
+print(bad == 0 and "OK : aucune globale inattendue" or (bad .. " problème(s) de globales à vérifier"))
 os.exit(bad == 0 and 0 or 1)

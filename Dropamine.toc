@@ -17,6 +17,7 @@ Catalog.lua
 Core.lua
 Style.lua
 UI.lua
+Toasts.lua
 Chrome.lua
 NativeLook.lua
 View.lua
