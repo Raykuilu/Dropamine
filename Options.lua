@@ -14,7 +14,7 @@ local function PanelM() return ns.Panel end
 local function LayoutM() return ns.Layout end
 
 Options.SECTIONS = {
-  { id = "display", title = "Affichage", desc = "Apparence, disposition, transparence et icônes d'état.", items = {
+  { id = "display", title = "Affichage", desc = "Apparence, disposition, transparence, liseré selon la cible et icônes d'état.", items = {
     { type = "radio", key = "theme", label = "Thème", default = "flare", cmd = "/drop theme flare|flare2|leger|classic",
       choices = { { "flare2", "FlareUI" }, { "flare", "Moderne" }, { "leger", "Léger (cases seules, sans cadre)" }, { "classic", "Classique (look Blizzard)" } },
       help = "Change l'habillage du panneau, des cases et des toasts.",
@@ -118,7 +118,7 @@ Options.SECTIONS = {
       help = "Auto : suit la largeur du panneau, avec un minimum lisible (260 px à l'échelle). Une valeur fixe impose la largeur. Si le toast est plus large que le panneau, il s'aligne sur le bord du panneau du côté de l'écran, sans dépasser." },
     { type = "slider", key = "dropDuration", label = "Durée d'affichage", default = 2.6, min = 1, max = 10, step = 0.5, cmd = "/drop drops duree <1-10>", unit = "s",
       help = "Temps pendant lequel un toast reste visible." },
-    { type = "slider", key = "dropBgAlpha", label = "Fond des toasts", default = 0.68, min = 0, max = 1, step = 0.05, cmd = "/drop drops opacite <0-100>", unit = "%",
+    { type = "slider", key = "dropBgAlpha", label = "Fond des toasts (thème Classique)", default = 0.68, min = 0, max = 1, step = 0.05, cmd = "/drop drops opacite <0-100>", unit = "%",
       help = "Opacité du fond des toasts (Classique / repli)." },
     -- 3.8.3 : créatures qui donnent un ingrédient : une case par métier (liste à cases, « Aucun » en tête).
     -- Avant : une seule case « recette possible » (viande et étoffes : très répétitif en balade).
@@ -133,7 +133,7 @@ Options.SECTIONS = {
     { type = "check", key = "scannerSound", label = "Son du toast recette", default = false, cmd = "/drop scanner son on|off",
       help = "Petit son avec le toast « recette possible »." },
   } },
-  { id = "prof", title = "Métiers & surlignage", tab = "Métiers", desc = "Surlignage vert, infobulles, fenêtre des métiers et suivi.", items = {
+  { id = "prof", title = "Métiers", tab = "Métiers", desc = "Cases de métier, icônes et toasts des créatures, fenêtre des métiers et infobulles.", items = {
     { type = "check", key = "gatherAlerts", label = "Alertes de récolte", default = true, cmd = "/drop alertes on|off",
       help = "Lignes « Dépeçage / Minage / Herboristerie » dans les infobulles des créatures et des nœuds.",
       get = function() return not (DBui().gatherAlerts == false) end,
@@ -150,7 +150,7 @@ Options.SECTIONS = {
         if ns.Target and ns.Target.Paint then pcall(ns.Target.Paint) end
       end },
     { type = "check", key = "craftNotify", label = "Pastille « N prêts »", default = true, cmd = "/drop recettes on|off", refresh = true,
-      help = "Nombre de recettes que tes sacs permettent de faire pour un +1." },
+      help = "Pastille sur la case et toast quand tes sacs permettent de faire des recettes qui donnent un +1." },
     { type = "check", key = "links", label = "Liens entre métiers", default = true, cmd = "/drop liens on|off",
       help = "« Utilisé par » dans l'infobulle des objets et des créatures." },
     -- 3.9.0 : prochain meilleur +1 dans l'infobulle des cases de métier (liste « Infobulles »)
@@ -166,7 +166,7 @@ Options.SECTIONS = {
     { type = "check", key = "scannerIcons", label = "Recettes sur les créatures", default = true, cmd = "/drop scanner icones on|off",
       help = "Icônes Cuisine, Secourisme et autres métiers quand la créature donne un ingrédient de recette : vert = +1 possible.",
       set = function(v) ns.SetOpt("scannerIcons", v and true or false) Options.RefreshPlates() end },
-    { type = "check", key = "tipCompact", label = "Infobulle courte", default = true, cmd = "/drop infobulle compacte|detail",
+    { type = "check", key = "tipCompact", label = "Infobulle courte des créatures", default = true, cmd = "/drop infobulle compacte|detail",
       help = "Une ligne par métier ; maintiens Maj pour le détail.",
       set = function(v) ns.SetOpt("tipCompact", v and true or false) if ns.Tip then ns.Tip.Sync() end end },
     { type = "check", key = "styleMetiers", label = "Habiller la fenêtre Métiers", default = true, cmd = "/drop style on|off",
@@ -178,10 +178,10 @@ Options.SECTIONS = {
   } },
   -- 3.6.0 : progression (objectif de session, série, récap hebdo, succès) ;
   -- les réglages viennent de Progress.lua (Options.EXTRA).
-  { id = "progress", title = "Progression", desc = "Objectifs, succès, récaps et suivi dans les infobulles.", items = {} },
+  { id = "progress", title = "Progression", desc = "Annonces, récaps et lignes en plus dans l'infobulle des cases.", items = {} },
   -- 3.8.1 : Chasse et Collection, fonctions à part entière (onglets de la fenêtre Progression visibles à tout niveau)
-  { id = "hunt", title = "Chasse et collection", tab = "Chasse", desc = "Objets recherchés, alertes de butin rare et collection.", items = {} },
-  { id = "advanced", title = "Avancé", extra = true, desc = "JcJ, rappels d'armes et collecte de données. Les défauts conviennent à tous.", items = {
+  { id = "hunt", title = "Chasse et collection", tab = "Chasse", desc = "Objets recherchés, alertes de butin et découvertes.", items = {} },
+  { id = "advanced", title = "Avancé", extra = true, desc = "JcJ, rappels d'armes, données et profil (export / import). Les défauts conviennent à tous.", items = {
     { type = "check", key = "pvp", label = "Case JcJ", default = true, cmd = "/drop pvp on|off",
       help = "Rang, honneur et série de victoires dans la grille.",
       get = function() return not (ns.db and ns.db.ui and ns.db.ui.pvp == false) end,
@@ -264,14 +264,14 @@ Options.MAP = {
   -- 3.8.3 : réglages réorganisés. Une famille de cases = une liste à cases (Options.GROUPS, clés « grp… »).
   display = {
     { "Apparence", { "theme", "lang", "colorMode" } },
-    { "Disposition", { "cols", "scale", "showTotal", "nextBar", "smartSort" } },
+    { "Disposition", { "cols", "scale", "showTotal", "tipTotalFull", "nextBar", "smartSort" } },
     { "Transparence", { "opacity", "bgAlpha", "fadeDelay" } },
-    { "Comportement", { "locked", "charProfile", "targetGlow", "pauseFlying", "grpSlots" } },
+    { "Comportement", { "locked", "charProfile", "targetGlow", "partage", "pauseFlying", "grpSlots" } },
   },
   notif = {
     { "Affichage des toasts", { "dropsEnabled", "notifMode", "dropDir", "dropStyle", "dropWidth", "dropDuration", "dropBgAlpha", "flyAnim" } },
     { "Quoi annoncer", { "grpGains", "grpReminders", "grpCelebr" } },
-    { "Mode calme", { "quietMode", "quietToasts", "quietAuto", "quietAutoPvp" } },
+    { "Mode calme", { "quietMode", "quietToasts", "quietAutoPvp" } },
   },
   sounds = {
     { "Sons", { "sounds", "quietSounds", "grpSounds" } },
@@ -282,10 +282,10 @@ Options.MAP = {
   },
   hunt = {
     { "Chasse", { "huntAlert", "huntRoll", "lootAlerts" } },
-    { "Collection", { "collection" } },
+    { "Découvertes", { "collection" } },
   },
   progress = {
-    { "Progression", { "grpAnnounce", "grpTileTip", "partage" } },
+    { "Progression", { "grpAnnounce", "grpTileTip" } },
   },
   advanced = {
     { "JcJ", { "pvp", "pvpMarks" } },
@@ -321,7 +321,7 @@ Options.GROUPS = {
     items = { { "plateSkin", "Dépeçage" }, { "scannerIcons", "Recettes (Cuisine, Secourisme…)" } } },
   grpTips = { label = "Infobulles", help = "Ce que les infobulles ajoutent.",
     items = { { "gatherAlerts", "Récolte (dépeçage, minage, herboristerie)" }, { "nextBest", "Prochain +1 conseillé" }, { "links", "Liens entre métiers (« Utilisé par »)" }, { "unlearned", "Recettes pas encore apprises" },
-      { "tipCompact", "Version courte (Maj : détail)" }, { "tipTotalFull", "Total toujours complet" } } },
+      { "tipCompact", "Créatures : version courte (Maj : détail)" } } },
   grpAnnounce = { label = "Annonces", help = "Les toasts de la fenêtre Progression.",
     items = { { "goalToast", "Objectif de session atteint" }, { "achievements", "Succès" }, { "daily", "Défi du jour" },
       { "jalons", "Jalons personnels" }, { "weeklyRecap", "Récap du lundi" }, { "recapLogout", "Récap à la déconnexion" } } },
@@ -331,7 +331,7 @@ Options.GROUPS = {
     items = { { "rappel", "Arme en retard" }, { "weaponLevels", "Niveaux de monstres conseillés" }, { "defense", "Défense (ennemis gris)" }, { "maitreArmes", "Arme pas apprise" }, { "armePrincipale", "Remettre l'arme principale" } } },
 }
 -- lignes rangées ailleurs (bouton de test seul, joué par la liste « Gains »)
-Options.HIDDEN = { weaponTest = true }
+Options.HIDDEN = { weaponTest = true, quietAuto = true }   -- quietAuto : fondu dans la liste « Mode calme » (3.9.0)
 Options._groupItems = {}
 function Options.GroupItem(k)
   local g = Options.GROUPS[k]

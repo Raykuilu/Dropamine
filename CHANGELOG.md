@@ -12,6 +12,9 @@
 - Settings: a search box at the top (jumps to the setting and highlights it; Enter for the next match), and export / import of all your settings as one line of text (Advanced > Profile, `/drop export`, `/drop import`).
 - `/drop bug`: a full report to copy (versions, settings, check, recent errors, loaded add-ons) and a GitHub issue form to paste it into.
 
+- Total level: one tooltip for the droplet, the number and the bar, always shown beside the panel (it no longer covers the bar). Summary by category with percentages; hold Shift (or tick "Total tooltip: always in full") for every detail: how it is counted, your class maximum, every skill, today, history and your other characters, plus the 7-day chart.
+- Settings tidy-up: "Quiet mode" is one list (Never / In dungeon or raid / In group or instance) instead of "Never" plus a separate "Auto quiet in dungeons" box that kept it on in dungeons; your current behaviour is kept. "Total tooltip: always in full" moved to Display, "Shift+click: share" to Display > Behaviour; clearer names ("Creatures: short version", "Discoveries: first skinnings and fish", "Toast background (Classic theme)") and up-to-date tab descriptions.
+
 ### Fixes
 - Target outline on tiles (red Level, blue weapons / Defense, green professions) now has its own setting, "Target outline" (Display > Behaviour). It was tied to the gathering alerts, so unticking those in the Professions tab also switched off the combat outline. The gathering option is now named "Gathering (skinning, mining, herbalism)" in the Tooltips list.
 - Icons above creature names only depend on the "Icons on creatures" list. Unticking the gathering alerts used to hide every icon, Skinning and Recipes included.

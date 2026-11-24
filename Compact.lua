@@ -162,7 +162,16 @@ function C.TooltipModel(d)
     m.title = Tr["Niveau total"]
     local total = snap and (snap.total or snap.ficTotal) or 0
     local tmax = snap and (snap.totalMax or snap.ficMax) or ns.TOTAL_MAX or 2460
-    add(Tr["Total "] .. tostring(total) .. " / " .. tostring(tmax), 1, 1, 1)
+    -- 3.9.0 : une seule infobulle du total (goutte, nombre et barre) : catégories en % dans le résumé,
+    -- tout le détail avec Maj ou l'option « toujours complète »
+    local function pct(a, b) b = N(b) or 0 return (b > 0) and math.floor((N(a) or 0) / b * 100 + 0.5) or 0 end
+    add(string.format(Tr["Total %d / %d · %d %%"], total, tmax, pct(total, tmax)), 1, 0.93, 0.80)
+    local segs = (snap and snap.segments) or (ns.ComputeTotalSegments and ns.ComputeTotalSegments(snap and snap.tiles)) or {}
+    local SC = (ns.Wide and ns.Wide.SEG_COLORS) or {}
+    for i, s in ipairs(segs) do
+      local c = SC[i] or { 1, 1, 1 }
+      add(string.format("%s : %d / %d · %d %%", tostring(s.label or "?"), N(s.cur) or 0, N(s.max) or 0, pct(s.cur, s.max)), c[1], c[2], c[3])
+    end
     local full = C.TotalTipFull()
     m.full = full
     if not full then
@@ -172,6 +181,18 @@ function C.TooltipModel(d)
       if ns.Flight and ns.Flight.ShowPauseTip and ns.Flight.ShowPauseTip() then add(Tr["En pause pendant le vol"], 1, 0.82, 0) end
       return m
     end
+    -- maximum de la classe (certaines armes n'existent pas pour elle)
+    if ns.ClassMax then
+      local okM, cm, miss = pcall(ns.ClassMax)
+      if okM and cm and cm > 0 then
+        add(string.format(Tr["Maximum de ta classe : %d / %d · %d %%"], total, cm, math.min(100, pct(total, cm))), 0.85, 0.77, 0.54)
+        if miss then
+          local where = (miss == "distance") and Tr["à distance"] or Tr["en mêlée"]
+          add(string.format(Tr["Pas de compétence d'arme utile %s pour cette classe."], where), 0.6, 0.6, 0.6, true)
+        end
+      end
+    end
+    header(Tr["Comment il se calcule"])
     add(Tr[ns.TOTAL_SHORT_FR], 1, 1, 1, true)
     local det = {}
     for _, b in ipairs(snap and snap.breakdown or {}) do det[#det + 1] = TwoTone(b.name .. " : +" .. tostring(b.value)) end
@@ -312,12 +333,31 @@ function C.FillTooltip(tt, d, tile)
   return m
 end
 
+-- 3.9.0 : infobulle unique du total, toujours placée sur le côté de la case (jamais par-dessus la barre),
+-- avec le mini-graphe 7 jours dessous. Appelée par la goutte, le nombre ET la barre (Wide.lua).
+function C.ShowTotalTip(owner, tile)
+  tile = tile or owner
+  local tt = GameTooltip
+  if not (tt and tile and tile.data) then return end
+  tt:SetOwner(tile, "ANCHOR_RIGHT")
+  SafeStep("infobulle du total", C.FillTooltip, tt, tile.data, tile)
+  tt:Show()
+  C._totalTile, C._totalOwner = tile, owner
+  if P.RefreshTipColors then SafeStep("couleurs de l'infobulle", P.RefreshTipColors) end
+  if ns.ProgressUI and ns.ProgressUI.ShowMini then SafeStep("mini-graphe 7 jours", ns.ProgressUI.ShowMini, tt, tile) end
+end
+
 function I.OnEnter(self)
   UI._hoverTile = self
   self._hover = true
   V.PaintTile(self)
   if P.SetHover then P.SetHover(true) end
   local d = self.data
+  if d and d.kind == "total" and GameTooltip then
+    C.ShowTotalTip(self, self)
+    self._tipShown = true
+    return
+  end
   if d and GameTooltip then
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     SafeStep("infobulle de case", C.FillTooltip, GameTooltip, d, self)
@@ -1086,22 +1126,19 @@ do
   if f and f.RegisterEvent then
     f:RegisterEvent("MODIFIER_STATE_CHANGED")
     f:SetScript("OnEvent", function()
-      local tile, tt = C._totalTile, _G.GameTooltip
-      if not (tile and tile._hover and tile.data and tt and tt.IsShown and tt:IsShown()) then return end
-      local ok = pcall(function()
-        tt:SetOwner(tile, "ANCHOR_RIGHT")
-        C.FillTooltip(tt, tile.data, tile)
-        tt:Show()
-        if ns.ProgressUI and ns.ProgressUI.ShowMini then ns.ProgressUI.ShowMini(tt, tile) end
-      end)
-      return ok
+      -- 3.9.0 : marche aussi depuis la barre (C._totalOwner = la zone survolée)
+      local tile, owner, tt = C._totalTile, C._totalOwner, _G.GameTooltip
+      if not (tile and tile.data and owner and tt and tt.IsShown and tt:IsShown()) then return end
+      local over = owner.IsMouseOver and select(2, pcall(owner.IsMouseOver, owner))
+      if not over then return end
+      return pcall(C.ShowTotalTip, owner, tile)
     end)
   end
 end
 -- 3.8.1 : réglage « toujours complète » (défaut : résumé, Maj pour tout voir)
 if ns.Options and ns.Options.EXTRA then
-  ns.Options.EXTRA[#ns.Options.EXTRA + 1] = { type = "check", key = "tipTotalFull", label = "Infobulle du total complète", default = false,
-    cmd = "Maj : déplier l'infobulle du total", help = "Décoché : résumé, et Maj maintenu affiche tout. Coché : toujours complète." }
+  ns.Options.EXTRA[#ns.Options.EXTRA + 1] = { type = "check", key = "tipTotalFull", label = "Infobulle du total : toujours complète", default = false,
+    cmd = "Maj : déplier l'infobulle du total", help = "Survol de la goutte ou de la barre du total. Décoché : résumé par catégorie, Maj maintenu pour tout voir. Coché : toujours tout le détail." }
   ns.Options.EXTRA_HOME = ns.Options.EXTRA_HOME or {}
   ns.Options.EXTRA_HOME.tipTotalFull = "prof"
   if ns.Options.All then ns.Options.ITEMS = ns.Options.All() end

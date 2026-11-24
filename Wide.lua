@@ -424,7 +424,9 @@ local function HideTip(self)
   local tt = _G.GameTooltip
   if not (tt and tt.Hide) then return end
   if tt.IsOwned then
-    if tt:IsOwned(self) then tt:Hide() end
+    -- 3.9.0 : l'infobulle du total appartient à la case (parent de la barre)
+    local parent = self and self.GetParent and self:GetParent()
+    if tt:IsOwned(self) or (parent and tt:IsOwned(parent)) then tt:Hide() end
   else
     tt:Hide()
   end
@@ -471,6 +473,13 @@ end
 function Wd.ShowBarTip(owner, noMini)
   local tt = _G.GameTooltip
   if not (tt and owner) then return end
+  -- 3.9.0 : la barre montre la même infobulle que la goutte (résumé, Maj pour tout), sur le côté de la case
+  local tile = owner.GetParent and owner:GetParent()
+  local C = ns.Compact
+  if not noMini and tile and tile.data and tile.data.kind == "total" and C and C.ShowTotalTip then
+    C.ShowTotalTip(owner, tile)
+    return
+  end
   pcall(tt.SetOwner, tt, owner, "ANCHOR_TOP")
   if tt.ClearLines then tt:ClearLines() end
   local S = ns.Slot

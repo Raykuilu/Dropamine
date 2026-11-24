@@ -32,5 +32,16 @@ inst = { false, "none" } ui.quietAutoPvp = false
 P.SimPvp(15)
 on, why = P.RecomputeQuiet(true)
 check(on == true and why == "champ de bataille", "simulation : calme actif malgré la case décochée")
+-- reprise des anciens réglages (3.9.0) : « Jamais » + calme auto donjon -> une seule liste
+P._simInstance, P._simPvpForce = nil, nil   -- fin de la simulation de champ de bataille ci-dessus (pas de minuterie ici)
+local function migr(t) for k in pairs(ui) do ui[k] = nil end for k, v in pairs(t) do ui[k] = v end return P.QuietSetting() end
+check(migr({}) == "instance", "défaut : en donjon / raid")
+check(migr({ quietMode = "off" }) == "instance", "Jamais + auto coché : en donjon / raid (même comportement)")
+check(migr({ quietMode = "off", quietAuto = false }) == "off", "Jamais + auto décoché : Jamais")
+check(migr({ quietMode = "group" }) == "group", "En groupe : inchangé")
+ui.quietMigrated = 1 ui.quietMode = "off"
+check(P.QuietSetting() == "off", "après la reprise, « Jamais » choisi reste Jamais")
+inst = { true, "party" }
+check(P.RecomputeQuiet(true) == false, "Jamais : plus de calme en donjon")
 print(fail == 0 and "OK : calme auto en champ de bataille" or (fail .. " échec(s)"))
 os.exit(fail == 0 and 0 or 1)

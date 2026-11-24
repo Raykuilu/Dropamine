@@ -1010,7 +1010,19 @@ end
 ------------------------------------------------------------------------------
 P.QUIET_KEEP = { levelup = true, max = true, achievement = true, goal = true, tier = true, recap = true, weekly = true, daily = true }
 P.quietStats = { blocked = 0, changes = 0 }
-function P.QuietSetting() local v = ns.db and ns.db.ui and ns.db.ui.quietMode if v == "instance" or v == "group" then return v end return "off" end
+-- 3.9.0 : une seule liste « Jamais / En donjon ou raid / En groupe ou en instance » (avant : « Jamais » +
+-- « Calme auto en donjon » coché par défaut, donc calme en donjon malgré « Jamais »). Reprise, une fois :
+-- Jamais + auto coché -> En donjon ou raid ; Jamais + auto décoché -> Jamais ; les autres choix ne bougent pas.
+function P.QuietSetting()
+  local ui = ns.db and ns.db.ui
+  if ui and ui.quietMigrated ~= 1 then
+    if ui.quietMode == nil or ui.quietMode == "off" then ui.quietMode = (ui.quietAuto == false) and "off" or "instance" end
+    ui.quietMigrated = 1
+  end
+  local v = ui and ui.quietMode
+  if v == "instance" or v == "group" then return v end
+  return "off"
+end
 function P.InInstanceGroup()
   if P._simInstance == "party" or P._simInstance == "raid" then
     return P._simInstance, true
@@ -1053,7 +1065,7 @@ function P.RecomputeQuiet(silent)
   local on, why = false, nil
   if mode == "instance" and inst then on, why = true, (inst == "raid") and "raid" or "donjon"
   elseif mode == "group" and (inst or grouped) then on, why = true, inst and ((inst == "raid") and "raid" or "donjon") or "groupe"
-  elseif mode == "off" and inst and P.AutoQuietOpt() then on, why = true, (inst == "raid") and "raid" or "donjon" end
+  end
   -- 3.9.0 : calme auto en champ de bataille / arène (réglage à part, coché par défaut)
   if not on then
     local pvp = P.InPvp()
@@ -1319,7 +1331,7 @@ P.OPTIONS = {
     set = function(v) if ns.SetCharProfile then ns.SetCharProfile(v and true or false) end end },
   { type = "check", key = "smartSort", label = "Tri intelligent des cases", default = false, cmd = "/drop tri on|off", refresh = true,
     help = "Dans chaque groupe, les compétences qui montent cette session passent devant. Décoché : ordre fixe classique." },
-  { type = "radio", key = "quietMode", label = "Mode calme", default = "off", cmd = "/drop calme off|instance|groupe",
+  { type = "radio", key = "quietMode", label = "Mode calme", default = "instance", cmd = "/drop calme off|instance|groupe",
     choices = { { "off", "Jamais" }, { "instance", "En donjon / raid" }, { "group", "En groupe ou en instance" } },
     help = "Réduit les toasts et coupe les sons en instance, ou dès que tu es en groupe. Les boutons Tester passent outre.",
     set = function(v)

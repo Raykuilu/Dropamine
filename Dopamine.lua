@@ -34,7 +34,7 @@ D.OPTIONS = {
     help = "x2, x3… quand un point tombe dans les 60 s ; ça retombe ensuite." },
   { type = "check", key = "nextBar", label = "Barre du prochain point", default = true, cmd = "/drop barre on|off",
     help = "Fine barre sous la case en cours, seulement si le rythme est mesuré." },
-  { type = "check", key = "collection", label = "Collection", default = true, cmd = "/drop collection on|off",
+  { type = "check", key = "collection", label = "Découvertes : premiers dépeçages et poissons", default = true, cmd = "/drop collection on|off",
     help = "Premiers types dépecés et premiers poissons, par personnage." },
   { type = "check", key = "daily", label = "Défi du jour", default = true, cmd = "/drop defi on|off",
     help = "Un objectif au hasard parmi tes compétences, une fois par jour." },
