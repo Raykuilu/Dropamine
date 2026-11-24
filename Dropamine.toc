@@ -43,7 +43,6 @@ PvPTab.lua
 Wide.lua
 EditMode.lua
 FirstLayout.lua
-ToggleIcon.lua
 PosGuard.lua
 Polish.lua
 ClassicTheme.lua

@@ -353,21 +353,32 @@ function Options.SectionItems(sec)
 end
 
 -- Liste à plat, dans l'ordre d'affichage (Find / Get / debug).
+-- 3.9.0 : liste mise en cache (avant : reconstruite à chaque Find / Get, donc à chaque lecture d'un
+-- réglage). Reconstruite seulement quand un module ajoute des lignes (Options.EXTRA grandit).
 function Options.All()
-  local out, seen = {}, {}
+  local n = #Options.EXTRA
+  if Options._all and Options._allN == n then return Options._all end
+  local out, seen, byKey = {}, {}, {}
+  local function put(it)
+    out[#out + 1] = it
+    seen[it.key or ""] = true
+    if it.key and byKey[it.key] == nil then byKey[it.key] = it end
+  end
   for _, sec in ipairs(Options.SECTIONS) do
-    for _, it in ipairs(Options.SectionItems(sec)) do out[#out + 1] = it seen[it.key or ""] = true end
+    for _, it in ipairs(Options.SectionItems(sec)) do put(it) end
   end
   -- 3.8.3 : les réglages rangés dans une liste restent trouvables (valeur, défaut, réinitialisation)
   for k in pairs(Options.InGroup()) do
-    if not seen[k] then local it = Options.RawItem(k) if it then out[#out + 1] = it seen[k] = true end end
+    if not seen[k] then local it = Options.RawItem(k) if it then put(it) end end
   end
+  Options._all, Options._allN, Options._byKey = out, n, byKey
   return out
 end
 Options.ITEMS = Options.All()
 
 function Options.Find(key)
-  for _, it in ipairs(Options.All()) do if it.key == key then return it end end
+  Options.All()
+  return Options._byKey and Options._byKey[key]
 end
 
 function Options.Get(key)
