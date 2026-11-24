@@ -12,7 +12,7 @@ local Tr = ns.L   -- 3.5.19 : textes traduits (Locales/)
 ns.VERSION = (function()
   local f = (_G.C_AddOns and _G.C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
   if f then local ok, v = pcall(f, ADDON or "Dropamine", "Version") if ok and type(v) == "string" and v ~= "" then return v end end
-  return "3.9.0"
+  return "3.10.0"
 end)()
 -- DEV ONLY : une seule ligne à passer à true pour rétablir la section Options « Test » et /drop test.
 -- Éteint sur la version publique.
@@ -84,6 +84,23 @@ end
 
 function ns.Print(msg)
   if type(print) == "function" then print(PREFIX .. tostring(msg)) end
+end
+
+-- 3.10.0 : mode Hardcore (à venir sur Forever) : règle HC active. Test : ns._forceHC (/drop hc simu).
+function ns.IsHardcore()
+  if ns._forceHC then return true end
+  local gr = _G.C_GameRules
+  if type(gr) ~= "table" then return false end
+  if type(gr.IsHardcoreActive) == "function" then
+    local ok, v = pcall(gr.IsHardcoreActive)
+    if ok and v == true then return true end
+  end
+  local E = _G.Enum and _G.Enum.GameRule
+  if E and E.HardcoreRuleset and type(gr.IsGameRuleActive) == "function" then
+    local ok, v = pcall(gr.IsGameRuleActive, E.HardcoreRuleset)
+    if ok and v == true then return true end
+  end
+  return false
 end
 
 -- Plafonds pour le total personnalisé (plus de conversion 1-99).

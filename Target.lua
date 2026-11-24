@@ -88,6 +88,7 @@ function T.ReadTarget()
     faction = Str(Call(_G.UnitFactionGroup, u)),
     myFaction = Str(Call(_G.UnitFactionGroup, "player")),
     playerLevel = N(Call(_G.UnitLevel, "player")),
+    classif = Str(Call(_G.UnitClassification, u)),   -- 3.10.0 : élite (danger Hardcore)
   }
   if npc and not isPlayer and S.NoteUnit then local _, seen = S.NoteUnit(u) if seen then t.ctype, t.family = seen.ctype, seen.family end end
   return t
@@ -583,10 +584,12 @@ function T.Paint()
   local tiles = UI.embed and UI.embed.tiles or {}
   local prev = T._lvlSig or {}
   local sig = {}
+  -- 3.10.0 : Hardcore : cible dangereuse = liseré rouge vif (ns.Hardcore.DangerOf)
+  local danger = ns.Hardcore and ns.Hardcore.DangerOf and T.target and ns.Hardcore.DangerOf(T.target)
   for _, t in ipairs(tiles) do
     local key = t.data and t:IsShown() and T.KeyFor(t.data)
     local e = key and res[key]
-    sig[t] = e and e.level or "-"
+    sig[t] = e and (e.level .. (danger and "!" or "")) or "-"
   end
   local n = 0
   for _, t in ipairs(tiles) do
@@ -608,7 +611,7 @@ function T.Paint()
         if m.fs.SetText then m.fs:SetText("") end
         if m.fs.Hide then m.fs:Hide() end
       end
-      t._tgtCol = T.GainColor(t.data)
+      t._tgtCol = danger and ns.Hardcore.DANGER or T.GainColor(t.data)
       t._tgtLit = (e.level == "direct") and "direct" or "indirect"
       if ns.Theme and ns.Theme.BevelColor then pcall(ns.Theme.BevelColor, t) end
       m._level = e.level

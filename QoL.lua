@@ -538,10 +538,13 @@ function Q.CheckUnlearnedWeapon()
   local live = snap[ns.Fold(e.name)]
   if live and (N(live.rank) or 0) > 0 then return nil end
   local m = Q.Global().weaponMasters[id]
-  if not m then return nil end  -- rien de vu en jeu : pas de rappel
+  -- 3.10.0 : à défaut d'un maître vu en jeu, maître connu des capitales (ns.Hardcore.StaticMaster)
+  local known = not m and ns.Hardcore and ns.Hardcore.StaticMaster and ns.Hardcore.StaticMaster(id)
+  m = m or known
+  if not m then return nil end  -- aucun maître connu : pas de rappel
   if Q._warnedWeapon[id] then return nil end
   Q._warnedWeapon[id] = true
-  Drop(info.texture or e.icon, ns.CatalogDisplayName(e) .. Tr[" : compétence non apprise"], Tr["Maître d'armes vu : "] .. m.npc, { kind = "maitre", hint = m.zone })
+  Drop(info.texture or e.icon, ns.CatalogDisplayName(e) .. Tr[" : compétence non apprise"], (known and Tr["Maître d'armes : "] or Tr["Maître d'armes vu : "]) .. m.npc, { kind = "maitre", hint = m.zone })
   return m
 end
 

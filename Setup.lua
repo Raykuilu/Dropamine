@@ -56,6 +56,10 @@ S.STEPS = {
   { title = "Les cases",
     text = "Chaque case est une compétence ou un métier, avec son niveau et son maximum. Survole une case pour le détail, clic droit pour t'en faire un objectif. Le niveau total se lit en bas.",
     themes = true,
+    -- 3.10.0 : barre du niveau total, cochable dès la visite
+    checks = { { "showTotal", false, "Afficher le niveau total",
+      get = function() return (ns.db and ns.db.ui and ns.db.ui.showTotal) == true end,
+      set = function(v) if ns.Wide and ns.Wide.SetShown then ns.Wide.SetShown(v) elseif ns.SetOpt then ns.SetOpt("showTotal", v or nil) end end } },
     actions = { { "Afficher / masquer le panneau", OpenPanel } } },
   { title = "Notifications de gain",
     text = "Un petit message apparaît quand tu gagnes de l'XP ou un point de compétence, pour sentir chaque pas sans ouvrir de fenêtre.",
@@ -119,7 +123,10 @@ function S.Show(i)
     local c = st.checks and st.checks[k]
     if c then
       row.cfg = c
-      row.cb:SetChecked(Opt(c[1], c[2]))
+      -- 3.10.0 : sur la page des thèmes, les cases passent sous les boutons
+      row.cb:ClearAllPoints()
+      row.cb:SetPoint("TOPLEFT", frame, "TOPLEFT", 12, -((st.themes and 180 or 148) + (k - 1) * 28))
+      if c.get then row.cb:SetChecked(c.get() and true or false) else row.cb:SetChecked(Opt(c[1], c[2])) end
       row.label:SetText(Tr[c[3]])
       row.cb:Show() row.label:Show()
     else
@@ -212,7 +219,8 @@ function S.Open()
       local c = row.cfg
       if not c then return end
       local on = self:GetChecked() and true or false
-      if ns.SetOpt then pcall(ns.SetOpt, c[1], on) end
+      if c.set then pcall(c.set, on) if ns.Options and ns.Options.Sync then pcall(ns.Options.Sync) end
+      elseif ns.SetOpt then pcall(ns.SetOpt, c[1], on) end
       if c[1] == "levelUpSound" and on and ns.SetOpt then pcall(ns.SetOpt, "sounds", true) end
     end)
     f.checks[k] = row

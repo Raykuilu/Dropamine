@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.10.0
+
+### New
+- Guild milestones (off by default): a guild message when your total level crosses a milestone (Progress > Announcements, with a preview test button).
+- Weapon masters: `/drop armes` also lists the weapons your class can still learn and where (Stormwind, Ironforge, Darnassus, Orgrimmar, Thunder Bluff, Undercity). The "weapon not learned" reminder works even before you have visited a weapon master.
+- Hardcore tab (Advanced > Hardcore), ready for the upcoming Forever Hardcore mode: tile outlines turn bright red when your target is elite, of unknown level (??) or 3+ levels above you, with a line in the tooltip. Only active on a Hardcore character; `/drop hc` shows whether Hardcore is detected (`/drop hc simu` simulates it).
+- Setup tour: the theme page also has a "Show the total level" box.
+
 ## 3.9.0
 
 ### New
