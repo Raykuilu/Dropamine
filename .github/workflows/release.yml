@@ -21,6 +21,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      # 3.9.0 : une version cassée ne part jamais (ni GitHub ni CurseForge) : les tests passent d'abord
+      - name: Lua 5.4
+        uses: leafo/gh-actions-lua@v10
+        with:
+          luaVersion: "5.4"
+
+      - name: Run all checks
+        run: LUA=lua LUAC=luac sh tests/run_all.sh
+
       - name: Package and release
         uses: BigWigsMods/packager@v2
         with:

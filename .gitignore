@@ -16,7 +16,7 @@ __pycache__/
 *.pyo
 
 # Local-only trees that must not ship in the CurseForge package
-tests/
+# (tests/ is tracked for the GitHub checks; .pkgmeta keeps it out of the CurseForge zip)
 tools/
 refs/
 

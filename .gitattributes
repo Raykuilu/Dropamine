@@ -1,0 +1,10 @@
+# Fins de ligne Unix (LF) partout, quel que soit le réglage Git de la machine :
+# le jeu les lit sans souci, et les diffs / scripts ne dépendent plus de Windows ou Linux.
+* text=auto eol=lf
+*.tga binary
+*.png binary
+*.jpg binary
+*.blp binary
+*.ogg binary
+*.mp3 binary
+*.ttf binary

@@ -1,0 +1,23 @@
+name: Tests
+
+# Lance tests/run_all.sh à chaque push et pull request : syntaxe, chargement de chaque fichier,
+# réglages, globales, traductions et tests de logique (aucun jeu nécessaire).
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lua 5.4
+        uses: leafo/gh-actions-lua@v10
+        with:
+          luaVersion: "5.4"
+
+      - name: Run all checks
+        run: LUA=lua LUAC=luac sh tests/run_all.sh
