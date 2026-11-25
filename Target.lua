@@ -584,12 +584,10 @@ function T.Paint()
   local tiles = UI.embed and UI.embed.tiles or {}
   local prev = T._lvlSig or {}
   local sig = {}
-  -- 3.10.0 : Hardcore : cible dangereuse = liseré rouge vif (ns.Hardcore.DangerOf)
-  local danger = ns.Hardcore and ns.Hardcore.DangerOf and T.target and ns.Hardcore.DangerOf(T.target)
   for _, t in ipairs(tiles) do
     local key = t.data and t:IsShown() and T.KeyFor(t.data)
     local e = key and res[key]
-    sig[t] = e and (e.level .. (danger and "!" or "")) or "-"
+    sig[t] = e and e.level or "-"
   end
   local n = 0
   for _, t in ipairs(tiles) do
@@ -611,7 +609,7 @@ function T.Paint()
         if m.fs.SetText then m.fs:SetText("") end
         if m.fs.Hide then m.fs:Hide() end
       end
-      t._tgtCol = danger and ns.Hardcore.DANGER or T.GainColor(t.data)
+      t._tgtCol = T.GainColor(t.data)
       t._tgtLit = (e.level == "direct") and "direct" or "indirect"
       if ns.Theme and ns.Theme.BevelColor then pcall(ns.Theme.BevelColor, t) end
       m._level = e.level

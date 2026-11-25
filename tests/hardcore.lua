@@ -64,7 +64,7 @@ check(ns.IsHardcore(), "/drop hc on : actif")
 H.SetManual(false)
 check(ns.Options.GROUPS.grpHardcore.items[1][1] == "hcManual", "case manuelle en tête de l'onglet")
 check(ns.Options.GROUPS.grpHardcore and ns.Options.MAP.advanced[1][1] == "Hardcore", "onglet Hardcore dans Avancé")
-check(#ns.Options.GROUPS.grpHardcore.items == 2, "onglet Hardcore : case manuelle + liseré danger")
+check(#ns.Options.GROUPS.grpHardcore.items == 3 and ns.Options.GROUPS.grpHardcore.items[3][1] == "hcSound", "onglet Hardcore : case manuelle + alerte + son")
 check(ns.Options.EXTRA_HOME.hcDanger == "advanced" and ns.Options.EXTRA_HOME.guildMilestones == "progress", "pages des réglages")
 
 -- danger : inactif hors Hardcore, actif en Hardcore (ou simulé)
@@ -81,6 +81,11 @@ tg.classif = "elite"
 check(H.DangerOf(tg) == "élite", "élite = danger")
 tg.level = -1 tg.classif = nil
 check(H.DangerOf(tg) ~= nil, "niveau ?? = danger")
+tg.classif = "elite"
+check(H.Reason(tg) == "Élite · niveau ??", "bandeau : élite et niveau ??")
+tg.classif = nil tg.level = 35
+check(H.Reason(tg) == "+5 niveaux", "bandeau : +5 niveaux")
+tg.level = -1
 ui.hcDanger = false
 check(H.DangerOf(tg) == nil, "option coupée : pas de danger")
 ui.hcDanger = true
