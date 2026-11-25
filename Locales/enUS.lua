@@ -2015,3 +2015,10 @@ E["Patron (vendeur, butin ou quête)"] = "Pattern (vendor, drop or quest)"
 E["Sources plus précises avec Questie ou AtlasLoot."] = "More precise sources with Questie or AtlasLoot."
 E["%d manquantes"] = "%d missing"
 E["Apprenti"] = "Apprentice"
+
+-- Hiscores.lua (3.11.0)
+E["Compétences pas encore lues : ouvre le panneau (/drop) puis réessaie."] = "Skills not read yet: open the panel (/drop) and try again."
+E["%s · niveau %d · armes %d (%d) · Défense %d%s"] = "%s · level %d · weapons %d (%d) · Defense %d%s"
+E["Copie la première ligne (Ctrl+C) et colle-la sur dropamine.app, page Inscription."] = "Copy the first line (Ctrl+C) and paste it on dropamine.app, Join page."
+E["Hiscores : ta ligne d'export (Ctrl+C pour copier)"] = "Hiscores: your export line (Ctrl+C to copy)"
+E["/drop hiscores : ligne d'export pour les classements de dropamine.app"] = "/drop hiscores: export line for the dropamine.app rankings"

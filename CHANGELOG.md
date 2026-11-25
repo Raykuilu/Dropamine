@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.11.0
+
+### New
+- `/drop hiscores`: an export line to paste on dropamine.app (weapon skills, Defense, level, professions, guild), so your Hiscores entry uses your real weapon skills instead of an estimate. Nothing is sent by the add-on: you copy and paste it yourself.
+
 ## 3.10.0
 
 ### New
