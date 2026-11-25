@@ -64,7 +64,7 @@ check(ns.IsHardcore(), "/drop hc on : actif")
 H.SetManual(false)
 check(ns.Options.GROUPS.grpHardcore.items[1][1] == "hcManual", "case manuelle en tête de l'onglet")
 check(ns.Options.GROUPS.grpHardcore and ns.Options.MAP.advanced[1][1] == "Hardcore", "onglet Hardcore dans Avancé")
-check(#ns.Options.GROUPS.grpHardcore.items == 5 and ns.Options.GROUPS.grpHardcore.items[3][1] == "hcSound", "onglet Hardcore : case manuelle, alerte, son, lueurs")
+check(#ns.Options.GROUPS.grpHardcore.items == 3 and ns.Options.GROUPS.grpHardcore.items[3][1] == "hcSound", "onglet Hardcore : case manuelle, alerte, son, lueurs")
 check(ns.Options.EXTRA_HOME.hcDanger == "advanced" and ns.Options.EXTRA_HOME.guildMilestones == "progress", "pages des réglages")
 
 -- danger : inactif hors Hardcore, actif en Hardcore (ou simulé)

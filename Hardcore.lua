@@ -54,10 +54,9 @@ if O then
   for _, it in ipairs(H.OPTIONS) do O.EXTRA[#O.EXTRA + 1] = it O.EXTRA_HOME[it.key] = it.home end
   if O.GROUPS then
     O.GROUPS.grpHardcore = { label = "Hardcore", help = "Actif seulement sur un personnage Hardcore (mode à venir sur Forever).",
-      items = { { "hcManual", "Je joue en Hardcore (mode non officiel)" }, { "hcDanger", "Alerte danger sur la cible" }, { "hcSound", "Son d'alerte au ciblage" },
-        { "hcGlowFrameInt", "Lueur rouge du panneau" }, { "hcGlowDropInt", "Halo rouge de la goutte" } } }
+      items = { { "hcManual", "Je joue en Hardcore (mode non officiel)" }, { "hcDanger", "Alerte danger sur la cible" }, { "hcSound", "Son d'alerte au ciblage" } } }
   end
-  if O.MAP and O.MAP.advanced then table.insert(O.MAP.advanced, 1, { "Hardcore", { "grpHardcore" } }) end
+  if O.MAP and O.MAP.advanced then table.insert(O.MAP.advanced, 1, { "Hardcore", { "grpHardcore", "hcGlowFrameInt", "hcGlowDropInt" } }) end
   if O.TEST then
     O.TEST.hcDanger = "danger"
     O.TEST.hcSound = "hcsound"
