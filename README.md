@@ -10,6 +10,9 @@
 
 **Dropamine 3.10** puts every skill on screen, celebrates each +1 like Old School RuneScape, tracks the gear you are farming (**Collection log**, **BiS hunt**) and now guides your professions with **SkillUp Forever**.
 
+<p align="center"><a href="https://dropamine.app"><img src="https://dropamine.app/img/badges/site-en.png" alt="Hiscores · dropamine.app" width="250" /></a> <a href="https://github.com/Raykuilu/Dropamine"><img src="https://dropamine.app/img/badges/git-en.png" alt="GitHub" width="250" /></a> <a href="https://buymeacoffee.com/raykuilu"><img src="https://dropamine.app/img/badges/cof-en.png" alt="Buy me a coffee" width="250" /></a></p>
+
+
 For **WoW Forever** only (`Interface: 16001`). The native Skills tab is never hidden, moved or rewritten. FlareUI is not required.
 
 ## New in 3.10
@@ -176,6 +179,9 @@ Skill tracking and collection log inspired by Old School RuneScape (unaffiliated
 &nbsp;
 
 **Dropamine 3.10** garde toutes tes compétences à l'écran, fête chaque +1 comme dans Old School RuneScape, suit l'équipement que tu farmes (**journal de collection**, **chasse BiS**) et guide maintenant tes métiers avec **SkillUp Forever**.
+
+<p align="center"><a href="https://dropamine.app"><img src="https://dropamine.app/img/badges/site-fr.png" alt="Classements · dropamine.app" width="250" /></a> <a href="https://github.com/Raykuilu/Dropamine"><img src="https://dropamine.app/img/badges/git-fr.png" alt="GitHub" width="250" /></a> <a href="https://buymeacoffee.com/raykuilu"><img src="https://dropamine.app/img/badges/cof-fr.png" alt="Offre-moi un café" width="250" /></a></p>
+
 
 Pour **WoW Forever** uniquement (`Interface: 16001`). L'onglet Compétences natif n'est jamais caché, déplacé ni réécrit. FlareUI n'est pas nécessaire.
 
