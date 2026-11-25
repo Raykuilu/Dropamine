@@ -1968,3 +1968,14 @@ E["SkillUp détecté : son trajet s'affiche dans les cases métier (Réglages > 
 E["Apprendre Expert"] = "Train Expert"
 E["Maître couturier, Hurlevent · 5 po"] = "Tailoring trainer, Stormwind · 5g"
 E["Merci à cjber (SkillUp Forever) pour son API publique, utilisée par le lien optionnel."] = "Thanks to cjber (SkillUp Forever) for the public API used by the optional link."
+
+-- 3.10.0 : aiguille GPS (Needle.lua)
+E["Aiguille GPS dans la goutte"] = "GPS needle in the drop"
+E["Quand un point posé par Dropamine (Alt+clic SkillUp) est actif : la goutte pointe vers lui. Pas d'aiguille avec TomTom ou Shortest Path."] = "While a waypoint set by Dropamine (SkillUp Alt+click) is active, the drop points at it. No needle with TomTom or Shortest Path."
+E["Point retiré."] = "Waypoint removed."
+E["Arrivé"] = "Arrived"
+E["Point atteint"] = "Waypoint reached"
+E["Point en cours"] = "Active waypoint"
+E["Sur un autre continent."] = "On another continent."
+E["Distance : %d m"] = "Distance: %d yd"
+E["Alt+clic : retirer le point"] = "Alt+click: remove the waypoint"

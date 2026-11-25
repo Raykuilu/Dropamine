@@ -104,7 +104,14 @@ function SU.OnAltClick(data)
     return true
   end
   local ok, done = pcall(api.Navigate, id, i)
-  if ok and done then ns.Print(Tr["SkillUp : point posé, "] .. tostring(s.text or "")) else ns.Print(Tr["SkillUp : pas de lieu pour cette étape."]) end
+  if ok and done then
+    ns.Print(Tr["SkillUp : point posé, "] .. tostring(s.text or ""))
+    -- 3.10.0 : la goutte devient une aiguille vers ce point (point natif seulement)
+    if ns.Needle and ns.Needle.Track then
+      local label = s.detail and s.detail ~= "" and tostring(s.detail):match("^([^·]+)") or s.text
+      pcall(ns.Needle.Track, label and (tostring(label):gsub("%s+$", "")) or nil)
+    end
+  else ns.Print(Tr["SkillUp : pas de lieu pour cette étape."]) end
   return true
 end
 

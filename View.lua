@@ -294,6 +294,12 @@ end
 local function OnClick(self, button)
   if not self.data then return end
   -- 3.10.0 : Alt+clic sur une case métier -> point SkillUp sur la carte (si SkillUp est installé)
+  -- 3.10.0 : Alt+clic sur la goutte en mode aiguille -> retirer le point
+  if button ~= "RightButton" and self.data.kind == "total" and type(IsAltKeyDown) == "function" and IsAltKeyDown()
+    and ns.Needle and ns.Needle.target then
+    pcall(ns.Needle.Clear)
+    return
+  end
   if button ~= "RightButton" and type(IsAltKeyDown) == "function" and IsAltKeyDown()
     and ns.SkillUp and ns.SkillUp.OnAltClick then
     local okA, done = pcall(ns.SkillUp.OnAltClick, self.data)

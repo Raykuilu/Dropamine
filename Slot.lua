@@ -10,8 +10,8 @@ local Tr = ns.L
 local S = {}
 ns.Slot = S
 
-S.ORDER_SWORD   = { "death", "flight", "combat", "afk", "bags", "fishing", "swimming", "durability", "rested" }
-S.ORDER_DEFAULT = { "death", "flight", "afk", "bags", "fishing", "swimming", "durability", "rested" }
+S.ORDER_SWORD   = { "death", "flight", "waypoint", "combat", "afk", "bags", "fishing", "swimming", "durability", "rested" }
+S.ORDER_DEFAULT = { "death", "flight", "waypoint", "afk", "bags", "fishing", "swimming", "durability", "rested" }
 
 local MEDIA = "Interface\\AddOns\\Dropamine\\Media\\"
 S.SHEETS = {
@@ -793,6 +793,7 @@ function S.Want(id)
   if key and not S.Opt(key) then return false end
   if id == "death" then return S.LiveDeath() end
   if id == "flight" then return S.LiveFlight() end
+  if id == "waypoint" then return (ns.Needle and ns.Needle.Active and ns.Needle.Active()) and true or false end
   if id == "combat" then return S.CombatStyle() == "sword" and S.LiveCombat() end
   if id == "afk" then return S.LiveAfk() end
   if id == "bags" then return S.LiveBags() end
@@ -1249,7 +1250,7 @@ end
 
 function S.ReplacesFlaskIcon(t)
   local act = S.Active and S.Active()
-  if act == "fishing" or act == "combat" or act == "rested" then return true end
+  if act == "fishing" or act == "combat" or act == "rested" or act == "waypoint" then return true end
   if act == "drop" and S.CombatStateOn and S.CombatStateOn() then return true end
   if act == "drop" and S.Want and S.Want("eating") then return true end
   if act and act ~= "drop" and S.SHEETS and S.SHEETS[act] then return true end
@@ -1663,7 +1664,17 @@ function S.ApplyTotal(t)
     if Wd and Wd.SyncFlaskHit then Wd.SyncFlaskHit(t, F and F._vis or 0) end
     return
   end
-  if act == "rested" then
+  -- 3.10.0 : aiguille GPS (Needle.lua) ; cachée dès qu'on quitte cet état
+  if act ~= "waypoint" and t._needle and ns.Needle then ns.Needle.Hide(t) end
+  if act == "waypoint" then
+    S.ApplySlotZ(t, false)
+    HideSymbol(t)
+    if t._stIcon and S.HideStateIcon then S.HideStateIcon(t) end
+    if S.HideRestIcon then S.HideRestIcon(t) end
+    if not (ns.Needle and ns.Needle.Apply(t)) and t.icon and t.icon.Show then t.icon:Show() end
+    if Wd and Wd.SyncFlaskHit then Wd.SyncFlaskHit(t) end
+    return
+  elseif act == "rested" then
     S.ApplySlotZ(t, false)
     HideSymbol(t)
     S.ApplyRestIcon(t)
@@ -1898,6 +1909,12 @@ function S.ShowExplanation(owner)
   if not (tt and owner) then return end
   if type(tt.SetOwner) == "function" then pcall(tt.SetOwner, tt, owner, "ANCHOR_RIGHT") end
   if type(tt.ClearLines) == "function" then pcall(tt.ClearLines, tt) end
+  -- 3.10.0 : aiguille GPS
+  if act == "waypoint" and ns.Needle and ns.Needle.FillTip(tt) then
+    if type(tt.Show) == "function" then pcall(tt.Show, tt) end
+    if S.StartTipTicker then S.StartTipTicker(owner, function() S.ShowExplanation(owner) end) end
+    return
+  end
   if act == "rested" then
     S.FillStateTip(tt)
     local Wd = ns.Wide

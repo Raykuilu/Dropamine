@@ -64,4 +64,5 @@ Check.lua
 Hunt.lua
 Hardcore.lua
 SkillUp.lua
+Needle.lua
 Setup.lua
