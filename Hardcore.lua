@@ -134,7 +134,7 @@ function H.BuildPanelAlert(f)
   lef:SetPoint("TOPRIGHT", f, "TOPLEFT", 0, 0) lef:SetPoint("BOTTOMRIGHT", f, "BOTTOMLEFT", 0, 0) lef:SetWidth(P)
   local rig = Piece(1 - E, 1, E, 1 - E)
   rig:SetPoint("TOPLEFT", f, "TOPRIGHT", 0, 0) rig:SetPoint("BOTTOMLEFT", f, "BOTTOMRIGHT", 0, 0) rig:SetWidth(P)
-  g.ag = Pulse(g, 1, 0.4, 0.7)
+  g.ag = Pulse(g, 0.8, 0.3, 0.7)
   -- bandeau : même plaque que la pastille « N prêts », en rouge (tête de mort + raison)
   local Po = ns.Polish
   local I = ns.Icons
@@ -188,7 +188,7 @@ function H.BuildDropAlert(t)
     halo:SetVertexColor(H.DANGER[1], H.DANGER[2], H.DANGER[3], 1)
     if halo.SetBlendMode then pcall(halo.SetBlendMode, halo, "ADD") end
     fx.halo = halo
-    fx.haloAG = Pulse(halo, 1, 0.45, 0.6)
+    fx.haloAG = Pulse(halo, 1, 0.5, 0.6)
     local drop = fx:CreateTexture(nil, "ARTWORK")
     pcall(drop.SetTexture, drop, DROP_TEX)
     fx.drop = drop
@@ -211,7 +211,7 @@ function H.BuildDropAlert(t)
   fx:SetPoint("CENTER", anchor, "CENTER", 0, 0)
   fx.drop:ClearAllPoints() fx.drop:SetAllPoints(fx)
   fx.halo:ClearAllPoints()
-  local pad = math.floor(side * 0.75 + 0.5)
+  local pad = math.floor(side * 0.9 + 0.5)
   fx.halo:SetPoint("TOPLEFT", fx, "TOPLEFT", -pad, pad) fx.halo:SetPoint("BOTTOMRIGHT", fx, "BOTTOMRIGHT", pad, -pad)
   return fx
 end
