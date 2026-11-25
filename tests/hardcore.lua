@@ -43,6 +43,8 @@ ns.Progress = { C = function() return { dinged = dinged } end,
   TotalDing = function(prev, cur) if cur >= 1000 and prev < 1000 then dinged[1000] = true end end }
 ns.Options = { EXTRA = {}, EXTRA_HOME = {}, GROUPS = { grpAnnounce = { items = {} } }, MAP = { advanced = {} }, TEST = {} }
 assert(loadfile("QoL.lua"))("Dropamine", ns)
+assert(loadfile("WeaponMasters.lua"))("Dropamine", ns)
+assert(loadfile("GuildMilestones.lua"))("Dropamine", ns)
 assert(loadfile("Hardcore.lua"))("Dropamine", ns)
 local H = ns.Hardcore
 local fail = 0
@@ -87,10 +89,10 @@ check(H.DangerOf(tg) == nil, "cible amicale : pas de danger")
 hc = false
 
 -- maîtres d'armes (Horde) et armes manquantes du guerrier
-local m = H.MastersFor("bows")
+local m = ns.WeaponMasters.MastersFor("bows")
 check(m[1] and (m[1].npc == "Sayoc" or m[1].npc == "Hanashi"), "Arcs : maître d'Orgrimmar")
-check(H.StaticMaster("swords") and H.StaticMaster("swords").npc == "Archibald", "Épées : Archibald")
-local miss = H.MissingWeapons()
+check(ns.WeaponMasters.StaticMaster("swords") and ns.WeaponMasters.StaticMaster("swords").npc == "Archibald", "Épées : Archibald")
+local miss = ns.WeaponMasters.MissingWeapons()
 local hasSwords = false
 for _, w in ipairs(miss) do if w.id == "swords" then hasSwords = true end end
 check(#miss > 0 and not hasSwords, "armes manquantes : sans les Épées déjà apprises")

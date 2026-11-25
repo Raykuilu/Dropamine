@@ -9,11 +9,11 @@
 - Unofficial Hardcore: "I play Hardcore (unofficial)" in the Hardcore tab (or `/drop hc on|off`) turns the Hardcore helpers on for that character only.
 - SkillUp Forever link (only if SkillUp Forever is installed, Professions > SkillUp Forever):
   - The profession tile tooltip shows SkillUp's current and next step, in place of Dropamine's "Next +1".
-  - A toast only when the next step sends you somewhere: a trainer, a vendor or a quest giver.
+  - A toast only when the next step sends you somewhere: a recipe trainer, a vendor or a quest giver. Profession ranks keep Dropamine's own rank reminder (no second toast).
   - Alt+click a profession tile to set SkillUp's map waypoint for the step.
   - Read only on hover and at most every 2 s, never in combat.
   - GPS needle: while that waypoint is active (game waypoint, no TomTom / Shortest Path), the drop turns into a needle pointing at it: green ahead, yellow to the side, red behind, distance in its tooltip. Within ~10 yd: "Arrived" toast and the waypoint is removed. Alt+click the drop to remove it. Off in dungeons, or with the "GPS needle in the drop" option.
-- Setup tour: the theme page also has a "Show the total level" box.
+- Setup tour: the theme page also has a "Show the total level" box, and the last page mentions the two optional companions, Dungeon Journal and SkillUp Forever.
 
 ## 3.9.0
 

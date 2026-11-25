@@ -105,7 +105,7 @@ function SU.OnAltClick(data)
   end
   local ok, done = pcall(api.Navigate, id, i)
   if ok and done then
-    ns.Print(Tr["SkillUp : point posé, "] .. tostring(s.text or ""))
+    -- SkillUp annonce déjà le point dans le chat : pas de second message.
     -- 3.10.0 : la goutte devient une aiguille vers ce point (point natif seulement)
     if ns.Needle and ns.Needle.Track then
       local label = s.detail and s.detail ~= "" and tostring(s.detail):match("^([^·]+)") or s.text
@@ -117,7 +117,13 @@ end
 
 -- Toasts : seulement les étapes où il faut se déplacer --------------------------------
 SU.last, SU.seeded = {}, false
-local function Travel(s) return s.kind == "train" or (s.kind == "buy" and s.nav == true) end
+-- Un rang de métier (Compagnon, Expert…) appris chez un maître ou par quête : Dropamine a déjà son
+-- rappel de rang (RankToast), donc pas de second toast. Une recette à apprendre a son sort (spellID).
+function SU.IsRankStep(s) return s.kind == "train" and s.spellID == nil end
+local function Travel(s)
+  if SU.IsRankStep(s) then return false end
+  return s.kind == "train" or (s.kind == "buy" and s.nav == true)
+end
 function SU.StepKey(s)
   local id = s.spellID or s.itemID or s.questID
   return tostring(s.kind) .. ":" .. tostring(id or s.text or "")

@@ -538,8 +538,8 @@ function Q.CheckUnlearnedWeapon()
   local live = snap[ns.Fold(e.name)]
   if live and (N(live.rank) or 0) > 0 then return nil end
   local m = Q.Global().weaponMasters[id]
-  -- 3.10.0 : à défaut d'un maître vu en jeu, maître connu des capitales (ns.Hardcore.StaticMaster)
-  local known = not m and ns.Hardcore and ns.Hardcore.StaticMaster and ns.Hardcore.StaticMaster(id)
+  -- 3.10.0 : à défaut d'un maître vu en jeu, maître connu des capitales (ns.WeaponMasters.StaticMaster)
+  local known = not m and ns.WeaponMasters and ns.WeaponMasters.StaticMaster and ns.WeaponMasters.StaticMaster(id)
   m = m or known
   if not m then return nil end  -- aucun maître connu : pas de rappel
   if Q._warnedWeapon[id] then return nil end

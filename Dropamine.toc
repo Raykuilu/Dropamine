@@ -62,6 +62,8 @@ RankToast.lua
 Efficiency.lua
 Check.lua
 Hunt.lua
+WeaponMasters.lua
+GuildMilestones.lua
 Hardcore.lua
 SkillUp.lua
 Needle.lua

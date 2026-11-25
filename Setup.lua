@@ -85,7 +85,8 @@ S.STEPS = {
     text = "Un toast dans la couleur de l'objet quand tu reçois un objet rare, épique ou légendaire. Choisis les qualités dans les réglages (onglet Chasse), ou « Aucun » pour couper. Clic sur le toast : fiche de l'objet.",
     actions = { { "Tester l'alerte de butin", TestLoot }, { "Choisir les qualités", OpenLootSettings } } },
   { title = "C'est prêt !",
-    text = "Tout se règle dans les Options. Commandes utiles : /drop (panneau), /drop progression, /drop chasse, /drop setup (rouvrir cette visite). Bon jeu !",
+    -- 3.10.0 : les deux addons qui complètent Dropamine (facultatifs)
+    text = "Tout se règle dans les Options. Commandes utiles : /drop (panneau), /drop progression, /drop chasse, /drop setup (rouvrir cette visite).\n\nPour aller plus loin (facultatif) : Dungeon Journal complète la Chasse et le collection log, SkillUp Forever ajoute son trajet de métier dans les cases. Bon jeu !",
     actions = { { "Ouvrir les réglages", function() if ns.Options and ns.Options.Open then pcall(ns.Options.Open) end end } } },
 }
 

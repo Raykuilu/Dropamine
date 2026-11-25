@@ -59,7 +59,10 @@ check(#toasts == 0, "même fabrication : pas de toast")
 -- l'étape devient « apprendre » : un toast
 steps[1] = { kind = "train", text = "Train Expert", detail = "Trainer, Stormwind · 5g", nav = true }
 subscriber({ professions = true })
-check(#toasts == 1 and toasts[1][2] == "Train Expert", "étape où il faut se déplacer : un toast")
+check(#toasts == 0, "rang de métier : pas de toast (rappel de rang Dropamine)")
+steps[1] = { kind = "train", text = "Train Barbaric Shoulders", spellID = 7151, detail = "Trainer, Stormwind · 25s", nav = true }
+subscriber({ professions = true })
+check(#toasts == 1 and toasts[1][2] == "Train Barbaric Shoulders", "étape où il faut se déplacer : un toast")
 subscriber({ professions = true })
 check(#toasts == 1, "même étape : pas de second toast")
 
@@ -73,7 +76,7 @@ combat = false
 
 -- toasts coupés
 ui.skillupToasts = false
-steps[1] = { kind = "train", text = "Train Artisan", nav = true }
+steps[1] = { kind = "train", text = "Train Dusky Belt", spellID = 9206, nav = true }
 subscriber({ professions = true })
 check(#toasts == 1, "toasts coupés : rien")
 ui.skillupToasts = nil
