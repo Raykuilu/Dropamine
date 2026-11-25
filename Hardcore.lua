@@ -95,60 +95,111 @@ local function Pulse(region, from, to, dur)
   a:SetDuration(dur)
   return ag
 end
--- cadre rouge (4 bords de 2 px, 2 px hors du panneau) + bandeau
+-- lueur rouge douce AUTOUR du panneau (ombre douce de l'addon, en 8 morceaux,
+-- seulement à l'extérieur) + filet rouge fin sur le bord, qui « chauffe » au pic
+H.GLOW = 12
+local function ShadowTex()
+  local Th = ns.Theme
+  return (Th and Th.SHADOW_TEX) or "Interface\\AddOns\\Dropamine\\Media\\SoftShadow"
+end
 function H.BuildPanelAlert(f)
   if not f then return nil end
   if H.glow and H.glow:GetParent() == f then return H.glow end
+  local tex = ShadowTex()
   local g = CreateFrame("Frame", nil, f)
-  g:SetPoint("TOPLEFT", f, "TOPLEFT", -3, 3)
-  g:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 3, -3)
+  g:SetAllPoints(f)
   if g.SetFrameLevel and f.GetFrameLevel then pcall(g.SetFrameLevel, g, (N(f:GetFrameLevel()) or 1) + 20) end
   if g.EnableMouse then g:EnableMouse(false) end
-  local function Edge(p1, p2, w, h)
+  local P, E = H.GLOW, 12 / 64   -- largeur de la lueur ; bord flou du fichier (12 px sur 64)
+  local function Piece(l, r, t, b)
+    local s = g:CreateTexture(nil, "BACKGROUND")
+    pcall(s.SetTexture, s, tex)
+    s:SetTexCoord(l, r, t, b)
+    s:SetVertexColor(H.DANGER[1], H.DANGER[2], H.DANGER[3], 1)
+    return s
+  end
+  -- coins
+  local tl = Piece(0, E, 0, E) tl:SetPoint("BOTTOMRIGHT", f, "TOPLEFT", 0, 0) tl:SetSize(P, P)
+  local tr = Piece(1 - E, 1, 0, E) tr:SetPoint("BOTTOMLEFT", f, "TOPRIGHT", 0, 0) tr:SetSize(P, P)
+  local bl = Piece(0, E, 1 - E, 1) bl:SetPoint("TOPRIGHT", f, "BOTTOMLEFT", 0, 0) bl:SetSize(P, P)
+  local br = Piece(1 - E, 1, 1 - E, 1) br:SetPoint("TOPLEFT", f, "BOTTOMRIGHT", 0, 0) br:SetSize(P, P)
+  -- bords
+  local top = Piece(E, 1 - E, 0, E)
+  top:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 0, 0) top:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", 0, 0) top:SetHeight(P)
+  local bot = Piece(E, 1 - E, 1 - E, 1)
+  bot:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 0, 0) bot:SetPoint("TOPRIGHT", f, "BOTTOMRIGHT", 0, 0) bot:SetHeight(P)
+  local lef = Piece(0, E, E, 1 - E)
+  lef:SetPoint("TOPRIGHT", f, "TOPLEFT", 0, 0) lef:SetPoint("BOTTOMRIGHT", f, "BOTTOMLEFT", 0, 0) lef:SetWidth(P)
+  local rig = Piece(1 - E, 1, E, 1 - E)
+  rig:SetPoint("TOPLEFT", f, "TOPRIGHT", 0, 0) rig:SetPoint("BOTTOMLEFT", f, "BOTTOMRIGHT", 0, 0) rig:SetWidth(P)
+  -- filet rouge fin sur le bord du panneau (teinte du liseré)
+  local function Line(p1, p2, w, h)
     local t = g:CreateTexture(nil, "OVERLAY")
     pcall(t.SetTexture, t, WHITE)
-    t:SetVertexColor(H.DANGER[1], H.DANGER[2], H.DANGER[3], 1)
-    t:SetPoint(p1, g, p1) t:SetPoint(p2, g, p2)
+    t:SetVertexColor(H.DANGER[1], H.DANGER[2], H.DANGER[3], 0.55)
+    t:SetPoint(p1, f, p1) t:SetPoint(p2, f, p2)
     if w then t:SetWidth(w) else t:SetHeight(h) end
   end
-  Edge("TOPLEFT", "TOPRIGHT", nil, 2) Edge("BOTTOMLEFT", "BOTTOMRIGHT", nil, 2)
-  Edge("TOPLEFT", "BOTTOMLEFT", 2, nil) Edge("TOPRIGHT", "BOTTOMRIGHT", 2, nil)
-  g.ag = Pulse(g, 1, 0.15, 0.6)
-  -- bandeau sur le bord haut : tête de mort + raison
-  local b = CreateFrame("Frame", nil, g)
-  b:SetHeight(16)
-  b:SetPoint("BOTTOM", g, "TOP", 0, -9)
-  local bg = b:CreateTexture(nil, "BACKGROUND")
+  Line("TOPLEFT", "TOPRIGHT", nil, 1) Line("BOTTOMLEFT", "BOTTOMRIGHT", nil, 1)
+  Line("TOPLEFT", "BOTTOMLEFT", 1, nil) Line("TOPRIGHT", "BOTTOMRIGHT", 1, nil)
+  g.ag = Pulse(g, 1, 0.25, 0.7)
+  -- bandeau : même plaque que la pastille « N prêts », en rouge (tête de mort + raison)
+  local Po = ns.Polish
+  local I = ns.Icons
+  local b = CreateFrame("Frame", nil, f)
+  if b.SetFrameLevel and f.GetFrameLevel then pcall(b.SetFrameLevel, b, (N(f:GetFrameLevel()) or 1) + 22) end
+  if b.EnableMouse then b:EnableMouse(false) end
+  b:SetHeight(14)
+  b:SetPoint("CENTER", f, "TOP", 0, 0)
+  local sh = b:CreateTexture(nil, "BACKGROUND", nil, -2)
+  pcall(sh.SetTexture, sh, WHITE)
+  sh:SetVertexColor(0, 0, 0, 0.70)
+  sh:SetPoint("TOPLEFT", -2, 2) sh:SetPoint("BOTTOMRIGHT", 2, -2)
+  local edge = b:CreateTexture(nil, "BACKGROUND", nil, -1)
+  pcall(edge.SetTexture, edge, WHITE)
+  edge:SetVertexColor(H.DANGER[1], H.DANGER[2], H.DANGER[3], 1)
+  edge:SetPoint("TOPLEFT", -1, 1) edge:SetPoint("BOTTOMRIGHT", 1, -1)
+  local bg = b:CreateTexture(nil, "BACKGROUND", nil, 0)
   pcall(bg.SetTexture, bg, WHITE)
-  bg:SetVertexColor(0.30, 0.04, 0.02, 0.95)
+  local BG = (Po and Po.BADGE_BG) or { 0.06, 0.05, 0.04, 0.94 }
+  bg:SetVertexColor(BG[1], BG[2], BG[3], BG[4] or 0.94)
   bg:SetAllPoints(b)
   local skull = b:CreateTexture(nil, "ARTWORK")
   pcall(skull.SetTexture, skull, "Interface\\TargetingFrame\\UI-TargetingFrame-Skull")
-  skull:SetSize(12, 12)
+  skull:SetSize(10, 10)
   skull:SetPoint("LEFT", b, "LEFT", 4, 0)
   local fs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  fs:SetPoint("LEFT", skull, "RIGHT", 4, 0)
-  fs:SetTextColor(1, 0.82, 0.78)
+  pcall(fs.SetFont, fs, (I and I.COUNT_PATH) or "Fonts\\ARIALN.TTF", 10, "")
+  if I and I.CleanText then pcall(I.CleanText, fs) end
+  fs:SetPoint("LEFT", skull, "RIGHT", 3, 0)
+  fs:SetTextColor(1, 0.45, 0.30)
   b.fs = fs
+  b:Hide()
   g.banner = b
   g:Hide()
   H.glow = g
   return g
 end
--- goutte rouge qui bat, posée sur celle du total (même taille au repos)
+-- goutte : la VRAIE goutte (en couleurs), dans un cadre à nous NON rogné,
+-- halo rouge rond qui pulse derrière et petit battement (+12 %)
 function H.BuildDropAlert(t)
   local S = ns.Slot
-  if not (t and S and S.PlaceIconClip) then return nil end
-  local clip, content, w, h = S.PlaceIconClip(t)
-  local parent = content or clip
-  if not parent or type(parent.CreateTexture) ~= "function" then return nil end
-  local tex = t._hcDrop
-  if not tex then
-    tex = parent:CreateTexture(nil, "OVERLAY", nil, 7)
-    pcall(tex.SetTexture, tex, DROP_TEX)
-    if tex.SetDesaturated then pcall(tex.SetDesaturated, tex, true) end
-    tex:SetVertexColor(1, 0.15, 0.10, 1)
-    local ag = tex:CreateAnimationGroup()
+  if not (t and S and S.IconInnerSize) then return nil end
+  local w, h, anchor = S.IconInnerSize(t)
+  anchor = anchor or t.icon or t
+  local fx = t._hcFx
+  if not fx then
+    fx = CreateFrame("Frame", nil, t)
+    if fx.EnableMouse then fx:EnableMouse(false) end
+    local halo = fx:CreateTexture(nil, "BACKGROUND")
+    pcall(halo.SetTexture, halo, ShadowTex())
+    halo:SetVertexColor(H.DANGER[1], H.DANGER[2], H.DANGER[3], 1)
+    fx.halo = halo
+    fx.haloAG = Pulse(halo, 1, 0.2, 0.5)
+    local drop = fx:CreateTexture(nil, "ARTWORK")
+    pcall(drop.SetTexture, drop, DROP_TEX)
+    fx.drop = drop
+    local ag = drop:CreateAnimationGroup()
     if ag.SetLooping then ag:SetLooping("REPEAT") end
     local function Beat(order, s, d)
       local a = ag:CreateAnimation("Scale")
@@ -156,16 +207,20 @@ function H.BuildDropAlert(t)
       a:SetDuration(d) a:SetOrder(order)
       if a.SetOrigin then a:SetOrigin("CENTER", 0, 0) end
     end
-    Beat(1, 1.3, 0.12) Beat(2, 1, 0.12) Beat(3, 1.15, 0.10) Beat(4, 1, 0.5)
-    tex.ag = ag
-    t._hcDrop = tex
+    Beat(1, 1.12, 0.12) Beat(2, 1 / 1.12, 0.12) Beat(3, 1.06, 0.10) Beat(4, 1 / 1.06, 0.5)
+    fx.ag = ag
+    t._hcFx = fx
   end
-  w, h = w or 16, h or 16
-  local side = math.max(8, math.min(w, h))
-  tex:ClearAllPoints()
-  tex:SetSize(side, side)
-  tex:SetPoint("CENTER", parent, "CENTER", 0, 0)
-  return tex
+  if fx.SetFrameLevel and t.GetFrameLevel then pcall(fx.SetFrameLevel, fx, (N(t:GetFrameLevel()) or 1) + 12) end
+  local side = math.max(8, math.min(N(w) or 16, N(h) or 16))
+  fx:ClearAllPoints()
+  fx:SetSize(side, side)
+  fx:SetPoint("CENTER", anchor, "CENTER", 0, 0)
+  fx.drop:ClearAllPoints() fx.drop:SetAllPoints(fx)
+  fx.halo:ClearAllPoints()
+  local pad = math.floor(side * 0.55 + 0.5)
+  fx.halo:SetPoint("TOPLEFT", fx, "TOPLEFT", -pad, pad) fx.halo:SetPoint("BOTTOMRIGHT", fx, "BOTTOMRIGHT", pad, -pad)
+  return fx
 end
 local function TotalTiles()
   local out, tiles = {}, ns.UI and ns.UI.embed and ns.UI.embed.tiles
@@ -173,6 +228,12 @@ local function TotalTiles()
   return out
 end
 local function Play(ag, on) if ag then if on then if not ag:IsPlaying() then ag:Play() end else ag:Stop() end end end
+-- la goutte d'origine (rognée) s'efface le temps de l'alerte, puis revient
+local function OrigAlpha(t, a)
+  local S = ns.Slot
+  local clip = S and S.EnsureIconClip and (S.EnsureIconClip(t))
+  for _, o in ipairs({ t.icon or false, clip or false }) do if o and o.SetAlpha then pcall(o.SetAlpha, o, a) end end
+end
 -- état de l'alerte : why = texte ou nil
 function H.Show(why)
   H.why = why
@@ -182,18 +243,25 @@ function H.Show(why)
   if g then
     if why then
       g.banner.fs:SetText(why)
-      g.banner:SetWidth((N(g.banner.fs:GetStringWidth()) or 60) + 26)
-      g:Show() Play(g.ag, true)
+      g.banner:SetWidth((N(g.banner.fs:GetStringWidth()) or 60) + 21)
+      g:Show() g.banner:Show() Play(g.ag, true)
     else
-      Play(g.ag, false) g:Hide()
+      Play(g.ag, false) g:Hide() g.banner:Hide()
     end
   end
   for _, t in ipairs(TotalTiles()) do
     local busy = t._needle and t._needle.IsShown and t._needle:IsShown()
-    local tex = (why and not busy) and H.BuildDropAlert(t) or t._hcDrop
-    if tex then
-      if why and not busy then tex:Show() Play(tex.ag, true) else Play(tex.ag, false) tex:Hide() end
+    local on = why and not busy
+    local fx = on and H.BuildDropAlert(t) or t._hcFx
+    if fx then
+      if on then
+        fx:Show() Play(fx.ag, true) Play(fx.haloAG, true)
+        OrigAlpha(t, 0) t._hcHid = true
+      else
+        Play(fx.ag, false) Play(fx.haloAG, false) fx:Hide()
+      end
     end
+    if not on and t._hcHid then OrigAlpha(t, 1) t._hcHid = nil end
   end
 end
 -- raison complète pour le bandeau et l'infobulle : « Élite · niveau ?? »
