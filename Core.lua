@@ -245,17 +245,21 @@ ns.PROF_TIERS = {
   cooking = {
     [75] = { skill = 50, rank = "Compagnon", src = "maître" },              -- sort 3102 « Requires Cooking (50) »
     [150] = { skill = 125, rank = "Expert", src = "livre" },                -- Expert Cookbook (16072) « Requires Cooking (125) »
-    [225] = { skill = nil, level = 35, rank = "Artisan", src = "quête" },   -- quête 6610 « Requires level 35 », points non indiqués
+    [225] = { skill = 225, level = 35, rank = "Artisan", src = "quête" },   -- quête 6610 : niveau 35, Cuisine 225 (3.10.0)
   },
   firstaid = {
     [75] = { skill = 50, rank = "Compagnon", src = "maître" },              -- sort 3274 « Requires First Aid (50) »
     [150] = { skill = 125, rank = "Expert", src = "livre" },                -- Expert First Aid - Under Wraps (16084)
-    [225] = { skill = nil, level = 35, rank = "Artisan", src = "quête" },   -- quête Triage 6622/6624 « Requires level 35 »
+    [225] = { skill = 225, level = 35, rank = "Artisan", src = "quête" },   -- quête Triage 6622/6624 : niveau 35, Secourisme 225 (3.10.0)
   },
   fishing = {
     [75] = { skill = 50, rank = "Compagnon", src = "maître" },              -- sort 7731, learnedat 50
-    [150] = { skill = 125, level = 20, rank = "Expert", src = "livre" },    -- Expert Fishing - The Bass and You (16083) : niveau 20, Pêche 125
-    [225] = { skill = nil, level = 35, rank = "Artisan", src = "quête" },   -- sort 18248, quête 6607 « Nat Pagle, Angler Extreme » : niveau 35, points non indiqués
+    [150] = { skill = 125, level = 20, rank = "Expert", src = "livre",      -- Expert Fishing - The Bass and You (16083) : niveau 20, Pêche 125
+      where = "Livre vendu par Old Man Heming, Baie-du-Butin (27.4, 77.0) ; aussi à l'hôtel des ventes" },
+    -- 3.10.0 : quête 6607 « Nat Pagle, Angler Extreme » : niveau 35 et Pêche 225 (comme les quêtes Artisan de
+    -- Cuisine et Secourisme, et la base Classic des rangs : RankQuests 225 / niveau 35)
+    [225] = { skill = 225, level = 35, rank = "Artisan", src = "quête",
+      where = "Quête « Nat Pagle, Angler Extreme », Nat Pagle, marais d'Âprefange (58.6, 60.0)" },
   },
 }
 ns.RANK_TEXT = {
@@ -319,12 +323,15 @@ function ns.RankStatus(d, cur, cap)
       local note = Tr[ns.RANK_TEXT.available]
       if nx.src == "livre" then note = Tr["Rang supérieur disponible ("] .. Tr[nx.rank] .. Tr[" : livre)"] end
       if nx.src == "quête" then note = Tr["Rang supérieur disponible ("] .. Tr[nx.rank] .. Tr[" : quête)"] end
+      -- 3.10.0 : où l'obtenir, quand on le sait (Pêche)
+      if nx.where then note = note .. "\n" .. Tr[nx.where] end
       return { col = t.green, state = "available", note = note }
     end
     local parts = {}
     if missSkill > 0 then parts[#parts + 1] = string.format(Tr["encore %d points de métier"], missSkill) end
     if missLevel then parts[#parts + 1] = string.format(Tr["niveau %d requis"], missLevel) end
     local note = Tr[nx.rank] .. Tr[" : "] .. table.concat(parts, Tr[" et "])
+    if nx.where then note = note .. "\n" .. Tr[nx.where] end
     -- Rouge : bloqué au maximum actuel sans rang apprenable (il manque des niveaux).
     if atCap and missLevel then return { col = t.red, state = "blocked", note = note } end
     return { col = t.yellow, state = "missing", note = note }
@@ -3777,6 +3784,8 @@ ns.CMD_ALIAS = {
   flight = "vol", fly = "vol",
   resethints = "reset-hints",
   memoire = "mem", memory = "mem",
+  -- 3.10.0 : alias anglais manquants
+  hunt = "chasse", collapse = "replier", expand = "deplier", summary = "resume",
 }
 ns.ARG_ALIAS = {
   light = "leger", green = "vert", yellow = "jaune", tier = "palier", above = "dessus", below = "dessous",

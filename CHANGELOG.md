@@ -4,7 +4,7 @@
 
 ### New
 - Guild milestones (off by default): a guild message when your total level crosses a milestone (Progress > Announcements, with a preview test button).
-- Weapon masters: `/drop armes` also lists the weapons your class can still learn and where (Stormwind, Ironforge, Darnassus, Orgrimmar, Thunder Bluff, Undercity). The "weapon not learned" reminder works even before you have visited a weapon master.
+- Weapon masters: `/drop weapons` also lists the weapons your class can still learn and where (Stormwind, Ironforge, Darnassus, Orgrimmar, Thunder Bluff, Undercity). The "weapon not learned" reminder works even before you have visited a weapon master.
 - Hardcore tab (Advanced > Hardcore), ready for the upcoming Forever Hardcore mode: tile outlines turn bright red when your target is elite, of unknown level (??) or 3+ levels above you, with a line in the tooltip. Only active on a Hardcore character; `/drop hc` shows whether Hardcore is detected (`/drop hc simu` simulates it).
 - Unofficial Hardcore: "I play Hardcore (unofficial)" in the Hardcore tab (or `/drop hc on|off`) turns the Hardcore helpers on for that character only.
 - SkillUp Forever link (only if SkillUp Forever is installed, Professions > SkillUp Forever):
@@ -20,7 +20,7 @@
 ### New
 - Hunt: your hunted item is spotted in the loot window and in group rolls (gold frame + "Hunted item!"), with a clickable toast for the roll. Option "Spot the item when looting" (Hunt tab).
 - Professions: when nothing in your bags gives a point, the tile tooltip suggests the next +1: the most worthwhile known recipe, what is missing, and the monsters of your level that drop it. Option "Suggested next +1" (Tooltips list).
-- Weapons: weapon and Defense tiles below max show the monster levels that give points (weapon: below 5 × the monster level, grey ones included; Defense: non-grey monsters). New `/drop armes` lists weapons to level, furthest behind first, with their levels.
+- Weapons: weapon and Defense tiles below max show the monster levels that give points (weapon: below 5 × the monster level, grey ones included; Defense: non-grey monsters). New `/drop weapons` lists weapons to level, furthest behind first, with their levels.
 - Collection log: a progress bar under each dungeon, "Sort: level / %", and a Share button that puts "Collection Log · Dungeon 12/39 (31 %)" in your chat.
 - Quiet mode turns on automatically in battlegrounds and arenas (option, on by default).
 - Test buttons for the hunted-item roll (a sample roll frame with the gold frame, and the toast) and for battleground quiet mode (15 s simulated).

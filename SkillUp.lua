@@ -117,9 +117,10 @@ end
 
 -- Toasts : seulement les étapes où il faut se déplacer --------------------------------
 SU.last, SU.seeded = {}, false
--- Un rang de métier (Compagnon, Expert…) appris chez un maître ou par quête : Dropamine a déjà son
--- rappel de rang (RankToast), donc pas de second toast. Une recette à apprendre a son sort (spellID).
-function SU.IsRankStep(s) return s.kind == "train" and s.spellID == nil end
+-- Un rang de métier (Compagnon, Expert…) appris chez un maître : Dropamine a déjà son rappel de rang
+-- (RankToast, maîtres seulement), donc pas de second toast. Rangs par livre ou quête : toast SkillUp,
+-- Dropamine n'en fait pas. Une recette à apprendre a son sort (spellID).
+function SU.IsRankStep(s) return s.kind == "train" and s.spellID == nil and s.questID == nil and s.itemID == nil end
 local function Travel(s)
   if SU.IsRankStep(s) then return false end
   return s.kind == "train" or (s.kind == "buy" and s.nav == true)

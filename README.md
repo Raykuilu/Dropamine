@@ -46,7 +46,7 @@ Pick the item you want, then go get it.
 
 - First blood (first wanted item found) and Persistent (found after more than 50 attempts) achievements.
 
-`/drop chasse` · Data is read live from the **Dungeon Journal** addon (optional, nothing bundled). Thanks to Exehn for the data and access to favourites.
+`/drop hunt` · Data is read live from the **Dungeon Journal** addon (optional, nothing bundled). Thanks to Exehn for the data and access to favourites.
 
 ## Every skill. Every +1.
 
@@ -89,7 +89,7 @@ Left-click the droplet, or type `/drop progression`.
 
 ![Themes.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/themes-en.png)
 
-`/drop theme leger|flare2|flare|classic`
+`/drop theme light|flare2|flare|classic`
 
 | Theme | What you get |
 | --- | --- |
@@ -106,10 +106,11 @@ A short guided tour shows each feature, lets you try it and switch it off. `/dro
 
 `/drop` shows or hides the panel. `/drop help` lists the main commands.
 
-- `/drop progression` · `/drop collection` · `/drop chasse` — the Progression window, the Collection log, the hunt
-- `/drop records` · `/drop paliers` · `/drop resume` — records, next milestone, your total on one line to paste
+- `/drop progression` · `/drop collection` · `/drop hunt` — the Progression window, the Collection log, the hunt
+- `/drop records` · `/drop tiers` · `/drop summary` — records, next milestone, your total on one line to paste
 - `/drop options` · `/drop setup` · `/drop about`
-- `/drop theme leger|flare2|flare|classic` · `/drop colonnes 2|3|5|10` · `/drop verrou`
+- `/drop theme light|flare2|flare|classic` · `/drop columns 2|3|5|10` · `/drop lock`
+- `/drop weapons` — weapons and Defense to level, with the monster levels that give points
 - `/drop check` · `/drop debug` · `/drop perf` — health check and diagnostics
 
 ## Performance
