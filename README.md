@@ -1,7 +1,7 @@
 # Dropamine
 
 <div align="center">
-<img src="https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/header-en.png" alt="Dropamine — every skill, every drop" width="100%" />
+<img src="https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/en/header-en.png" alt="Dropamine — every skill, every drop" width="100%" />
 </div>
 
 &nbsp;
@@ -14,28 +14,28 @@ For **WoW Forever** only (`Interface: 16001`). The native Skills tab is never hi
 
 ## New in 3.10
 
-![SkillUp Forever.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6278303f3be2fb3f3a62b1374fc8a2a84fd0477c/docs/curseforge/v3/en/new310-skillup-en.png)
+![SkillUp Forever.](https://raw.githubusercontent.com/Raykuilu/Dropamine/e8645913ef0160fbe19e4b49c821f729b41a2f7a/docs/curseforge/v3/en/new310-skillup-en.png)
 
 - **SkillUp Forever link** (optional): the profession tile tooltip shows your current and next step, a toast tells you when the next step sends you somewhere, and Alt+click sets the map waypoint.
 
-![GPS arrow.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6278303f3be2fb3f3a62b1374fc8a2a84fd0477c/docs/curseforge/v3/en/new310-gps-en.png)
+![GPS arrow.](https://raw.githubusercontent.com/Raykuilu/Dropamine/e8645913ef0160fbe19e4b49c821f729b41a2f7a/docs/curseforge/v3/en/new310-gps-en.png)
 
 - **GPS arrow**: while that waypoint is active, the drop turns into an arrow that points at it (green ahead, yellow to the side, red behind), with the distance in its tooltip and an "Arrived" toast.
 
-![Every recipe.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6278303f3be2fb3f3a62b1374fc8a2a84fd0477c/docs/curseforge/v3/en/new310-recipes-en.png)
+![Every recipe.](https://raw.githubusercontent.com/Raykuilu/Dropamine/e8645913ef0160fbe19e4b49c821f729b41a2f7a/docs/curseforge/v3/en/new310-recipes-en.png)
 
 - **Every recipe in the Collection log**: with SkillUp Forever, every profession shows its exact total and the recipes you lack, grouped by rank, with where to get each one and which of your characters already knows it.
 
-![Hardcore.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6278303f3be2fb3f3a62b1374fc8a2a84fd0477c/docs/curseforge/v3/en/new310-hardcore-en.png)
+![Hardcore.](https://raw.githubusercontent.com/Raykuilu/Dropamine/e8645913ef0160fbe19e4b49c821f729b41a2f7a/docs/curseforge/v3/en/new310-hardcore-en.png)
 
 - **Hardcore tab**, ready for Forever's Hardcore mode (or tick "I play Hardcore (unofficial)"): a red glow, a banner and a beating drop when your target is elite, of level ?? or 3+ levels above you, plus an alert sound. Two sliders set each glow.
 - Also new: weapon masters in `/drop weapons`, guild milestone messages (off by default), a "New recipe!" toast, fishing rank trainers, a LibDBIcon minimap button when another add-on provides it, and English command aliases (`/drop hunt`, `/drop summary`…).
 
 ## Collection log
 
-![Collection log.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/collection-log-en.png)
+![Collection log.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/en/collection-log-en.png)
 
-![Your progress.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/collection-home-en.png)
+![Your progress.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/en/collection-home-en.png)
 
 Your Old School RuneScape-style collection log, for WoW Forever dungeons and raids.
 
@@ -46,13 +46,13 @@ Your Old School RuneScape-style collection log, for WoW Forever dungeons and rai
 - **Discoveries:** the bestiary and skinnable creatures you have met, by 10-level bracket, with your own bracket highlighted.
 - Categories fold and unfold, and each one shows its own X / Y. Item, dungeon and boss names follow your game language.
 
-![Recipes.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/recipes-cooking-en.png)
+![Recipes.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/en/recipes-cooking-en.png)
 
 `/drop collection` · Collection achievements: Collector (10 %), Great collector (25 %), Dream collection (50 %).
 
 ## BiS hunt, linked to Dungeon Journal favourites
 
-![BiS hunt.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/bis-hunt-en.png)
+![BiS hunt.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/en/bis-hunt-en.png)
 
 Pick the item you want, then go get it.
 
@@ -61,7 +61,7 @@ Pick the item you want, then go get it.
 - **Real attempts.** Boss kills are detected from loot messages, so an attempt is a real kill, not an opened loot window. For each item: attempts, and the cumulative chance it should have dropped by now.
 - **It dropped!** A toast with the item icon. Click it to open the item card, with the equipment comparison.
 - **Rare loot alert:** a toast in the item's quality colour for every epic (or rare, if you choose) drop.
-![It dropped!](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/it-dropped-en.png)
+![It dropped!](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/en/it-dropped-en.png)
 
 - First blood (first wanted item found) and Persistent (found after more than 50 attempts) achievements.
 
@@ -69,7 +69,7 @@ Pick the item you want, then go get it.
 
 ## Every skill. Every +1.
 
-![Know before you swing.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/know-before-you-swing-en.png)
+![Know before you swing.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/en/know-before-you-swing-en.png)
 
 **1. You target a mob or a player.** The tiles that will rank up light up: the weapon in your hand, Feral Combat, Defence, a profession that can still gain on this target.
 
@@ -77,17 +77,17 @@ Pick the item you want, then go get it.
 
 **3. You hover a tile or a creature.** The tooltip shows the rank, the cap, what is still to learn, and the linked professions.
 
-![Skill-up, live.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/skill-up-live-en.png)
+![Skill-up, live.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/en/skill-up-live-en.png)
 
-![Every gain, live.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/every-gain-en.png)
+![Every gain, live.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/en/every-gain-en.png)
 
-![The tooltip.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/tooltip-en.png)
+![The tooltip.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/en/tooltip-en.png)
 
 ## Progression window
 
 Left-click the droplet, or type `/drop progression`.
 
-![Progress.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/progress-en.png)
+![Progress.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/en/progress-en.png)
 
 - **Overview:** a "Today" card (points by category, vs yesterday, last 7 days), your next total milestone with an estimated time at your current pace, and where your remaining points are.
 - **Charts, weekly recap, farm spots and efficiency.**
@@ -96,17 +96,17 @@ Left-click the droplet, or type `/drop progression`.
 - **Total milestones:** a big gold animation, a cheer, and fireworks at the maximum.
 - **Session recap:** this session against your previous one and your 7-day and 30-day averages.
 
-![Achievements.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/achievements-en.png)
+![Achievements.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/en/achievements-en.png)
 
-![Total milestones.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/total-milestones-en.png)
+![Total milestones.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/en/total-milestones-en.png)
 
-![Characters.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/characters-en.png)
+![Characters.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/en/characters-en.png)
 
-![Session recap.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/session-recap-en.png)
+![Session recap.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/en/session-recap-en.png)
 
 ## Themes
 
-![Themes.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/themes-en.png)
+![Themes.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/en/themes-en.png)
 
 `/drop theme light|flare2|flare|classic`
 
@@ -162,7 +162,7 @@ Skill tracking and collection log inspired by Old School RuneScape (unaffiliated
 ## Français
 
 <div align="center">
-<img src="https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/header-fr.png" alt="Dropamine — chaque compétence, chaque drop" width="100%" />
+<img src="https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/fr/header-fr.png" alt="Dropamine — chaque compétence, chaque drop" width="100%" />
 </div>
 
 &nbsp;
@@ -173,26 +173,26 @@ Pour **WoW Forever** uniquement (`Interface: 16001`). L'onglet Compétences nati
 
 ## Nouveau en 3.10
 
-![SkillUp Forever.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6278303f3be2fb3f3a62b1374fc8a2a84fd0477c/docs/curseforge/v3/fr/new310-skillup-fr.png)
+![SkillUp Forever.](https://raw.githubusercontent.com/Raykuilu/Dropamine/e8645913ef0160fbe19e4b49c821f729b41a2f7a/docs/curseforge/v3/fr/new310-skillup-fr.png)
 
 - **Lien avec SkillUp Forever** (optionnel) : l'infobulle des cases métier affiche ton étape en cours et la suivante, un toast te prévient quand l'étape t'envoie quelque part, et Alt+clic pose le point sur la carte.
 
-![Aiguille GPS.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6278303f3be2fb3f3a62b1374fc8a2a84fd0477c/docs/curseforge/v3/fr/new310-gps-fr.png)
+![Aiguille GPS.](https://raw.githubusercontent.com/Raykuilu/Dropamine/e8645913ef0160fbe19e4b49c821f729b41a2f7a/docs/curseforge/v3/fr/new310-gps-fr.png)
 
 - **Aiguille GPS** : tant que ce point est actif, la goutte devient une aiguille qui pointe vers lui (vert devant, jaune sur le côté, rouge derrière), avec la distance dans l'infobulle et un toast « Arrivé ».
 
-![Toutes les recettes.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6278303f3be2fb3f3a62b1374fc8a2a84fd0477c/docs/curseforge/v3/fr/new310-recipes-fr.png)
+![Toutes les recettes.](https://raw.githubusercontent.com/Raykuilu/Dropamine/e8645913ef0160fbe19e4b49c821f729b41a2f7a/docs/curseforge/v3/fr/new310-recipes-fr.png)
 
 - **Toutes les recettes dans le journal de collection** : avec SkillUp Forever, chaque métier affiche son total exact et les recettes qui te manquent, rangées par rang, avec où obtenir chacune et quel personnage la connaît déjà.
 
-![Hardcore.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6278303f3be2fb3f3a62b1374fc8a2a84fd0477c/docs/curseforge/v3/fr/new310-hardcore-fr.png)
+![Hardcore.](https://raw.githubusercontent.com/Raykuilu/Dropamine/e8645913ef0160fbe19e4b49c821f729b41a2f7a/docs/curseforge/v3/fr/new310-hardcore-fr.png)
 
 - **Onglet Hardcore**, prêt pour le mode Hardcore de Forever (ou coche « Je joue en Hardcore (mode non officiel) ») : lueur rouge, bandeau et goutte qui bat quand ta cible est élite, de niveau ?? ou a 3 niveaux de plus que toi, plus un son d'alerte. Deux curseurs règlent chaque lueur.
 - Aussi : les maîtres d'armes dans `/drop armes`, des messages de paliers en guilde (coupés par défaut), un toast « Nouvelle recette ! », les maîtres de rang de la Pêche, un bouton de minicarte LibDBIcon quand un autre addon la fournit, et des alias de commandes en anglais.
 
 ## Le journal de collection
 
-![Journal de collection.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/collection-log-fr.png)
+![Journal de collection.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/fr/collection-log-fr.png)
 
 Ton collection log façon Old School RuneScape, pour les donjons et raids de WoW Forever.
 
@@ -200,19 +200,19 @@ Ton collection log façon Old School RuneScape, pour les donjons et raids de WoW
 - **Nombre approximatif de kills par boss** (≈N kills), compté à partir du butin de ses objets suivis.
 - **Une page d'accueil** s'ouvre en premier : progression globale, donjons complets, kills de boss, objets, une barre par catégorie (un clic l'ouvre) et les donjons où tu es le plus avancé.
 
-![Ta progression.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/collection-home-fr.png)
+![Ta progression.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/fr/collection-home-fr.png)
 
 - **Les métiers aussi :** recettes connues sur le total, pour chaque métier appris. La Cuisine et le Secourisme listent leurs recettes manquantes ; avec SkillUp Forever (optionnel), tous les métiers le font.
 - **Découvertes :** le bestiaire et les créatures dépeçables rencontrées, par tranche de 10 niveaux, avec ta tranche mise en avant.
 - Les catégories se plient et se déplient, et chacune affiche son propre X / Y. Les noms d'objets, de donjons et de boss suivent la langue du jeu.
 
-![Recettes.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/recipes-cooking-fr.png)
+![Recettes.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/fr/recipes-cooking-fr.png)
 
 `/drop collection` · Succès de collection : Collectionneur (10 %), Grand collectionneur (25 %), Collection de rêve (50 %).
 
 ## La chasse BiS, liée aux favoris du Dungeon Journal
 
-![Chasse BiS.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/bis-hunt-fr.png)
+![Chasse BiS.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/fr/bis-hunt-fr.png)
 
 Choisis l'objet que tu veux, puis va le chercher.
 
@@ -222,7 +222,7 @@ Choisis l'objet que tu veux, puis va le chercher.
 - **Trouvé !** Un toast avec l'icône de l'objet. Un clic ouvre la fiche de l'objet, avec la comparaison d'équipement.
 - **Alerte butin rare :** un toast dans la couleur de qualité de l'objet pour chaque butin épique (ou rare, si tu le choisis).
 
-![Trouvé !](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/it-dropped-fr.png)
+![Trouvé !](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/fr/it-dropped-fr.png)
 
 - Succès Premier sang (premier objet recherché trouvé) et Persévérant (trouvé après plus de 50 essais).
 
@@ -230,7 +230,7 @@ Choisis l'objet que tu veux, puis va le chercher.
 
 ## Chaque compétence. Chaque +1.
 
-![Tu sais avant de frapper.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/know-before-you-swing-fr.png)
+![Tu sais avant de frapper.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/fr/know-before-you-swing-fr.png)
 
 **1. Tu cibles un monstre ou un joueur.** Les cases qui vont monter s'allument : l'arme en main, Combat farouche, Défense, un métier qui peut encore gagner sur cette cible.
 
@@ -238,17 +238,17 @@ Choisis l'objet que tu veux, puis va le chercher.
 
 **3. Tu survoles une case ou une créature.** L'infobulle donne le rang, le plafond, ce qui reste à apprendre et les métiers liés.
 
-![Chaque +1, en direct.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/skill-up-live-fr.png)
+![Chaque +1, en direct.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/fr/skill-up-live-fr.png)
 
-![Chaque gain, en direct.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/every-gain-fr.png)
+![Chaque gain, en direct.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/fr/every-gain-fr.png)
 
-![L'infobulle.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/tooltip-fr.png)
+![L'infobulle.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/fr/tooltip-fr.png)
 
 ## Fenêtre Progression
 
 Clic gauche sur la goutte, ou `/drop progression`.
 
-![Progression.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/progress-fr.png)
+![Progression.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/fr/progress-fr.png)
 
 - **Vue d'ensemble :** une carte « Aujourd'hui » (points par catégorie, comparés à hier et aux 7 derniers jours), ton prochain palier avec un temps estimé à ton rythme actuel, et où il te reste des points.
 - **Graphiques, récap hebdo, spots de farm et efficacité.**
@@ -257,17 +257,17 @@ Clic gauche sur la goutte, ou `/drop progression`.
 - **Paliers du total :** une grande animation dorée, ton personnage qui applaudit, et un feu d'artifice au maximum.
 - **Récap de session :** cette session comparée à la précédente et à tes moyennes sur 7 et 30 jours.
 
-![Succès.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/achievements-fr.png)
+![Succès.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/fr/achievements-fr.png)
 
-![Paliers du total.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/total-milestones-fr.png)
+![Paliers du total.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/fr/total-milestones-fr.png)
 
-![Personnages.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/characters-fr.png)
+![Personnages.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/fr/characters-fr.png)
 
-![Récap de session.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/session-recap-fr.png)
+![Récap de session.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/fr/session-recap-fr.png)
 
 ## Thèmes
 
-![Thèmes.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/themes-fr.png)
+![Thèmes.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/fr/themes-fr.png)
 
 `/drop theme leger|flare2|flare|classic`
 
