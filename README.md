@@ -8,12 +8,16 @@
 
 *[Version française plus bas](#français)*
 
-**Dropamine 3.10** puts every skill on screen, celebrates each +1 like Old School RuneScape, tracks the gear you are farming (**Collection log**, **BiS hunt**) and now guides your professions with **SkillUp Forever**.
+**Dropamine 3.11** puts every skill on screen, celebrates each +1 like Old School RuneScape, tracks the gear you are farming (**Collection log**, **BiS hunt**) and now guides your professions with **SkillUp Forever**.
 
 <p align="center"><a href="https://dropamine.app"><img src="https://dropamine.app/img/badges/site-en.png" alt="Hiscores · dropamine.app" width="250" /></a> <a href="https://github.com/Raykuilu/Dropamine"><img src="https://dropamine.app/img/badges/git-en.png" alt="GitHub" width="250" /></a> <a href="https://buymeacoffee.com/raykuilu"><img src="https://dropamine.app/img/badges/cof-en.png" alt="Buy me a coffee" width="250" /></a></p>
 
 
 For **WoW Forever** only (`Interface: 16001`). The native Skills tab is never hidden, moved or rewritten. FlareUI is not required.
+
+## New in 3.11
+
+- **Hiscores on [dropamine.app](https://dropamine.app):** type `/drop hiscores` in game, copy the line and paste it on the site (sign in with Battle.net). Your real weapon skills replace the estimate and your character shows as verified. The add-on sends nothing by itself.
 
 ## New in 3.10
 
@@ -139,6 +143,7 @@ A short guided tour shows each feature, lets you try it and switch it off. `/dro
 - `/drop options` · `/drop setup` · `/drop about`
 - `/drop theme light|flare2|flare|classic` · `/drop columns 2|3|5|10` · `/drop lock`
 - `/drop weapons` — weapons and Defense to level, with the monster levels that give points
+- `/drop hiscores` — your export line for the dropamine.app Hiscores
 - `/drop hc` — Hardcore status (`on|off` for unofficial Hardcore, `simu` to try the alert)
 - `/drop check` · `/drop debug` · `/drop perf` — health check and diagnostics
 
@@ -178,12 +183,16 @@ Skill tracking and collection log inspired by Old School RuneScape (unaffiliated
 
 &nbsp;
 
-**Dropamine 3.10** garde toutes tes compétences à l'écran, fête chaque +1 comme dans Old School RuneScape, suit l'équipement que tu farmes (**journal de collection**, **chasse BiS**) et guide maintenant tes métiers avec **SkillUp Forever**.
+**Dropamine 3.11** garde toutes tes compétences à l'écran, fête chaque +1 comme dans Old School RuneScape, suit l'équipement que tu farmes (**journal de collection**, **chasse BiS**) et guide maintenant tes métiers avec **SkillUp Forever**.
 
 <p align="center"><a href="https://dropamine.app"><img src="https://dropamine.app/img/badges/site-fr.png" alt="Classements · dropamine.app" width="250" /></a> <a href="https://github.com/Raykuilu/Dropamine"><img src="https://dropamine.app/img/badges/git-fr.png" alt="GitHub" width="250" /></a> <a href="https://buymeacoffee.com/raykuilu"><img src="https://dropamine.app/img/badges/cof-fr.png" alt="Offre-moi un café" width="250" /></a></p>
 
 
 Pour **WoW Forever** uniquement (`Interface: 16001`). L'onglet Compétences natif n'est jamais caché, déplacé ni réécrit. FlareUI n'est pas nécessaire.
+
+## Nouveau en 3.11
+
+- **Classements sur [dropamine.app](https://dropamine.app) :** tape `/drop hiscores` en jeu, copie la ligne et colle-la sur le site (connexion Battle.net). Tes vraies compétences d'armes remplacent l'estimation et ton personnage passe « vérifié ». L'addon n'envoie rien tout seul.
 
 ## Nouveau en 3.10
 
@@ -311,6 +320,7 @@ Une courte visite guidée présente chaque fonction, te laisse l'essayer et la c
 - `/drop options` · `/drop setup` · `/drop about`
 - `/drop theme leger|flare2|flare|classic` · `/drop colonnes 2|3|5|10` · `/drop verrou`
 - `/drop armes` : armes et Défense à monter, avec les niveaux de monstres qui donnent des points
+- `/drop hiscores` : ta ligne d'export pour les classements de dropamine.app
 - `/drop hc` : état du Hardcore (`on|off` pour le Hardcore non officiel, `simu` pour essayer l'alerte)
 - `/drop check` · `/drop debug` · `/drop perf` : bilan de santé et diagnostic
 
