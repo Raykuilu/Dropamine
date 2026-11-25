@@ -63,4 +63,5 @@ Efficiency.lua
 Check.lua
 Hunt.lua
 Hardcore.lua
+SkillUp.lua
 Setup.lua

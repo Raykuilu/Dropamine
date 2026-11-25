@@ -15,10 +15,13 @@ _G.C_Timer = { After = function() end }
 local ui = { hcDanger = true }
 local ns = { db = { ui = ui }, N = tonumber, Unsecret = function(...) return ... end,
   Opt = function(k) return ui[k] ~= false end, OptOff = function(k) return ui[k] == true end,
-  CharDB = function() return {} end, Fold = function(s) return tostring(s):lower() end, On = function() end,
+  Fold = function(s) return tostring(s):lower() end, On = function() end,
   SlashExt = {}, HelpExt = {}, Print = function() end,
   GetPlayerLevel = function() return 30 end, WEAPON_RANK_PER_LEVEL = 5, TOTAL_MAX = 2460, DebugExt = {} }
 ns.L = setmetatable({}, { __index = function(_, k) return k end })
+-- un personnage = une table (Hardcore manuel par personnage)
+local chars, current = { A = {}, B = {} }, "A"
+ns.CharDB = function() return chars[current] end
 ns.IsFrench = function() return true end
 ns.CATALOG = { { id = "swords", name = "Épées", kind = "melee" }, { id = "bows", name = "Arcs", kind = "ranged" },
   { id = "axes", name = "Haches", kind = "melee" }, { id = "defense", name = "Défense", kind = "defense" } }
@@ -29,7 +32,7 @@ ns.SkillRankSnapshot = function() return { [ns.Fold("Épées")] = { rank = 100, 
 do
   local src = io.open("Core.lua"):read("a")
   local a = src:find("%-%- 3%.10%.0 : mode Hardcore")
-  local b = src:find("\nend\n", a, true)
+  local b = src:find("\nend\n", src:find("function ns.IsHardcore()", a, true), true)
   assert(load(src:sub(a, b + 4), "hc", "t", setmetatable({ ns = ns }, { __index = _G })))()
 end
 local db = {}
@@ -46,8 +49,20 @@ local fail = 0
 local function check(ok, what) if not ok then fail = fail + 1 print("ÉCHEC :", what) end end
 
 check(not ns.IsHardcore(), "personnage normal : pas Hardcore")
+-- Hardcore manuel : par personnage
+H.SetManual(true)
+check(ns.IsHardcore() and ns.HardcoreManual(), "case cochée : Hardcore actif")
+current = "B"
+check(not ns.IsHardcore(), "autre personnage : pas touché")
+current = "A"
+ns.SlashExt.hc("off")
+check(not ns.IsHardcore(), "/drop hc off : coupé")
+ns.SlashExt.hc("on")
+check(ns.IsHardcore(), "/drop hc on : actif")
+H.SetManual(false)
+check(ns.Options.GROUPS.grpHardcore.items[1][1] == "hcManual", "case manuelle en tête de l'onglet")
 check(ns.Options.GROUPS.grpHardcore and ns.Options.MAP.advanced[1][1] == "Hardcore", "onglet Hardcore dans Avancé")
-check(#ns.Options.GROUPS.grpHardcore.items == 1, "onglet Hardcore : le liseré danger seulement")
+check(#ns.Options.GROUPS.grpHardcore.items == 2, "onglet Hardcore : case manuelle + liseré danger")
 check(ns.Options.EXTRA_HOME.hcDanger == "advanced" and ns.Options.EXTRA_HOME.guildMilestones == "progress", "pages des réglages")
 
 -- danger : inactif hors Hardcore, actif en Hardcore (ou simulé)

@@ -17,6 +17,7 @@ run "$LUA" tests/quiet_pvp.lua
 run "$LUA" tests/profile_search.lua
 run "$LUA" tests/bug_report.lua
 run "$LUA" tests/hardcore.lua
+run "$LUA" tests/skillup_bridge.lua
 for t in hunt_autotile hunt_loot_kc hunt_rare_alert hunt_missing progress_run collection_home recap_table; do
   run "$LUA" tests/$t.lua >/dev/null
 done

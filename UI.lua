@@ -1178,7 +1178,7 @@ end
 function UI:ShowDetailCached(d)
   if not d then return end
   self.perf = self.perf or {}
-  local key = self:SelectionKey(d) .. "#" .. tostring(self._snapVersion or 0) .. "#" .. tostring(ns.Craft and ns.Craft._ver or 0)
+  local key = self:SelectionKey(d) .. "#" .. tostring(self._snapVersion or 0) .. "#" .. tostring(ns.Craft and ns.Craft._ver or 0) .. "#" .. tostring(ns.SkillUp and ns.SkillUp.rev or 0)
   if self._detailShownKey == key and self.ownDetail and self.ownDetail:IsShown() then
     self.perf.detailSkip = (self.perf.detailSkip or 0) + 1
     return

@@ -497,16 +497,25 @@ end
 -- Détail d'une tuile de métier.
 function Craft.DetailText(skill)
   if not Craft.SKILLS[skill] then return nil end
+  -- 3.10.0 : trajet SkillUp (si installé) : une seule recommandation, la sienne remplace « Prochain +1 »
+  local su
+  if ns.SkillUp and ns.SkillUp.Lines then local okS, l = pcall(ns.SkillUp.Lines, skill) su = okS and l or nil end
+  local function WithSU(text)
+    if not su then return text end
+    local block = table.concat(su, "\n")
+    return text and (text .. "\n" .. block) or block
+  end
   local rec = ns.CharDB().recipes and ns.CharDB().recipes[skill]
-  if not rec or not rec.list then return nil end
+  if not rec or not rec.list then return WithSU(nil) end
   local st = Craft.state[skill] or (not InCombat() and Craft.Compute(skill)) or nil
-  if not st then return nil end
+  if not st then return WithSU(nil) end
   Craft.state[skill] = st
   local L = {}
   if #st.list == 0 then
     L[1] = Craft.Verb(skill) .. Tr[" : rien qui fasse progresser avec tes sacs."]
     -- 3.9.0 : la recette la plus proche, ce qui manque et où le trouver
-    local okN, nb = pcall(Craft.NextBestLines, skill)
+    local okN, nb = false, nil
+    if not su then okN, nb = pcall(Craft.NextBestLines, skill) end
     if okN and nb then for _, l in ipairs(nb) do L[#L + 1] = l end end
   else
     L[1] = Craft.Verb(skill) .. Tr[" :"]
@@ -516,7 +525,7 @@ function Craft.DetailText(skill)
     L[#L + 1] = Tr["|cff808080Sans gain :|r"]
     for _, e in ipairs(st.greys) do L[#L + 1] = string.format(Tr["|cff808080%s ×%d (sans gain)|r"], tostring(e.recipe.name), e.n) end
   end
-  return table.concat(L, "\n")
+  return WithSU(table.concat(L, "\n"))
 end
 
 -- 3.9.0 : prochain meilleur +1 quand rien ne fait progresser avec les sacs : la recette connue la plus

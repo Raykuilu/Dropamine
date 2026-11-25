@@ -293,6 +293,12 @@ local function OnLeave(self)
 end
 local function OnClick(self, button)
   if not self.data then return end
+  -- 3.10.0 : Alt+clic sur une case métier -> point SkillUp sur la carte (si SkillUp est installé)
+  if button ~= "RightButton" and type(IsAltKeyDown) == "function" and IsAltKeyDown()
+    and ns.SkillUp and ns.SkillUp.OnAltClick then
+    local okA, done = pcall(ns.SkillUp.OnAltClick, self.data)
+    if okA and done then return end
+  end
   local shift = type(IsShiftKeyDown) == "function" and IsShiftKeyDown()
   if button ~= "RightButton" and shift and ns.QoL and ns.QoL.ShareTile and ns.Opt("partage") then
     if ns.QoL.ShareTile(self.data) then return end

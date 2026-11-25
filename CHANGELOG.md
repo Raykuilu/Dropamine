@@ -6,6 +6,12 @@
 - Guild milestones (off by default): a guild message when your total level crosses a milestone (Progress > Announcements, with a preview test button).
 - Weapon masters: `/drop armes` also lists the weapons your class can still learn and where (Stormwind, Ironforge, Darnassus, Orgrimmar, Thunder Bluff, Undercity). The "weapon not learned" reminder works even before you have visited a weapon master.
 - Hardcore tab (Advanced > Hardcore), ready for the upcoming Forever Hardcore mode: tile outlines turn bright red when your target is elite, of unknown level (??) or 3+ levels above you, with a line in the tooltip. Only active on a Hardcore character; `/drop hc` shows whether Hardcore is detected (`/drop hc simu` simulates it).
+- Unofficial Hardcore: "I play Hardcore (unofficial)" in the Hardcore tab (or `/drop hc on|off`) turns the Hardcore helpers on for that character only.
+- SkillUp Forever link (only if SkillUp Forever is installed, Professions > SkillUp Forever):
+  - The profession tile tooltip shows SkillUp's current and next step, in place of Dropamine's "Next +1".
+  - A toast only when the next step sends you somewhere: a trainer, a vendor or a quest giver.
+  - Alt+click a profession tile to set SkillUp's map waypoint for the step.
+  - Read only on hover and at most every 2 s, never in combat.
 - Setup tour: the theme page also has a "Show the total level" box.
 
 ## 3.9.0

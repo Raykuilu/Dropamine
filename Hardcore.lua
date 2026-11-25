@@ -20,7 +20,28 @@ local function Str(v) if type(v) ~= "string" or v == "" or (ns.IsSecret and ns.I
 local function After(sec, fn) if _G.C_Timer and _G.C_Timer.After then _G.C_Timer.After(sec, fn) return true end fn() return false end
 
 -- Réglages ---------------------------------------------------------------------
+local function CharDB() local ok, c = pcall(ns.CharDB) return ok and type(c) == "table" and c or nil end
+local function Hello(force)
+  local db = CharDB()
+  if db and (force or not db.hcHello) then
+    db.hcHello = true
+    ns.Print(Tr["Hardcore détecté : le liseré danger sur la cible est actif (Réglages > Avancé > Hardcore)."])
+  end
+end
+-- Hardcore volontaire : par personnage
+function H.SetManual(on)
+  local db = CharDB()
+  if not db then return end
+  local was = db.hcManual == true
+  db.hcManual = on and true or nil
+  if on and not was then Hello(true) end
+  local T = ns.Target
+  if T and T.Refresh then pcall(T.Refresh, "hc") end
+end
 H.OPTIONS = {
+  { type = "check", key = "hcManual", label = "Je joue en Hardcore (mode non officiel)", default = false, cmd = "/drop hc on|off",
+    help = "Pour ce personnage seulement : active les aides Hardcore sans le mode officiel du jeu.", home = "advanced",
+    get = function() return ns.HardcoreManual() end, set = function(v) H.SetManual(v) end },
   { type = "check", key = "guildMilestones", label = "Annoncer les paliers en guilde", default = false, cmd = "Réglage de ce panneau",
     help = "Message dans le canal de guilde quand ton niveau total franchit un palier (500, 1000…).", home = "progress" },
   { type = "check", key = "hcDanger", label = "Liseré danger sur la cible", default = true, cmd = "Réglage de ce panneau",
@@ -36,7 +57,7 @@ if O then
       items[#items + 1] = { "guildMilestones", "Paliers du total en guilde" }
     end
     O.GROUPS.grpHardcore = { label = "Hardcore", help = "Actif seulement sur un personnage Hardcore (mode à venir sur Forever).",
-      items = { { "hcDanger", "Liseré danger sur la cible" } } }
+      items = { { "hcManual", "Je joue en Hardcore (mode non officiel)" }, { "hcDanger", "Liseré danger sur la cible" } } }
   end
   if O.MAP and O.MAP.advanced then table.insert(O.MAP.advanced, 1, { "Hardcore", { "grpHardcore" } }) end
   if O.TEST then
@@ -221,18 +242,21 @@ ns.SlashExt.hc = function(rest)
     if T and T.Refresh then pcall(T.Refresh, "hc") end
     return
   end
-  ns.Print(Tr["Hardcore : "] .. (ns.IsHardcore() and Tr["oui"] or Tr["non"]) .. Tr[" (/drop hc simu pour tester)"])
+  local word = low:match("^%s*(%a+)")
+  if word == "on" or word == "off" then
+    H.SetManual(word == "on")
+    if O and O.Sync then pcall(O.Sync) end
+    ns.Print(word == "on" and Tr["Hardcore manuel : activé pour ce personnage."] or Tr["Hardcore manuel : coupé pour ce personnage."])
+    return
+  end
+  local state = ns.HardcoreOfficial() and Tr["officiel"] or (ns.HardcoreManual() and Tr["manuel"]) or Tr["non"]
+  ns.Print(Tr["Hardcore : "] .. state .. Tr[" (/drop hc on|off, simu pour tester)"])
 end
 ns.HelpExt = ns.HelpExt or {}
-ns.HelpExt[#ns.HelpExt + 1] = "/drop hc : mode Hardcore détecté ou non (simu : simuler le Hardcore)"
+ns.HelpExt[#ns.HelpExt + 1] = "/drop hc : mode Hardcore (on|off : Hardcore manuel, simu : simuler)"
 
 if ns.On then
   ns.On("PLAYER_LOGIN", function()
-    if not ns.IsHardcore() then return end
-    local db = ns.CharDB and ns.CharDB()
-    if db and not db.hcHello then
-      db.hcHello = true
-      ns.Print(Tr["Hardcore détecté : le liseré danger sur la cible est actif (Réglages > Avancé > Hardcore)."])
-    end
+    if ns.IsHardcore() then Hello(false) end
   end)
 end

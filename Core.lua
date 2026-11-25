@@ -87,8 +87,13 @@ function ns.Print(msg)
 end
 
 -- 3.10.0 : mode Hardcore (à venir sur Forever) : règle HC active. Test : ns._forceHC (/drop hc simu).
-function ns.IsHardcore()
-  if ns._forceHC then return true end
+-- Hardcore volontaire (non officiel) : case par personnage (CharDB().hcManual).
+function ns.HardcoreManual()
+  if not ns.CharDB then return false end
+  local ok, c = pcall(ns.CharDB)
+  return ok and type(c) == "table" and c.hcManual == true
+end
+function ns.HardcoreOfficial()
   local gr = _G.C_GameRules
   if type(gr) ~= "table" then return false end
   if type(gr.IsHardcoreActive) == "function" then
@@ -101,6 +106,10 @@ function ns.IsHardcore()
     if ok and v == true then return true end
   end
   return false
+end
+function ns.IsHardcore()
+  if ns._forceHC then return true end
+  return ns.HardcoreOfficial() or ns.HardcoreManual()
 end
 
 -- Plafonds pour le total personnalisé (plus de conversion 1-99).
