@@ -96,12 +96,13 @@ local function Pulse(region, from, to, dur)
   return ag
 end
 -- lueur rouge douce AUTOUR du panneau (ombre douce de l'addon, en 8 morceaux,
--- seulement à l'extérieur) + filet rouge fin sur le bord, qui « chauffe » au pic
+-- seulement à l'extérieur), teintée en rouge
 H.GLOW = 16
-local function ShadowTex()
-  local Th = ns.Theme
-  return (Th and Th.SHADOW_TEX) or "Interface\\AddOns\\Dropamine\\Media\\SoftShadow"
-end
+-- textures BLANCHES (Media/Glow-*.tga) : l'ombre de l'addon (SoftShadow) est noire,
+-- donc impossible à teinter en rouge
+local GLOW_SOFT = "Interface\\AddOns\\Dropamine\\Media\\Glow-Soft"
+local GLOW_ROUND = "Interface\\AddOns\\Dropamine\\Media\\Glow-Round"
+local function ShadowTex() return GLOW_SOFT end
 function H.BuildPanelAlert(f)
   if not f then return nil end
   if H.glow and H.glow:GetParent() == f then return H.glow end
@@ -183,7 +184,7 @@ function H.BuildDropAlert(t)
     fx = CreateFrame("Frame", nil, t)
     if fx.EnableMouse then fx:EnableMouse(false) end
     local halo = fx:CreateTexture(nil, "BACKGROUND")
-    pcall(halo.SetTexture, halo, ShadowTex())
+    pcall(halo.SetTexture, halo, GLOW_ROUND)
     halo:SetVertexColor(H.DANGER[1], H.DANGER[2], H.DANGER[3], 1)
     if halo.SetBlendMode then pcall(halo.SetBlendMode, halo, "ADD") end
     fx.halo = halo
