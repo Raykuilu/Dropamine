@@ -43,6 +43,14 @@ H.OPTIONS = {
     help = "Personnage Hardcore : si la cible est élite, de niveau ?? ou a 3 niveaux de plus que toi, le cadre du panneau pulse en rouge, un bandeau dit pourquoi et la goutte bat en rouge. Les cases gardent leurs couleurs.", home = "advanced" },
   { type = "check", key = "hcSound", label = "Son d'alerte au ciblage", default = true, cmd = "Réglage de ce panneau",
     help = "Personnage Hardcore : un son d'alerte, une fois par cible dangereuse. Joué même si les sons de l'addon sont coupés.", home = "advanced" },
+  { type = "check", key = "hcGlowFrame", label = "Lueur rouge autour du panneau", default = true, cmd = "Réglage de ce panneau",
+    help = "Alerte danger : une lueur rouge respire autour du panneau.", home = "advanced" },
+  { type = "slider", key = "hcGlowFrameInt", label = "Intensité de la lueur du panneau", default = 50, min = 10, max = 100, step = 5, unit = "pct", cmd = "Réglage de ce panneau",
+    help = "Force de la lueur rouge autour du panneau.", home = "advanced" },
+  { type = "check", key = "hcGlowDrop", label = "Goutte qui bat (halo rouge)", default = true, cmd = "Réglage de ce panneau",
+    help = "Alerte danger : la goutte du total bat, avec un halo rouge derrière.", home = "advanced" },
+  { type = "slider", key = "hcGlowDropInt", label = "Intensité du halo de la goutte", default = 35, min = 10, max = 100, step = 5, unit = "pct", cmd = "Réglage de ce panneau",
+    help = "Force du halo rouge derrière la goutte.", home = "advanced" },
 }
 local O = ns.Options
 if O then
@@ -50,12 +58,15 @@ if O then
   for _, it in ipairs(H.OPTIONS) do O.EXTRA[#O.EXTRA + 1] = it O.EXTRA_HOME[it.key] = it.home end
   if O.GROUPS then
     O.GROUPS.grpHardcore = { label = "Hardcore", help = "Actif seulement sur un personnage Hardcore (mode à venir sur Forever).",
-      items = { { "hcManual", "Je joue en Hardcore (mode non officiel)" }, { "hcDanger", "Alerte danger sur la cible" }, { "hcSound", "Son d'alerte au ciblage" } } }
+      items = { { "hcManual", "Je joue en Hardcore (mode non officiel)" }, { "hcDanger", "Alerte danger sur la cible" }, { "hcSound", "Son d'alerte au ciblage" },
+        { "hcGlowFrame", "Lueur rouge autour du panneau" }, { "hcGlowFrameInt", "Intensité de la lueur du panneau" },
+        { "hcGlowDrop", "Goutte qui bat (halo rouge)" }, { "hcGlowDropInt", "Intensité du halo de la goutte" } } }
   end
   if O.MAP and O.MAP.advanced then table.insert(O.MAP.advanced, 1, { "Hardcore", { "grpHardcore" } }) end
   if O.TEST then
     O.TEST.hcDanger = "danger"
     O.TEST.hcSound = "hcsound"
+    O.TEST.hcGlowFrame = "danger" O.TEST.hcGlowFrameInt = "danger" O.TEST.hcGlowDrop = "danger" O.TEST.hcGlowDropInt = "danger"
     O.TEST.grpHardcore = "group"
   end
   O.TEST_FN = O.TEST_FN or {}
@@ -112,12 +123,14 @@ function H.BuildPanelAlert(f)
   if g.SetFrameLevel and f.GetFrameLevel then pcall(g.SetFrameLevel, g, (N(f:GetFrameLevel()) or 1) + 20) end
   if g.EnableMouse then g:EnableMouse(false) end
   local P, E = H.GLOW, 20 / 64   -- largeur de la lueur ; bord flou du fichier + un peu de zone pleine
+  g.pieces = {}
   local function Piece(l, r, t, b)
     local s = g:CreateTexture(nil, "BACKGROUND")
     pcall(s.SetTexture, s, tex)
     s:SetTexCoord(l, r, t, b)
     s:SetVertexColor(H.DANGER[1], H.DANGER[2], H.DANGER[3], 1)
     if s.SetBlendMode then pcall(s.SetBlendMode, s, "ADD") end
+    g.pieces[#g.pieces + 1] = s
     return s
   end
   -- coins
@@ -228,6 +241,12 @@ local function OrigAlpha(t, a)
   for _, o in ipairs({ t.icon or false, clip or false }) do if o and o.SetAlpha then pcall(o.SetAlpha, o, a) end end
 end
 -- état de l'alerte : why = texte ou nil
+-- intensité réglée (curseurs de l'onglet Hardcore), 0..1
+function H.Intensity(key, def)
+  local ui = ns.db and ns.db.ui
+  local v = ui and N(ui[key])
+  return math.max(0, math.min(100, v or def)) / 100
+end
 function H.Show(why)
   H.why = why
   local Wn = ns.Window
@@ -237,17 +256,25 @@ function H.Show(why)
     if why then
       g.banner.fs:SetText(why)
       g.banner:SetWidth((N(g.banner.fs:GetStringWidth()) or 60) + 30)
-      g:Show() g.banner:Show() Play(g.ag, true)
+      g.banner:Show()
+      if ns.Opt("hcGlowFrame") then
+        local a = H.Intensity("hcGlowFrameInt", 50)
+        for _, s in ipairs(g.pieces or {}) do s:SetVertexColor(H.DANGER[1], H.DANGER[2], H.DANGER[3], a) end
+        g:Show() Play(g.ag, true)
+      else
+        Play(g.ag, false) g:Hide()
+      end
     else
       Play(g.ag, false) g:Hide() g.banner:Hide()
     end
   end
   for _, t in ipairs(TotalTiles()) do
     local busy = t._needle and t._needle.IsShown and t._needle:IsShown()
-    local on = why and not busy
+    local on = why and not busy and ns.Opt("hcGlowDrop")
     local fx = on and H.BuildDropAlert(t) or t._hcFx
     if fx then
       if on then
+        fx.halo:SetVertexColor(H.DANGER[1], H.DANGER[2], H.DANGER[3], H.Intensity("hcGlowDropInt", 35))
         fx:Show() Play(fx.ag, true) Play(fx.haloAG, true)
         OrigAlpha(t, 0) t._hcHid = true
       else
@@ -367,7 +394,8 @@ if ns.OnOptionChanged then
   local baseOpt = ns.OnOptionChanged
   function ns.OnOptionChanged(key, value, ...)
     local r = { baseOpt(key, value, ...) }
-    if key == "hcDanger" or key == "hcManual" then pcall(H.Update, false) end
+    if key == "hcDanger" or key == "hcManual" then pcall(H.Update, false)
+    elseif type(key) == "string" and key:find("^hcGlow") and H.why then pcall(H.Show, H.why) end
     return unpack(r)
   end
 end
