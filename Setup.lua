@@ -314,7 +314,7 @@ function S.OpenAbout()
   PU.cards, PU.buttons, PU.texts, PU.pillGroups = PU.cards or {}, PU.buttons or {}, PU.texts or {}, PU.pillGroups or {}
   local links = {}
   for _, l in ipairs(S.LINKS) do if l.url then links[#links + 1] = l end end
-  local W, H = 520, 262 + #links * 30
+  local W, H = 520, 276 + #links * 30
   local f = PU.Card(_G.UIParent, 0, 0, W, H, "")
   f:ClearAllPoints()
   f:SetPoint("CENTER", _G.UIParent, "CENTER", 0, 60)
@@ -366,17 +366,21 @@ function S.OpenAbout()
     y = y + 30
   end
   local hint = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  hint:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 96)
+  hint:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 110)
   hint:SetText(Tr["Clique une adresse, Ctrl+C pour la copier."])
   local th0 = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  th0:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 74)
+  th0:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 88)
   th0:SetText(Tr["Suivi des compétences et collection log inspirés d'Old School RuneScape (projet non affilié)."])
   local th = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  th:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 60)
+  th:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 74)
   th:SetText(Tr["Merci à Flare UI pour l'inspiration visuelle."])
   local th2 = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  th2:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 46)
+  th2:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 60)
   th2:SetText(Tr["Merci à Exehn (Dungeon Journal) pour sa base et l'accès aux favoris."])
+  -- 3.10.0 : lien optionnel avec SkillUp Forever (API publique, aucun code repris)
+  local th3 = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  th3:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 46)
+  th3:SetText(Tr["Merci à cjber (SkillUp Forever) pour son API publique, utilisée par le lien optionnel."])
   local close = PU.Button(f, 70, 22, Tr["Fermer"], "share", function() f:Hide() end)
   close:ClearAllPoints() close:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 12)
   local optb = PU.Button(f, 90, 22, Tr["Réglages"], "share", function() f:Hide() if ns.Options and ns.Options.Open then pcall(ns.Options.Open) end end)
