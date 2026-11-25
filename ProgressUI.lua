@@ -2307,6 +2307,31 @@ end
 
 -- Onglet Collection (endgame) : un vrai log. Liste à sous-titres à gauche, objets à droite -------
 local LOG_LROWS, LOG_RLINES, LOG_PERROW = 13, 8, 14
+-- 3.10.0 : barre de défilement du volet de droite : visible seulement si la liste dépasse
+function PU.SetRScroll(c, total)
+  local tr = c and c.rtrack
+  if not tr then return end
+  total = tonumber(total) or 0
+  tr.total = total
+  if total <= LOG_RLINES then tr:Hide() return end
+  local pal = PU.Pal()
+  Paint(tr.bg, pal.line1 or pal.grid or { 1, 1, 1, 0.06 })
+  Paint(tr.thumb, pal.bar or pal.title or { 0.9, 0.75, 0.3, 0.9 })
+  local th = math.max(14, tr.h * LOG_RLINES / total)
+  local frac = (c.ui.rOff or 0) / math.max(1, total - LOG_RLINES)
+  tr.thumb:ClearAllPoints()
+  tr.thumb:SetSize(6, th)
+  tr.thumb:SetPoint("TOP", tr, "TOP", 0, -math.floor(frac * (tr.h - th) + 0.5))
+  tr:Show()
+end
+-- rang actuel d'une case métier (snapshot du panneau)
+function PU.SkillRank(id)
+  local snap = ns.UI and ns.UI.snapshot
+  for _, t in ipairs((snap and (snap.allTiles or snap.tiles)) or {}) do
+    if t.id == id then return tonumber(t.current) or 0 end
+  end
+  return 0
+end
 function PU.BuildCollection(f)
   local p = Page(f, "collection")
   local c = PU.Card(p, 0, 0, PU.CONTENT_W, PU.CONTENT_H, "")
@@ -2405,8 +2430,46 @@ function PU.BuildCollection(f)
       b:SetScript("OnLeave", function() if _G.GameTooltip then _G.GameTooltip:Hide() end end)
       ln.icons[k] = b
     end
+    -- 3.10.0 : zone cliquable des en-têtes de tranche (recettes), cachée sinon
+    local hit = CreateFrame("Button", nil, c)
+    hit:SetSize(RW - 14, 22)
+    hit:SetPoint("TOPLEFT", c, "TOPLEFT", RX - 4, -(y + 3))
+    hit.hl = Tex(hit, "BACKGROUND", 1) hit.hl:SetAllPoints(hit)
+    hit:SetScript("OnEnter", function(self) Paint(self.hl, PU.Pal().cardHi or { 1, 1, 1, 0.07 }) end)
+    hit:SetScript("OnLeave", function(self) Paint(self.hl, { 0, 0, 0, 0 }) end)
+    hit:SetScript("OnClick", function(self)
+      local ui = ns.db and ns.db.ui
+      if not (ui and self.skill and self.head) then return end
+      ui.recipeFold = type(ui.recipeFold) == "table" and ui.recipeFold or {}
+      ui.recipeFold[self.skill] = type(ui.recipeFold[self.skill]) == "table" and ui.recipeFold[self.skill] or {}
+      ui.recipeFold[self.skill][self.head] = not self.open
+      PU.RefreshCollection()
+    end)
+    hit:Hide()
+    ln.hit = hit
     c.rlines[i] = ln
   end
+  -- 3.10.0 : barre de défilement fine du volet de droite (molette ou clic-glisser)
+  local trackH = LOG_RLINES * 33 - 6
+  c.rtrack = CreateFrame("Button", nil, c)
+  c.rtrack:SetSize(6, trackH)
+  c.rtrack:SetPoint("TOPRIGHT", c, "TOPRIGHT", -2, -44)
+  c.rtrack.bg = Tex(c.rtrack, "BACKGROUND", 1) c.rtrack.bg:SetAllPoints(c.rtrack)
+  c.rtrack.thumb = Tex(c.rtrack, "ARTWORK", 2)
+  c.rtrack.h = trackH
+  local function DragTo(self)
+    local total = self.total or 0
+    if total <= LOG_RLINES then return end
+    local _, cy = _G.GetCursorPosition()
+    local scale = (self.GetEffectiveScale and self:GetEffectiveScale()) or 1
+    local top = (self.GetTop and self:GetTop()) or 0
+    local frac = math.max(0, math.min(1, (top - cy / scale) / self.h))
+    local off = math.floor(frac * (total - LOG_RLINES) + 0.5)
+    if off ~= c.ui.rOff then c.ui.rOff = off PU.RefreshCollection() end
+  end
+  c.rtrack:SetScript("OnMouseDown", function(self) DragTo(self) self:SetScript("OnUpdate", DragTo) end)
+  c.rtrack:SetScript("OnMouseUp", function(self) self:SetScript("OnUpdate", nil) end)
+  c.rtrack:Hide()
   c.rfoot = FS(c, "GameFontDisableSmall", "sub")
   c.rfoot:SetPoint("BOTTOMLEFT", c, "BOTTOMLEFT", RX, 8)
   c.rfoot:SetWidth(RW)
@@ -2615,8 +2678,10 @@ function PU.RefreshCollection(p)
   for _, ln in ipairs(c.rlines) do
     ln.fs:Hide() ln.val:Hide()
     for _, b in ipairs(ln.icons) do b:Hide() end
+    if ln.hit then ln.hit:Hide() end
   end
   c.rstat:Hide() c.rempty:Hide() c.rfoot:Hide()
+  PU.SetRScroll(c, 0)
   c.hkpi:Hide() c.hlab1:Hide() c.hlab2:Hide()
   for _, b in ipairs(c.hcat) do b:Hide() end
   for _, b in ipairs(c.halm) do b:Hide() end
@@ -2645,13 +2710,36 @@ function PU.RefreshCollection(p)
     if full then
       slines = {}
       local SU = ns.SkillUp
+      -- tranches de rang (Apprenti 1-75…), repliables ; par défaut seule la tranche du rang actuel est ouverte
+      local byT = {}
       for _, m in ipairs(full) do
-        slines[#slines + 1] = { text = m.name, rid = m.rid, lvl = m.lvl,
-          lazy = function()
-            local src = (SU and SU.SourceText and SU.SourceText(m.rid)) or Tr["chargement…"]
-            local alt = SU and SU.KnownByAlt and SU.KnownByAlt(m.rid)
-            return string.format(Tr["niv. %d"], m.lvl) .. " · " .. src .. (alt and (" · " .. Tr["connue de "] .. alt) or "")
-          end }
+        local t = SU.TrancheOf(m.lvl)
+        byT[t] = byT[t] or {}
+        byT[t][#byT[t] + 1] = m
+      end
+      local cur = PU.SkillRank and PU.SkillRank(e.skill) or 0
+      local curT = SU.TrancheOf(math.max(1, cur + 1))
+      local ui = ns.db and ns.db.ui
+      local folds = ui and type(ui.recipeFold) == "table" and ui.recipeFold[e.skill] or nil
+      for t, tr in ipairs(SU.TRANCHES) do
+        local list = byT[t]
+        if list and #list > 0 then
+          local open
+          if folds and folds[t] ~= nil then open = folds[t] else open = (t == curT) end
+          slines[#slines + 1] = { head = t, skill = e.skill, open = open, hi = (t == curT),
+            text = (open and "– " or "+ ") .. string.format("%s (%d-%d)", Tr[tr[3]], tr[1], tr[2]),
+            val = string.format(Tr["%d manquantes"], #list) }
+          if open then
+            for _, m in ipairs(list) do
+              slines[#slines + 1] = { text = "   " .. m.name, rid = m.rid, lvl = m.lvl,
+                lazy = function()
+                  local src = (SU and SU.SourceText and SU.SourceText(m.rid)) or Tr["chargement…"]
+                  local alt = SU and SU.KnownByAlt and SU.KnownByAlt(m.rid)
+                  return string.format(Tr["niv. %d"], m.lvl) .. " · " .. src .. (alt and (" · " .. Tr["connue de "] .. alt) or "")
+                end }
+            end
+          end
+        end
       end
       if #slines == 0 then note = Tr["Toutes les recettes du métier sont apprises."] end
     elseif fullWhy == "noread" then
@@ -2684,7 +2772,11 @@ function PU.RefreshCollection(p)
     end
     if slines and #slines > 0 then
       if e.kind then c.rfoot:SetText(Tr["Créatures rencontrées par tous tes personnages, sur le total connu de la base."]) c.rfoot:Show() end
-      if full then c.rfoot:SetText(Tr["Liste complète grâce à SkillUp Forever."]) c.rfoot:Show() end
+      if full then
+        local foot = Tr["Liste complète grâce à SkillUp Forever."]
+        if ns.SkillUp.RichSources and not ns.SkillUp.RichSources() then foot = foot .. " " .. Tr["Sources plus précises avec Questie ou AtlasLoot."] end
+        c.rfoot:SetText(foot) c.rfoot:Show()
+      end
       c.ui.rOff = math.min(c.ui.rOff, math.max(0, #slines - LOG_RLINES))
       for i, ln in ipairs(c.rlines) do
         local l = slines[i + c.ui.rOff]
@@ -2693,10 +2785,17 @@ function PU.RefreshCollection(p)
           local val = l.val
           if not val and l.lazy then local okL, v = pcall(l.lazy) val = okL and v or "" end
           ln.fs:SetText(l.text) ln.val:SetText(val) ln.fs:Show() ln.val:Show()
-          TextColor(ln.fs, l.hi and (pal.title or pal.text) or pal.text)
-          TextColor(ln.val, l.hi and (pal.title or pal.text) or pal.text)
+          local col = (l.hi or l.head) and (pal.title or pal.text) or pal.text
+          TextColor(ln.fs, col)
+          TextColor(ln.val, col)
+          -- 3.10.0 : en-tête de tranche cliquable (+ / –)
+          if l.head and ln.hit then
+            ln.hit.head, ln.hit.skill, ln.hit.open = l.head, l.skill, l.open
+            ln.hit:Show()
+          end
         end
       end
+      PU.SetRScroll(c, #slines)
       return
     end
     c.rstat:SetText(note or Tr["Ce compteur se remplit en jouant : le scanner apprend les créatures, nœuds et recettes que tu rencontres."])
@@ -2716,6 +2815,7 @@ function PU.RefreshCollection(p)
     end
   end
   c.ui.rOff = math.min(c.ui.rOff, math.max(0, #lines - LOG_RLINES))
+  PU.SetRScroll(c, #lines)
   for i, ln in ipairs(c.rlines) do
     local l = lines[i + c.ui.rOff]
     if l and l.boss then

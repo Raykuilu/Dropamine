@@ -224,6 +224,8 @@ function SU.SourceText(rid)
     return nil
   end
   if not text and req and req.source == "trainer" then text = Tr["Maître de métier"] end
+  -- un patron (objet) sans lieu connu : SkillUp ne nomme vendeurs, quêtes et butins qu'avec Questie / AtlasLoot
+  if not text and req and req.source == "item" then text = Tr["Patron (vendeur, butin ou quête)"] end
   text = text or Tr["Source inconnue"]
   SU.srcCache[rid] = text
   return text
@@ -237,6 +239,24 @@ function SU.KnownByAlt(rid)
     if key ~= me and Call(api.Knows, key, rid) == true then return (tostring(key):match("^([^%-]+)")) end
   end
   return nil
+end
+-- Questie ou AtlasLoot chargés : SkillUp donne alors les vendeurs, quêtes et butins
+function SU.RichSources()
+  local A = _G.C_AddOns
+  local loaded = (A and A.IsAddOnLoaded) or _G.IsAddOnLoaded
+  if type(loaded) ~= "function" then return false end
+  for _, n in ipairs({ "Questie", "QuestieDB", "AtlasLootClassic" }) do
+    local ok, v = pcall(loaded, n)
+    if ok and v then return true end
+  end
+  return false
+end
+-- tranches de rang des métiers (Apprenti, Compagnon, Expert, Artisan)
+SU.TRANCHES = { { 1, 75, "Apprenti" }, { 76, 150, "Compagnon" }, { 151, 225, "Expert" }, { 226, 300, "Artisan" } }
+function SU.TrancheOf(lvl)
+  lvl = tonumber(lvl) or 0
+  for i, t in ipairs(SU.TRANCHES) do if lvl <= t[2] then return i end end
+  return #SU.TRANCHES
 end
 -- recettes manquantes : { { rid, name, lvl } } triées par niveau requis ; known = noms connus (repliés)
 function SU.Missing(skill, known)
