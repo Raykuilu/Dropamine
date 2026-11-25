@@ -159,6 +159,8 @@ Everything runs on game events. Nothing runs while idle, heavy scans wait until 
 
 Unzip into `World of Warcraft\_forever_\Interface\AddOns\`, so you have `AddOns\Dropamine\Dropamine.toc`.
 
+Dropamine is free, with no ads. If it brightens your sessions, you can [buy me a coffee ☕](https://buymeacoffee.com/raykuilu): it keeps the updates coming.
+
 Author: **Raykuilu**. License: **MIT**. Source: [github.com/Raykuilu/Dropamine](https://github.com/Raykuilu/Dropamine).
 
 Skill tracking and collection log inspired by Old School RuneScape (unaffiliated, no Jagex assets). Visual inspiration from FlareUI by Malkkav. Dungeon Journal data and favourites access: thanks to Exehn. SkillUp Forever link through its public API: thanks to cjber. World of Warcraft and Blizzard textures referenced by path are © Blizzard Entertainment.
@@ -325,6 +327,8 @@ Tout fonctionne sur les événements du jeu. Rien ne tourne au repos, les analys
 ## Installation
 
 Décompresse l'archive dans `World of Warcraft\_forever_\Interface\AddOns\`, pour obtenir `AddOns\Dropamine\Dropamine.toc`.
+
+Dropamine est gratuit et sans pub. S'il égaye tes sessions, tu peux [m'offrir un café ☕](https://buymeacoffee.com/raykuilu) : c'est ce qui fait vivre les mises à jour.
 
 Auteur : **Raykuilu**. Licence : **MIT**. Source : [github.com/Raykuilu/Dropamine](https://github.com/Raykuilu/Dropamine).
 
