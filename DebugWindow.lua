@@ -12,43 +12,73 @@ DW.W, DW.H = 620, 420
 
 local function P(o, m, ...) if type(o) == "table" and type(o[m]) == "function" then return pcall(o[m], o, ...) end end
 
+-- 3.10.0 : fenêtre du jeu (cadre à portrait + encart), comme les rapports des addons Forever.
+-- Repli sur l'ancien habillage si le client n'a pas ces modèles.
+DW.ICON = "Interface\\AddOns\\Dropamine\\Media\\Dropamine-Icon"
+local function NativeFrame()
+  local ok, f = pcall(CreateFrame, "Frame", DW.NAME, UIParent, "PortraitFrameTemplate")
+  if not (ok and f) then return nil end
+  f:SetSize(DW.W, DW.H)
+  if type(f.SetTitle) == "function" then pcall(f.SetTitle, f, "Dropamine") end
+  local portrait = (type(f.GetPortrait) == "function" and select(2, pcall(f.GetPortrait, f))) or f.portrait
+    or (f.PortraitContainer and f.PortraitContainer.portrait)
+  if portrait and portrait.SetTexture then
+    pcall(portrait.SetTexture, portrait, DW.ICON)
+    if portrait.SetTexCoord then pcall(portrait.SetTexCoord, portrait, 0, 1, 0, 1) end
+  end
+  local hint = f:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+  hint:SetPoint("TOPLEFT", f, "TOPLEFT", 70, -32)
+  hint:SetPoint("RIGHT", f, "RIGHT", -16, 0)
+  if hint.SetJustifyH then hint:SetJustifyH("LEFT") end
+  DW.title = hint
+  local okI, inset = pcall(CreateFrame, "Frame", nil, f, "InsetFrameTemplate")
+  DW.inset = okI and inset or nil
+  DW.native = true
+  return f
+end
 function DW.Build()
   if DW.frame then return DW.frame end
-  local f = CreateFrame("Frame", DW.NAME, UIParent)
+  DW.W, DW.H = 540, 420
+  local f = NativeFrame()
+  if not f then
+    DW.W, DW.H = 620, 420
+    f = CreateFrame("Frame", DW.NAME, UIParent)
+    f:SetSize(DW.W, DW.H)
+  end
   f._osrsOwn = true
-  f:SetSize(DW.W, DW.H)
   f:SetPoint("CENTER", UIParent, "CENTER", 0, 40)
   P(f, "SetFrameStrata", "DIALOG")
+  P(f, "SetToplevel", true)
   P(f, "SetClampedToScreen", true)
   P(f, "SetMovable", true)
   P(f, "EnableMouse", true)
   P(f, "RegisterForDrag", "LeftButton")
   f:SetScript("OnDragStart", function(self) P(self, "StartMoving") end)
   f:SetScript("OnDragStop", function(self) P(self, "StopMovingOrSizing") end)
-  -- habillage : la recette du panneau (FlareUI / classique selon le thème), fond opaque
-  local Sk = ns.Skin
-  if Sk and Sk.Host then
-    local host = Sk.Host(f)
-    if host and Sk.Paint then Sk.Paint(host, 0.96) end
-    DW.host = host
+  if not DW.native then
+    -- habillage : la recette du panneau (FlareUI / classique selon le thème), fond opaque
+    local Sk = ns.Skin
+    if Sk and Sk.Host then
+      local host = Sk.Host(f)
+      if host and Sk.Paint then Sk.Paint(host, 0.96) end
+      DW.host = host
+    end
+    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -12)
+    DW.title = title
+    local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    close:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -2)
+    close:SetScript("OnClick", function() f:Hide() end)
+    DW.close = close
   end
-  local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  title:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -12)
-  title:SetText(Tr["Dropamine — debug (Ctrl+C pour copier)"])
-  DW.title = title
-  local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-  close:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -2)
-  close:SetScript("OnClick", function() f:Hide() end)
-  DW.close = close
-  local sf = CreateFrame("ScrollFrame", DW.NAME .. "Scroll", f, "UIPanelScrollFrameTemplate")
-  sf:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -34)
-  sf:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -32, 14)
+  DW.title:SetText(Tr["Dropamine — debug (Ctrl+C pour copier)"])
+  local sf = CreateFrame("ScrollFrame", DW.NAME .. "Scroll", DW.inset or f, "UIPanelScrollFrameTemplate")
   DW.scroll = sf
   local eb = CreateFrame("EditBox", DW.NAME .. "Edit", sf)
   P(eb, "SetMultiLine", true)
   P(eb, "SetAutoFocus", false)
   P(eb, "SetFontObject", _G.ChatFontNormal or _G.GameFontHighlightSmall)
-  eb:SetWidth(DW.W - 50)
+  eb:SetWidth(DW.W - 66)
   P(eb, "SetMaxLetters", 0)
   eb:SetScript("OnEscapePressed", function() f:Hide() end)
   -- lecture seule : toute frappe remet le texte et le resélectionne (sauf en mode saisie, 3.9.0)
@@ -83,8 +113,18 @@ end
 local function Layout(editable)
   local sf = DW.scroll
   sf:ClearAllPoints()
-  sf:SetPoint("TOPLEFT", DW.frame, "TOPLEFT", 14, -34)
-  sf:SetPoint("BOTTOMRIGHT", DW.frame, "BOTTOMRIGHT", -32, editable and 40 or 14)
+  local inset = DW.inset
+  if inset then
+    -- 3.10.0 : encart sous la ligne d'aide, le bouton de validation dessous en mode saisie
+    inset:ClearAllPoints()
+    inset:SetPoint("TOPLEFT", DW.frame, "TOPLEFT", 10, -64)
+    inset:SetPoint("BOTTOMRIGHT", DW.frame, "BOTTOMRIGHT", -10, editable and 40 or 10)
+    sf:SetPoint("TOPLEFT", inset, "TOPLEFT", 8, -8)
+    sf:SetPoint("BOTTOMRIGHT", inset, "BOTTOMRIGHT", -28, 8)
+  else
+    sf:SetPoint("TOPLEFT", DW.frame, "TOPLEFT", 14, -34)
+    sf:SetPoint("BOTTOMRIGHT", DW.frame, "BOTTOMRIGHT", -32, editable and 40 or 14)
+  end
   if editable then DW.accept:Show() else DW.accept:Hide() end
 end
 

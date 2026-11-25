@@ -166,7 +166,7 @@ function SU.Hook()
   if SU.hooked then return true end
   local api = SU.API()
   if not (api and type(api.Subscribe) == "function") then return false end
-  local ok = pcall(api.Subscribe, function() SU.dirty = true SU.rev = (SU.rev or 0) + 1 SU.Schedule() end)
+  local ok = pcall(api.Subscribe, function() SU.dirty = true SU.srcCache = {} SU.rev = (SU.rev or 0) + 1 SU.Schedule() end)
   if not ok then return false end
   SU.hooked = true
   if ns.db and not ns.db.skillupHello then

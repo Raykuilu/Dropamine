@@ -18,6 +18,11 @@
 - Fishing ranks: the Artisan quest now asks for Fishing 225 (also Cooking and First Aid), and the rank reminder says where to go: Old Man Heming in Booty Bay for the Expert book, Nat Pagle in Dustwallow Marsh for the Artisan quest.
 - English command aliases: `/drop hunt` (and `add` / `remove`), `/drop summary`, `/drop collapse`, `/drop expand`; English help and README now use English commands (`/drop weapons`, `/drop hunt`, `/drop tiers`, `/drop columns`, `/drop lock`, `/drop fade`).
 - Setup tour: the theme page also has a "Show the total level" box, and the last page mentions the two optional companions, Dungeon Journal and SkillUp Forever.
+- Collection log: the same light highlight under the mouse everywhere (categories, dungeons, recipes, Apprentice / Journeyman / Expert lines); long recipe names are cut with "…" and shown in full, with their source, in the tooltip.
+- Copy windows (`/drop debug`, `/drop bug`, profile export / import) use the game's own window style, with the Dropamine portrait.
+
+### Fixes
+- Recipe sources refresh as soon as SkillUp Forever has finished loading its data.
 
 ## 3.9.0
 

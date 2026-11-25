@@ -2307,6 +2307,8 @@ end
 
 -- Onglet Collection (endgame) : un vrai log. Liste à sous-titres à gauche, objets à droite -------
 local LOG_LROWS, LOG_RLINES, LOG_PERROW = 13, 8, 14
+-- 3.10.0 : couleur de survol unique de la collection (voile doré léger, ne cache jamais le texte)
+PU.HOVER = { 1, 0.85, 0.45, 0.10 }
 -- 3.10.0 : barre de défilement du volet de droite : visible seulement si la liste dépasse
 function PU.SetRScroll(c, total)
   local tr = c and c.rtrack
@@ -2360,16 +2362,19 @@ function PU.BuildCollection(f)
     b:SetSize(184, 19)
     b:SetPoint("TOPLEFT", c, "TOPLEFT", 6, -(24 + (i - 1) * 21))
     b.bg = Tex(b, "BACKGROUND", 1) b.bg:SetAllPoints(b)
+    -- 3.10.0 : survol commun à toute la collection (gauche, en-têtes, recettes)
+    b.hov = Tex(b, "BACKGROUND", 2) b.hov:SetAllPoints(b) Paint(b.hov, PU.HOVER) b.hov:Hide()
     b.fs = FS(b, "GameFontHighlightSmall", "text")
     b.fs:SetPoint("LEFT", b, "LEFT", 6, 0)
     b.fs:SetWidth(132)
     if b.fs.SetJustifyH then b.fs:SetJustifyH("LEFT") end
     b:SetScript("OnEnter", function(self)
+      if self.entry or self.head then self.hov:Show() end
       local tt = _G.GameTooltip
       local nm = self.entry and self.entry.label
       if tt and nm and tt.SetOwner then pcall(tt.SetOwner, tt, self, "ANCHOR_RIGHT") tt:AddLine(nm, 1, 1, 1) tt:Show() end
     end)
-    b:SetScript("OnLeave", function() if _G.GameTooltip then _G.GameTooltip:Hide() end end)
+    b:SetScript("OnLeave", function(self) self.hov:Hide() if _G.GameTooltip then _G.GameTooltip:Hide() end end)
     b.val = FS(b, "GameFontNormalSmall", "title")
     b.val:SetPoint("RIGHT", b, "RIGHT", -4, 0)
     b.bar = PU.NewBar(b, 6, 17, 172, 2)   -- 3.9.0 : progression du donjon, sous le nom
@@ -2407,7 +2412,7 @@ function PU.BuildCollection(f)
     ln.fs:SetWidth(RW - 60)
     if ln.fs.SetJustifyH then ln.fs:SetJustifyH("LEFT") end
     ln.val = FS(c, "GameFontNormalSmall", "title")
-    ln.val:SetPoint("TOPRIGHT", c, "TOPRIGHT", -10, -(y + 8))
+    ln.val:SetPoint("TOPRIGHT", c, "TOPRIGHT", -16, -(y + 8))
     if ln.val.SetJustifyH then ln.val:SetJustifyH("RIGHT") end
     ln.icons = {}
     for k = 1, LOG_PERROW do
@@ -2434,9 +2439,21 @@ function PU.BuildCollection(f)
     local hit = CreateFrame("Button", nil, c)
     hit:SetSize(RW - 14, 22)
     hit:SetPoint("TOPLEFT", c, "TOPLEFT", RX - 4, -(y + 3))
-    hit.hl = Tex(hit, "BACKGROUND", 1) hit.hl:SetAllPoints(hit)
-    hit:SetScript("OnEnter", function(self) Paint(self.hl, PU.Pal().cardHi or { 1, 1, 1, 0.07 }) end)
-    hit:SetScript("OnLeave", function(self) Paint(self.hl, { 0, 0, 0, 0 }) end)
+    hit.hl = Tex(hit, "BACKGROUND", 1) hit.hl:SetAllPoints(hit) Paint(hit.hl, PU.HOVER) hit.hl:Hide()
+    hit:SetScript("OnEnter", function(self)
+      self.hl:Show()
+      -- ligne de recette : nom complet (peut être coupé) et source
+      if self.tipTitle then
+        local tt = _G.GameTooltip
+        if tt and tt.SetOwner then
+          pcall(tt.SetOwner, tt, self, "ANCHOR_RIGHT")
+          tt:AddLine(self.tipTitle, 1, 1, 1)
+          if self.tipText and self.tipText ~= "" then tt:AddLine(self.tipText, 0.85, 0.85, 0.85, true) end
+          tt:Show()
+        end
+      end
+    end)
+    hit:SetScript("OnLeave", function(self) self.hl:Hide() if _G.GameTooltip then _G.GameTooltip:Hide() end end)
     hit:SetScript("OnClick", function(self)
       local ui = ns.db and ns.db.ui
       if not (ui and self.skill and self.head) then return end
@@ -2784,13 +2801,19 @@ function PU.RefreshCollection(p)
           -- les sources ne sont lues que pour les lignes affichées
           local val = l.val
           if not val and l.lazy then local okL, v = pcall(l.lazy) val = okL and v or "" end
-          ln.fs:SetText(l.text) ln.val:SetText(val) ln.fs:Show() ln.val:Show()
+          ln.val:SetText(val) ln.fs:Show() ln.val:Show()
+          -- 3.10.0 : le nom s'arrête avant la colonne de droite (« … », nom complet au survol)
+          local vw = (ln.val.GetStringWidth and ln.val:GetStringWidth()) or 0
+          local room = math.max(60, (PU.CONTENT_W - 206 - 10) - 16 - vw - 14)
+          PU.SetClipped(ln.fs, l.text, room)
           local col = (l.hi or l.head) and (pal.title or pal.text) or pal.text
           TextColor(ln.fs, col)
           TextColor(ln.val, col)
-          -- 3.10.0 : en-tête de tranche cliquable (+ / –)
-          if l.head and ln.hit then
+          -- 3.10.0 : en-têtes de tranche cliquables (+ / –), survol et infobulle sur les lignes de recettes
+          if ln.hit and (l.head or l.rid) then
             ln.hit.head, ln.hit.skill, ln.hit.open = l.head, l.skill, l.open
+            ln.hit.tipTitle = l.rid and (tostring(l.text):gsub("^%s+", "")) or nil
+            ln.hit.tipText = l.rid and val or nil
             ln.hit:Show()
           end
         end
