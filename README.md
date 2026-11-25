@@ -8,11 +8,30 @@
 
 *[Version française plus bas](#français)*
 
-**Dropamine 3.8** puts every skill on screen, celebrates each +1 like Old School RuneScape, and now tracks the gear you are farming: a **Collection log** for every dungeon and raid, and a **BiS hunt** that reads your **Dungeon Journal favourites**.
+**Dropamine 3.10** puts every skill on screen, celebrates each +1 like Old School RuneScape, tracks the gear you are farming (**Collection log**, **BiS hunt**) and now guides your professions with **SkillUp Forever**.
 
 For **WoW Forever** only (`Interface: 16001`). The native Skills tab is never hidden, moved or rewritten. FlareUI is not required.
 
-## New in 3.8: Collection log
+## New in 3.10
+
+![SkillUp Forever.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6278303f3be2fb3f3a62b1374fc8a2a84fd0477c/docs/curseforge/v3/en/new310-skillup-en.png)
+
+- **SkillUp Forever link** (optional): the profession tile tooltip shows your current and next step, a toast tells you when the next step sends you somewhere, and Alt+click sets the map waypoint.
+
+![GPS arrow.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6278303f3be2fb3f3a62b1374fc8a2a84fd0477c/docs/curseforge/v3/en/new310-gps-en.png)
+
+- **GPS arrow**: while that waypoint is active, the drop turns into an arrow that points at it (green ahead, yellow to the side, red behind), with the distance in its tooltip and an "Arrived" toast.
+
+![Every recipe.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6278303f3be2fb3f3a62b1374fc8a2a84fd0477c/docs/curseforge/v3/en/new310-recipes-en.png)
+
+- **Every recipe in the Collection log**: with SkillUp Forever, every profession shows its exact total and the recipes you lack, grouped by rank, with where to get each one and which of your characters already knows it.
+
+![Hardcore.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6278303f3be2fb3f3a62b1374fc8a2a84fd0477c/docs/curseforge/v3/en/new310-hardcore-en.png)
+
+- **Hardcore tab**, ready for Forever's Hardcore mode (or tick "I play Hardcore (unofficial)"): a red glow, a banner and a beating drop when your target is elite, of level ?? or 3+ levels above you, plus an alert sound. Two sliders set each glow.
+- Also new: weapon masters in `/drop weapons`, guild milestone messages (off by default), a "New recipe!" toast, fishing rank trainers, a LibDBIcon minimap button when another add-on provides it, and English command aliases (`/drop hunt`, `/drop summary`…).
+
+## Collection log
 
 ![Collection log.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/collection-log-en.png)
 
@@ -23,7 +42,7 @@ Your Old School RuneScape-style collection log, for WoW Forever dungeons and rai
 - **Every dungeon and raid**, grouped by level bracket. Each boss shows its items with their icons: the ones you own in colour, the missing ones greyed out.
 - **Approximate kill count per boss** (≈N kills), counted from the loot of its tracked items.
 - **A Home page** opens first: overall progress, dungeons completed, boss kills, items, one progress bar per category (click to open it), and the dungeons you are furthest along in.
-- **Professions too:** known recipes out of the total for every profession you have learned. For Cooking and First Aid, the missing recipes are listed by required skill and source.
+- **Professions too:** known recipes out of the total for every profession you have learned. Cooking and First Aid list their missing recipes; with SkillUp Forever (optional), every profession does.
 - **Discoveries:** the bestiary and skinnable creatures you have met, by 10-level bracket, with your own bracket highlighted.
 - Categories fold and unfold, and each one shows its own X / Y. Item, dungeon and boss names follow your game language.
 
@@ -31,7 +50,7 @@ Your Old School RuneScape-style collection log, for WoW Forever dungeons and rai
 
 `/drop collection` · Collection achievements: Collector (10 %), Great collector (25 %), Dream collection (50 %).
 
-## New in 3.8: BiS hunt, linked to Dungeon Journal favourites
+## BiS hunt, linked to Dungeon Journal favourites
 
 ![BiS hunt.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/en/bis-hunt-en.png)
 
@@ -111,6 +130,7 @@ A short guided tour shows each feature, lets you try it and switch it off. `/dro
 - `/drop options` · `/drop setup` · `/drop about`
 - `/drop theme light|flare2|flare|classic` · `/drop columns 2|3|5|10` · `/drop lock`
 - `/drop weapons` — weapons and Defense to level, with the monster levels that give points
+- `/drop hc` — Hardcore status (`on|off` for unofficial Hardcore, `simu` to try the alert)
 - `/drop check` · `/drop debug` · `/drop perf` — health check and diagnostics
 
 ## Performance
@@ -123,6 +143,8 @@ Everything runs on game events. Nothing runs while idle, heavy scans wait until 
 
 **Do I need Dungeon Journal?** No. The skills grid, toasts and the Progression window work without it. Dungeon Journal adds the boss loot tables to the Collection log and the hunt, and your favourites.
 
+**Do I need SkillUp Forever?** No. It is optional. With it, profession tooltips show your next step and the Collection log lists every recipe. Without it, everything else works the same.
+
 **Does it replace the native Skills tab?** No. Dropamine draws its own window.
 
 **Are there sounds?** All off by default. `/drop sons` is the master switch.
@@ -133,7 +155,7 @@ Unzip into `World of Warcraft\_forever_\Interface\AddOns\`, so you have `AddOns\
 
 Author: **Raykuilu**. License: **MIT**. Source: [github.com/Raykuilu/Dropamine](https://github.com/Raykuilu/Dropamine).
 
-Skill tracking and collection log inspired by Old School RuneScape (unaffiliated, no Jagex assets). Visual inspiration from FlareUI by Malkkav. Dungeon Journal data and favourites access: thanks to Exehn. World of Warcraft and Blizzard textures referenced by path are © Blizzard Entertainment.
+Skill tracking and collection log inspired by Old School RuneScape (unaffiliated, no Jagex assets). Visual inspiration from FlareUI by Malkkav. Dungeon Journal data and favourites access: thanks to Exehn. SkillUp Forever link through its public API: thanks to cjber. World of Warcraft and Blizzard textures referenced by path are © Blizzard Entertainment.
 
 ---
 
@@ -145,11 +167,30 @@ Skill tracking and collection log inspired by Old School RuneScape (unaffiliated
 
 &nbsp;
 
-**Dropamine 3.8** garde toutes tes compétences à l'écran, fête chaque +1 comme dans Old School RuneScape, et suit maintenant l'équipement que tu farmes : un **journal de collection** pour chaque donjon et raid, et une **chasse BiS** qui lit tes **favoris du Dungeon Journal**.
+**Dropamine 3.10** garde toutes tes compétences à l'écran, fête chaque +1 comme dans Old School RuneScape, suit l'équipement que tu farmes (**journal de collection**, **chasse BiS**) et guide maintenant tes métiers avec **SkillUp Forever**.
 
 Pour **WoW Forever** uniquement (`Interface: 16001`). L'onglet Compétences natif n'est jamais caché, déplacé ni réécrit. FlareUI n'est pas nécessaire.
 
-## Nouveau en 3.8 : le journal de collection
+## Nouveau en 3.10
+
+![SkillUp Forever.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6278303f3be2fb3f3a62b1374fc8a2a84fd0477c/docs/curseforge/v3/fr/new310-skillup-fr.png)
+
+- **Lien avec SkillUp Forever** (optionnel) : l'infobulle des cases métier affiche ton étape en cours et la suivante, un toast te prévient quand l'étape t'envoie quelque part, et Alt+clic pose le point sur la carte.
+
+![Aiguille GPS.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6278303f3be2fb3f3a62b1374fc8a2a84fd0477c/docs/curseforge/v3/fr/new310-gps-fr.png)
+
+- **Aiguille GPS** : tant que ce point est actif, la goutte devient une aiguille qui pointe vers lui (vert devant, jaune sur le côté, rouge derrière), avec la distance dans l'infobulle et un toast « Arrivé ».
+
+![Toutes les recettes.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6278303f3be2fb3f3a62b1374fc8a2a84fd0477c/docs/curseforge/v3/fr/new310-recipes-fr.png)
+
+- **Toutes les recettes dans le journal de collection** : avec SkillUp Forever, chaque métier affiche son total exact et les recettes qui te manquent, rangées par rang, avec où obtenir chacune et quel personnage la connaît déjà.
+
+![Hardcore.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6278303f3be2fb3f3a62b1374fc8a2a84fd0477c/docs/curseforge/v3/fr/new310-hardcore-fr.png)
+
+- **Onglet Hardcore**, prêt pour le mode Hardcore de Forever (ou coche « Je joue en Hardcore (mode non officiel) ») : lueur rouge, bandeau et goutte qui bat quand ta cible est élite, de niveau ?? ou a 3 niveaux de plus que toi, plus un son d'alerte. Deux curseurs règlent chaque lueur.
+- Aussi : les maîtres d'armes dans `/drop armes`, des messages de paliers en guilde (coupés par défaut), un toast « Nouvelle recette ! », les maîtres de rang de la Pêche, un bouton de minicarte LibDBIcon quand un autre addon la fournit, et des alias de commandes en anglais.
+
+## Le journal de collection
 
 ![Journal de collection.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/collection-log-fr.png)
 
@@ -161,7 +202,7 @@ Ton collection log façon Old School RuneScape, pour les donjons et raids de WoW
 
 ![Ta progression.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/collection-home-fr.png)
 
-- **Les métiers aussi :** recettes connues sur le total, pour chaque métier appris. Pour la Cuisine et le Secourisme, les recettes manquantes sont listées par rang requis et par origine.
+- **Les métiers aussi :** recettes connues sur le total, pour chaque métier appris. La Cuisine et le Secourisme listent leurs recettes manquantes ; avec SkillUp Forever (optionnel), tous les métiers le font.
 - **Découvertes :** le bestiaire et les créatures dépeçables rencontrées, par tranche de 10 niveaux, avec ta tranche mise en avant.
 - Les catégories se plient et se déplient, et chacune affiche son propre X / Y. Les noms d'objets, de donjons et de boss suivent la langue du jeu.
 
@@ -169,7 +210,7 @@ Ton collection log façon Old School RuneScape, pour les donjons et raids de WoW
 
 `/drop collection` · Succès de collection : Collectionneur (10 %), Grand collectionneur (25 %), Collection de rêve (50 %).
 
-## Nouveau en 3.8 : la chasse BiS, liée aux favoris du Dungeon Journal
+## La chasse BiS, liée aux favoris du Dungeon Journal
 
 ![Chasse BiS.](https://raw.githubusercontent.com/Raykuilu/Dropamine/6ae9f59959dbe25732c1248a4aa55bad8981a829/docs/curseforge/v3/fr/bis-hunt-fr.png)
 
@@ -249,6 +290,8 @@ Une courte visite guidée présente chaque fonction, te laisse l'essayer et la c
 - `/drop records` · `/drop paliers` · `/drop resume` : records, prochain palier, ton total sur une ligne à coller
 - `/drop options` · `/drop setup` · `/drop about`
 - `/drop theme leger|flare2|flare|classic` · `/drop colonnes 2|3|5|10` · `/drop verrou`
+- `/drop armes` : armes et Défense à monter, avec les niveaux de monstres qui donnent des points
+- `/drop hc` : état du Hardcore (`on|off` pour le Hardcore non officiel, `simu` pour essayer l'alerte)
 - `/drop check` · `/drop debug` · `/drop perf` : bilan de santé et diagnostic
 
 ## Performances
@@ -261,6 +304,8 @@ Tout fonctionne sur les événements du jeu. Rien ne tourne au repos, les analys
 
 **Faut-il Dungeon Journal ?** Non. La grille, les toasts et la fenêtre Progression fonctionnent sans. Dungeon Journal ajoute les tables de butin des boss au journal de collection et à la chasse, ainsi que tes favoris.
 
+**Faut-il SkillUp Forever ?** Non, il est optionnel. Avec lui, les infobulles des métiers donnent ton étape suivante et le journal de collection liste toutes les recettes. Sans lui, tout le reste fonctionne pareil.
+
 **Ça remplace l'onglet Compétences natif ?** Non. Dropamine dessine sa propre fenêtre.
 
 **Il y a des sons ?** Tous coupés par défaut. `/drop sons` est l'interrupteur général.
@@ -271,4 +316,4 @@ Décompresse l'archive dans `World of Warcraft\_forever_\Interface\AddOns\`, pou
 
 Auteur : **Raykuilu**. Licence : **MIT**. Source : [github.com/Raykuilu/Dropamine](https://github.com/Raykuilu/Dropamine).
 
-Suivi des compétences et journal de collection inspirés d'Old School RuneScape (projet non affilié, aucun asset Jagex). Inspiration visuelle : FlareUI de Malkkav. Données et favoris du Dungeon Journal : merci à Exehn. World of Warcraft et les textures Blizzard référencées par chemin sont © Blizzard Entertainment.
+Suivi des compétences et journal de collection inspirés d'Old School RuneScape (projet non affilié, aucun asset Jagex). Inspiration visuelle : FlareUI de Malkkav. Données et favoris du Dungeon Journal : merci à Exehn. Lien avec SkillUp Forever par son API publique : merci à cjber. World of Warcraft et les textures Blizzard référencées par chemin sont © Blizzard Entertainment.

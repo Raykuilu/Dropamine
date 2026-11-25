@@ -1980,8 +1980,8 @@ E["Maître couturier, Hurlevent · 5 po"] = "Tailoring trainer, Stormwind · 5g"
 E["Merci à cjber (SkillUp Forever) pour son API publique, utilisée par le lien optionnel."] = "Thanks to cjber (SkillUp Forever) for the public API used by the optional link."
 
 -- 3.10.0 : aiguille GPS (Needle.lua)
-E["Aiguille GPS dans la goutte"] = "GPS needle in the drop"
-E["Quand un point posé par Dropamine (Alt+clic SkillUp) est actif : la goutte pointe vers lui. Pas d'aiguille avec TomTom ou Shortest Path."] = "While a waypoint set by Dropamine (SkillUp Alt+click) is active, the drop points at it. No needle with TomTom or Shortest Path."
+E["Aiguille GPS dans la goutte"] = "GPS arrow in the drop"
+E["Quand un point posé par Dropamine (Alt+clic SkillUp) est actif : la goutte pointe vers lui. Pas d'aiguille avec TomTom ou Shortest Path."] = "While a waypoint set by Dropamine (SkillUp Alt+click) is active, the drop points at it. No arrow with TomTom or Shortest Path."
 E["Point retiré."] = "Waypoint removed."
 E["Arrivé"] = "Arrived"
 E["Point atteint"] = "Waypoint reached"
