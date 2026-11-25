@@ -43,14 +43,10 @@ H.OPTIONS = {
     help = "Personnage Hardcore : si la cible est élite, de niveau ?? ou a 3 niveaux de plus que toi, le cadre du panneau pulse en rouge, un bandeau dit pourquoi et la goutte bat en rouge. Les cases gardent leurs couleurs.", home = "advanced" },
   { type = "check", key = "hcSound", label = "Son d'alerte au ciblage", default = true, cmd = "Réglage de ce panneau",
     help = "Personnage Hardcore : un son d'alerte, une fois par cible dangereuse. Joué même si les sons de l'addon sont coupés.", home = "advanced" },
-  { type = "check", key = "hcGlowFrame", label = "Lueur rouge autour du panneau", default = true, cmd = "Réglage de ce panneau",
-    help = "Alerte danger : une lueur rouge respire autour du panneau.", home = "advanced" },
-  { type = "slider", key = "hcGlowFrameInt", label = "Intensité de la lueur du panneau", default = 50, min = 10, max = 100, step = 5, unit = "pct", cmd = "Réglage de ce panneau",
-    help = "Force de la lueur rouge autour du panneau.", home = "advanced" },
-  { type = "check", key = "hcGlowDrop", label = "Goutte qui bat (halo rouge)", default = true, cmd = "Réglage de ce panneau",
-    help = "Alerte danger : la goutte du total bat, avec un halo rouge derrière.", home = "advanced" },
-  { type = "slider", key = "hcGlowDropInt", label = "Intensité du halo de la goutte", default = 35, min = 10, max = 100, step = 5, unit = "pct", cmd = "Réglage de ce panneau",
-    help = "Force du halo rouge derrière la goutte.", home = "advanced" },
+  { type = "slider", key = "hcGlowFrameInt", label = "Lueur rouge du panneau", default = 50, min = 0, max = 100, step = 5, unit = "pct", cmd = "Réglage de ce panneau",
+    help = "Alerte danger : taille et force de la lueur rouge autour du panneau. 0 % = pas de lueur. Bouger le curseur montre l'alerte 4 s.", home = "advanced" },
+  { type = "slider", key = "hcGlowDropInt", label = "Halo rouge de la goutte", default = 35, min = 0, max = 100, step = 5, unit = "pct", cmd = "Réglage de ce panneau",
+    help = "Alerte danger : taille et force du halo rouge derrière la goutte, qui bat. 0 % = goutte normale. Bouger le curseur montre l'alerte 4 s.", home = "advanced" },
 }
 local O = ns.Options
 if O then
@@ -59,14 +55,13 @@ if O then
   if O.GROUPS then
     O.GROUPS.grpHardcore = { label = "Hardcore", help = "Actif seulement sur un personnage Hardcore (mode à venir sur Forever).",
       items = { { "hcManual", "Je joue en Hardcore (mode non officiel)" }, { "hcDanger", "Alerte danger sur la cible" }, { "hcSound", "Son d'alerte au ciblage" },
-        { "hcGlowFrame", "Lueur rouge autour du panneau" }, { "hcGlowFrameInt", "Intensité de la lueur du panneau" },
-        { "hcGlowDrop", "Goutte qui bat (halo rouge)" }, { "hcGlowDropInt", "Intensité du halo de la goutte" } } }
+        { "hcGlowFrameInt", "Lueur rouge du panneau" }, { "hcGlowDropInt", "Halo rouge de la goutte" } } }
   end
   if O.MAP and O.MAP.advanced then table.insert(O.MAP.advanced, 1, { "Hardcore", { "grpHardcore" } }) end
   if O.TEST then
     O.TEST.hcDanger = "danger"
     O.TEST.hcSound = "hcsound"
-    O.TEST.hcGlowFrame = "danger" O.TEST.hcGlowFrameInt = "danger" O.TEST.hcGlowDrop = "danger" O.TEST.hcGlowDropInt = "danger"
+    O.TEST.hcGlowFrameInt = "danger" O.TEST.hcGlowDropInt = "danger"
     O.TEST.grpHardcore = "group"
   end
   O.TEST_FN = O.TEST_FN or {}
@@ -138,6 +133,7 @@ function H.BuildPanelAlert(f)
   local tr = Piece(1 - E, 1, 0, E) tr:SetPoint("BOTTOMLEFT", f, "TOPRIGHT", 0, 0) tr:SetSize(P, P)
   local bl = Piece(0, E, 1 - E, 1) bl:SetPoint("TOPRIGHT", f, "BOTTOMLEFT", 0, 0) bl:SetSize(P, P)
   local br = Piece(1 - E, 1, 1 - E, 1) br:SetPoint("TOPLEFT", f, "BOTTOMRIGHT", 0, 0) br:SetSize(P, P)
+  tl._dim, tr._dim, bl._dim, br._dim = "both", "both", "both", "both"
   -- bords
   local top = Piece(E, 1 - E, 0, E)
   top:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 0, 0) top:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", 0, 0) top:SetHeight(P)
@@ -147,6 +143,7 @@ function H.BuildPanelAlert(f)
   lef:SetPoint("TOPRIGHT", f, "TOPLEFT", 0, 0) lef:SetPoint("BOTTOMRIGHT", f, "BOTTOMLEFT", 0, 0) lef:SetWidth(P)
   local rig = Piece(1 - E, 1, E, 1 - E)
   rig:SetPoint("TOPLEFT", f, "TOPRIGHT", 0, 0) rig:SetPoint("BOTTOMLEFT", f, "BOTTOMRIGHT", 0, 0) rig:SetWidth(P)
+  top._dim, bot._dim, lef._dim, rig._dim = "h", "h", "w", "w"
   g.ag = Pulse(g, 0.8, 0.3, 0.7)
   -- bandeau : même plaque que la pastille « N prêts », en rouge (tête de mort + raison)
   local Po = ns.Polish
@@ -187,7 +184,7 @@ function H.BuildPanelAlert(f)
 end
 -- goutte : la VRAIE goutte (en couleurs), dans un cadre à nous NON rogné,
 -- halo rouge rond qui pulse derrière et petit battement (+12 %)
-function H.BuildDropAlert(t)
+function H.BuildDropAlert(t, k)
   local S = ns.Slot
   if not (t and S and S.IconInnerSize) then return nil end
   local w, h, anchor = S.IconInnerSize(t)
@@ -224,7 +221,7 @@ function H.BuildDropAlert(t)
   fx:SetPoint("CENTER", anchor, "CENTER", 0, 0)
   fx.drop:ClearAllPoints() fx.drop:SetAllPoints(fx)
   fx.halo:ClearAllPoints()
-  local pad = math.floor(side * 0.9 + 0.5)
+  local pad = math.floor(side * 0.9 * (k or 1) + 0.5)
   fx.halo:SetPoint("TOPLEFT", fx, "TOPLEFT", -pad, pad) fx.halo:SetPoint("BOTTOMRIGHT", fx, "BOTTOMRIGHT", pad, -pad)
   return fx
 end
@@ -241,11 +238,27 @@ local function OrigAlpha(t, a)
   for _, o in ipairs({ t.icon or false, clip or false }) do if o and o.SetAlpha then pcall(o.SetAlpha, o, a) end end
 end
 -- état de l'alerte : why = texte ou nil
--- intensité réglée (curseurs de l'onglet Hardcore), 0..1
+-- niveau réglé (curseurs de l'onglet Hardcore), 0..1 : taille ET force.
+-- Reprise des anciennes cases (zip de test) : décochée = 0 %.
+local OLD_CHECK = { hcGlowFrameInt = "hcGlowFrame", hcGlowDropInt = "hcGlowDrop" }
 function H.Intensity(key, def)
   local ui = ns.db and ns.db.ui
+  local old = OLD_CHECK[key]
+  if ui and old and ui[old] ~= nil then
+    if ui[old] == false then ui[key] = 0 end
+    ui[old] = nil
+  end
   local v = ui and N(ui[key])
   return math.max(0, math.min(100, v or def)) / 100
+end
+-- lueur : épaisseur et force selon le niveau (alpha jamais trop pâle tant qu'elle existe)
+local function SizeGlow(g, k)
+  local P = math.max(2, math.floor(H.GLOW * k + 0.5))
+  local a = 0.3 + 0.7 * k
+  for _, s in ipairs(g.pieces or {}) do
+    if s._dim == "both" then s:SetSize(P, P) elseif s._dim == "h" then s:SetHeight(P) elseif s._dim == "w" then s:SetWidth(P) end
+    s:SetVertexColor(H.DANGER[1], H.DANGER[2], H.DANGER[3], a)
+  end
 end
 function H.Show(why)
   H.why = why
@@ -257,9 +270,9 @@ function H.Show(why)
       g.banner.fs:SetText(why)
       g.banner:SetWidth((N(g.banner.fs:GetStringWidth()) or 60) + 30)
       g.banner:Show()
-      if ns.Opt("hcGlowFrame") then
-        local a = H.Intensity("hcGlowFrameInt", 50)
-        for _, s in ipairs(g.pieces or {}) do s:SetVertexColor(H.DANGER[1], H.DANGER[2], H.DANGER[3], a) end
+      local k = H.Intensity("hcGlowFrameInt", 50)
+      if k > 0 then
+        SizeGlow(g, k)
         g:Show() Play(g.ag, true)
       else
         Play(g.ag, false) g:Hide()
@@ -270,11 +283,12 @@ function H.Show(why)
   end
   for _, t in ipairs(TotalTiles()) do
     local busy = t._needle and t._needle.IsShown and t._needle:IsShown()
-    local on = why and not busy and ns.Opt("hcGlowDrop")
-    local fx = on and H.BuildDropAlert(t) or t._hcFx
+    local k = H.Intensity("hcGlowDropInt", 35)
+    local on = why and not busy and k > 0
+    local fx = on and H.BuildDropAlert(t, k) or t._hcFx
     if fx then
       if on then
-        fx.halo:SetVertexColor(H.DANGER[1], H.DANGER[2], H.DANGER[3], H.Intensity("hcGlowDropInt", 35))
+        fx.halo:SetVertexColor(H.DANGER[1], H.DANGER[2], H.DANGER[3], 0.3 + 0.7 * k)
         fx:Show() Play(fx.ag, true) Play(fx.haloAG, true)
         OrigAlpha(t, 0) t._hcHid = true
       else
@@ -350,6 +364,19 @@ function H.TestDanger()
   return true
 end
 function H.TestSound() H.Sound(true) return true end
+-- aperçu muet pendant qu'on bouge un curseur : 4 s d'alerte, relancées à chaque cran
+function H.Preview()
+  if H.why and not H._preview then H.Show(H.why) return end
+  H._preview = (H._preview or 0) + 1
+  local mine = H._preview
+  H.Show(Tr["Élite"] .. " · " .. Tr["niveau ??"])
+  After(4, function()
+    if H._preview ~= mine then return end
+    H._preview = nil
+    H.Show(nil)
+    pcall(H.Update, false)
+  end)
+end
 
 -- Tests (boutons « Tester » des réglages) --------------------------------------------------------
 if O and O.TEST_FN then
@@ -395,7 +422,7 @@ if ns.OnOptionChanged then
   function ns.OnOptionChanged(key, value, ...)
     local r = { baseOpt(key, value, ...) }
     if key == "hcDanger" or key == "hcManual" then pcall(H.Update, false)
-    elseif type(key) == "string" and key:find("^hcGlow") and H.why then pcall(H.Show, H.why) end
+    elseif key == "hcGlowFrameInt" or key == "hcGlowDropInt" then pcall(H.Preview) end
     return unpack(r)
   end
 end
