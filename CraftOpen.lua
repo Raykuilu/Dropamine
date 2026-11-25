@@ -695,7 +695,9 @@ function CO.TileButton()
   b:HookScript("PreClick", function(self, button, down)
     if InCombat() or type(self.SetAttribute) ~= "function" then return end
     local shift = type(_G.IsShiftKeyDown) == "function" and _G.IsShiftKeyDown()
-    if button ~= "LeftButton" or shift or not self._tileSkill or not CO.ActingPhase(down) then
+    -- 3.10.0 : Alt+clic = point SkillUp, pas d'ouverture du métier
+    local alt = type(_G.IsAltKeyDown) == "function" and _G.IsAltKeyDown()
+    if button ~= "LeftButton" or shift or alt or not self._tileSkill or not CO.ActingPhase(down) then
       CO.SetSpell(self, nil)
     else
       -- 3.8.2 : fenêtre déjà ouverte sur ce métier → ce clic la fermera (PostClick)
@@ -718,7 +720,15 @@ function CO.TileButton()
     local tile = self._tile
     local data = tile and tile.data
     local shift = type(_G.IsShiftKeyDown) == "function" and _G.IsShiftKeyDown()
-    if data and button ~= "RightButton" and shift and ns.QoL and ns.QoL.ShareTile and ns.Opt("partage") then
+    local alt = type(_G.IsAltKeyDown) == "function" and _G.IsAltKeyDown()
+    local altDone = false
+    if data and button ~= "RightButton" and alt and ns.SkillUp and ns.SkillUp.OnAltClick then
+      local okA, done = pcall(ns.SkillUp.OnAltClick, data)
+      altDone = okA and done
+    end
+    if altDone then
+      -- 3.10.0 : point SkillUp posé, rien d'autre
+    elseif data and button ~= "RightButton" and shift and ns.QoL and ns.QoL.ShareTile and ns.Opt("partage") then
       pcall(ns.QoL.ShareTile, data)
     elseif data and button == "RightButton" then
       if shift and UI and UI.CycleGoal then pcall(UI.CycleGoal, UI, data)
