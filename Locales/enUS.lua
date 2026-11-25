@@ -1983,3 +1983,20 @@ E["Tout se règle dans les Options. Commandes utiles : /drop (panneau), /drop pr
 -- 3.10.0 : où obtenir les rangs de Pêche
 E["Livre vendu par Old Man Heming, Baie-du-Butin (27.4, 77.0) ; aussi à l'hôtel des ventes"] = "Book sold by Old Man Heming, Booty Bay (27.4, 77.0); also on the auction house"
 E["Quête « Nat Pagle, Angler Extreme », Nat Pagle, marais d'Âprefange (58.6, 60.0)"] = "Quest \"Nat Pagle, Angler Extreme\", Nat Pagle, Dustwallow Marsh (58.6, 60.0)"
+
+-- 3.10.0 : recettes dans le collection log (SkillUp Forever facultatif)
+E["Vendeur : "] = "Vendor: "
+E["Quête : "] = "Quest: "
+E["Butin : "] = "Drop: "
+E["Butin aléatoire"] = "World drop"
+E["Maître de métier"] = "Profession trainer"
+E["Source inconnue"] = "Unknown source"
+E["chargement…"] = "loading…"
+E["connue de "] = "known by "
+E["Toutes les recettes du métier sont apprises."] = "Every recipe of this profession is learned."
+E["Facultatif : installe SkillUp Forever pour la liste complète du métier et où trouver chaque recette."] = "Optional: install SkillUp Forever for the full profession list and where to get each recipe."
+E["Liste complète grâce à SkillUp Forever."] = "Full list thanks to SkillUp Forever."
+E["Nouvelle recette apprise"] = "New recipe learned"
+E["Un toast quand ton personnage apprend une recette, avec ta progression dans le métier (liste complète avec SkillUp Forever)."] = "A toast when your character learns a recipe, with your profession progress (full list with SkillUp Forever)."
+E["Nouvelle recette !"] = "New recipe!"
+E["Recette"] = "Recipe"

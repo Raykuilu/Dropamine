@@ -917,7 +917,7 @@ function H.LogSections()
   -- métiers, découvertes et général : repris des statistiques existantes
   local prof, disc, gen = {}, {}, {}
   for _, r in ipairs(H.CollectionRows()) do
-    local e = { key = "st:" .. r.label, label = r.label, x = r.x, y = r.y, stat = true, cat = r.cat, skill = r.skill, code = r.code, kind = r.kind, approx = r.approx }
+    local e = { key = "st:" .. r.label, label = r.label, x = r.x, y = r.y, stat = true, cat = r.cat, skill = r.skill, code = r.code, kind = r.kind, approx = r.approx, full = r.full }
     local lab = tostring(r.label)
     if lab:find("^" .. Tr["Recettes "]) then prof[#prof + 1] = e
     elseif r.cat == 2 or lab == Tr["Nœuds appris"] then disc[#disc + 1] = e
@@ -993,7 +993,10 @@ function H.CollectionRows()
       local nm = names[id]
       if nm and type(r) == "table" and (not learned or learned[id]) then
         local y = nm[2] and (totals[nm[2]] or 0) or nm[3]
-        rows[#rows + 1] = { label = Tr["Recettes "] .. Tr[nm[1]], x = r.list and #r.list or 0, y = y, cat = 3, skill = id, code = nm[2] }
+        -- 3.10.0 : avec SkillUp Forever (facultatif), total exact de toutes les recettes du métier
+        local su = ns.SkillUp and ns.SkillUp.AllRecipes and ns.SkillUp.AllRecipes(id)
+        if su and #su > 0 then y = #su end
+        rows[#rows + 1] = { label = Tr["Recettes "] .. Tr[nm[1]], x = r.list and #r.list or 0, y = y, cat = 3, skill = id, code = nm[2], full = su ~= nil }
       end
     end
   end
@@ -1007,6 +1010,18 @@ function H.CollectionRows()
   return rows
 end
 
+-- 3.10.0 : avec SkillUp Forever (facultatif) : toutes les recettes manquantes du métier, avec leur source.
+function H.MissingRecipesFull(skill)
+  local SU = ns.SkillUp
+  if not (SU and SU.Missing) then return nil end
+  local cdb = ns.CharDB and ns.CharDB()
+  local rec = cdb and cdb.recipes and cdb.recipes[skill]
+  if not (rec and type(rec.list) == "table" and #rec.list > 0) then return nil, "noread" end
+  local known = {}
+  for _, r in ipairs(rec.list) do if r.name then known[ns.Fold(r.name)] = true end end
+  local ok, out = pcall(SU.Missing, skill, known)
+  return ok and out or nil
+end
 -- Recettes de la base (Cuisine, Secourisme) que le personnage ne connaît pas encore, par niveau requis.
 -- src : t = entraîneur, b = appris de base, - = autre (butin, quête ou vendeur : la base ne précise pas).
 function H.MissingRecipes(skill, code)
@@ -1164,3 +1179,57 @@ ns.HelpExt[#ns.HelpExt + 1] = "/drop mode auto|route|endgame : onglets de niveau
 ns.HelpExt[#ns.HelpExt + 1] = "/drop chasse [ajouter|retirer|reset] : objets recherchés et tentatives"
 
 -- (3.8.1 : l'option « Mode de la fenêtre Progression » est retirée des réglages ; /drop mode reste pour tester)
+
+------------------------------------------------------------------------------
+-- 3.10.0 : toast « Nouvelle recette ! » (collection log), avec ou sans SkillUp Forever.
+-- Avec SkillUp : le métier et la progression « connues / total » en sous-titre.
+------------------------------------------------------------------------------
+H.RECIPE_OPTION = { type = "check", key = "recipeToast", label = "Nouvelle recette apprise", default = true, cmd = "Réglage de ce panneau",
+  help = "Un toast quand ton personnage apprend une recette, avec ta progression dans le métier (liste complète avec SkillUp Forever)." }
+do
+  local O = ns.Options
+  if O then
+    O.EXTRA_HOME = O.EXTRA_HOME or {}
+    O.EXTRA[#O.EXTRA + 1] = H.RECIPE_OPTION
+    O.EXTRA_HOME.recipeToast = "progress"
+    if O.GROUPS and O.GROUPS.grpAnnounce then
+      local items = O.GROUPS.grpAnnounce.items
+      items[#items + 1] = { "recipeToast", "Nouvelle recette apprise" }
+    end
+    if O.TEST then O.TEST.recipeToast = "recipedemo" end
+    O.TEST_FN = O.TEST_FN or {}
+  end
+end
+function H.RecipeToast(rid, force)
+  local ui = ns.UI
+  if not (ui and ui.SpawnDrop) then return nil end
+  if not force and not ns.Opt("recipeToast") then return nil end
+  local SU = ns.SkillUp
+  local name = SU and SU.RecipeName and SU.RecipeName(rid)
+  if not name and type(_G.GetSpellInfo) == "function" then
+    local ok, n = pcall(_G.GetSpellInfo, rid)
+    if ok and type(n) == "string" and n ~= "" then name = n end
+  end
+  name = name or Tr["Recette"]
+  local sub
+  local skill = SU and SU.RecipeOwner and SU.RecipeOwner(rid)
+  local all = skill and SU.AllRecipes(skill)
+  if all and #all > 0 then
+    local cdb = ns.CharDB and ns.CharDB()
+    local rec = cdb and cdb.recipes and cdb.recipes[skill]
+    local have = (rec and type(rec.list) == "table" and #rec.list or 0) + 1
+    local e = ns.CatalogById and ns.CatalogById(skill)
+    local label = (e and ns.CatalogDisplayName and ns.CatalogDisplayName(e)) or skill
+    sub = string.format("%s %d / %d", tostring(label), math.min(have, #all), #all)
+  end
+  local icon = [[Interface\Icons\INV_Scroll_03]]
+  if type(_G.GetSpellTexture) == "function" then local ok, t = pcall(_G.GetSpellTexture, rid) if ok and t then icon = t end end
+  return ui:SpawnDrop(icon, Tr["Nouvelle recette !"] .. " " .. tostring(name), sub, nil, nil, nil, { kind = "qol", force = force })
+end
+do
+  local O = ns.Options
+  if O and O.TEST_FN then O.TEST_FN.recipedemo = function() return H.RecipeToast(2963, true) end end
+end
+if ns.On then
+  ns.On("NEW_RECIPE_LEARNED", function(_, rid) if type(rid) == "number" then pcall(H.RecipeToast, rid) end end)
+end

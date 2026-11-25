@@ -85,9 +85,35 @@ ui.skillupToasts = nil
 check(SU.OnAltClick({ id = "tailoring" }) == true and navigated and navigated[1] == 197 and navigated[2] == 1, "Alt+clic : point posé")
 check(SU.OnAltClick({ id = "swords" }) == false, "case non métier : clic normal")
 
+-- collection log : liste complète, sources, autres personnages
+ns.Fold = function(s) return tostring(s):lower() end
+local names = { [2963] = "Bolt of Linen", [7151] = "Barbaric Shoulders", [9206] = "Dusky Belt" }
+_G.C_Spell = { GetSpellName = function(id) return names[id] end }
+local api = _G.SkillUpForever.API
+api.Recipes = function(id) return id == 197 and { 2963, 7151, 9206 } or nil end
+api.RecipeRequirement = function(id) return ({ [2963] = { skill = 1, source = "trainer" }, [7151] = { skill = 175, source = "trainer" }, [9206] = { skill = 195, source = "item" } })[id] end
+local loading = true
+api.RecipeSources = function(id)
+  if loading then return nil, "loading" end
+  if id == 9206 then return { vendors = {}, quests = {}, drops = { { name = "Defias Pillager", chance = 1.2 } } } end
+  return { vendors = {}, quests = {}, drops = {} }
+end
+api.Recipe = function(id) return { skillLineID = 197 } end
+api.Characters = function() return { "Moi-1", "Alt-1" } end
+api.Knows = function(key, id) return key == "Alt-1" and id == 9206 end
+_G.ForeverCore = { CharacterKey = function() return "Moi-1" end }
+local miss = SU.Missing("tailoring", { ["bolt of linen"] = true })
+check(miss and #miss == 2 and miss[1].name == "Barbaric Shoulders" and miss[2].lvl == 195, "recettes manquantes triées par niveau")
+check(SU.SourceText(9206) == nil, "catalogue SkillUp en chargement : pas de source mise en cache")
+loading = false
+check(SU.SourceText(9206):find("Defias Pillager") and SU.SourceText(7151) == "Maître de métier", "sources : butin, maître")
+check(SU.KnownByAlt(9206) == "Alt" and SU.KnownByAlt(7151) == nil, "recette connue d'un autre personnage")
+check(SU.RecipeOwner(9206) == "tailoring", "métier d'une recette")
+
 -- lien coupé
 ui.skillupLink = false
 check(SU.Lines("tailoring") == nil, "lien coupé : rien dans l'infobulle")
+check(SU.AllRecipes("tailoring") == nil, "lien coupé : pas de liste complète")
 
 print(fail == 0 and "OK : lien avec SkillUp" or (fail .. " échec(s)"))
 os.exit(fail == 0 and 0 or 1)

@@ -177,6 +177,82 @@ function SU.Hook()
   return true
 end
 
+-- Collection log : liste complète des recettes d'un métier (lecture seule, rien n'est recopié) ----------
+local function Str(v) if type(v) == "string" and v ~= "" and not (ns.IsSecret and ns.IsSecret(v)) then return v end end
+local function Call(fn, ...) if type(fn) ~= "function" then return nil end local ok, a, b = pcall(fn, ...) if ok then return a, b end end
+-- identifiants de toutes les recettes du métier, ou nil sans SkillUp
+function SU.AllRecipes(skill)
+  local id, api = SU.LINES[skill], SU.API()
+  if not (id and api and ns.Opt("skillupLink") and type(api.Recipes) == "function") then return nil end
+  local list = Call(api.Recipes, id)
+  return type(list) == "table" and list or nil
+end
+function SU.RecipeName(rid)
+  local CS = _G.C_Spell
+  return Str(CS and Call(CS.GetSpellName, rid)) or Str(Call(_G.GetSpellInfo, rid))
+end
+function SU.RecipeSkill(rid)
+  local api = SU.API()
+  local r = api and Call(api.RecipeRequirement, rid)
+  return type(r) == "table" and tonumber(r.skill) or nil, type(r) == "table" and r or nil
+end
+-- [skillLineID SkillUp] -> case Dropamine
+SU.SKILL_OF = {}
+for k, v in pairs(SU.LINES) do SU.SKILL_OF[v] = k end
+function SU.RecipeOwner(rid)
+  local api = SU.API()
+  local r = api and Call(api.Recipe, rid)
+  return type(r) == "table" and SU.SKILL_OF[r.skillLineID] or nil
+end
+-- où l'obtenir, en une ligne (mis en cache ; rien tant que SkillUp charge son catalogue)
+SU.srcCache = {}
+function SU.SourceText(rid)
+  local c = SU.srcCache[rid]
+  if c then return c end
+  local api = SU.API()
+  if not api then return nil end
+  local _, req = SU.RecipeSkill(rid)
+  local s, why = Call(api.RecipeSources, rid)
+  local text
+  if type(s) == "table" then
+    local v, q, d = s.vendors and s.vendors[1], s.quests and s.quests[1], s.drops and s.drops[1]
+    if v then text = Tr["Vendeur : "] .. tostring(v.name or "?") .. (v.zone and (" (" .. tostring(v.zone) .. ")") or "")
+    elseif q then text = Tr["Quête : "] .. tostring(q.title or "?")
+    elseif d then text = Tr["Butin : "] .. tostring(d.name or "?") .. (d.chance and string.format(" (%s %%)", tostring(d.chance)) or "")
+    elseif s.world then text = Tr["Butin aléatoire"] end
+  elseif why == "loading" then
+    return nil
+  end
+  if not text and req and req.source == "trainer" then text = Tr["Maître de métier"] end
+  text = text or Tr["Source inconnue"]
+  SU.srcCache[rid] = text
+  return text
+end
+-- un autre personnage du compte qui la connaît (nom court), ou nil
+function SU.KnownByAlt(rid)
+  local api = SU.API()
+  if not (api and type(api.Characters) == "function" and type(api.Knows) == "function") then return nil end
+  local me = rawget(_G, "ForeverCore") and type(_G.ForeverCore.CharacterKey) == "function" and Call(_G.ForeverCore.CharacterKey)
+  for _, key in ipairs(Call(api.Characters) or {}) do
+    if key ~= me and Call(api.Knows, key, rid) == true then return (tostring(key):match("^([^%-]+)")) end
+  end
+  return nil
+end
+-- recettes manquantes : { { rid, name, lvl } } triées par niveau requis ; known = noms connus (repliés)
+function SU.Missing(skill, known)
+  local list = SU.AllRecipes(skill)
+  if not list then return nil end
+  local out = {}
+  for _, rid in ipairs(list) do
+    local name = SU.RecipeName(rid)
+    if name and not known[ns.Fold(name)] then
+      out[#out + 1] = { rid = rid, name = name, lvl = SU.RecipeSkill(rid) or 0 }
+    end
+  end
+  table.sort(out, function(a, b) if a.lvl ~= b.lvl then return a.lvl < b.lvl end return a.name < b.name end)
+  return out
+end
+
 -- Test du réglage : un toast d'exemple
 if O and O.TEST_FN then
   O.TEST_FN.skillupdemo = function()

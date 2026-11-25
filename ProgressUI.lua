@@ -2639,7 +2639,24 @@ function PU.RefreshCollection(p)
   if e.stat then
     -- listes détaillées : recettes manquantes (Cuisine, Secourisme) et créatures par tranche de niveau
     local slines, note
-    if e.code then
+    -- 3.10.0 : SkillUp Forever (facultatif) : toutes les recettes manquantes, source et autres personnages
+    local full, fullWhy
+    if e.skill and e.full and H.MissingRecipesFull then full, fullWhy = H.MissingRecipesFull(e.skill) end
+    if full then
+      slines = {}
+      local SU = ns.SkillUp
+      for _, m in ipairs(full) do
+        slines[#slines + 1] = { text = m.name, rid = m.rid, lvl = m.lvl,
+          lazy = function()
+            local src = (SU and SU.SourceText and SU.SourceText(m.rid)) or Tr["chargement…"]
+            local alt = SU and SU.KnownByAlt and SU.KnownByAlt(m.rid)
+            return string.format(Tr["niv. %d"], m.lvl) .. " · " .. src .. (alt and (" · " .. Tr["connue de "] .. alt) or "")
+          end }
+      end
+      if #slines == 0 then note = Tr["Toutes les recettes du métier sont apprises."] end
+    elseif fullWhy == "noread" then
+      note = Tr["Ouvre la fenêtre du métier une fois pour que Dropamine lise tes recettes."]
+    elseif e.code then
       local miss, why = H.MissingRecipes(e.skill, e.code)
       if miss then
         slines = {}
@@ -2661,14 +2678,21 @@ function PU.RefreshCollection(p)
         end
       end
     end
-    if not note and not slines and e.skill and not e.code then note = Tr["Recettes connues de ton personnage, lues dans la fenêtre du métier (ouvre-la pour les mettre à jour)."] end
+    if not note and not slines and e.skill and not e.code then
+      note = Tr["Recettes connues de ton personnage, lues dans la fenêtre du métier (ouvre-la pour les mettre à jour)."]
+        .. "\n\n" .. Tr["Facultatif : installe SkillUp Forever pour la liste complète du métier et où trouver chaque recette."]
+    end
     if slines and #slines > 0 then
       if e.kind then c.rfoot:SetText(Tr["Créatures rencontrées par tous tes personnages, sur le total connu de la base."]) c.rfoot:Show() end
+      if full then c.rfoot:SetText(Tr["Liste complète grâce à SkillUp Forever."]) c.rfoot:Show() end
       c.ui.rOff = math.min(c.ui.rOff, math.max(0, #slines - LOG_RLINES))
       for i, ln in ipairs(c.rlines) do
         local l = slines[i + c.ui.rOff]
         if l then
-          ln.fs:SetText(l.text) ln.val:SetText(l.val) ln.fs:Show() ln.val:Show()
+          -- les sources ne sont lues que pour les lignes affichées
+          local val = l.val
+          if not val and l.lazy then local okL, v = pcall(l.lazy) val = okL and v or "" end
+          ln.fs:SetText(l.text) ln.val:SetText(val) ln.fs:Show() ln.val:Show()
           TextColor(ln.fs, l.hi and (pal.title or pal.text) or pal.text)
           TextColor(ln.val, l.hi and (pal.title or pal.text) or pal.text)
         end
