@@ -2346,7 +2346,8 @@ function PU.BuildCollection(f)
   -- 3.9.0 : tri des donjons (par niveau, ou les plus avancés d'abord) ; gardé d'une session à l'autre
   c.sortBtn = PU.Button(c, 70, 16, "", "small", function()
     local ui = ns.db and ns.db.ui
-    if ui then ui.logSort = (ui.logSort == "pct") and nil or "pct" end
+    -- 3.10.0 : « x and nil or y » donnait toujours y : le tri restait bloqué sur %
+    if ui then if ui.logSort == "pct" then ui.logSort = nil else ui.logSort = "pct" end end
     PU.RefreshCollection()
   end)
   c.sortBtn:SetPoint("TOPLEFT", c, "TOPLEFT", 120, -5)
@@ -2437,8 +2438,10 @@ function PU.BuildCollection(f)
     end
     -- 3.10.0 : zone cliquable des en-têtes de tranche (recettes), cachée sinon
     local hit = CreateFrame("Button", nil, c)
-    hit:SetSize(RW - 14, 22)
+    -- 3.10.0 : la bande de survol va jusqu'à la barre de défilement
+    hit:SetHeight(22)
     hit:SetPoint("TOPLEFT", c, "TOPLEFT", RX - 4, -(y + 3))
+    hit:SetPoint("RIGHT", c, "RIGHT", -10, 0)
     hit.hl = Tex(hit, "BACKGROUND", 1) hit.hl:SetAllPoints(hit) Paint(hit.hl, PU.HOVER) hit.hl:Hide()
     hit:SetScript("OnEnter", function(self)
       self.hl:Show()
@@ -2484,7 +2487,13 @@ function PU.BuildCollection(f)
     local off = math.floor(frac * (total - LOG_RLINES) + 0.5)
     if off ~= c.ui.rOff then c.ui.rOff = off PU.RefreshCollection() end
   end
-  c.rtrack:SetScript("OnMouseDown", function(self) DragTo(self) self:SetScript("OnUpdate", DragTo) end)
+  -- 3.10.0 : le glisser s'arrête dès que le bouton est relâché, même hors de la barre
+  local function DragUpdate(self)
+    local down = _G.IsMouseButtonDown
+    if type(down) == "function" and not down("LeftButton") then self:SetScript("OnUpdate", nil) return end
+    DragTo(self)
+  end
+  c.rtrack:SetScript("OnMouseDown", function(self) DragTo(self) self:SetScript("OnUpdate", DragUpdate) end)
   c.rtrack:SetScript("OnMouseUp", function(self) self:SetScript("OnUpdate", nil) end)
   c.rtrack:Hide()
   c.rfoot = FS(c, "GameFontDisableSmall", "sub")

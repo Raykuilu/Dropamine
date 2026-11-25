@@ -23,8 +23,22 @@ local function NativeFrame()
   local portrait = (type(f.GetPortrait) == "function" and select(2, pcall(f.GetPortrait, f))) or f.portrait
     or (f.PortraitContainer and f.PortraitContainer.portrait)
   if portrait and portrait.SetTexture then
-    pcall(portrait.SetTexture, portrait, DW.ICON)
-    if portrait.SetTexCoord then pcall(portrait.SetTexCoord, portrait, 0, 1, 0, 1) end
+    -- disque noir dans le portrait, goutte plus petite posée au centre
+    pcall(portrait.SetTexture, portrait, "Interface\\CharacterFrame\\TempPortraitAlphaMask")
+    if portrait.SetVertexColor then pcall(portrait.SetVertexColor, portrait, 0, 0, 0, 1) end
+    local holder = (portrait.GetParent and portrait:GetParent()) or f
+    local layer, sub = "ARTWORK", 0
+    if portrait.GetDrawLayer then
+      local okL, l, s = pcall(portrait.GetDrawLayer, portrait)
+      if okL and l then layer, sub = l, (tonumber(s) or 0) end
+    end
+    local icon = holder:CreateTexture(nil, layer, nil, math.min(7, sub + 1))
+    local pw = (portrait.GetWidth and portrait:GetWidth()) or 60
+    if not pw or pw < 10 then pw = 60 end
+    icon:SetSize(pw * 0.62, pw * 0.62)
+    icon:SetPoint("CENTER", portrait, "CENTER", 0, 0)
+    pcall(icon.SetTexture, icon, DW.ICON)
+    DW.portraitIcon = icon
   end
   local hint = f:CreateFontString(nil, "ARTWORK", "GameFontNormal")
   hint:SetPoint("TOPLEFT", f, "TOPLEFT", 70, -32)

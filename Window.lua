@@ -335,6 +335,81 @@ function UI:BuildMinimap()
     m:SetScript("OnEnter", function(fr) W.ShowTotalTooltip(fr) end)
     m:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
   end
+  W.TryLDB()
+  if not W.ldb and C_Timer and C_Timer.After then
+    -- les librairies d'un autre addon peuvent arriver après nous : un second essai
+    C_Timer.After(3, function() pcall(W.TryLDB) end)
+  end
+  return unpack(r)
+end
+
+-- 3.10.0 : si un autre addon a déjà chargé LibDataBroker + LibDBIcon (Details, Questie, DBM…),
+-- notre bouton passe par eux : même rendu que les autres, rangé par les sacs à boutons,
+-- position et visibilité gardées. Dropamine n'embarque toujours aucune librairie ;
+-- sans elles, notre bouton maison (même gabarit) reste.
+function W.TryLDB()
+  if W.ldb then return true end
+  local LS = _G.LibStub
+  if type(LS) ~= "function" then return false end
+  local okB, LDB = pcall(LS, "LibDataBroker-1.1", true)
+  local okI, DBI = pcall(LS, "LibDBIcon-1.0", true)
+  if not (okB and LDB and okI and DBI and LDB.NewDataObject and DBI.Register) then return false end
+  local ui = ns.db and ns.db.ui
+  if not ui then return false end
+  ui.ldbIcon = type(ui.ldbIcon) == "table" and ui.ldbIcon or {}
+  local db = ui.ldbIcon
+  if db.minimapPos == nil then db.minimapPos = ui.minimapAngle or 45 end
+  if db.hide == nil then db.hide = ui.minimapHidden and true or false end
+  local obj = (LDB.GetDataObjectByName and LDB:GetDataObjectByName("Dropamine"))
+  if not obj then
+    local okN, o = pcall(LDB.NewDataObject, LDB, "Dropamine", {
+      type = "launcher",
+      label = "Dropamine",
+      icon = "Interface\\AddOns\\Dropamine\\Media\\Dropamine-Icon-32",
+      OnClick = function() UI:Toggle() end,
+      OnEnter = function(fr) W.ShowTotalTooltip(fr) end,
+      OnLeave = function() if GameTooltip then GameTooltip:Hide() end end,
+    })
+    if not okN then return false end
+    obj = o
+  end
+  if not obj then return false end
+  local okR = pcall(DBI.Register, DBI, "Dropamine", obj, db)
+  if not okR then return false end
+  W.ldb, W.dbi = obj, DBI
+  if UI.minimap then UI.minimap:Hide() end
+  return true
+end
+
+local baseToggleMinimap = UI.ToggleMinimap
+function UI:ToggleMinimap()
+  if not (W.ldb and W.dbi) then return baseToggleMinimap(self) end
+  local db = ns.db.ui.ldbIcon
+  db.hide = not db.hide
+  ns.db.ui.minimapHidden = db.hide
+  pcall(db.hide and W.dbi.Hide or W.dbi.Show, W.dbi, "Dropamine")
+  return not db.hide
+end
+
+local basePlaceMinimap = UI.PlaceMinimapButton
+function UI:PlaceMinimapButton()
+  if W.ldb and W.dbi then
+    -- LibDBIcon place lui-même le bouton (sa position est dans ui.ldbIcon)
+    if self.minimap then self.minimap:Hide() end
+    return
+  end
+  return basePlaceMinimap(self)
+end
+
+-- /drop reset : remet aussi le bouton LibDBIcon à sa place par défaut
+local baseResetLDB = UI.ResetPositions
+function UI:ResetPositions(...)
+  local r = { baseResetLDB(self, ...) }
+  local ui = ns.db and ns.db.ui
+  if W.ldb and W.dbi and ui and ui.ldbIcon then
+    ui.ldbIcon.minimapPos = 45
+    if W.dbi.Refresh then pcall(W.dbi.Refresh, W.dbi, "Dropamine", ui.ldbIcon) end
+  end
   return unpack(r)
 end
 

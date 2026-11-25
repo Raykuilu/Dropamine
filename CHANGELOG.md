@@ -21,8 +21,11 @@
 - Collection log: the same light highlight under the mouse everywhere (categories, dungeons, recipes, Apprentice / Journeyman / Expert lines); long recipe names are cut with "…" and shown in full, with their source, in the tooltip.
 - Copy windows (`/drop debug`, `/drop bug`, profile export / import) use the game's own window style, with the Dropamine portrait.
 
+- Minimap button: when another add-on already loads LibDataBroker and LibDBIcon (Details, Questie, DBM…), Dropamine's button goes through them, so it looks and behaves like the other buttons and button bags pick it up. Dropamine still ships no library; without them, its own button (same size and border) stays.
+
 ### Fixes
 - Recipe sources refresh as soon as SkillUp Forever has finished loading its data.
+- Collection log: the "Sort: level / %" button was stuck on %; dragging the scroll bar stops when you release the mouse, even outside the bar; the hover highlight reaches the scroll bar.
 
 ## 3.9.0
 
