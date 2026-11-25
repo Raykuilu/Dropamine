@@ -31,7 +31,11 @@ For **WoW Forever** only (`Interface: 16001`). The native Skills tab is never hi
 - **Hardcore tab**, ready for Forever's Hardcore mode (or tick "I play Hardcore (unofficial)"): a red glow, a banner and a beating drop when your target is elite, of level ?? or 3+ levels above you, plus an alert sound. Two sliders set each glow.
 - Also new: weapon masters in `/drop weapons`, guild milestone messages (off by default), a "New recipe!" toast, fishing rank trainers, a LibDBIcon minimap button when another add-on provides it, and English command aliases (`/drop hunt`, `/drop summary`…).
 
-## Collection log
+---
+
+## All features
+
+### Collection log
 
 ![Collection log.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/en/collection-log-en.png)
 
@@ -50,7 +54,7 @@ Your Old School RuneScape-style collection log, for WoW Forever dungeons and rai
 
 `/drop collection` · Collection achievements: Collector (10 %), Great collector (25 %), Dream collection (50 %).
 
-## BiS hunt, linked to Dungeon Journal favourites
+### BiS hunt, linked to Dungeon Journal favourites
 
 ![BiS hunt.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/en/bis-hunt-en.png)
 
@@ -67,7 +71,7 @@ Pick the item you want, then go get it.
 
 `/drop hunt` · Data is read live from the **Dungeon Journal** addon (optional, nothing bundled). Thanks to Exehn for the data and access to favourites.
 
-## Every skill. Every +1.
+### Every skill. Every +1.
 
 ![Know before you swing.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/en/know-before-you-swing-en.png)
 
@@ -83,7 +87,7 @@ Pick the item you want, then go get it.
 
 ![The tooltip.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/en/tooltip-en.png)
 
-## Progression window
+### Progression window
 
 Left-click the droplet, or type `/drop progression`.
 
@@ -104,7 +108,7 @@ Left-click the droplet, or type `/drop progression`.
 
 ![Session recap.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/en/session-recap-en.png)
 
-## Themes
+### Themes
 
 ![Themes.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/en/themes-en.png)
 
@@ -116,6 +120,8 @@ Left-click the droplet, or type `/drop progression`.
 | **FlareUI (New)** | The FlareUI chat frame: a thick border and the knotted line along the top and bottom. Border texture from FlareUI (MIT). |
 | **FlareUI (Old School)** | Dark fill, rounded bronze border. |
 | **Classic** | In-game Blizzard textures. Nothing is copied into the addon. |
+
+---
 
 ## First launch
 
@@ -190,7 +196,11 @@ Pour **WoW Forever** uniquement (`Interface: 16001`). L'onglet Compétences nati
 - **Onglet Hardcore**, prêt pour le mode Hardcore de Forever (ou coche « Je joue en Hardcore (mode non officiel) ») : lueur rouge, bandeau et goutte qui bat quand ta cible est élite, de niveau ?? ou a 3 niveaux de plus que toi, plus un son d'alerte. Deux curseurs règlent chaque lueur.
 - Aussi : les maîtres d'armes dans `/drop armes`, des messages de paliers en guilde (coupés par défaut), un toast « Nouvelle recette ! », les maîtres de rang de la Pêche, un bouton de minicarte LibDBIcon quand un autre addon la fournit, et des alias de commandes en anglais.
 
-## Le journal de collection
+---
+
+## Toutes les fonctionnalités
+
+### Le journal de collection
 
 ![Journal de collection.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/fr/collection-log-fr.png)
 
@@ -210,7 +220,7 @@ Ton collection log façon Old School RuneScape, pour les donjons et raids de WoW
 
 `/drop collection` · Succès de collection : Collectionneur (10 %), Grand collectionneur (25 %), Collection de rêve (50 %).
 
-## La chasse BiS, liée aux favoris du Dungeon Journal
+### La chasse BiS, liée aux favoris du Dungeon Journal
 
 ![Chasse BiS.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/fr/bis-hunt-fr.png)
 
@@ -228,7 +238,7 @@ Choisis l'objet que tu veux, puis va le chercher.
 
 `/drop chasse` · Les données sont lues en direct dans l'addon **Dungeon Journal** (facultatif, rien n'est embarqué). Merci à Exehn pour les données et l'accès aux favoris.
 
-## Chaque compétence. Chaque +1.
+### Chaque compétence. Chaque +1.
 
 ![Tu sais avant de frapper.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/fr/know-before-you-swing-fr.png)
 
@@ -244,7 +254,7 @@ Choisis l'objet que tu veux, puis va le chercher.
 
 ![L'infobulle.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/fr/tooltip-fr.png)
 
-## Fenêtre Progression
+### Fenêtre Progression
 
 Clic gauche sur la goutte, ou `/drop progression`.
 
@@ -265,7 +275,7 @@ Clic gauche sur la goutte, ou `/drop progression`.
 
 ![Récap de session.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/fr/session-recap-fr.png)
 
-## Thèmes
+### Thèmes
 
 ![Thèmes.](https://raw.githubusercontent.com/Raykuilu/Dropamine/dc7ce1c9b28f204a121b05628f3cc75b8fa91600/docs/curseforge/v3/fr/themes-fr.png)
 
@@ -277,6 +287,8 @@ Clic gauche sur la goutte, ou `/drop progression`.
 | **FlareUI (New)** | Le cadre du chat FlareUI : bordure épaisse et ligne nouée en haut et en bas. Texture de bordure issue de FlareUI (MIT). |
 | **FlareUI (Old School)** | Fond sombre, bordure bronze arrondie. |
 | **Classique** | Les textures Blizzard du jeu. Rien n'est copié dans l'addon. |
+
+---
 
 ## Premier lancement
 
