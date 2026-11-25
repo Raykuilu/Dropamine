@@ -97,7 +97,7 @@ local function Pulse(region, from, to, dur)
 end
 -- lueur rouge douce AUTOUR du panneau (ombre douce de l'addon, en 8 morceaux,
 -- seulement à l'extérieur) + filet rouge fin sur le bord, qui « chauffe » au pic
-H.GLOW = 12
+H.GLOW = 16
 local function ShadowTex()
   local Th = ns.Theme
   return (Th and Th.SHADOW_TEX) or "Interface\\AddOns\\Dropamine\\Media\\SoftShadow"
@@ -110,12 +110,13 @@ function H.BuildPanelAlert(f)
   g:SetAllPoints(f)
   if g.SetFrameLevel and f.GetFrameLevel then pcall(g.SetFrameLevel, g, (N(f:GetFrameLevel()) or 1) + 20) end
   if g.EnableMouse then g:EnableMouse(false) end
-  local P, E = H.GLOW, 12 / 64   -- largeur de la lueur ; bord flou du fichier (12 px sur 64)
+  local P, E = H.GLOW, 20 / 64   -- largeur de la lueur ; bord flou du fichier + un peu de zone pleine
   local function Piece(l, r, t, b)
     local s = g:CreateTexture(nil, "BACKGROUND")
     pcall(s.SetTexture, s, tex)
     s:SetTexCoord(l, r, t, b)
     s:SetVertexColor(H.DANGER[1], H.DANGER[2], H.DANGER[3], 1)
+    if s.SetBlendMode then pcall(s.SetBlendMode, s, "ADD") end
     return s
   end
   -- coins
@@ -132,24 +133,14 @@ function H.BuildPanelAlert(f)
   lef:SetPoint("TOPRIGHT", f, "TOPLEFT", 0, 0) lef:SetPoint("BOTTOMRIGHT", f, "BOTTOMLEFT", 0, 0) lef:SetWidth(P)
   local rig = Piece(1 - E, 1, E, 1 - E)
   rig:SetPoint("TOPLEFT", f, "TOPRIGHT", 0, 0) rig:SetPoint("BOTTOMLEFT", f, "BOTTOMRIGHT", 0, 0) rig:SetWidth(P)
-  -- filet rouge fin sur le bord du panneau (teinte du liseré)
-  local function Line(p1, p2, w, h)
-    local t = g:CreateTexture(nil, "OVERLAY")
-    pcall(t.SetTexture, t, WHITE)
-    t:SetVertexColor(H.DANGER[1], H.DANGER[2], H.DANGER[3], 0.55)
-    t:SetPoint(p1, f, p1) t:SetPoint(p2, f, p2)
-    if w then t:SetWidth(w) else t:SetHeight(h) end
-  end
-  Line("TOPLEFT", "TOPRIGHT", nil, 1) Line("BOTTOMLEFT", "BOTTOMRIGHT", nil, 1)
-  Line("TOPLEFT", "BOTTOMLEFT", 1, nil) Line("TOPRIGHT", "BOTTOMRIGHT", 1, nil)
-  g.ag = Pulse(g, 1, 0.25, 0.7)
+  g.ag = Pulse(g, 1, 0.4, 0.7)
   -- bandeau : même plaque que la pastille « N prêts », en rouge (tête de mort + raison)
   local Po = ns.Polish
   local I = ns.Icons
   local b = CreateFrame("Frame", nil, f)
   if b.SetFrameLevel and f.GetFrameLevel then pcall(b.SetFrameLevel, b, (N(f:GetFrameLevel()) or 1) + 22) end
   if b.EnableMouse then b:EnableMouse(false) end
-  b:SetHeight(14)
+  b:SetHeight(18)
   b:SetPoint("CENTER", f, "TOP", 0, 0)
   local sh = b:CreateTexture(nil, "BACKGROUND", nil, -2)
   pcall(sh.SetTexture, sh, WHITE)
@@ -166,12 +157,12 @@ function H.BuildPanelAlert(f)
   bg:SetAllPoints(b)
   local skull = b:CreateTexture(nil, "ARTWORK")
   pcall(skull.SetTexture, skull, "Interface\\TargetingFrame\\UI-TargetingFrame-Skull")
-  skull:SetSize(10, 10)
-  skull:SetPoint("LEFT", b, "LEFT", 4, 0)
+  skull:SetSize(14, 14)
+  skull:SetPoint("LEFT", b, "LEFT", 5, 0)
   local fs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  pcall(fs.SetFont, fs, (I and I.COUNT_PATH) or "Fonts\\ARIALN.TTF", 10, "")
+  pcall(fs.SetFont, fs, (I and I.COUNT_PATH) or "Fonts\\ARIALN.TTF", 12, "")
   if I and I.CleanText then pcall(I.CleanText, fs) end
-  fs:SetPoint("LEFT", skull, "RIGHT", 3, 0)
+  fs:SetPoint("LEFT", skull, "RIGHT", 4, 0)
   fs:SetTextColor(1, 0.45, 0.30)
   b.fs = fs
   b:Hide()
@@ -194,8 +185,9 @@ function H.BuildDropAlert(t)
     local halo = fx:CreateTexture(nil, "BACKGROUND")
     pcall(halo.SetTexture, halo, ShadowTex())
     halo:SetVertexColor(H.DANGER[1], H.DANGER[2], H.DANGER[3], 1)
+    if halo.SetBlendMode then pcall(halo.SetBlendMode, halo, "ADD") end
     fx.halo = halo
-    fx.haloAG = Pulse(halo, 1, 0.2, 0.5)
+    fx.haloAG = Pulse(halo, 1, 0.45, 0.6)
     local drop = fx:CreateTexture(nil, "ARTWORK")
     pcall(drop.SetTexture, drop, DROP_TEX)
     fx.drop = drop
@@ -218,7 +210,7 @@ function H.BuildDropAlert(t)
   fx:SetPoint("CENTER", anchor, "CENTER", 0, 0)
   fx.drop:ClearAllPoints() fx.drop:SetAllPoints(fx)
   fx.halo:ClearAllPoints()
-  local pad = math.floor(side * 0.55 + 0.5)
+  local pad = math.floor(side * 0.75 + 0.5)
   fx.halo:SetPoint("TOPLEFT", fx, "TOPLEFT", -pad, pad) fx.halo:SetPoint("BOTTOMRIGHT", fx, "BOTTOMRIGHT", pad, -pad)
   return fx
 end
@@ -243,7 +235,7 @@ function H.Show(why)
   if g then
     if why then
       g.banner.fs:SetText(why)
-      g.banner:SetWidth((N(g.banner.fs:GetStringWidth()) or 60) + 21)
+      g.banner:SetWidth((N(g.banner.fs:GetStringWidth()) or 60) + 30)
       g:Show() g.banner:Show() Play(g.ag, true)
     else
       Play(g.ag, false) g:Hide() g.banner:Hide()
