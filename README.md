@@ -20,7 +20,7 @@ For **WoW Forever** only (`Interface: 16001`). The native Skills tab is never hi
 - **Find players who need the same dungeons.** Your collection log and wanted items, shared with `/drop hiscores`, put you on [dropamine.app](https://dropamine.app) next to everyone aiming at the same dungeon: plan an outing, join by role, get reminded. Often you will run it more than once: so will they.
 - **One command from the site:** every code copied on dropamine.app (wanted items, outing reminder) is pasted in game with `/drop <code>`. Outing reminders show a toast 15 min before and at start time: click it to whisper the organiser.
 - **The BiS hunt is optional.** Collectors who only want the collection log can switch it off (setup tour, Settings > Hunt and collection, or `/drop hunt off`). Your list is kept.
-- **`/drop hiscores` à la carte:** tick what you share (played time, collection log, achievements, records, wanted items).
+- **Hiscores export à la carte:** in `/drop hiscores`, tick what you share (played time, collection log, achievements, records, wanted items).
 - **Profession trainers:** the rank reminder says where to go for your faction (for example Leatherworking 150: Darnassus).
 - **Fixes:** hunt attempts count once per outing and only in the right dungeon; items won by someone else are no longer added to your collection log; item names follow your game language.
 
@@ -217,7 +217,7 @@ Pour **WoW Forever** uniquement (`Interface: 16001`). L'onglet Compétences nati
 - **Trouver ceux qui font les mêmes donjons.** Ton carnet de collection et tes objets recherchés, partagés avec `/drop hiscores`, te placent sur [dropamine.app](https://dropamine.app) à côté de tous ceux qui visent le même donjon : propose une sortie, rejoins-la par rôle, reçois un rappel. Tu vas souvent le refaire plusieurs fois : eux aussi.
 - **Une seule commande depuis le site :** tout code copié sur dropamine.app (objets recherchés, rappel de sortie) se colle en jeu avec `/drop <code>`. Le rappel de sortie affiche un toast 15 min avant puis à l'heure : un clic et tu chuchotes à l'organisateur.
 - **La chasse BiS devient facultative.** Les complétionnistes qui ne veulent que le carnet peuvent la couper (visite guidée, Réglages > Chasse et collection, ou `/drop chasse off`). Ta liste est gardée.
-- **`/drop hiscores` à la carte :** tu coches ce que tu partages (temps de jeu, carnet, succès, records, objets recherchés).
+- **Export des classements à la carte :** dans `/drop hiscores`, tu coches ce que tu partages (temps de jeu, carnet, succès, records, objets recherchés).
 - **Maîtres de métier :** le rappel de rang dit où aller selon ta faction (par exemple Travail du cuir 150 : Darnassus).
 - **Corrections :** les essais de chasse comptent une fois par sortie et seulement dans le bon donjon ; un objet gagné par un autre n'entre plus dans ton carnet ; les noms d'objets suivent la langue du jeu.
 
