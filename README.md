@@ -8,12 +8,32 @@
 
 *[Version française plus bas](#français)*
 
-**Dropamine 3.11** puts every skill on screen, celebrates each +1 like Old School RuneScape, tracks the gear you are farming (**Collection log**, **BiS hunt**) and now guides your professions with **SkillUp Forever**.
+**Dropamine 3.11** puts every skill on screen, celebrates each +1 like Old School RuneScape, tracks the gear you are farming (**Collection log**, optional **BiS hunt**) and, with [dropamine.app](https://dropamine.app), **finds the players who need the same dungeons as you**.
 
 <p align="center"><a href="https://dropamine.app"><img src="https://dropamine.app/img/badges/site-en.png" alt="Hiscores · dropamine.app" width="250" /></a> <a href="https://github.com/Raykuilu/Dropamine"><img src="https://dropamine.app/img/badges/git-en.png" alt="GitHub" width="250" /></a> <a href="https://buymeacoffee.com/raykuilu"><img src="https://dropamine.app/img/badges/cof-en.png" alt="Buy me a coffee" width="250" /></a></p>
 
 
 For **WoW Forever** only (`Interface: 16001`). The native Skills tab is never hidden, moved or rewritten. FlareUI is not required.
+
+## New in 3.11.1
+
+- **Find players who need the same dungeons.** Your collection log and wanted items, shared with `/drop hiscores`, put you on [dropamine.app](https://dropamine.app) next to everyone aiming at the same dungeon: plan an outing, join by role, get reminded. Often you will run it more than once: so will they.
+- **One command from the site:** every code copied on dropamine.app (wanted items, outing reminder) is pasted in game with `/drop <code>`. Outing reminders show a toast 15 min before and at start time: click it to whisper the organiser.
+- **The BiS hunt is optional.** Collectors who only want the collection log can switch it off (setup tour, Settings > Hunt and collection, or `/drop hunt off`). Your list is kept.
+- **`/drop hiscores` à la carte:** tick what you share (played time, collection log, achievements, records, wanted items).
+- **Profession trainers:** the rank reminder says where to go for your faction (for example Leatherworking 150: Darnassus).
+- **Fixes:** hunt attempts count once per outing and only in the right dungeon; items won by someone else are no longer added to your collection log; item names follow your game language.
+
+## dropamine.app, the companion site
+
+Free, no ads, sign-in with Battle.net (we never see your password). The add-on sends nothing by itself: you copy one line from the game (`/drop hiscores`) and paste it on the site.
+
+- **Find a group:** players who need the same dungeons as you, from their collection log and wanted items. Plan an outing, join by role (tank, healer, damage), waitlist when full, filters by dungeon, level and missing role. Notifications (even with the site closed), a reminder in game with `/drop <code>`, and a ready-made `/w` to the organiser.
+- **Hiscores and guilds:** total level, every profession and weapon skill, Defense, K/D ratio; rankings by region, ruleset and class, and guild pages.
+- **Your character sheet:** armory stats (PvP, adventure, reputations) next to your Dropamine progress: collection log item by item with tooltips, achievements, records, played time.
+- **Wanted items:** your list by equipment slot, with attempts and drop rates, and suggested upgrades from dungeons at your level (compared with what you wear). Tick, copy, paste in game.
+- **Hiscores image:** a shareable card of your character, with what you choose to show.
+- **Installable app:** add it to your phone home screen; it opens like an app.
 
 ## New in 3.11
 
@@ -144,6 +164,8 @@ A short guided tour shows each feature, lets you try it and switch it off. `/dro
 - `/drop theme light|flare2|flare|classic` · `/drop columns 2|3|5|10` · `/drop lock`
 - `/drop weapons` — weapons and Defense to level, with the monster levels that give points
 - `/drop hiscores` — your export line for the dropamine.app Hiscores
+- `/drop <code>` — paste any code copied on dropamine.app (wanted items, outing reminder) · `/drop outing` — your noted outings
+- `/drop hunt off|on` — turn the BiS hunt off (collection log only) or back on
 - `/drop hc` — Hardcore status (`on|off` for unofficial Hardcore, `simu` to try the alert)
 - `/drop check` · `/drop debug` · `/drop perf` — health check and diagnostics
 
@@ -183,12 +205,32 @@ Skill tracking and collection log inspired by Old School RuneScape (unaffiliated
 
 &nbsp;
 
-**Dropamine 3.11** garde toutes tes compétences à l'écran, fête chaque +1 comme dans Old School RuneScape, suit l'équipement que tu farmes (**journal de collection**, **chasse BiS**) et guide maintenant tes métiers avec **SkillUp Forever**.
+**Dropamine 3.11** garde toutes tes compétences à l'écran, fête chaque +1 comme dans Old School RuneScape, suit l'équipement que tu farmes (**carnet de collection**, **chasse BiS** au choix) et, avec [dropamine.app](https://dropamine.app), **trouve les joueurs qui doivent faire les mêmes donjons que toi**.
 
 <p align="center"><a href="https://dropamine.app"><img src="https://dropamine.app/img/badges/site-fr.png" alt="Classements · dropamine.app" width="250" /></a> <a href="https://github.com/Raykuilu/Dropamine"><img src="https://dropamine.app/img/badges/git-fr.png" alt="GitHub" width="250" /></a> <a href="https://buymeacoffee.com/raykuilu"><img src="https://dropamine.app/img/badges/cof-fr.png" alt="Offre-moi un café" width="250" /></a></p>
 
 
 Pour **WoW Forever** uniquement (`Interface: 16001`). L'onglet Compétences natif n'est jamais caché, déplacé ni réécrit. FlareUI n'est pas nécessaire.
+
+## Nouveau en 3.11.1
+
+- **Trouver ceux qui font les mêmes donjons.** Ton carnet de collection et tes objets recherchés, partagés avec `/drop hiscores`, te placent sur [dropamine.app](https://dropamine.app) à côté de tous ceux qui visent le même donjon : propose une sortie, rejoins-la par rôle, reçois un rappel. Tu vas souvent le refaire plusieurs fois : eux aussi.
+- **Une seule commande depuis le site :** tout code copié sur dropamine.app (objets recherchés, rappel de sortie) se colle en jeu avec `/drop <code>`. Le rappel de sortie affiche un toast 15 min avant puis à l'heure : un clic et tu chuchotes à l'organisateur.
+- **La chasse BiS devient facultative.** Les complétionnistes qui ne veulent que le carnet peuvent la couper (visite guidée, Réglages > Chasse et collection, ou `/drop chasse off`). Ta liste est gardée.
+- **`/drop hiscores` à la carte :** tu coches ce que tu partages (temps de jeu, carnet, succès, records, objets recherchés).
+- **Maîtres de métier :** le rappel de rang dit où aller selon ta faction (par exemple Travail du cuir 150 : Darnassus).
+- **Corrections :** les essais de chasse comptent une fois par sortie et seulement dans le bon donjon ; un objet gagné par un autre n'entre plus dans ton carnet ; les noms d'objets suivent la langue du jeu.
+
+## dropamine.app, le site compagnon
+
+Gratuit, sans pub, connexion Battle.net (nous ne voyons jamais ton mot de passe). L’addon n’envoie rien tout seul : tu copies une ligne en jeu (`/drop hiscores`) et tu la colles sur le site.
+
+- **Trouver un groupe :** les joueurs qui doivent faire les mêmes donjons que toi, d’après leur carnet de collection et leurs objets recherchés. Propose une sortie, rejoins-la par rôle (tank, soigneur, dégâts), liste d’attente quand c’est plein, filtres par donjon, niveau et rôle manquant. Notifications (même site fermé), rappel en jeu avec `/drop <code>`, et un `/w` prêt pour l’organisateur.
+- **Classements et guildes :** niveau total, chaque métier et compétence d’arme, Défense, ratio K/D ; classements par région, mode de jeu et classe, et pages de guilde.
+- **Ta fiche personnage :** les chiffres de l’armurerie (JcJ, aventure, réputations) à côté de ta progression Dropamine : carnet de collection objet par objet avec infobulles, succès, records, temps de jeu.
+- **Objets recherchés :** ta liste par emplacement, avec essais et taux de butin, et des suggestions d’améliorations dans les donjons de ton niveau (comparées à ce que tu portes). Coche, copie, colle en jeu.
+- **Image Hiscores :** une carte de ton personnage à partager, avec ce que tu choisis de montrer.
+- **App installable :** ajoute le site à l’écran d’accueil de ton téléphone : il s’ouvre comme une app.
 
 ## Nouveau en 3.11
 
@@ -321,6 +363,8 @@ Une courte visite guidée présente chaque fonction, te laisse l'essayer et la c
 - `/drop theme leger|flare2|flare|classic` · `/drop colonnes 2|3|5|10` · `/drop verrou`
 - `/drop armes` : armes et Défense à monter, avec les niveaux de monstres qui donnent des points
 - `/drop hiscores` : ta ligne d'export pour les classements de dropamine.app
+- `/drop <code>` : colle tout code copié sur dropamine.app (objets recherchés, rappel de sortie) · `/drop sortie` : tes sorties notées
+- `/drop chasse off|on` : coupe la chasse BiS (carnet seul) ou la rallume
 - `/drop hc` : état du Hardcore (`on|off` pour le Hardcore non officiel, `simu` pour essayer l'alerte)
 - `/drop check` · `/drop debug` · `/drop perf` : bilan de santé et diagnostic
 
