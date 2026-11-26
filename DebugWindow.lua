@@ -123,30 +123,68 @@ function DW.Build()
   return f
 end
 
--- mise en page : place libre en bas pour le bouton en mode saisie
-local function Layout(editable)
+-- mise en page : place libre en bas pour le bouton en mode saisie, ou pour les cases à cocher (3.11.1)
+local CHECK_PER_ROW, CHECK_ROW_H = 3, 24
+local function Layout(editable, checks)
   local sf = DW.scroll
+  local n = checks and #checks or 0
+  local rows = math.ceil(n / CHECK_PER_ROW)
+  local low = editable and 40 or (rows > 0 and (14 + rows * CHECK_ROW_H)) or nil
   sf:ClearAllPoints()
   local inset = DW.inset
   if inset then
     -- 3.10.0 : encart sous la ligne d'aide, le bouton de validation dessous en mode saisie
     inset:ClearAllPoints()
     inset:SetPoint("TOPLEFT", DW.frame, "TOPLEFT", 10, -64)
-    inset:SetPoint("BOTTOMRIGHT", DW.frame, "BOTTOMRIGHT", -10, editable and 40 or 10)
+    inset:SetPoint("BOTTOMRIGHT", DW.frame, "BOTTOMRIGHT", -10, low or 10)
     sf:SetPoint("TOPLEFT", inset, "TOPLEFT", 8, -8)
     sf:SetPoint("BOTTOMRIGHT", inset, "BOTTOMRIGHT", -28, 8)
   else
     sf:SetPoint("TOPLEFT", DW.frame, "TOPLEFT", 14, -34)
-    sf:SetPoint("BOTTOMRIGHT", DW.frame, "BOTTOMRIGHT", -32, editable and 40 or 14)
+    sf:SetPoint("BOTTOMRIGHT", DW.frame, "BOTTOMRIGHT", -32, low or 14)
   end
   if editable then DW.accept:Show() else DW.accept:Hide() end
+  -- 3.11.1 : cases à cocher en bas (ex. les groupes de données de l'export Hiscores), 3 par ligne
+  DW.checks = DW.checks or {}
+  local colW = (DW.W - 24) / CHECK_PER_ROW
+  for i = 1, math.max(n, #DW.checks) do
+    local spec, cb = checks and checks[i], DW.checks[i]
+    if spec and not cb and _G.CreateFrame then
+      local ok, c = pcall(CreateFrame, "CheckButton", nil, DW.frame, "UICheckButtonTemplate")
+      if not (ok and c) then c = CreateFrame("CheckButton", nil, DW.frame) end
+      c._osrsOwn = true
+      c:SetSize(24, 24)
+      c.label = c:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+      c.label:SetPoint("LEFT", c, "RIGHT", 2, 0)
+      c:SetScript("OnClick", function(self)
+        local fn = self.onToggle
+        if fn then fn(self:GetChecked() and true or false) end
+      end)
+      DW.checks[i], cb = c, c
+    end
+    if cb then
+      if spec then
+        local row, col = math.floor((i - 1) / CHECK_PER_ROW), (i - 1) % CHECK_PER_ROW
+        cb:ClearAllPoints()
+        cb:SetPoint("BOTTOMLEFT", DW.frame, "BOTTOMLEFT", 12 + col * colW, 9 + (rows - 1 - row) * CHECK_ROW_H)
+        cb.label:SetText(spec.label or "")
+        P(cb, "SetChecked", spec.value and true or false)
+        cb.onToggle = spec.onToggle
+        cb:Show()
+      else
+        cb.onToggle = nil
+        cb:Hide()
+      end
+    end
+  end
 end
 
 -- opts.title (3.9.0) : titre de la fenêtre (sinon celui du debug)
+-- opts.checks (3.11.1) : { { label, value, onToggle(coché) }, … } : cases à cocher sous le texte (opts.check : une seule)
 function DW.Show(lines, opts)
   local f = DW.Build()
   DW.editable, DW.onAccept = nil, nil
-  Layout(false)
+  Layout(false, opts and (opts.checks or (opts.check and { opts.check })))
   DW.title:SetText((opts and opts.title) or Tr["Dropamine — debug (Ctrl+C pour copier)"])
   DW.lines = lines
   DW.text = table.concat(lines, "\n")

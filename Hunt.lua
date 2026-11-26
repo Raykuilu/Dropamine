@@ -121,6 +121,28 @@ function H.SourceOf(id)
   return e and e.src and e.src[1] or nil, e
 end
 local function FDJ() return _G.ForeverDungeonJournal_NS end
+-- 3.11.1 : le donjon où l'on est (nil hors instance de groupe)
+function H.CurrentInstance()
+  if type(_G.GetInstanceInfo) ~= "function" then return nil end
+  local ok, name, kind = pcall(_G.GetInstanceInfo)
+  if not ok or not Plain(name) or (kind ~= "party" and kind ~= "raid") then return nil end
+  return name
+end
+-- un essai compte-t-il ici pour cet objet ? Objet sans source connue (butin du monde) : partout, comme avant.
+-- Sinon : seulement dans un de ses donjons (le nom du client, ou son nom traduit ; « Monastère Écarlate » couvre ses ailes).
+function H.CountsHere(it, here)
+  local _, e = H.SourceOf(it.id)
+  if not (e and e.src and #e.src > 0) then return true end
+  if not here then return false end
+  local h = Fold(here)
+  for _, src in ipairs(e.src) do
+    for _, n in ipairs({ src.dungeon, H.LocDungeon(src.dungeon) }) do
+      local f = Fold(n)
+      if f ~= "" and (f == h or f:find(h, 1, true) or h:find(f, 1, true)) then return true end
+    end
+  end
+  return false
+end
 function H.LocDungeon(n)
   local f = FDJ()
   if f and f.LocalizeDungeonName and type(n) == "string" then
@@ -260,6 +282,16 @@ end
 -- Données : objets recherchés (par personnage)
 ------------------------------------------------------------------------------
 local MAX_ITEMS = 20
+local function FixAttempts311(s)
+  if not s or s.attemptsFix311 or not BuildIndex() then return end   -- attend le journal des donjons
+  s.attemptsFix311 = true
+  for _, it in ipairs(s.items or {}) do
+    if not it.bossKey then
+      local _, e = H.SourceOf(it.id)
+      if e and e.src and #e.src > 0 then it.attempts = 0 end
+    end
+  end
+end
 local function Store()
   local c = ns.CharDB and ns.CharDB()
   if type(c) ~= "table" then return nil end
@@ -267,6 +299,7 @@ local function Store()
   c.hunt.items = type(c.hunt.items) == "table" and c.hunt.items or {}
   c.hunt.kills = type(c.hunt.kills) == "table" and c.hunt.kills or {}
   c.hunt.log = type(c.hunt.log) == "table" and c.hunt.log or {}
+  FixAttempts311(c.hunt)
   return c.hunt
 end
 local function Attempts(s, it)
@@ -279,7 +312,10 @@ function H.List()
   local out = {}
   if not s then return out end
   for i, it in ipairs(s.items) do
-    out[#out + 1] = { i = i, id = it.id, name = H.DisplayName(it.id, it.name) or ("#" .. tostring(it.id)), rate = it.rate,
+    -- 3.11.1 : dès que le jeu connaît l'objet, son nom dans la langue du jeu remplace celui enregistré (import, Journal en anglais)
+    local loc = it.id and H.DisplayName(it.id, nil)
+    if loc and loc ~= it.name then it.name = loc end
+    out[#out + 1] = { i = i, id = it.id, name = it.name or ("#" .. tostring(it.id)), rate = it.rate,
       attempts = Attempts(s, it), drops = N(it.drops), last = it.last, tile = it.tile, group = it.group,
       dungeon = H.LocDungeon(it.dungeon), boss = H.LocBoss(it.boss) }
   end
@@ -348,7 +384,7 @@ function H.Add(text, rate, opts)
   local src, e
   if id then
     src, e = H.SourceOf(id)
-    if not name then name = (e and e.name) or H.DisplayName(id, nil) end
+    if not name then name = H.DisplayName(id, nil) or (e and e.name) end   -- 3.11.1 : nom du jeu d'abord (localisé)
     if opts.src then src = opts.src end
   end
   if opts.tile then
@@ -418,6 +454,29 @@ function H.ImportFavourites()
   return added, dup, full
 end
 
+-- 3.11.1 : liste préparée sur dropamine.app (« Ma chasse ») : /drop chasse import DROP-CH1:<identifiants en base 36, séparés par des points>
+function H.ImportCode(code)
+  local body = tostring(code or ""):match("DROP%-CH1:([%w%.]+)")
+  if not body then return nil end
+  local added, dup, full = 0, 0, false
+  for tok in body:gmatch("%w+") do
+    local id = tonumber(tok:lower(), 36)
+    if id and id > 0 then
+      local it, why = H.Add("item:" .. tostring(id))
+      if it and why == "dup" then dup = dup + 1
+      elseif it then added = added + 1
+      elseif why == "full" then full = true break end
+    end
+  end
+  -- les noms localisés arrivent du serveur un peu après : la fenêtre se redessine alors
+  if added > 0 and _G.C_Timer and _G.C_Timer.After then
+    for _, d in ipairs({ 1.5, 4 }) do
+      _G.C_Timer.After(d, function() local PU = ns.ProgressUI if PU and PU.RequestRefresh then pcall(PU.RequestRefresh) end end)
+    end
+  end
+  return added, dup, full
+end
+
 function H.AddLast()
   local best
   for _, it in ipairs(H.lastLoot) do
@@ -468,6 +527,9 @@ local function Refresh()
   if PU and PU.RequestRefresh then pcall(PU.RequestRefresh) end
 end
 
+-- 3.11.1 : la chasse peut être coupée (réglage « Chasse BiS ») : le carnet de collection, lui, continue
+function H.On() return ns.Opt("huntOn") end
+
 local function OnLoot()
   local s = Store()
   if not s then return end
@@ -482,14 +544,25 @@ local function OnLoot()
     if okL and Plain(link) and type(link) == "string" then
       local id = tonumber(link:match("item:(%d+)"))
       if id then
-        if s.log and idx and idx.byId[id] then s.log[id] = true end
+        -- 3.11.1 : un objet visible au butin n'est pas forcément à toi (jet de groupe gagné par un autre) :
+        -- le log n'est marqué que par « Vous recevez le butin » ou par le scan des sacs et de l'équipement.
         found[#found + 1] = { id = id, name = link:match("%[(.-)%]") }
         H.lastLoot[#H.lastLoot + 1] = { id = id, link = link, q = Quality(link) }
       end
     end
   end
+  -- 3.11.1 : sans boss unique (plusieurs sources, monstres), un essai ne compte que dans un donjon où l'objet tombe ;
+  -- avant, chaque fenêtre de butin comptait, même sur un monstre en extérieur (ex. Marque de Kern : 54 « essais »)
+  -- et un seul essai par sortie : des butins dans le même donjon à moins d'une heure d'écart = la même sortie
+  if not H.On() then return end
+  local here = H.CurrentInstance()
+  local now = (type(time) == "function" and time()) or 0
   for _, it in ipairs(s.items) do
-    if not it.bossKey then it.attempts = N(it.attempts) + 1 end
+    if not it.bossKey and H.CountsHere(it, here) then
+      local sameRun = here and it.runInst == here and now - (N(it.runAt) or 0) < 3600
+      if not sameRun then it.attempts = N(it.attempts) + 1 end
+      if here then it.runInst, it.runAt = here, now end
+    end
     for _, f in ipairs(found) do
       if Matches(it, f.id, f.name) then Found(s, it) break end
     end
@@ -511,6 +584,43 @@ local function SelfPatterns()
     end
   end
   return selfPatterns
+end
+-- 3.11.1 : modèles des messages de jet de dés (LOOT_ROLL_*, sauf « Vous avez gagné »), construits une fois
+local rollPatterns
+function H.IsRollMessage(msg)
+  if not rollPatterns then
+    rollPatterns = {}
+    for k, f in pairs(_G) do
+      if type(k) == "string" and k:sub(1, 10) == "LOOT_ROLL_" and k ~= "LOOT_ROLL_YOU_WON" and type(f) == "string" and f:find("%", 1, true) then
+        local pat = f:gsub("%%%d%$", "%%"):gsub("([%^%$%(%)%.%[%]%*%+%-%?])", "%%%1")
+        pat = pat:gsub("%%s", "(.+)"):gsub("%%d", "%%d+")
+        rollPatterns[#rollPatterns + 1] = "^" .. pat .. "$"
+      end
+    end
+  end
+  for _, pat in ipairs(rollPatterns) do if msg:find(pat) then return true end end
+  return false
+end
+-- 3.11.1 : clic droit dans le log de collection : marquer / retirer un objet à la main
+-- 3.11.1 : identifiants des objets obtenus du collection log (triés), pour l'export Hiscores
+function H.OwnedIds()
+  local s = Store()
+  local ix = BuildIndex()
+  local out = {}
+  if not (s and s.log and ix) then return out end
+  for id, got in pairs(s.log) do
+    if got and type(id) == "number" and ix.byId[id] then out[#out + 1] = id end
+  end
+  table.sort(out)
+  return out
+end
+function H.SetOwned(id, on)
+  local s = Store()
+  local ix = BuildIndex()
+  if not (s and s.log and ix and ix.byId[id]) then return false end
+  s.log[id] = on and true or nil
+  Refresh()
+  return true
 end
 local killAt = {}
 -- couleur du lien -> rang (3 rare, 4 épique, 5 légendaire, 6 artefact)
@@ -635,7 +745,8 @@ local function OnChatLoot(msg, author)
   end
   local mine = false
   for _, pat in ipairs(SelfPatterns()) do if msg:find(pat) then mine = true break end end
-  if not mine and Plain(author) and type(author) == "string" and author ~= "" then
+  -- 3.11.1 : les messages de jet (« Vous avez choisi Cupidité pour… ») portent aussi ton nom : jamais à toi
+  if not mine and Plain(author) and type(author) == "string" and author ~= "" and not H.IsRollMessage(msg) then
     local ok, me = pcall(_G.UnitName, "player")
     mine = ok and Plain(me) and me == author
   end
@@ -644,7 +755,7 @@ local function OnChatLoot(msg, author)
   if e then s.log[id] = true end
   H.lastLoot[#H.lastLoot + 1] = { id = id, link = link, q = Quality(link) }
   local tracked = false
-  for _, it in ipairs(s.items) do
+  for _, it in ipairs(H.On() and s.items or {}) do
     if Matches(it, id, nm) then Found(s, it) tracked = true end
   end
   -- alerte de butin : qualités cochées (couleur du lien, fiable même si l'objet n'est pas en cache)
@@ -712,7 +823,7 @@ function H.Glow(frame, on)
   g:Show()
   if g.ag and not g.ag:IsPlaying() then g.ag:Play() end
 end
-local function RollOn() return ns.Opt("huntRoll") end
+local function RollOn() return ns.Opt("huntRoll") and H.On() end
 -- jets de groupe : chaque fenêtre affichée est réévaluée (les cadres sont réutilisés d'un jet à l'autre)
 H._rollToasted = {}
 function H.ScanRolls()
@@ -1120,6 +1231,13 @@ ns.SlashExt.chasse = function(rest)
   rest = rest or ""
   local sub, arg = rest:match("^(%S*)%s*(.-)$")
   sub = (sub or ""):lower()
+  if sub == "on" or sub == "off" then
+    ns.SetOpt("huntOn", sub == "on")
+    if ns.Print then ns.Print(sub == "on" and Tr["Chasse BiS activée."] or Tr["Chasse BiS coupée : le carnet de collection continue. Ta liste est gardée."]) end
+    local PU = ns.ProgressUI
+    if PU and PU.OnModeChanged then pcall(PU.OnModeChanged) end
+    return
+  end
   if sub == "favoris" or sub == "fav" then
     local a, d, f = H.ImportFavourites()
     ns.Print(string.format(Tr["Favoris du Journal : %d ajoutés, %d déjà suivis."], a, d) .. (f and (" " .. Tr["Liste pleine (20 objets maximum)."]) or ""))
@@ -1150,9 +1268,15 @@ ns.SlashExt.chasse = function(rest)
     local rate = num and tonumber((num:gsub(",", ".")))
     local it, why = H.Add(link or arg, rate)
     if not it then
-      if ns.Print then ns.Print(why == "full" and Tr["Liste pleine (8 objets maximum)."] or Tr["Objet non reconnu : Maj+clic sur l'objet pour insérer son lien."]) end
+      if ns.Print then ns.Print(why == "full" and Tr["Liste pleine (20 objets maximum)."] or Tr["Objet non reconnu : Maj+clic sur l'objet pour insérer son lien."]) end
     elseif ns.Print then
       ns.Print((why == "dup" and Tr["Déjà suivi : "] or Tr["Suivi : "]) .. tostring(it.name or it.id))
+    end
+  elseif sub == "import" or sub == "importer" then
+    local a, d, f = H.ImportCode(arg)
+    if ns.Print then
+      if not a then ns.Print(Tr["Code non reconnu : copie-le depuis dropamine.app, page Ma chasse."])
+      else ns.Print(string.format(Tr["Import : %d ajoutés, %d déjà suivis."], a, d) .. (f and (" " .. Tr["Liste pleine (20 objets maximum)."]) or "")) end
     end
   elseif sub == "retirer" or sub == "remove" then
     if ns.Print then ns.Print(H.Remove(tonumber(arg) or 0) and Tr["Retiré."] or Tr["Numéro inconnu."]) end
@@ -1176,7 +1300,79 @@ ns.SlashExt.mode = function(rest)
 end
 ns.HelpExt = ns.HelpExt or {}
 ns.HelpExt[#ns.HelpExt + 1] = "/drop mode auto|route|endgame : onglets de niveau max (endgame = simulation)"
-ns.HelpExt[#ns.HelpExt + 1] = "/drop chasse [ajouter|retirer|reset] : objets recherchés et tentatives"
+ns.HelpExt[#ns.HelpExt + 1] = "/drop chasse [ajouter|retirer|reset|import|on|off] : objets recherchés et tentatives"
+
+------------------------------------------------------------------------------
+-- 3.11.1 : sorties de groupe préparées sur dropamine.app, rappelées en jeu
+--   /drop sortie DROP-RUN1:<heure (secondes, base 36)>~<donjon>~<organisateur>   (bouton « Rappel en jeu » du site)
+--   toast 15 min avant puis à l'heure, avec le /w de l'organisateur ; /drop sortie : la liste ; /drop sortie vider
+------------------------------------------------------------------------------
+local function Outings()
+  local s = Store()
+  if not s then return nil end
+  s.outings = s.outings or {}
+  return s.outings
+end
+function H.AddOuting(code)
+  local at36, dun, org = tostring(code or ""):match("DROP%-RUN1:(%w+)~([^~]*)~([^~%s]*)")
+  local at = at36 and tonumber(at36:lower(), 36)
+  local list = Outings()
+  if not at or not list then return nil end
+  dun = (dun:gsub("_", " ")); org = (org:gsub("_", " "))
+  for _, o in ipairs(list) do if o.at == at and o.dun == dun then return o, "dup" end end
+  local o = { at = at, dun = dun, org = org }
+  list[#list + 1] = o
+  table.sort(list, function(a, b) return a.at < b.at end)
+  while #list > 20 do table.remove(list, 1) end
+  return o
+end
+-- sorties à venir (et celles commencées depuis moins de 3 h) ; les plus anciennes sont oubliées
+function H.Outings(now)
+  now = now or time()
+  local list = Outings() or {}
+  for i = #list, 1, -1 do if list[i].at < now - 3 * 3600 then table.remove(list, i) end end
+  return list
+end
+local function OutingToast(title, o)
+  local P = ns.Progress
+  local sub = (o.org ~= "" and ("/w " .. o.org)) or ""
+  if P and P.Toast then pcall(P.Toast, title, sub, { kind = "achievement", variant = "gold" }, "outing-" .. tostring(o.at), true) end
+  if ns.Print then ns.Print(title .. (sub ~= "" and (" · " .. sub) or "")) end
+end
+function H.CheckOutings(now)
+  now = now or time()
+  for _, o in ipairs(H.Outings(now)) do
+    local left = o.at - now
+    if not o.r15 and left > 0 and left <= 900 then
+      o.r15 = true
+      OutingToast(string.format(Tr["%s dans %d min"], o.dun, math.max(1, math.floor(left / 60 + 0.5))), o)
+    elseif not o.r0 and left <= 0 and left > -1800 then
+      o.r0, o.r15 = true, true
+      OutingToast(string.format(Tr["C'est l'heure : %s"], o.dun), o)
+    end
+  end
+end
+if _G.C_Timer and _G.C_Timer.NewTicker then
+  ns.On("PLAYER_LOGIN", function() _G.C_Timer.NewTicker(20, function() pcall(H.CheckOutings) end) end)
+end
+ns.SlashExt.sortie = function(rest)
+  local arg = tostring(rest or "")
+  if arg:find("DROP%-RUN1:") then
+    local o, why = H.AddOuting(arg)
+    if not o then if ns.Print then ns.Print(Tr["Code non reconnu : copie-le depuis dropamine.app (bouton Rappel en jeu)."]) end return end
+    if ns.Print then ns.Print(string.format(why == "dup" and Tr["Déjà notée : %s, %s."] or Tr["Sortie notée : %s, %s. Rappel 15 min avant."], o.dun, date("%d/%m %H:%M", o.at))) end
+    return
+  end
+  if arg:lower():match("^%s*vider") or arg:lower():match("^%s*clear") then
+    local list = Outings(); if list then for i = #list, 1, -1 do list[i] = nil end end
+    if ns.Print then ns.Print(Tr["Sorties oubliées."]) end
+    return
+  end
+  local list = H.Outings()
+  if #list == 0 then if ns.Print then ns.Print(Tr["Aucune sortie notée. Sur dropamine.app, bouton « Rappel en jeu » d'une sortie."]) end return end
+  for _, o in ipairs(list) do if ns.Print then ns.Print(date("%d/%m %H:%M", o.at) .. " · " .. o.dun .. (o.org ~= "" and (" · /w " .. o.org) or "")) end end
+end
+ns.HelpExt[#ns.HelpExt + 1] = "/drop sortie [code|vider] : sorties de groupe de dropamine.app, rappel 15 min avant"
 
 -- (3.8.1 : l'option « Mode de la fenêtre Progression » est retirée des réglages ; /drop mode reste pour tester)
 

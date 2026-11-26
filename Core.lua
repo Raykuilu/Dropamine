@@ -238,10 +238,31 @@ local PRIMARY_TIERS = {
   [150] = { skill = 125, rank = "Expert", src = "maître" },
   [225] = { skill = 200, rank = "Artisan", src = "maître" },
 }
+-- 3.11.1 : où apprendre Expert et Artisan. Tous les maîtres n'enseignent pas ces rangs (ex. Expert en Travail du cuir :
+-- Darnassus seulement côté Alliance). Source : Warcraft Tavern, « Profession Trainer Locations » (WoW Forever), relevé du
+-- 26/11/2026, recoupé avec wow-professions.com/forever. Pour la récolte, tous les maîtres hors des zones de départ.
+local GATHER_WHERE = "Tous les maîtres hors des zones de départ enseignent ce rang (villes, villages)."
+local function Tiers(where150, where225)
+  return {
+    [75] = PRIMARY_TIERS[75],
+    [150] = { skill = 125, rank = "Expert", src = "maître", where = where150 },
+    [225] = { skill = 200, rank = "Artisan", src = "maître", where = where225 },
+  }
+end
 ns.PROF_TIERS = {
-  alchemy = PRIMARY_TIERS, blacksmithing = PRIMARY_TIERS, enchanting = PRIMARY_TIERS,
-  engineering = PRIMARY_TIERS, herbalism = PRIMARY_TIERS, leatherworking = PRIMARY_TIERS,
-  mining = PRIMARY_TIERS, skinning = PRIMARY_TIERS, tailoring = PRIMARY_TIERS,
+  alchemy = Tiers({ Alliance = "Expert : Ainethil ou Sylvanna Forestmoon, terrasse des Artisans, Darnassus (55.5, 23.1) ; ou Dalaran, montagnes d'Alterac (18.7, 62.4)", Horde = "Expert : Doctor Herbert Halsey, l'Apothicarium, Fossoyeuse (48.3, 72.3)" },
+    { Alliance = "Artisan : Kylanna Windwhisper, bastion de Plumelune, Féralas (32.6, 43.7) ; ou Master Mycologist Shurome, Gangrebois (51.5, 81.9)", Horde = "Artisan : Rogvar, Pierrêche, marais des Chagrins (48.3, 55.5) ; ou Master Mycologist Shurome, Gangrebois (51.5, 81.9)" }),
+  blacksmithing = Tiers({ Alliance = "Expert : Bengus Deepforge, la Grande forge, Forgefer (51.6, 42.4) ; ou Alard Schmied, Dalaran (19.7, 63.2)", Horde = "Expert : Saru Steelfury, vallée de l'Honneur, Orgrimmar (82.4, 23.5)" },
+    { Alliance = "Artisan : Brikk Keencraft, Baie-du-Butin, Strangleronce (29.0, 75.5)", Horde = "Artisan : Brikk Keencraft, Baie-du-Butin, Strangleronce (29.0, 75.5)" }),
+  enchanting = Tiers({ Alliance = "Expert : Kitta Firewind, tour d'Azora, forêt d'Elwynn (64.9, 70.7) ; ou Vanessa Sellers, Dalaran (16.8, 62.4)", Horde = "Expert : Hgarth, retraite du Roc-Soleil, Serres-Rocheuses (49.2, 57.2)" },
+    { Alliance = "Artisan : Annora, Uldaman (au sud de la salle du Temple)", Horde = "Artisan : Annora, Uldaman (au sud de la salle du Temple)" }),
+  engineering = Tiers({ Alliance = "Expert : Springspindle Fizzlegear, Brikabrok, Forgefer (68.8, 45.2)", Horde = "Expert : Roxxik, vallée de l'Honneur, Orgrimmar (76.0, 25.0)" },
+    { Alliance = "Artisan : Buzzek Bracketswing, Gadgetzan, Tanaris (52.2, 27.6)", Horde = "Artisan : Buzzek Bracketswing, Gadgetzan, Tanaris (52.2, 27.6)" }),
+  leatherworking = Tiers({ Alliance = "Expert : seulement à Darnassus, terrasse des Artisans (Telonis, 64.6, 21.5)", Horde = "Expert : seulement aux Pitons-du-Tonnerre, Hauteur du Milieu (Una, 41.7, 42.7)" },
+    { Alliance = "Artisan : Drakk Stonehand, Nid-de-l'Aigle, les Hinterlands (13.4, 43.4)", Horde = "Artisan : Hahrana Ironhide, camp Mojache, Féralas (74.4, 43.1)" }),
+  tailoring = Tiers({ Alliance = "Expert : Georgio Bolero ou Lawrence Schneider, quartier des Mages, Hurlevent (53.3, 81.7) ; ou Charles Worth, Dalaran (17.9, 60.7)", Horde = "Expert : Josef Gregorian, quartier de la Magie, Fossoyeuse (70.8, 30.6)" },
+    { Alliance = "Artisan : Timothy Worthington, île de Theramore, marécage d'Âprefange (66.2, 51.6)", Horde = "Artisan : Daryl Stack, Moulin-de-Tarren, contreforts de Hautebrande (63.6, 20.8)" }),
+  herbalism = Tiers(GATHER_WHERE, GATHER_WHERE), mining = Tiers(GATHER_WHERE, GATHER_WHERE), skinning = Tiers(GATHER_WHERE, GATHER_WHERE),
   cooking = {
     [75] = { skill = 50, rank = "Compagnon", src = "maître" },              -- sort 3102 « Requires Cooking (50) »
     [150] = { skill = 125, rank = "Expert", src = "livre" },                -- Expert Cookbook (16072) « Requires Cooking (125) »
@@ -262,6 +283,12 @@ ns.PROF_TIERS = {
       where = "Quête « Nat Pagle, Angler Extreme », Nat Pagle, marais d'Âprefange (58.6, 60.0)" },
   },
 }
+-- 3.11.1 : lieu d'apprentissage selon la faction du personnage ({ Alliance = …, Horde = … } ou un texte commun)
+function ns.WhereFor(w)
+  if type(w) ~= "table" then return w end
+  local ok, fac = pcall(_G.UnitFactionGroup, "player")
+  return (ok and w[fac]) or w.Alliance or w.Horde
+end
 ns.RANK_TEXT = {
   available = "Rang supérieur disponible chez le maître",
 }
@@ -324,14 +351,16 @@ function ns.RankStatus(d, cur, cap)
       if nx.src == "livre" then note = Tr["Rang supérieur disponible ("] .. Tr[nx.rank] .. Tr[" : livre)"] end
       if nx.src == "quête" then note = Tr["Rang supérieur disponible ("] .. Tr[nx.rank] .. Tr[" : quête)"] end
       -- 3.10.0 : où l'obtenir, quand on le sait (Pêche)
-      if nx.where then note = note .. "\n" .. Tr[nx.where] end
+      local where = ns.WhereFor(nx.where)
+      if where then note = note .. "\n" .. Tr[where] end
       return { col = t.green, state = "available", note = note }
     end
     local parts = {}
     if missSkill > 0 then parts[#parts + 1] = string.format(Tr["encore %d points de métier"], missSkill) end
     if missLevel then parts[#parts + 1] = string.format(Tr["niveau %d requis"], missLevel) end
     local note = Tr[nx.rank] .. Tr[" : "] .. table.concat(parts, Tr[" et "])
-    if nx.where then note = note .. "\n" .. Tr[nx.where] end
+    local where = ns.WhereFor(nx.where)
+    if where then note = note .. "\n" .. Tr[where] end
     -- Rouge : bloqué au maximum actuel sans rang apprenable (il manque des niveaux).
     if atCap and missLevel then return { col = t.red, state = "blocked", note = note } end
     return { col = t.yellow, state = "missing", note = note }
@@ -3743,7 +3772,7 @@ ns.HELP_SHORT = {
   "  Notifications : /drop drops on|off · notif dessus|dessous|detache · recap",
   "  Dopamine : /drop combo · defi · records · barre · collection · sons on|off",
   "  Progression : /drop progression · but <n>|+5|+10|+25 · semaine · succes · spots · share [say|party|guild|raid]",
-  "  Chasse et collection : /drop chasse [ajouter|retirer|reset] · collection · rare <objet> · item <id> · mode auto|route|endgame",
+  "  Chasse et collection : /drop chasse [ajouter|retirer|reset|import] · collection · rare <objet> · item <id> · mode auto|route|endgame",
   "  Visite et infos : /drop setup (visite guidée) · about (version, liens) · ding (test des animations) · check",
   "  Mode calme : /drop calme off|instance|groupe · profil perso|compte",
   "  Plus : /drop help tout (toutes les commandes) · /drop debug (rapport copiable) · /drop mem · debug metier",
@@ -3786,6 +3815,7 @@ ns.CMD_ALIAS = {
   memoire = "mem", memory = "mem",
   -- 3.10.0 : alias anglais manquants
   hunt = "chasse", collapse = "replier", expand = "deplier", summary = "resume",
+  outing = "sortie", outings = "sortie", sorties = "sortie",
 }
 ns.ARG_ALIAS = {
   light = "leger", green = "vert", yellow = "jaune", tier = "palier", above = "dessus", below = "dessous",

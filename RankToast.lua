@@ -178,6 +178,7 @@ function RT.Available(tiles)
             seen[d.id] = true
             local rec = availRec[d.id] or {}
             rec.id, rec.name, rec.icon = d.id, d.name or d.id, d.icon
+            rec.where = ns.WhereFor and ns.WhereFor(nx.where) or nil   -- 3.11.1 : où apprendre ce rang
             availRec[d.id] = rec
             out[#out + 1] = rec
           end
@@ -252,7 +253,9 @@ function RT.Show(list)
   if not (ui and ui.SpawnDrop) then return nil end
   local title = RT.Title(list)
   local icon = list[1] and list[1].icon or ns.FALLBACK_ICON
-  local ok, f = pcall(ui.SpawnDrop, ui, icon, title, nil, nil, nil, nil, {
+  -- 3.11.1 : un seul métier : le lieu d'apprentissage en sous-titre (tous les maîtres n'enseignent pas Expert ou Artisan)
+  local sub = (#list == 1 and list[1].where) and Tr[list[1].where] or nil
+  local ok, f = pcall(ui.SpawnDrop, ui, icon, title, sub, nil, nil, nil, {
     force = true, sticky = true, kind = "rank-trainer",
     dedupeKey = RT.DEDUPE, skillId = list[1] and list[1].id,
     toastData = { kind = "rank-trainer", skills = list },

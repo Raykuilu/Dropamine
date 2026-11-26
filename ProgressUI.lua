@@ -105,6 +105,7 @@ local function State()
   local s = UIDB()
   if s.tab ~= "overview" and s.tab ~= "charts" and s.tab ~= "ach" and s.tab ~= "spots" and s.tab ~= "weekly" and s.tab ~= "efficiency" and s.tab ~= "chars"
     and s.tab ~= "hunt" and s.tab ~= "collection" then s.tab = "overview" end
+  if s.tab == "hunt" and ns.Hunt and ns.Hunt.On and not ns.Hunt.On() then s.tab = "overview" end
   if s.chartsSub ~= "weekly" then s.chartsSub = "charts" end
   if s.farmSub ~= "efficiency" then s.farmSub = "spots" end
   if s.effPeriod ~= "session" and s.effPeriod ~= "d7" and s.effPeriod ~= "d30" then s.effPeriod = "session" end
@@ -1066,9 +1067,11 @@ function PU.LayoutTabs(f)
   f = f or PU.frame
   if not (f and f.tabs) then return end
   local eg = PU.Endgame()
+  local huntOn = not (ns.Hunt and ns.Hunt.On) or ns.Hunt.On()
   local vis, used = {}, 0
   for _, btn in ipairs(f.tabs) do
-    vis[#vis + 1] = btn used = used + btn._w0 + 6
+    if btn.id == "hunt" and not huntOn then btn:Hide()   -- 3.11.1 : chasse coupée
+    else vis[#vis + 1] = btn used = used + btn._w0 + 6 end
   end
   used = used - 6
   local scale = (used > PU.CONTENT_W) and (PU.CONTENT_W / used) or 1
@@ -1081,7 +1084,7 @@ function PU.LayoutTabs(f)
     btn:Show()
     x = x + w + ((scale < 1) and 4 or 6)
   end
-  f._tabsEndgame = eg
+  f._tabsEndgame, f._tabsHunt = eg, huntOn
 end
 
 local function Page(f, id)
@@ -2431,7 +2434,18 @@ function PU.BuildCollection(f)
         local ok = tt.SetHyperlink and pcall(tt.SetHyperlink, tt, "item:" .. tostring(self.id))
         if not ok then tt:AddLine(tostring(self.nm or self.id), 1, 1, 1) end
         tt:AddLine(self.got and Tr["Obtenu"] or Tr["Pas encore obtenu"], self.got and 0.4 or 0.7, self.got and 1 or 0.7, self.got and 0.4 or 0.7)
+        tt:AddLine(self.got and Tr["Clic droit : retirer du log"] or Tr["Clic droit : marquer obtenu"], 0.6, 0.6, 0.6)
         tt:Show()
+      end)
+      -- 3.11.1 : clic droit = corriger le log à la main (obtenu / pas obtenu)
+      if b.RegisterForClicks then pcall(b.RegisterForClicks, b, "RightButtonUp") end
+      b:SetScript("OnClick", function(self, btn)
+        local Hn = ns.Hunt
+        if btn ~= "RightButton" or not self.id or not (Hn and Hn.SetOwned) then return end
+        if Hn.SetOwned(self.id, not self.got) then
+          if _G.GameTooltip then _G.GameTooltip:Hide() end
+          PU.RefreshCollection()
+        end
       end)
       b:SetScript("OnLeave", function() if _G.GameTooltip then _G.GameTooltip:Hide() end end)
       ln.icons[k] = b
@@ -3045,7 +3059,7 @@ function PU.RefreshHeader()
   end
   -- onglets : compteur de succès
   local got, all = P.UnlockedCount()
-  if f._tabsEndgame ~= PU.Endgame() then PU.LayoutTabs(f) end
+  if f._tabsEndgame ~= PU.Endgame() or f._tabsHunt ~= (not (ns.Hunt and ns.Hunt.On) or ns.Hunt.On()) then PU.LayoutTabs(f) end
   -- récap de session ouvert : aucun onglet n'est « actif » (le récap n'est pas un onglet) et les sélecteurs du bas se masquent
   local curGroup = nil
   if not State().recapOpen then curGroup = PU.GroupOf(State().tab) end
@@ -3093,7 +3107,9 @@ function PU.RefreshOverview(p)
   local k = p.kpi
   -- 1. Rythme XP (masqué au niveau max ; lph = XP/h / UnitXPMax)
   local maxed = PU.AtMaxLevel and PU.AtMaxLevel()
-  local eg = PU.Endgame() and ns.Hunt and ns.Hunt.List
+  local huntOn = not (ns.Hunt and ns.Hunt.On) or ns.Hunt.On()
+  local egAll = PU.Endgame() and ns.Hunt and ns.Hunt.List
+  local eg = egAll and huntOn
   local hl = (eg and ns.Hunt.List()) or {}
   -- cartes cliquables en endgame : Chasse et Collection
   for i, tab in ipairs({ "hunt", "collection" }) do
@@ -3103,7 +3119,7 @@ function PU.RefreshOverview(p)
       kc:EnableMouse(true)
       kc:SetScript("OnMouseUp", function(self) if self._go then PU.SetTab(self._go) end end)
     end
-    kc._go = eg and tab or nil
+    kc._go = egAll and (tab == "collection" or huntOn) and tab or nil
   end
   if eg and #hl == 0 then
     k[1].title:SetText(Tr["Chasse"])

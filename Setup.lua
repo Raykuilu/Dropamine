@@ -76,9 +76,16 @@ S.STEPS = {
   { title = "Fenêtre Progression",
     text = "Succès, graphiques, records, farm et tes autres personnages : tout se trouve dans la fenêtre Progression (/drop progression ou clic gauche sur la goutte).",
     actions = { { "Ouvrir la fenêtre", function() OpenProgress() end } } },
-  { title = "Chasse et collection",
-    text = "Suis un objet précis (ou importe tes favoris du Journal des donjons) : Dropamine compte tes tentatives et te prévient quand il tombe. Le collection log montre ce que tu as déjà obtenu.",
-    checks = { { "huntAlert", true, "Alerte quand un objet suivi tombe" } },
+  -- 3.11.1 : Collection et Chasse BiS sont deux choses distinctes, présentées sur deux pages
+  { title = "Collection log",
+    text = "Le carnet de tout ce que tu as obtenu : donjon par donjon, boss par boss, les objets que tu as en couleur, ceux qui manquent en gris. Il se remplit tout seul, sans rien suivre. C'est le cœur du jeu complétionniste.",
+    actions = { { "Ouvrir la Collection", function() OpenProgress("collection") end } } },
+  -- 3.11.1 : la chasse est un choix (les complétionnistes peuvent la couper, le carnet reste)
+  { title = "Chasse BiS",
+    text = "Tu vises un objet précis (ou tes favoris du Journal des donjons) : Dropamine compte tes essais et te prévient quand il tombe. Tu préfères seulement le carnet ? Décoche la Chasse BiS (/drop chasse on|off).",
+    checks = { { "huntOn", true, "Activer la Chasse BiS",
+      set = function(v) if ns.SetOpt then ns.SetOpt("huntOn", v) end local PU = ns.ProgressUI if PU and PU.OnModeChanged then pcall(PU.OnModeChanged) end end },
+      { "huntAlert", true, "Alerte quand un objet suivi tombe" } },
     actions = { { "Tester l'alerte", TestHunt }, { "Ouvrir la Chasse", function() OpenProgress("hunt") end } } },
   -- 3.8.2 : nouveauté présentée à tous (la visite est relancée une fois, voir S.TOUR_VERSION)
   { title = "Nouveau : alertes de butin",

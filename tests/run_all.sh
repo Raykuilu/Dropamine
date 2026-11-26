@@ -20,6 +20,11 @@ run "$LUA" tests/hardcore.lua
 run "$LUA" tests/skillup_bridge.lua
 run "$LUA" tests/needle.lua
 run "$LUA" tests/hiscores.lua
+run "$LUA" tests/collection_not_mine.lua
+run "$LUA" tests/hunt_attempts_here.lua
+run "$LUA" tests/hunt_import.lua
+run "$LUA" tests/hunt_outing.lua
+run "$LUA" tests/hunt_off.lua
 for t in hunt_autotile hunt_loot_kc hunt_rare_alert hunt_missing progress_run collection_home recap_table; do
   run "$LUA" tests/$t.lua >/dev/null
 done

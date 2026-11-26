@@ -110,6 +110,10 @@ Options.SECTIONS = {
       help = "Toast quand tu reçois un objet d'une qualité cochée, dans la couleur de l'objet.",
       get = function() return ns.Hunt and ns.Hunt.LootQualString and ns.Hunt.LootQualString() or "45" end,
       set = function(v) if ns.Hunt and ns.Hunt.SetLootQualString then ns.Hunt.SetLootQualString(v) end end },
+    -- 3.11.1 : pour les complétionnistes, la chasse BiS se coupe entièrement (le carnet de collection reste)
+    { type = "check", key = "huntOn", label = "Chasse BiS", default = true, cmd = "/drop chasse on|off",
+      help = "Liste de chasse, essais, alerte quand l'objet tombe, cadre au butin et onglet Chasse. Décoché : seulement le carnet de collection. Ta liste est gardée.",
+      set = function(v) ns.SetOpt("huntOn", v) local PU = ns.ProgressUI if PU and PU.OnModeChanged then pcall(PU.OnModeChanged) end end },
     { type = "check", key = "huntAlert", label = "Alerte de chasse", default = true, cmd = "Réglage de ce panneau et de la visite guidée (/drop setup)", help = "Toast quand un objet de ta liste de chasse tombe." },
     -- 3.9.0 : objet recherché repéré dans les fenêtres de butin et de jet de groupe
     { type = "check", key = "huntRoll", label = "Repérer l'objet au butin", default = true, cmd = "Réglage de ce panneau",
@@ -281,7 +285,7 @@ Options.MAP = {
     { "Fenêtre et infobulles", { "styleMetiers", "openProf", "grpTips" } },
   },
   hunt = {
-    { "Chasse", { "huntAlert", "huntRoll", "lootAlerts" } },
+    { "Chasse", { "huntOn", "huntAlert", "huntRoll", "lootAlerts" } },
     { "Découvertes", { "collection" } },
   },
   progress = {
