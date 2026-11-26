@@ -871,6 +871,22 @@ function ns.MergeRankCache(list, source)
   end
   local open = ns.openHeaders or {}
   local cached = {}
+  -- 3.12.1 : la même compétence lue sous un autre nom (client passé du français à l'anglais : « Cuisine » → « Cooking ») :
+  -- l'ancienne entrée est oubliée, sinon elle restait « en cache » à côté et figeait la case et le niveau total
+  local presentId, presentLoc = {}, {}
+  local function Loc(n) local ok, v = pcall(ns.LocSkillName or function(x) return x end, n) return ok and v and ns.Fold(v) or nil end
+  for i = 1, #list do
+    local s = list[i]
+    if s and s.name and not s.header and not s.cached then
+      if s.skillID then presentId[s.skillID] = true end
+      local l = Loc(s.name) if l then presentLoc[l] = true end
+    end
+  end
+  for k, e in pairs(cache) do
+    if not present[k] and ((e.skillID and presentId[e.skillID]) or (Loc(e.name) and presentLoc[Loc(e.name)])) then
+      cache[k] = nil
+    end
+  end
   for k, e in pairs(cache) do
     if not present[k] then
       if e.headerName and open[tostring(e.headerName)] then
@@ -1346,10 +1362,15 @@ function ns.Collect()
   local live, source, reports = ns.CollectLiveSkills()
   ns.lastSource, ns.lastReports = source, reports
 
-  local byName = {}
+  local byName, byLine = {}, {}
   for i = 1, #live do
     local s = live[i]
     if s.name then byName[ns.Fold(s.name)] = s end
+    -- 3.12.1 : par ligne de compétence (les mêmes dans toutes les langues) ; une lecture en direct passe avant le cache
+    local ln = ns.N(s.skillID)
+    if ln and ln > 0 and (not byLine[ln] or (byLine[ln].cached and not s.cached)) then byLine[ln] = s end
+    -- nom → ligne, pour les messages du jeu (montée de compétence, infobulles) dans toutes les langues
+    if ln and ln > 0 and s.name then ns.LINE_BY_NAME = ns.LINE_BY_NAME or {} ns.LINE_BY_NAME[ns.Fold(s.name)] = ln end
   end
 
   local tiles = {}
@@ -1374,7 +1395,12 @@ function ns.Collect()
       t._ord = i
       tiles[#tiles + 1] = t
     else
-      local liveS = byName[ns.Fold(e.name)]
+      local liveS
+      for _, ln in ipairs((ns.SKILL_LINES and ns.SKILL_LINES[e.id]) or (e.skillLine and { e.skillLine }) or {}) do
+        liveS = byLine[ln]
+        if liveS then break end
+      end
+      liveS = liveS or byName[ns.Fold(e.name)]
       if not liveS and e.aliases then
         for j = 1, #e.aliases do
           liveS = byName[ns.Fold(e.aliases[j])]
@@ -1404,7 +1430,7 @@ function ns.Collect()
   -- (la grille n'accepte que l'ordre fixe : niveau, stats, métiers, secondaires, 3 combats).
   for i = 1, #live do
     local s = live[i]
-    if s.name and not used[ns.Fold(s.name)] and not ns.LookupCatalog(s.name) then
+    if s.name and not used[ns.Fold(s.name)] and not ns.LookupCatalog(s.name, s.skillID) then
       local junk = ns.IsLanguageOrArmorJunk(s.name, s.headerName, s.max)
       if not junk and not s.equippedOnly and (ns.N(s.rank) or 0) > 0 then
         used[ns.Fold(s.name)] = true

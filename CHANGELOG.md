@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.12.1
+
+### Fixes
+- Clients in other languages: skill-up messages and tooltips recognise the skill name your client uses (learned from the last skill read), and "bags full" is recognised with the game's own text in every language.
+- Hunt: items the Dungeon Journal does not know (added from dropamine.app, such as the Mallet of Zul'Farrak) get their equipment slot from the game, so they show on their tile. The dungeon next to the item name now uses the real free space (or just the wing, like "Cathedral"), so it actually shows.
+- Skills on German, Spanish, Italian, Portuguese and Russian clients: professions and secondary skills are found by their skill line, not by their French or English name, so their tiles fill in.
+- Game client switched to another language: tiles and total level no longer stay frozen on the ranks saved under the old names ("Cuisine" 161 next to "Cooking" 198). Recipe lists saved in the old language are forgotten reliably, and a profession read again merges recipes by number instead of listing them twice.
+- `/drop recipe test`: try the "New recipe!" toast on a recipe you already know.
+- "New recipe!" toast: clicking it opens the profession on that recipe, like the "recipe possible" toasts (it used to just close). When the chat line has no recipe link, the recipe is found by name, or completed by the game event that follows.
+
 ## 3.12.0
 
 ### New

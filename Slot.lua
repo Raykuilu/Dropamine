@@ -2267,7 +2267,8 @@ end
 function S.OnInvFullError(event, msg, ...)
   local s = tostring(msg or event or "")
   local f = (ns.Fold and ns.Fold(s)) or s:lower()
-  if (f:find("inventaire", 1, true) and f:find("plein", 1, true))
+  if (s == tostring(_G.ERR_INV_FULL) or s == tostring(_G.ERR_BAG_FULL) or tostring((...)) == tostring(_G.ERR_INV_FULL) or tostring((...)) == tostring(_G.ERR_BAG_FULL))   -- 3.12.1 : toutes langues
+    or (f:find("inventaire", 1, true) and f:find("plein", 1, true))
     or (f:find("inventory", 1, true) and f:find("full", 1, true))
     or f:find("bags are full", 1, true) or f:find("sacs sont pleins", 1, true)
     or f:find("err_inv_full", 1, true) then

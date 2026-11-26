@@ -1443,9 +1443,12 @@ if ns.On then
   ns.On("CHAT_MSG_LOOT", function(_, msg) E.NoteLootItem(msg) end)
   ns.On("GET_ITEM_INFO_RECEIVED", function(_, itemID) E.FlushPendingVendor(itemID) end)
   ns.On("CHAT_MSG_SYSTEM", function(_, msg) E.NoteRecipeLearn(msg) end)
-  ns.On("UI_ERROR_MESSAGE", function(_, msg)
+  ns.On("UI_ERROR_MESSAGE", function(_, msg, text)
+    if type(text) == "string" then msg = text end   -- 3.12.1 : (type d'erreur, texte) sur les clients récents
     local s = Fold(tostring(msg or _))
-    if s:find("inventaire", 1, true) and s:find("plein", 1, true) then E.NoteBagMiss()
+    local raw = tostring(msg or _)
+    if raw == tostring(_G.ERR_INV_FULL) or raw == tostring(_G.ERR_BAG_FULL) then E.NoteBagMiss()   -- 3.12.1 : toutes langues
+    elseif s:find("inventaire", 1, true) and s:find("plein", 1, true) then E.NoteBagMiss()
     elseif s:find("inventory", 1, true) and s:find("full", 1, true) then E.NoteBagMiss()
     elseif s:find("bags are full", 1, true) or s:find("sacs sont pleins", 1, true) then E.NoteBagMiss()
     elseif s:find("inv_full", 1, true) or s == "err_inv_full" then E.NoteBagMiss()

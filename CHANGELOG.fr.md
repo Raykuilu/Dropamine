@@ -2,6 +2,16 @@
 
 Version française du journal (le journal de référence est CHANGELOG.md, en anglais). Les versions plus anciennes ne sont qu'en anglais.
 
+## 3.12.1
+
+### Corrections
+- Clients dans d'autres langues : les messages de montée de compétence et les infobulles reconnaissent le nom de compétence donné par ton client (appris à la dernière lecture des compétences), et « sacs pleins » est reconnu avec le texte du jeu dans toutes les langues.
+- Chasse : les objets que le Journal des donjons ne connaît pas (ajoutés depuis dropamine.app, comme le Maillet de Zul'Farrak) prennent leur emplacement dans le jeu et retrouvent leur case. Le donjon à côté du nom de l'objet utilise la place vraiment libre (ou l'aile seule, comme « Cathédrale ») et s'affiche enfin.
+- Compétences sur les clients allemand, espagnol, italien, portugais et russe : les métiers et compétences secondaires sont retrouvés par leur ligne de compétence, pas par leur nom français ou anglais, donc leurs cases se remplissent.
+- Client du jeu passé dans une autre langue : les cases et le niveau total ne restent plus figés sur les rangs mémorisés sous les anciens noms (« Cuisine » 161 à côté de « Cooking » 198). Les listes de recettes de l'ancienne langue sont oubliées à coup sûr, et un métier relu fusionne les recettes par numéro au lieu de les lister deux fois.
+- `/drop recette test` : essai du toast « Nouvelle recette ! » sur une recette déjà connue.
+- Toast « Nouvelle recette ! » : un clic ouvre le métier sur cette recette, comme les toasts « recette possible » (avant, il se fermait seulement). Quand la ligne du chat n'a pas de lien vers la recette, la recette est retrouvée par son nom, ou complétée par l'événement du jeu qui suit.
+
 ## 3.12.0
 
 ### Nouveautés

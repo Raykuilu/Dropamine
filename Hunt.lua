@@ -328,6 +328,20 @@ local function Rank(it)
   local lvl = (e and e.src and e.src[1] and e.src[1].level) or 0
   return ((e and e.q) or 1) * 1000 + lvl
 end
+-- 3.12.1 : groupe d'emplacement donné par le jeu (code d'équipement, le même dans toutes les langues) pour les objets
+-- que le Journal des donjons ne connaît pas (ajoutés depuis dropamine.app, butin de monstres) : ils trouvent leur case
+local EQUIP_GROUP = { INVTYPE_HEAD = "Head", INVTYPE_NECK = "Neck", INVTYPE_SHOULDER = "Shoulder", INVTYPE_CLOAK = "Back",
+  INVTYPE_CHEST = "Chest", INVTYPE_ROBE = "Chest", INVTYPE_WRIST = "Wrist", INVTYPE_HAND = "Hands", INVTYPE_WAIST = "Waist",
+  INVTYPE_LEGS = "Legs", INVTYPE_FEET = "Feet", INVTYPE_FINGER = "Finger", INVTYPE_TRINKET = "Trinket",
+  INVTYPE_WEAPON = "Weapon", INVTYPE_2HWEAPON = "Weapon", INVTYPE_WEAPONMAINHAND = "Weapon",
+  INVTYPE_WEAPONOFFHAND = "Offhand", INVTYPE_SHIELD = "Offhand", INVTYPE_HOLDABLE = "Offhand",
+  INVTYPE_RANGED = "Ranged", INVTYPE_RANGEDRIGHT = "Ranged", INVTYPE_THROWN = "Ranged", INVTYPE_RELIC = "Ranged" }
+function H.EquipGroup(id)
+  local fn = _G.GetItemInfoInstant or (type(_G.C_Item) == "table" and _G.C_Item.GetItemInfoInstant)
+  if type(fn) ~= "function" or not id then return nil end
+  local ok, _, _, _, loc = pcall(fn, id)
+  return ok and type(loc) == "string" and EQUIP_GROUP[loc] or nil
+end
 function H.AutoTile()
   local s = Store()
   if not s then return end
@@ -335,7 +349,7 @@ function H.AutoTile()
   for _, it in ipairs(s.items) do if it.tile then used[it.tile] = it end end
   for _, it in ipairs(s.items) do
     if not it.tile and it.id then
-      if not it.group then local _, e = H.SourceOf(it.id) it.group = e and e.group or nil end
+      if not it.group then local _, e = H.SourceOf(it.id) it.group = (e and e.group) or H.EquipGroup(it.id) end
       if it.group then
         local free, weakest
         for _, t in ipairs(H.TILES) do
@@ -1414,6 +1428,24 @@ end
 -- 3.11.2 : NEW_RECIPE_LEARNED n'arrive pas toujours sur Forever ; le message du chat
 -- « Vous avez appris à créer un nouvel objet : X. » déclenche aussi le toast (un seul si les deux arrivent).
 local function Now() return (type(_G.GetTime) == "function" and _G.GetTime()) or os.time() end
+-- 3.12.1 : métier d'une recette d'après son numéro, demandé au jeu (ligne de compétence, la même dans toutes les langues) :
+-- une recette tout juste apprise n'est encore dans aucune liste enregistrée
+function H.SkillOfRecipe(rid)
+  rid = N(rid)
+  if rid == 0 then return nil end
+  local SU = ns.SkillUp
+  local own = SU and SU.RecipeOwner and SU.RecipeOwner(rid)
+  if own then return own end
+  local T = rawget(_G, "C_TradeSkillUI")
+  if type(T) == "table" and type(T.GetTradeSkillLineForRecipe) == "function" then
+    local ok, a, _, c = pcall(T.GetTradeSkillLineForRecipe, rid)
+    for _, ln in ipairs({ ok and N(c) or 0, ok and N(a) or 0 }) do
+      local e = ln > 0 and ns.CATALOG_BY_LINE and ns.CATALOG_BY_LINE[ln]
+      if e then return e.id end
+    end
+  end
+  return nil
+end
 function H.RecipeToast(rid, force, chatName)
   local ui = ns.UI
   if not (ui and ui.SpawnDrop) then return nil end
@@ -1430,8 +1462,27 @@ function H.RecipeToast(rid, force, chatName)
   local key, now = Fold(name), Now()
   -- (même nom dans les 5 s, ou n'importe quelle recette dans les 2 s : l'événement peut donner le nom anglais, le chat le nom traduit)
   local last = H._lastRecipe
-  if not force and last and ((last.key == key and now - last.at < 5) or now - last.at < 2) then return nil end
-  H._lastRecipe = { key = key, at = now }
+  if not force and last and ((last.key == key and now - last.at < 5) or now - last.at < 2) then
+    -- 3.12.1 : le message du chat n'a pas le numéro de la recette, l'événement du jeu l'a : on complète le toast déjà affiché
+    -- (sans numéro, le clic n'ouvrait que le métier, sur la première recette)
+    local f = last.f
+    if rid and f then
+      if type(f._craft) == "table" then
+        if N(f._craft.rid) == 0 then f._craft.rid, f._craft.mid = rid, rid end
+      else
+        -- recette tout juste apprise : le chat ne disait ni le métier ni le numéro ; l'événement les donne
+        local sk = H.SkillOfRecipe(rid)
+        local CO = ns.CraftOpen
+        if sk then
+          f._craft = { skill = sk, recipe = last.name or name, name = last.name or name, rid = rid, mid = rid }
+          if CO and CO.Wire then pcall(CO.Wire, f) end
+        end
+      end
+      if f._toastData and type(f._toastData.recipe) == "table" then f._toastData.recipe.recipeID = rid end
+    end
+    return nil
+  end
+  H._lastRecipe = { key = key, at = now, name = name }
   local sub
   local skill = rid and SU and SU.RecipeOwner and SU.RecipeOwner(rid)
   local all = skill and SU.AllRecipes(skill)
@@ -1445,12 +1496,82 @@ function H.RecipeToast(rid, force, chatName)
   end
   local icon = [[Interface\Icons\INV_Scroll_03]]
   if rid and type(_G.GetSpellTexture) == "function" then local ok, t = pcall(_G.GetSpellTexture, rid) if ok and t then icon = t end end
-  return ui:SpawnDrop(icon, Tr["Nouvelle recette !"] .. " " .. tostring(name), sub, nil, nil, nil, { kind = "qol", force = force })
+  -- 3.12.0 : un clic ouvre le métier sur cette recette, comme les toasts « recette possible »
+  -- (métier : SkillUp, sinon la base Cuisine / Secourisme, sinon les listes de recettes lues dans le jeu)
+  local own = skill or H.SkillOfRecipe(rid)
+  if not own then
+    local LK = ns.Links
+    local okD, db = pcall(function() return LK and LK.DB and LK.DB() end)
+    local r = okD and db and db.byName and db.byName[Fold(name)]
+    own = r and r.skill
+  end
+  if not own then
+    local cdb = ns.CharDB and ns.CharDB()
+    local key = Fold(name)
+    for sk, rec in pairs(cdb and cdb.recipes or {}) do
+      for _, r in ipairs(type(rec) == "table" and rec.list or {}) do
+        if (rid and N(r.recipeID) == rid) or Fold(r.name) == key then own = sk break end
+      end
+      if own then break end
+    end
+  end
+  -- 3.12.1 : numéro de la recette quand le chat ne le donne pas : la base Cuisine / Secourisme, sinon les listes lues dans le jeu
+  if not rid then
+    local LK = ns.Links
+    local okD, db = pcall(function() return LK and LK.DB and LK.DB() end)
+    local r = okD and db and db.byName and db.byName[Fold(name)]
+    if r and N(r.spell) ~= 0 then rid = N(r.spell) end
+  end
+  if not rid then
+    local cdb = ns.CharDB and ns.CharDB()
+    for _, rec in pairs(cdb and cdb.recipes or {}) do
+      for _, r in ipairs(type(rec) == "table" and rec.list or {}) do
+        if Fold(r.name) == Fold(name) and N(r.recipeID) ~= 0 then rid = N(r.recipeID) break end
+      end
+      if rid then break end
+    end
+  end
+  local td = own and { kind = "recipe", skill = own, recipe = { name = name, recipeID = rid } } or nil
+  local f = ui:SpawnDrop(icon, Tr["Nouvelle recette !"] .. " " .. tostring(name), sub, nil, nil, nil, { kind = "qol", force = force, toastData = td })
+  H._lastRecipe.f = f
+  return f
 end
 do
   local O = ns.Options
-  if O and O.TEST_FN then O.TEST_FN.recipedemo = function() return H.RecipeToast(2963, true) end end
+  if O and O.TEST_FN then O.TEST_FN.recipedemo = function() return H.RecipeDemo() end end
 end
+-- 3.12.1 : essai gratuit : le toast d'une recette que le personnage connaît déjà (cuisine d'abord), comme la ligne
+-- du chat sans lien (le numéro est retrouvé par le nom) ; un clic doit ouvrir le métier sur cette recette
+function H.RecipeDemo()
+  local cdb = ns.CharDB and ns.CharDB()
+  local recs = cdb and cdb.recipes or {}
+  local order = { "cooking", "firstaid" }
+  for sk in pairs(recs) do if sk ~= "cooking" and sk ~= "firstaid" then order[#order + 1] = sk end end
+  for _, sk in ipairs(order) do
+    local rec = recs[sk]
+    -- une recette au hasard, jamais la première de la liste : la fenêtre s'ouvre déjà sur la première (Feu de camp),
+    -- l'essai ne prouverait rien
+    local names = {}
+    for _, r in ipairs(type(rec) == "table" and rec.list or {}) do
+      if type(r.name) == "string" and r.name ~= "" then names[#names + 1] = r.name end
+    end
+    if #names > 0 then
+      local i = (#names > 1 and type(math.random) == "function") and math.random(2, #names) or 1
+      return H.RecipeToast(nil, true, names[i])
+    end
+  end
+  if ns.Print then ns.Print(Tr["aucune recette connue pour l'essai : ouvre d'abord la fenêtre d'un métier"]) end
+  return nil
+end
+if ns.SlashExt then
+  ns.SlashExt.recette = function(rest)
+    if ((rest or ""):lower():match("^%s*(%S*)") or "") == "test" then H.RecipeDemo()
+    elseif ns.Print then ns.Print("/drop recette test") end
+    return true
+  end
+  ns.SlashExt.recipe = ns.SlashExt.recette
+end
+if ns.HelpExt then ns.HelpExt[#ns.HelpExt + 1] = "/drop recette test : essai du toast « Nouvelle recette ! » sur une recette déjà connue" end
 -- le message du jeu (texte officiel ERR_LEARN_RECIPE_S, dans la langue du client) → nom de la recette, et son numéro s'il y a un lien
 function H.RecipeFromChat(msg)
   if type(msg) ~= "string" then return nil end

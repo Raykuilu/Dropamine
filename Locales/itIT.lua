@@ -2047,4 +2047,6 @@ T["@zone:Stormwind"] = "Roccavento"
 T["@zone:Ironforge"] = "Forgiardente"
 T["@zone:Thunder Bluff"] = "Picco del Tuono"
 T["@zone:Undercity"] = "Sepulcra"
+T["aucune recette connue pour l'essai : ouvre d'abord la fenêtre d'un métier"] = "nessuna ricetta nota per la prova: apri prima la finestra di una professione"
+T["/drop recette test : essai du toast « Nouvelle recette ! » sur une recette déjà connue"] = "/drop recipe test: prova il toast «Nuova ricetta!» con una ricetta che conosci già"
 end)

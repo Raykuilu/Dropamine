@@ -2293,19 +2293,31 @@ function PU.RefreshHunt(p)
     local it = list[i + c.ui.offset]
     e.idx = it and it.i or nil
     if it then
-      -- 3.12.0 : le donjon à côté du nom, en gris (retiré si la place manque) ; le boss reste à droite
-      local base = it.i .. ". " .. tostring(it.name)
-      local withDun = (it.dungeon and it.dungeon ~= "") and (base .. "  |cff8a8a8a" .. tostring(it.dungeon) .. "|r") or nil
-      e.name:SetText(withDun or base)
-      if withDun and e.name.GetStringWidth then
-        local ok, sw = pcall(e.name.GetStringWidth, e.name)
-        if ok and sw and sw > math.floor(HW * 0.47) then e.name:SetText(base) end
-      end
       local ch = H.Chance({ rate = it.rate, attempts = it.attempts })
       local info = string.format(Tr["%d tentatives · %d trouvé(s)"], it.attempts, it.drops)
       if it.boss then info = tostring(H.LocBoss(it.boss)) .. " · " .. info end
       if ch then info = info .. string.format(" · " .. Tr["chance %d %%"], math.floor(ch * 100 + 0.5)) end
       PU.SetClipped(e.info, info, math.floor(HW * 0.5))
+      -- 3.12.1 : le donjon à côté du nom, en gris, dans la place vraiment libre à gauche du texte de droite ;
+      -- en manque de place : l'aile seule (« Cathédrale » pour « Monastère Écarlate : Cathédrale »), sinon rien
+      local base = it.i .. ". " .. tostring(it.name)
+      local room = HW
+      if e.info.GetStringWidth then
+        local okW, iw = pcall(e.info.GetStringWidth, e.info)
+        if okW and type(iw) == "number" then room = HW - iw - 24 end
+      end
+      local dun = (it.dungeon and it.dungeon ~= "") and tostring(it.dungeon) or nil
+      local function fits(txt)
+        e.name:SetText(txt)
+        if not e.name.GetStringWidth then return true end
+        local ok, sw = pcall(e.name.GetStringWidth, e.name)
+        return not (ok and sw and sw > room)
+      end
+      local short = dun and (dun:match(":%s*(.+)$") or dun:match(" – (.+)$") or dun:match(" %- (.+)$"))
+      if not (dun and fits(base .. "  |cff8a8a8a" .. dun .. "|r"))
+        and not (short and short ~= dun and fits(base .. "  |cff8a8a8a" .. short .. "|r")) then
+        e.name:SetText(base)
+      end
       PU.SetBar(e.bar, ch or (it.drops > 0 and 1 or 0), it.drops > 0 and pal.good or pal.bar)
       e.name:Show() e.info:Show() e.del:Show() e.bar.track:Show()
       if e.del.fs then e.del.fs:SetText(PU.IsArmed("row:" .. tostring(e.idx)) and "?" or "x") end

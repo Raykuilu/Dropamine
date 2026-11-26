@@ -2047,4 +2047,6 @@ T["@zone:Stormwind"] = "Sturmwind"
 T["@zone:Ironforge"] = "Eisenschmiede"
 T["@zone:Thunder Bluff"] = "Donnerfels"
 T["@zone:Undercity"] = "Unterstadt"
+T["aucune recette connue pour l'essai : ouvre d'abord la fenêtre d'un métier"] = "kein bekanntes Rezept zum Testen: öffne zuerst ein Berufsfenster"
+T["/drop recette test : essai du toast « Nouvelle recette ! » sur une recette déjà connue"] = "/drop recipe test: den Toast „Neues Rezept!“ mit einem bekannten Rezept testen"
 end)

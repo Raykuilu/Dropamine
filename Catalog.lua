@@ -270,6 +270,23 @@ for i = 1, #CATALOG do
   end
 end
 
+-- 3.12.1 : identifiants de ligne des métiers, compétences secondaires et de classe : un client allemand, espagnol,
+-- italien, portugais ou russe nomme « Kochkunst », « Cocina »… : la case se retrouve par la ligne, pas par le nom.
+-- (plusieurs lignes possibles : Forever en a ajouté pour la récolte et le combat farouche)
+ns.SKILL_LINES = {
+  alchemy = { 171 }, blacksmithing = { 164 }, enchanting = { 333 }, engineering = { 202 }, herbalism = { 182, 2944 },
+  leatherworking = { 165 }, mining = { 186 }, skinning = { 393, 2947 }, tailoring = { 197 },
+  cooking = { 185 }, fishing = { 356 }, firstaid = { 129 }, riding = { 762 },
+  lockpicking = { 633 }, poisons = { 40 }, feral = { 134, 3014 },
+}
+for i = 1, #CATALOG do
+  local e = CATALOG[i]
+  for _, ln in ipairs(ns.SKILL_LINES[e.id] or {}) do
+    ns.CATALOG_BY_LINE[ln] = ns.CATALOG_BY_LINE[ln] or e
+    e.skillLine = e.skillLine or ln
+  end
+end
+
 local aliasMap = {}
 local idMap = {}
 for i = 1, #CATALOG do
@@ -284,9 +301,16 @@ for i = 1, #CATALOG do
 end
 ns.CATALOG_BY_ID = idMap
 
-function ns.LookupCatalog(name)
+function ns.LookupCatalog(name, line)
+  -- 3.12.1 : la ligne de compétence d'abord (toutes les langues), puis le nom (français, anglais, alias)
+  local ln = tonumber(line)
+  if ln and ns.CATALOG_BY_LINE[ln] then return ns.CATALOG_BY_LINE[ln] end
   if not name then return nil end
-  return aliasMap[ns.Fold(name)]
+  local e = aliasMap[ns.Fold(name)]
+  if e then return e end
+  -- nom du client dans une autre langue (« Kochkunst », « Кулинария ») : la ligne de compétence vue à la dernière lecture
+  local seen = ns.LINE_BY_NAME and ns.LINE_BY_NAME[ns.Fold(name)]
+  return seen and ns.CATALOG_BY_LINE[seen] or nil
 end
 
 function ns.IsLanguageOrArmorJunk(name, header, maxRank)

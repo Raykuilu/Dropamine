@@ -86,16 +86,20 @@ end
 -- rétrécit jamais. Seule la clé de CE métier est touchée.
 function Craft.Merge(prevList, list)
   if type(prevList) ~= "table" or #prevList == 0 then return list, 0 end
-  local idx, out = {}, {}
+  local idx, out, byId = {}, {}, {}
   for _, r in ipairs(prevList) do
     if type(r) == "table" and r.name and not idx[r.name] then
       out[#out + 1] = r
       idx[r.name] = #out
+      local id = N(r.recipeID)
+      if id and id > 0 and not byId[id] then byId[id] = #out end
     end
   end
   local added = 0
   for _, r in ipairs(list) do
-    local i = r.name and idx[r.name]
+    -- 3.12.1 : même numéro de recette = même recette (nom lu dans une autre langue du client : remplacé, pas doublé)
+    local id = N(r.recipeID)
+    local i = (id and id > 0 and byId[id]) or (r.name and idx[r.name])
     if i then
       local old = out[i]
       if (not r.reagents or #r.reagents == 0) and old.reagents and #old.reagents > 0 then r.reagents = old.reagents end
@@ -116,9 +120,31 @@ function Craft.CheckLocale()
   local c = ns.CharDB and ns.CharDB()
   if type(c) ~= "table" then return end
   local loc = ns.ClientLocale and ns.ClientLocale() or "enUS"
+  -- 3.12.1 : une seule revérification pour les listes marquées par 3.12.0 (qui pouvait se tromper à la connexion)
+  if c.recipesLocaleV ~= 2 then c.recipesLocale = nil end
   if c.recipesLocale == loc then return end
-  local stale = c.recipesLocale ~= nil
+  local stale, sure = c.recipesLocale ~= nil, c.recipesLocale ~= nil
+  -- 3.12.1 : la base Cuisine / Secourisme connaît le nom anglais et le nom français : un nom enregistré dans l'autre
+  -- langue suffit à savoir (sans attendre le jeu, qui ne donne pas encore les noms de sorts à la connexion)
   if not stale then
+    local LK = ns.Links
+    local okD, db = pcall(function() return LK and LK.DB and LK.DB() end)
+    local lang = ns.ClientLang and ns.ClientLang() or "en"
+    local F = ns.Fold or function(s) return tostring(s):lower() end
+    for _, rec in pairs(okD and db and db.byName and c.recipes or {}) do
+      for _, r in ipairs(type(rec) == "table" and rec.list or {}) do
+        local d = type(r.name) == "string" and db.byName[F(r.name)]
+        if d and d.en and d.fr and d.en ~= d.fr then
+          sure = true
+          local isFr = F(r.name) == F(d.fr)
+          stale = (lang == "fr") ~= isFr
+          break
+        end
+      end
+      if sure then break end
+    end
+  end
+  if not stale and not sure then
     -- sauvegarde d'avant 3.12.0 (langue inconnue) : on compare un nom enregistré au nom donné par le jeu ;
     -- on n'efface que si la langue a vraiment changé (sinon tout le monde perdrait ses listes à la mise à jour)
     for _, rec in pairs(c.recipes or {}) do
@@ -126,14 +152,16 @@ function Craft.CheckLocale()
         local rid = N(r.recipeID)
         if rid and rid > 0 and type(_G.GetSpellInfo) == "function" then
           local ok, nm = pcall(_G.GetSpellInfo, rid)
-          if ok and type(nm) == "string" and nm ~= "" then stale = (nm ~= r.name) break end
+          if ok and type(nm) == "string" and nm ~= "" then stale, sure = (nm ~= r.name), true break end
         end
       end
-      if stale then break end
+      if sure then break end
     end
   end
   if stale then c.recipes = {} end
-  c.recipesLocale = loc
+  -- rien pour juger (aucun nom connu, sorts pas encore chargés) : on réessaiera plus tard
+  if not stale and not sure and next(c.recipes or {}) ~= nil then return end
+  c.recipesLocale, c.recipesLocaleV = loc, 2
   Craft._ver = (Craft._ver or 0) + 1
 end
 function Craft.Store(skill, list, source)

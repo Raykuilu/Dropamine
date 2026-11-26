@@ -2046,4 +2046,6 @@ T["@zone:Stormwind"] = "Штормград"
 T["@zone:Ironforge"] = "Стальгорн"
 T["@zone:Thunder Bluff"] = "Громовой Утес"
 T["@zone:Undercity"] = "Подгород"
+T["aucune recette connue pour l'essai : ouvre d'abord la fenêtre d'un métier"] = "нет известных рецептов для проверки: сначала открой окно профессии"
+T["/drop recette test : essai du toast « Nouvelle recette ! » sur une recette déjà connue"] = "/drop recipe test: проверить уведомление «Новый рецепт!» на уже известном рецепте"
 end)
