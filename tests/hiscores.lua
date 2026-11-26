@@ -87,5 +87,22 @@ ns.SkillsForCharSheet = function() return {}, {}, nil end
 local none, why = HS.Build()
 check(none == nil and type(why) == "string", "sans compétences lues : pas de ligne, un message")
 
+-- 3.11.1 : rappel d'export : seulement après un premier export, s'il y a du nouveau, une fois par jour
+do
+  local cdb = {}
+  local owned = { 1, 2 }
+  ns.CharDB = function() return cdb end
+  ns.Hunt = { OwnedIds = function() return owned end }
+  check(HS.CheckReminder("20261126") == nil, "jamais exporté : pas de rappel")
+  HS.MarkExported(100)
+  check(HS.CheckReminder("20261126") == nil, "rien de nouveau : pas de rappel")
+  owned = { 1, 2, 3, 4 }
+  local m = HS.CheckReminder("20261126")
+  check(m and m:find("^2 nouvel"), "2 nouveaux objets : rappel")
+  check(HS.CheckReminder("20261126") == nil, "une fois par jour")
+  check(HS.CheckReminder("20261127") ~= nil, "le lendemain, encore")
+  HS.MarkExported(200)
+  check(HS.CheckReminder("20261128") == nil, "après un nouvel export : plus de rappel")
+end
 if fail > 0 then os.exit(1) end
 print("OK : export Hiscores")

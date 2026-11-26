@@ -3839,6 +3839,10 @@ function ns.NormalizeSlash(msg)
 end
 
 local function slashHandler(msg)
+  -- 3.11.1 : un seul geste depuis dropamine.app : « /drop <code> » reconnaît le code (liste d'objets, sortie)
+  local raw = tostring(msg or "")
+  if raw:find("DROP%-CH1:") and ns.SlashExt.chasse then ns.SlashExt.chasse("import " .. raw) return end
+  if raw:find("DROP%-RUN1:") and ns.SlashExt.sortie then ns.SlashExt.sortie(raw) return end
   msg = ns.NormalizeSlash(msg)
   local cmd = (msg or ""):match("^%s*(%S*)") or ""
   cmd = cmd:lower()

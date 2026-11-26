@@ -2076,3 +2076,4 @@ E["Le carnet de tout ce que tu as obtenu : donjon par donjon, boss par boss, les
 E["Ouvrir la Collection"] = "Open the Collection"
 E["Tu vises un objet précis (ou tes favoris du Journal des donjons) : Dropamine compte tes essais et te prévient quand il tombe. Tu préfères seulement le carnet ? Décoche la Chasse BiS (/drop chasse on|off)."] = "You target a specific item (or your Dungeon Journal favourites): Dropamine counts your attempts and tells you when it drops. Only want the log? Untick the BiS hunt (/drop hunt on|off)."
 E["Activer la Chasse BiS"] = "Turn on the BiS hunt"
+E["%d nouvel(s) objet(s) dans ton carnet depuis ton dernier export : /drop hiscores, puis colle la ligne sur dropamine.app pour que ceux qui font les mêmes donjons te trouvent."] = "%d new item(s) in your collection log since your last export: /drop hiscores, then paste the line on dropamine.app so players running the same dungeons can find you."

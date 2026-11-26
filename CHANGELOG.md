@@ -6,10 +6,11 @@
 - BiS hunt can be turned off, for collectors who only want the collection log: Settings > Hunt and collection ("BiS hunt"), the setup tour, or `/drop hunt off` / `on`. Off: no Hunt tab, no attempt counting, no "hunted item" alert or loot frame highlight, nothing about the hunt in `/drop hiscores`. The collection log keeps going and your hunt list is kept.
 - Setup tour: the collection log and the BiS hunt now have their own pages, so the two are not mixed up.
 - `/drop hiscores`: tick what you share (played time, collection log with the list of owned items, achievements, records, hunt); the window lists what is included. dropamine.app then shows your collection log item by item.
-- Hunt list from dropamine.app: tick suggested items on your character page, copy the command and paste it in game (`/drop hunt import <code>`). Duplicates are skipped and the 20-item limit is kept.
-- Group outings from dropamine.app: the "In-game reminder" button gives a `/drop outing <code>` command; Dropamine then shows a toast 15 min before and at start time, with the organiser's `/w` (click the toast, or the name in the chat line, to whisper them). `/drop outing` lists your outings, `/drop outing clear` forgets them.
+- Hunt list from dropamine.app: tick suggested items on your character page, copy the command and paste it in game (`/drop <code>`: any code from the site works, no need to remember which command). Duplicates are skipped and the 20-item limit is kept.
+- Group outings from dropamine.app: the "Reminder in game" button gives a `/drop <code>` command; Dropamine then shows a toast 15 min before and at start time, with the organiser's `/w` (click the toast, or the name in the chat line, to whisper them). `/drop outing` lists your outings, `/drop outing clear` forgets them.
 - Profession ranks: the tooltip and the rank toast say where to find the trainer for your faction (for example Leatherworking 150: Darnassus for the Alliance).
 - Collection log: right-click an item icon to mark it owned or not owned.
+- Reminder, at most once a day: when your collection log has new items since your last `/drop hiscores`, a chat line reminds you to paste the new line on dropamine.app, so players who need the same dungeons can find you.
 
 ### Fixes
 - Hunt attempts: an item without a single boss (several sources, trash mobs) only counts in a dungeon where it drops, and only once per outing (loot in the same dungeon less than an hour apart is the same outing). Wrong counts from before (for example 54 "attempts" on the Mark of Kern) are reset once.

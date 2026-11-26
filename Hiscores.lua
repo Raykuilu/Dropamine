@@ -218,7 +218,31 @@ function HS.Open()
     }
   end
   if DW and DW.Show then DW.Show(lines, { title = Tr["Hiscores : ta ligne d'export (Ctrl+C pour copier)"], checks = checks }) end
+  HS.MarkExported()
   return line
+end
+
+-- 3.11.1 : rappel discret (une fois par jour, au plus) quand le carnet a de nouveaux objets depuis le dernier export :
+-- sans ligne à jour, le site ne peut pas te mettre en relation avec ceux qui ont besoin des mêmes donjons
+local function Owned() local H = ns.Hunt return (H and H.OwnedIds and #H.OwnedIds()) or 0 end
+function HS.MarkExported(now)
+  local c = ns.CharDB and ns.CharDB()
+  if c then c.hsExport = { at = now or ((type(time) == "function" and time()) or 0), owned = Owned() } end
+end
+function HS.CheckReminder(today)
+  local c = ns.CharDB and ns.CharDB()
+  if not (c and c.hsExport) then return nil end           -- jamais exporté : pas de rappel (la visite et le site s'en chargent)
+  today = today or ((type(date) == "function" and date("%Y%m%d")) or "")
+  if c.hsNagDay == today then return nil end
+  local new = Owned() - (tonumber(c.hsExport.owned) or 0)
+  if new <= 0 then return nil end
+  c.hsNagDay = today
+  local msg = string.format(Tr["%d nouvel(s) objet(s) dans ton carnet depuis ton dernier export : /drop hiscores, puis colle la ligne sur dropamine.app pour que ceux qui font les mêmes donjons te trouvent."], new)
+  if ns.Print then ns.Print(msg) end
+  return msg
+end
+if ns.On and _G.C_Timer and _G.C_Timer.After then
+  ns.On("PLAYER_LOGIN", function() _G.C_Timer.After(90, function() pcall(HS.CheckReminder) end) end)
 end
 
 ns.SlashExt = ns.SlashExt or {}
