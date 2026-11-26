@@ -1108,7 +1108,11 @@ function UI:WireDropMouse(f)
       -- SetScript à part : les toasts sont recyclés et ce gestionnaire est reposé à chaque affichage.
       local ic = self._itemClick
       local now = (type(GetTime) == "function" and GetTime()) or 0
-      if ic and ic.id and button == "LeftButton" and now <= (ic.till or 0) and not shift then
+      local wc = self._whisperClick   -- 3.11.1 : rappel de sortie : clic = chuchoter à l'organisateur
+      if wc and wc.org and button == "LeftButton" and now <= (wc.till or 0) and not shift then
+        if ns.Hunt and ns.Hunt.OpenWhisper then pcall(ns.Hunt.OpenWhisper, wc.org) end
+        UI:DismissDrop(self)
+      elseif ic and ic.id and button == "LeftButton" and now <= (ic.till or 0) and not shift then
         local name = tostring((ns.Hunt and ns.Hunt.DisplayName and ns.Hunt.DisplayName(ic.id, ic.nm)) or ic.nm or ic.id)
         local link = "|Hitem:" .. ic.id .. "::::::::::::|h[" .. name .. "]|h"
         if type(_G.SetItemRef) == "function" then pcall(_G.SetItemRef, "item:" .. ic.id, link, "LeftButton") end
@@ -1652,6 +1656,7 @@ function UI:SpawnDrop(iconPath, title, subtitle, barCur, barMax, rightValue, opt
   f._quest = opts.accumulate and opts.accumulate.quest or nil
   f._target = { kind = opts.kind, skillId = opts.skillId, skillName = opts.skillName }
   f._itemClick = nil  -- cadre recyclé : jamais le lien d'objet d'un ancien toast
+  f._whisperClick = nil
   if not f._restart then
     f._restart = function() UI.ToastRestart(f) end
   end

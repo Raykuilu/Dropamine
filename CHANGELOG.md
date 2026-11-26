@@ -7,7 +7,7 @@
 - Setup tour: the collection log and the BiS hunt now have their own pages, so the two are not mixed up.
 - `/drop hiscores`: tick what you share (played time, collection log with the list of owned items, achievements, records, hunt); the window lists what is included. dropamine.app then shows your collection log item by item.
 - Hunt list from dropamine.app: tick suggested items on your character page, copy the command and paste it in game (`/drop hunt import <code>`). Duplicates are skipped and the 20-item limit is kept.
-- Group outings from dropamine.app: the "In-game reminder" button gives a `/drop outing <code>` command; Dropamine then shows a toast 15 min before and at start time, with the organiser's `/w`. `/drop outing` lists your outings, `/drop outing clear` forgets them.
+- Group outings from dropamine.app: the "In-game reminder" button gives a `/drop outing <code>` command; Dropamine then shows a toast 15 min before and at start time, with the organiser's `/w` (click the toast, or the name in the chat line, to whisper them). `/drop outing` lists your outings, `/drop outing clear` forgets them.
 - Profession ranks: the tooltip and the rank toast say where to find the trainer for your faction (for example Leatherworking 150: Darnassus for the Alliance).
 - Collection log: right-click an item icon to mark it owned or not owned.
 

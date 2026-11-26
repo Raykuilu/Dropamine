@@ -1333,11 +1333,25 @@ function H.Outings(now)
   for i = #list, 1, -1 do if list[i].at < now - 3 * 3600 then table.remove(list, i) end end
   return list
 end
+-- clic : ouvre la saisie du chat avec « /w Prénom Nom » prêt à compléter
+local function OpenWhisper(org)
+  if not org or org == "" then return end
+  if _G.ChatFrame_OpenChat then pcall(_G.ChatFrame_OpenChat, "/w " .. org .. " ", _G.DEFAULT_CHAT_FRAME) end
+end
+H.OpenWhisper = OpenWhisper
 local function OutingToast(title, o)
   local P = ns.Progress
   local sub = (o.org ~= "" and ("/w " .. o.org)) or ""
-  if P and P.Toast then pcall(P.Toast, title, sub, { kind = "achievement", variant = "gold" }, "outing-" .. tostring(o.at), true) end
-  if ns.Print then ns.Print(title .. (sub ~= "" and (" · " .. sub) or "")) end
+  if P and P.Toast then
+    local ok, tf = pcall(P.Toast, title, sub, { kind = "achievement", variant = "gold" }, "outing-" .. tostring(o.at), true)
+    -- 3.11.1 : un clic sur le toast ouvre le chuchotement à l'organisateur (géré par le clic commun des toasts)
+    if ok and type(tf) == "table" and o.org ~= "" then
+      tf._whisperClick = { org = o.org, till = ((_G.GetTime and _G.GetTime()) or 0) + 60 }
+      if tf.EnableMouse then pcall(tf.EnableMouse, tf, true) end
+    end
+  end
+  -- dans le chat : le nom est un lien joueur (clic = chuchoter, comme tout nom du chat)
+  if ns.Print then ns.Print(title .. (o.org ~= "" and (" · /w |Hplayer:" .. o.org .. "|h[" .. o.org .. "]|h") or "")) end
 end
 function H.CheckOutings(now)
   now = now or time()
