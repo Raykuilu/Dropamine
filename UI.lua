@@ -2341,7 +2341,8 @@ local function LocName(n) return (n and ns.LocSkillName and ns.LocSkillName(n)) 
 -- vrai si une description en cache est en français alors que l'addon est en anglais
 -- (le nom peut venir du cache et la description du jeu, ou l'inverse : on juge le texte lui-même)
 local function ForeignText(s)
-  if not (ns.LangCode and ns.LangCode() == "en") or type(s) ~= "string" then return false end
+  -- (anglais seulement : les accents ne prouvent rien en allemand, espagnol, italien, portugais)
+  if not (ns.IsEnglish and ns.IsEnglish()) or type(s) ~= "string" then return false end
   if s:find("[\195][\160-\191]") then return true end  -- lettres accentuées (é, è, à, ç…) en UTF-8
   local low = " " .. s:lower() .. " "
   return (low:find(" vos ") or low:find(" les ") or low:find(" des ") or low:find(" une ")) and true or false

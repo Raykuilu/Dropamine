@@ -309,16 +309,18 @@ function D.EnsureDaily(list, day, salt)
   d.daily = { day = day, id = pick.id, name = pick.name, start = pick.current, goal = pick.current + D.DAILY_STEP, done = false }
   return d.daily
 end
+-- 3.12.0 : nom du métier du défi dans la langue de l'addon (enregistré dans la langue du client du jour du tirage)
+local function GName(g) return (ns.LocSkillName and ns.LocSkillName(g.name, g.id)) or g.name end
 function D.DailyLine(id, name, cur)
   if not ns.Opt("daily") then return nil end
   local g = D.C().daily
   if not g then return nil end
   if id ~= g.id and name ~= g.name then return nil end
   local need = (g.goal or 0) - (g.start or 0)
-  if g.done then return Tr["Défi du jour réussi : +"] .. need .. Tr[" en "] .. tostring(g.name) end
+  if g.done then return Tr["Défi du jour réussi : +"] .. need .. Tr[" en "] .. tostring(GName(g)) end
   local prog = math.max(0, (tonumber(cur) or g.start or 0) - (g.start or 0))
   if prog > need then prog = need end
-  return string.format(Tr["Défi du jour : +%d en %s (%d/%d)"], need, tostring(g.name), prog, need)
+  return string.format(Tr["Défi du jour : +%d en %s (%d/%d)"], need, tostring(GName(g)), prog, need)
 end
 function D.DailyProgress(info)
   local g = D.C().daily
@@ -326,7 +328,7 @@ function D.DailyProgress(info)
   if info.id ~= g.id and info.name ~= g.name then return false end
   if (info.to or 0) < (g.goal or 0) then return false end
   g.done = true
-  D.Toast(Tr["Défi du jour réussi !"], "+" .. ((g.goal or 0) - (g.start or 0)) .. Tr[" en "] .. tostring(g.name), info.icon,
+  D.Toast(Tr["Défi du jour réussi !"], "+" .. ((g.goal or 0) - (g.start or 0)) .. Tr[" en "] .. tostring(GName(g)), info.icon,
     { kind = "daily", variant = "gold" })
   D.Play("soundDaily")
   return true

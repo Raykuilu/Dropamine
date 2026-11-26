@@ -74,7 +74,7 @@ check(l3:find(";ci=7ah.5vgb;", 1, true), "collection : objets obtenus en base 36
 check(HS.B36(9449) == "7ah" and HS.B36(274043) == "5vgb", "base 36")
 check(l3:find(";ac=2~3~goal1.sess25;", 1, true), "succès : nombre, total, identifiants")
 check(l3:find(";rc=61~19~88~7~30~4~123456;", 1, true), "records")
-check(l3:find(";hu=9449~Roueur manuel [test]~42~1;", 1, true), "chasse : nom nettoyé")
+check(l3:find(";hu=9449~42~1;", 1, true), "chasse : codes seuls (numéro, essais, drops), sans nom traduit")
 check(not l3:find(";pv=", 1, true), "JcJ jamais exporté (le site prend l'armurerie)")
 check(#i3.extra == 4, "4 groupes inclus (temps de jeu décoché)")
 for _, k in ipairs({ "hsLog", "hsAch", "hsRec", "hsHunt" }) do ns.db.ui[k] = false end

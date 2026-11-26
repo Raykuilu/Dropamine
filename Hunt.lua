@@ -67,7 +67,7 @@ local TILE_EN = { head = "Head", neck = "Neck", shoulder = "Shoulder", back = "B
   trinket1 = "Trinket", trinket2 = "Trinket", weapon = "Weapon", offhand = "Off-hand", ranged = "Ranged" }
 function H.TileLabel(t)
   if not t then return "" end
-  if ns.LangCode and ns.LangCode() == "en" then return TILE_EN[t[1]] or t[3] or t[2] end
+  if ns.IsFrench and not ns.IsFrench() then return ns.LocName("slot", t[1], TILE_EN[t[1]] or t[3] or t[2]) end
   return t[2]
 end
 local GROUP = {
@@ -728,7 +728,8 @@ function H.RareAlert(id, nm, force, tier, retried)
 end
 local function OnChatLoot(msg, author)
   if not Plain(msg) or type(msg) ~= "string" then return end
-  local link = msg:match("(|c%x+|Hitem:.-|h%[.-%]|h|r)")
+  -- couleur des liens : « |cffa335ee » (ancien client) ou « |cnIQ4: » (client de Forever, qualité nommée)
+  local link = msg:match("(|c[^|]*|Hitem:.-|h%[.-%]|h|r)")
   local id = link and tonumber(link:match("item:(%d+)"))
   if not id then return end
   local s = Store()
@@ -1410,19 +1411,29 @@ do
     O.TEST_FN = O.TEST_FN or {}
   end
 end
-function H.RecipeToast(rid, force)
+-- 3.11.2 : NEW_RECIPE_LEARNED n'arrive pas toujours sur Forever ; le message du chat
+-- « Vous avez appris à créer un nouvel objet : X. » déclenche aussi le toast (un seul si les deux arrivent).
+local function Now() return (type(_G.GetTime) == "function" and _G.GetTime()) or os.time() end
+function H.RecipeToast(rid, force, chatName)
   local ui = ns.UI
   if not (ui and ui.SpawnDrop) then return nil end
   if not force and not ns.Opt("recipeToast") then return nil end
   local SU = ns.SkillUp
-  local name = SU and SU.RecipeName and SU.RecipeName(rid)
-  if not name and type(_G.GetSpellInfo) == "function" then
+  -- le nom du chat d'abord : il est dans la langue du client (le jeu peut renvoyer le nom anglais)
+  local name = chatName or (rid and SU and SU.RecipeName and SU.RecipeName(rid))
+  if not name and rid and type(_G.GetSpellInfo) == "function" then
     local ok, n = pcall(_G.GetSpellInfo, rid)
     if ok and type(n) == "string" and n ~= "" then name = n end
   end
-  name = name or Tr["Recette"]
+  name = name or chatName or Tr["Recette"]
+  -- même recette annoncée deux fois de suite (événement + message du chat) : un seul toast
+  local key, now = Fold(name), Now()
+  -- (même nom dans les 5 s, ou n'importe quelle recette dans les 2 s : l'événement peut donner le nom anglais, le chat le nom traduit)
+  local last = H._lastRecipe
+  if not force and last and ((last.key == key and now - last.at < 5) or now - last.at < 2) then return nil end
+  H._lastRecipe = { key = key, at = now }
   local sub
-  local skill = SU and SU.RecipeOwner and SU.RecipeOwner(rid)
+  local skill = rid and SU and SU.RecipeOwner and SU.RecipeOwner(rid)
   local all = skill and SU.AllRecipes(skill)
   if all and #all > 0 then
     local cdb = ns.CharDB and ns.CharDB()
@@ -1433,13 +1444,35 @@ function H.RecipeToast(rid, force)
     sub = string.format("%s %d / %d", tostring(label), math.min(have, #all), #all)
   end
   local icon = [[Interface\Icons\INV_Scroll_03]]
-  if type(_G.GetSpellTexture) == "function" then local ok, t = pcall(_G.GetSpellTexture, rid) if ok and t then icon = t end end
+  if rid and type(_G.GetSpellTexture) == "function" then local ok, t = pcall(_G.GetSpellTexture, rid) if ok and t then icon = t end end
   return ui:SpawnDrop(icon, Tr["Nouvelle recette !"] .. " " .. tostring(name), sub, nil, nil, nil, { kind = "qol", force = force })
 end
 do
   local O = ns.Options
   if O and O.TEST_FN then O.TEST_FN.recipedemo = function() return H.RecipeToast(2963, true) end end
 end
+-- le message du jeu (texte officiel ERR_LEARN_RECIPE_S, dans la langue du client) → nom de la recette, et son numéro s'il y a un lien
+function H.RecipeFromChat(msg)
+  if type(msg) ~= "string" then return nil end
+  local name
+  local fmt = _G.ERR_LEARN_RECIPE_S
+  if type(fmt) == "string" and fmt:find("%s", 1, true) then
+    local pat = "^" .. fmt:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1"):gsub("%%%%s", "(.+)") .. "$"
+    name = msg:match(pat)
+  end
+  if not name then
+    name = msg:match("[Yy]ou have learned how to create a new item: (.+)$") or msg:match("[Vv]ous avez appris à [^:]-un nouvel objet%s*:%s*(.+)$")
+  end
+  if not name then return nil end
+  local rid = tonumber(name:match("|H%a+:(%d+)"))
+  name = name:gsub("|c[^|]*", ""):gsub("|r", ""):gsub("|H.-|h", ""):gsub("|h", ""):gsub("^%[(.-)%]$", "%1"):gsub("%s*%.$", "")
+  return name, rid
+end
 if ns.On then
-  ns.On("NEW_RECIPE_LEARNED", function(_, rid) if type(rid) == "number" then pcall(H.RecipeToast, rid) end end)
+  -- sans pcall : une erreur s'affiche dans le chat (gestionnaire de Core) au lieu de faire disparaître le toast en silence
+  ns.On("NEW_RECIPE_LEARNED", function(_, rid) if type(rid) == "number" then H.RecipeToast(rid) end end)
+  ns.On("CHAT_MSG_SYSTEM", function(_, msg)
+    local name, rid = H.RecipeFromChat(msg)
+    if name then H.RecipeToast(rid, nil, name) end
+  end)
 end

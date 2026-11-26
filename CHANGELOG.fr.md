@@ -2,6 +2,19 @@
 
 Version française du journal (le journal de référence est CHANGELOG.md, en anglais). Les versions plus anciennes ne sont qu'en anglais.
 
+## 3.12.0
+
+### Nouveautés
+- Dropamine parle allemand, espagnol, italien, portugais du Brésil et russe, en plus de l'anglais et du français. « Auto » suit la langue de ton client du jeu ; Réglages > Langue ou `/drop lang de|es|it|pt|ru` en choisit une (l'interface se recharge). Seule la langue utilisée est chargée, les autres ne prennent aucune mémoire. Ces traductions sont nouvelles : signale-nous sur CurseForge ou GitHub un mot qui sonne faux.
+- `/drop hiscores` n'envoie plus que des codes pour tes objets recherchés (numéro de l'objet, essais, drops) : dropamine.app affiche le nom officiel de chaque objet dans la langue du visiteur, et aucun nom traduit ne passe par le copier-coller.
+- Onglet Chasse : le donjon s'affiche à côté du nom de l'objet (en gris, retiré si la place manque) ; le boss reste à droite.
+
+### Corrections
+- Les toasts ne se chevauchent plus quand l'un grandit après son apparition (long nom de recette sur deux lignes, « 2 × » devenu « 5 × ») : la pile est recalculée.
+- Recettes lues quand le client du jeu était dans une autre langue : oubliées au changement de langue du client (relues à l'ouverture du métier), au lieu d'afficher les anciens noms ou la même recette deux fois. Le défi du jour affiche le métier dans la langue de l'addon.
+- Chasse et carnet de collection : les lignes de butin du chat n'étaient jamais reconnues sur Forever (ses liens d'objets ont une couleur de qualité nommée, |cnIQ4:, au lieu de |cffa335ee). Les boss tués comptent de nouveau, donc les essais de chasse montent à chaque sortie, et les objets reçus dans le chat sont vus.
+- Toast « Nouvelle recette ! » : il part aussi sur la ligne du chat du jeu (« Vous avez appris à … un nouvel objet : … »), par exemple après avoir acheté et lu un patron, et une seule fois quand l'événement du jeu arrive en plus. Une erreur pendant sa préparation s'affiche dans le chat au lieu de faire disparaître le toast.
+
 ## 3.11.1
 
 ### Nouveautés

@@ -18,6 +18,9 @@ run "$LUA" tests/profile_search.lua
 run "$LUA" tests/bug_report.lua
 run "$LUA" tests/hardcore.lua
 run "$LUA" tests/skillup_bridge.lua
+run "$LUA" tests/recipe_toast.lua
+run "$LUA" tests/hunt_link_format.lua
+run "$LUA" tests/locales.lua
 run "$LUA" tests/needle.lua
 run "$LUA" tests/hiscores.lua
 run "$LUA" tests/collection_not_mine.lua

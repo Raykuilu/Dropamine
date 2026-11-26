@@ -1033,7 +1033,7 @@ function ns.ReadCombatStats()
   return st, false
 end
 -- 3.5.19 : virgule décimale en français seulement
-local function Dec(s) if ns.IsFrench and ns.IsFrench() then s = s:gsub("%.", ",") end return s end
+local function Dec(s) if ns.DecimalComma and ns.DecimalComma() then s = s:gsub("%.", ",") end return s end
 local function F1(x) return Dec(string.format("%.1f", x)) end
 local function F2(x) return Dec(string.format("%.2f", x)) end
 local function DmgLines(out, label, mn, mx, speed)

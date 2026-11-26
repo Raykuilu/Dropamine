@@ -261,7 +261,7 @@ function PV.FmtRatio(k, d)
   k, d = N(k) or 0, N(d) or 0
   if d <= 0 then return string.format("K/D %d/0", k) end
   local r = string.format("%.1f", k / d)
-  if ns.IsFrench and ns.IsFrench() then r = r:gsub("%.", ",") end   -- 3.5.19 : virgule décimale en français seulement
+  if ns.DecimalComma and ns.DecimalComma() then r = r:gsub("%.", ",") end   -- 3.5.19 : virgule décimale en français seulement
   return "K/D " .. r
 end
 function PV.KD()

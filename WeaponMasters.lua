@@ -42,7 +42,7 @@ WM.CLASS_WEAPONS = {
   DRUID = { "maces", "maces2h", "staves", "fist", "daggers" },
 }
 local ZONE_EN = { ["Hurlevent"] = "Stormwind", ["Forgefer"] = "Ironforge", ["Pitons-du-Tonnerre"] = "Thunder Bluff", ["Fossoyeuse"] = "Undercity" }
-local function ZoneName(z) if ns.IsFrench and not ns.IsFrench() then return ZONE_EN[z] or z end return z end
+local function ZoneName(z) if ns.IsFrench and not ns.IsFrench() then return ns.LocName("zone", ZONE_EN[z] or z, ZONE_EN[z] or z) end return z end
 local function Faction() return Str(Call(_G.UnitFactionGroup, "player")) end
 
 -- maîtres qui enseignent cette arme : { npc, zone } (vu en jeu d'abord)

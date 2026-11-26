@@ -83,7 +83,7 @@ local function InCombat() return ns.InCombat and ns.InCombat() or false end
 local function Say(msg) if ns.Print then ns.Print(msg) end end
 local function Thousands(n) return (P and P.Thousands and P.Thousands(n)) or tostring(math.floor((N(n) or 0) + 0.5)) end
 local function Dur(sec) return (P and P.Dur and P.Dur(sec)) or tostring(sec) end
-local function Dec(s) if ns.IsFrench and ns.IsFrench() then return (s:gsub("%.", ",")) end return s end
+local function Dec(s) if ns.DecimalComma and ns.DecimalComma() then return (s:gsub("%.", ",")) end return s end
 local function Fmt1(v) return Dec(string.format("%.1f", N(v) or 0)) end
 local function Fmt2(v) return Dec(string.format("%.2f", N(v) or 0)) end
 local function Short(v)
@@ -2293,7 +2293,14 @@ function PU.RefreshHunt(p)
     local it = list[i + c.ui.offset]
     e.idx = it and it.i or nil
     if it then
-      e.name:SetText(it.i .. ". " .. tostring(it.name))
+      -- 3.12.0 : le donjon à côté du nom, en gris (retiré si la place manque) ; le boss reste à droite
+      local base = it.i .. ". " .. tostring(it.name)
+      local withDun = (it.dungeon and it.dungeon ~= "") and (base .. "  |cff8a8a8a" .. tostring(it.dungeon) .. "|r") or nil
+      e.name:SetText(withDun or base)
+      if withDun and e.name.GetStringWidth then
+        local ok, sw = pcall(e.name.GetStringWidth, e.name)
+        if ok and sw and sw > math.floor(HW * 0.47) then e.name:SetText(base) end
+      end
       local ch = H.Chance({ rate = it.rate, attempts = it.attempts })
       local info = string.format(Tr["%d tentatives · %d trouvé(s)"], it.attempts, it.drops)
       if it.boss then info = tostring(H.LocBoss(it.boss)) .. " · " .. info end

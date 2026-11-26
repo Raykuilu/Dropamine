@@ -497,7 +497,7 @@ end
 -- Info-bulle de la case Niveau : « XP de repos : 12 345 (45 % d'un niveau) »
 function R.Num(n)
   local s = tostring(math.floor((N(n) or 0) + 0.5))
-  local sep = (ns.IsFrench and ns.IsFrench()) and " " or ","
+  local sep = (ns.IsEnglish and not ns.IsEnglish()) and " " or ","   -- 3.12.0 : espace partout sauf en anglais
   local out = s:reverse():gsub("(%d%d%d)", "%1" .. sep):reverse()
   return (out:gsub("^" .. (sep == "," and "," or " "), ""))
 end

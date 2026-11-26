@@ -110,8 +110,35 @@ function Craft.Merge(prevList, list)
   return out, added
 end
 
+-- 3.12.0 : les listes de recettes portent les noms du client qui les a lues ; si la langue du client change,
+-- on les oublie (relues à la prochaine ouverture de chaque métier) au lieu de mélanger deux langues
+function Craft.CheckLocale()
+  local c = ns.CharDB and ns.CharDB()
+  if type(c) ~= "table" then return end
+  local loc = ns.ClientLocale and ns.ClientLocale() or "enUS"
+  if c.recipesLocale == loc then return end
+  local stale = c.recipesLocale ~= nil
+  if not stale then
+    -- sauvegarde d'avant 3.12.0 (langue inconnue) : on compare un nom enregistré au nom donné par le jeu ;
+    -- on n'efface que si la langue a vraiment changé (sinon tout le monde perdrait ses listes à la mise à jour)
+    for _, rec in pairs(c.recipes or {}) do
+      for _, r in ipairs(type(rec) == "table" and rec.list or {}) do
+        local rid = N(r.recipeID)
+        if rid and rid > 0 and type(_G.GetSpellInfo) == "function" then
+          local ok, nm = pcall(_G.GetSpellInfo, rid)
+          if ok and type(nm) == "string" and nm ~= "" then stale = (nm ~= r.name) break end
+        end
+      end
+      if stale then break end
+    end
+  end
+  if stale then c.recipes = {} end
+  c.recipesLocale = loc
+  Craft._ver = (Craft._ver or 0) + 1
+end
 function Craft.Store(skill, list, source)
   local c = ns.CharDB()
+  Craft.CheckLocale()
   c.recipes = c.recipes or {}
   local prev = c.recipes[skill]
   local read = #list
@@ -728,7 +755,7 @@ function Craft.HookUnitTooltip()
 end
 
 if ns.On then
-  ns.On("PLAYER_LOGIN", function() Craft.HookUnitTooltip() Craft.Update(true) end)
+  ns.On("PLAYER_LOGIN", function() Craft.CheckLocale() Craft.HookUnitTooltip() Craft.Update(true) end)
   ns.On("BAG_UPDATE_DELAYED", function() Craft.OnBags() end)
   ns.On("PLAYER_REGEN_ENABLED", function() if Craft._pending then Craft.Update(false) end end)
   local function readCraft(ev)

@@ -303,10 +303,19 @@ end
 
 function TF.Fit(f)
   if not f or not f.titleFS then return f end
+  local before = f._h
   FitLine(f, f.titleFS)
   if f.subFS and (not f.subFS.IsShown or f.subFS:IsShown()) then FitLine(f, f.subFS) end
   if f.hintFS and (not f.hintFS.IsShown or f.hintFS:IsShown()) then FitLine(f, f.hintFS) end
   TF.ApplyHeight(f)
+  -- 3.12.0 : la hauteur a changé après coup (titre passé sur deux lignes, « 2 × » devenu « 5 × ») :
+  -- la pile est recalculée, sinon le toast suivant gardait l'ancienne place et recouvrait celui-ci
+  if before and f._h ~= before and ns.UI and ns.UI.PackDrops then
+    local active = ns.UI.dropsActive
+    for i = 1, #(active or {}) do
+      if active[i] == f then pcall(ns.UI.PackDrops, ns.UI) break end
+    end
+  end
   return f
 end
 

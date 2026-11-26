@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.12.0
+
+### New
+- Dropamine now speaks German, Spanish, Italian, Brazilian Portuguese and Russian, besides English and French. "Auto" follows your game client; Settings > Language or `/drop lang de|es|it|pt|ru` picks one (the interface reloads). Only the language in use is loaded, the others take no memory. These translations are new: tell us on CurseForge or GitHub if a word is off.
+- `/drop hiscores` sends codes only for your wanted items (item number, attempts, drops): dropamine.app shows each item's official name in the visitor's language, and no translated name goes through copy and paste.
+- Hunt tab: the dungeon is shown next to the item name (in grey, dropped if there is no room); the boss stays on the right.
+
+### Fixes
+- Toasts no longer overlap when one grows after it appears (a long recipe name wrapping to two lines, "2 ×" becoming "5 ×"): the stack is laid out again.
+- Recipes read while the game client was in another language are forgotten when the client language changes (read again when you open the profession), instead of showing old names or the same recipe twice. The daily challenge shows the profession in the addon's language.
+- Hunt and collection log: loot lines in the chat were never recognized on Forever (its item links use a named quality colour, |cnIQ4:, instead of |cffa335ee). Boss kills now count again, so hunt attempts go up after each run, and items you receive from the chat are seen.
+- "New recipe!" toast: it now also shows from the game's chat line ("You have learned how to create a new item: …"), for example after buying and reading a pattern, and only once when the game event arrives too. An error while preparing it now shows in the chat instead of hiding the toast.
+
 ## 3.11.1
 
 ### New

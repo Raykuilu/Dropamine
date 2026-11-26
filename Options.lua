@@ -21,9 +21,10 @@ Options.SECTIONS = {
       get = function() return ns.Theme and ns.Theme.Choice() or "flare" end,
       set = function(v) if ns.Theme then ns.Theme.Set(v) end end },
     -- 3.5.19 : langue des textes (enregistrée dans DropamineDB.ui.lang, « auto » par défaut)
-    { type = "radio", key = "lang", label = "Langue", default = "auto", noReset = true, cmd = "/drop lang auto|en|fr",
-      choices = { { "auto", "Auto (langue du jeu)" }, { "en", "English" }, { "fr", "Français" } },
-      help = "Langue des textes de l'addon. Auto : français sur un client français, anglais sinon.",
+    { type = "radio", key = "lang", label = "Langue", default = "auto", noReset = true, cmd = "/drop lang auto|en|fr|de|es|it|pt|ru",
+      choices = { { "auto", "Auto (langue du jeu)" }, { "en", "English" }, { "fr", "Français" }, { "de", "Deutsch" }, { "es", "Español" },
+        { "it", "Italiano" }, { "pt", "Português" }, { "ru", "Русский" } },
+      help = "Langue des textes de l'addon. Auto : celle du client du jeu (anglais si l'addon ne la connaît pas). Changer de langue recharge l'interface.",
       get = function() return ns.LangSetting and ns.LangSetting() or "auto" end,
       set = function(v) if ns.SetLang then ns.SetLang(v) end end },
     { type = "radio", key = "cols", label = "Colonnes", default = 5, cmd = "/drop colonnes 2|3|5|10",

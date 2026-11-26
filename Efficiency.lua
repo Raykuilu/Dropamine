@@ -1392,7 +1392,7 @@ function E.NoteRecipeLearn(msg)
     or fold:find("apprend une nouvelle recette", 1, true) or fold:find("learned a new recipe", 1, true)
   if not learned then return nil end
   local name = msg:match(":%s*(.+)%s*$") or msg:match("recette%s+(.+)%s*$") or msg:match("recipe%s+(.+)%s*$")
-  if type(name) == "string" then name = name:gsub("|c%x+|H.-|h%[(.-)%]|h|r", "%1"):gsub("%.$", "") end
+  if type(name) == "string" then name = name:gsub("|c[^|]*|H.-|h%[(.-)%]|h|r", "%1"):gsub("%.$", "") end
   local s = ns.Progress and ns.Progress.Session and ns.Progress.Session()
   if not s then return nil end
   s.recipes = s.recipes or {}

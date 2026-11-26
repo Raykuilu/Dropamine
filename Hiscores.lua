@@ -123,7 +123,9 @@ local function Hunt()
   local parts = {}
   for i, it in ipairs(list) do
     if i > 20 then break end
-    parts[#parts + 1] = int(it.id) .. "~" .. clean(it.name):sub(1, 40) .. "~" .. int(it.attempts) .. "~" .. int(it.drops)
+    -- 3.12.0 : codes seuls (numéro~essais~drops) : le site affiche le nom officiel dans la langue du visiteur,
+    -- et aucun nom traduit (russe, allemand…) ne passe par le copier-coller
+    parts[#parts + 1] = int(it.id) .. "~" .. int(it.attempts) .. "~" .. int(it.drops)
   end
   return { "hu=" .. table.concat(parts, ",") }, tostring(#parts)
 end

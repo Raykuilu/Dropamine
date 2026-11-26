@@ -1177,7 +1177,7 @@ function P.ShareText()
   if r.xph and r.xph > 0 then parts[#parts + 1] = Thousands(r.xph) .. Tr[" XP/h"] end
   if r.pph then
     local pph = string.format("%.1f", r.pph)
-    if ns.IsFrench and ns.IsFrench() then pph = pph:gsub("%.", ",") end
+    if ns.DecimalComma and ns.DecimalComma() then pph = pph:gsub("%.", ",") end
     parts[#parts + 1] = pph .. Tr[" pts/h"]
   end
   local st = P.Streak().n
