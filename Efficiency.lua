@@ -1044,6 +1044,71 @@ function E.NoteLootCoin(msg)
   return copper
 end
 
+-- 3.13.0 : ce que tu ramasses pendant la session, par zone (onglet Farm, vue Maintenant). Session seulement,
+-- 40 objets au plus par zone (les moins nombreux partent).
+function E.NoteSessionItem(itemID, qty, zone)
+  itemID, qty = N(itemID), N(qty) or 1
+  if not itemID then return nil end
+  local P = ns.Progress
+  zone = zone or (P and P.Zone and P.Zone()) or "?"
+  local e = E.Sess()
+  e.items = e.items or {}
+  local z = e.items[zone]
+  if not z then z = {} e.items[zone] = z end
+  z[itemID] = (N(z[itemID]) or 0) + qty
+  local cnt, low, lowK = 0, nil, nil
+  for k, v in pairs(z) do cnt = cnt + 1 if k ~= itemID and (not low or v < low) then low, lowK = v, k end end
+  if cnt > 40 and lowK then z[lowK] = nil end
+  return z[itemID]
+end
+function E.SessionItems(zone, limit)
+  local e = E.Sess()
+  local out = {}
+  for id, n in pairs((e.items or {})[zone or ""] or {}) do out[#out + 1] = { id = id, n = N(n) or 0 } end
+  table.sort(out, function(a, b) if a.n ~= b.n then return a.n > b.n end return a.id < b.id end)
+  if limit and #out > limit then for i = #out, limit + 1, -1 do out[i] = nil end end
+  return out
+end
+
+-- 3.13.0 : objectifs de farm (un objet, une quantité) ; l'avancement se lit dans les sacs.
+-- Rangés par personnage ; 8 au plus. L'interface de saisie viendra ; en attendant : /drop farm ajouter <lien|n°> <qté>.
+E.GOALS_MAX = 8
+function E.Goals()
+  local c = ns.CharDB and ns.CharDB()
+  if not c then return {} end
+  if type(c.farmGoals) ~= "table" then c.farmGoals = {} end
+  return c.farmGoals
+end
+function E.GoalAdd(itemID, qty)
+  itemID, qty = N(itemID), math.floor(N(qty) or 0)
+  if not itemID or itemID <= 0 or qty <= 0 then return nil, "usage" end
+  local g = E.Goals()
+  for _, x in ipairs(g) do if x.id == itemID then if x.qty == qty then return x, "same" end x.qty = qty return x end end   -- même objet : quantité mise à jour (« same » : rien n'a changé)
+  if #g >= E.GOALS_MAX then return nil, "full" end
+  local x = { id = itemID, qty = qty, at = Wall() }
+  g[#g + 1] = x
+  return x
+end
+function E.GoalRemove(i)
+  local g = E.Goals()
+  i = N(i)
+  if not (i and g[i]) then return nil end
+  return table.remove(g, i)
+end
+function E.GoalList()
+  local out = {}
+  for i, x in ipairs(E.Goals()) do
+    local have = N(Call(_G.GetItemCount, x.id))   -- certains clients ne l'ont plus qu'en C_Item (comme Craft.lua)
+    if have == nil and type(_G.C_Item) == "table" then have = N(Call(_G.C_Item.GetItemCount, x.id)) end
+    have = have or 0
+    local gi = _G.GetItemInfo or (type(_G.C_Item) == "table" and _G.C_Item.GetItemInfo)
+    local name, _, _, _, _, _, _, _, _, icon = Call(gi, x.id)
+    out[#out + 1] = { i = i, id = x.id, qty = x.qty, have = have, done = have >= x.qty, name = name, icon = icon,
+      frac = math.min(1, have / math.max(1, x.qty)) }
+  end
+  return out
+end
+
 function E.NoteLootItem(msg)
   local Sc = ns.Scanner
   local itemID, qty
@@ -1052,6 +1117,7 @@ function E.NoteLootItem(msg)
   end
   itemID, qty = N(itemID), N(qty) or 1
   if not itemID then return nil end
+  pcall(E.NoteSessionItem, itemID, qty)
   local price = E.ItemSellPrice(itemID)
   if price == nil then
     E._pendingVendor = E._pendingVendor or {}
@@ -1523,6 +1589,31 @@ do
       return base(s)
     end
   end
+end
+
+-- 3.13.0 : /drop farm — objectifs de farm (en attendant leur interface dans l'onglet Farm)
+ns.SlashExt = ns.SlashExt or {}
+ns.SlashExt.farm = function(rest)
+  local say = ns.Print or print
+  rest = rest or ""
+  local verb, tail = rest:match("^%s*(%S*)%s*(.-)%s*$")
+  verb = (verb or ""):lower()
+  if verb == "ajouter" or verb == "add" then
+    local id = N(tail:match("item:(%d+)")) or N(tail:match("^(%d+)"))
+    local qty = N(tail:match("(%d+)%s*$"))
+    if tail:match("item:(%d+)") then qty = N(tail:match("|h|r%s*(%d+)%s*$")) or N(tail:match("%]%s*(%d+)%s*$")) end
+    local x, err = E.GoalAdd(id, qty)
+    if x then say(string.format(Tr["Objectif de farm : %s × %d"], (Call(_G.GetItemInfo, x.id)) or ("#" .. x.id), x.qty))
+    elseif err == "full" then say(string.format(Tr["%d objectifs au plus."], E.GOALS_MAX))
+    else say(Tr["usage : /drop farm ajouter <objet ou n°> <quantité>"]) end
+  elseif verb == "retirer" or verb == "remove" then
+    if E.GoalRemove(tail) then say(Tr["Objectif retiré."]) else say(Tr["usage : /drop farm retirer <n°>"]) end
+  else
+    local list = E.GoalList()
+    if #list == 0 then say(Tr["Aucun objectif. Pour en ajouter : /drop farm ajouter <objet ou n°> <quantité>"]) end
+    for _, x in ipairs(list) do say(string.format("%d. %s %d / %d", x.i, x.name or ("#" .. x.id), math.min(x.have, x.qty), x.qty)) end
+  end
+  if ns.ProgressUI and ns.ProgressUI.RequestRefresh then pcall(ns.ProgressUI.RequestRefresh) end
 end
 
 return E

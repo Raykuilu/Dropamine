@@ -631,6 +631,14 @@ function P.NoteGather(skill, delta, now)
   if last and now > last and now - last <= P.IDLE_GAP then
     z.secs = (N(z.secs) or 0) + (now - last)
     z.n = (N(z.n) or 0) + delta
+    -- 3.13.0 : 10 derniers rythmes (minutes par point) : un coin qui ralentit = nœuds qui verdissent
+    z.rec = type(z.rec) == "table" and z.rec or {}
+    z.rec[#z.rec + 1] = ((now - last) / delta) / 60
+    if #z.rec > 10 then table.remove(z.rec, 1) end
+  end
+  do   -- 3.13.0 : points de récolte de la session, par zone (onglet Farm, vue Maintenant)
+    local s = P.Session()
+    if s then s.zoneGather = s.zoneGather or {} s.zoneGather[zone] = (N(s.zoneGather[zone]) or 0) + delta end
   end
   z.pts = (N(z.pts) or 0) + delta
   z.last = now
@@ -656,7 +664,17 @@ function P.Spots(skill, limit, sortBy)
     local avg = (n >= 1 and (N(z.secs) or 0) > 0) and ((z.secs / n) / 60) or nil
     local topSub, topN = nil, 0
     for k, v in pairs(z.subs or {}) do if v > topN then topSub, topN = k, v end end
-    out[#out + 1] = { zone = zone, pts = N(z.pts) or 0, minutes = (N(z.secs) or 0) / 60, avg = avg, sub = topSub, last = z.last }
+    -- 3.13.0 : tendance = rythme des 10 derniers points face au rythme habituel du coin
+    local recent, trend
+    if type(z.rec) == "table" and #z.rec >= 5 then
+      local sum = 0 for _, v in ipairs(z.rec) do sum = sum + (N(v) or 0) end
+      recent = sum / #z.rec
+      if avg and avg > 0 then
+        local k = recent / avg
+        trend = (k >= 1.3) and "slower" or (k <= 0.77) and "faster" or "steady"
+      end
+    end
+    out[#out + 1] = { zone = zone, pts = N(z.pts) or 0, minutes = (N(z.secs) or 0) / 60, avg = avg, sub = topSub, last = z.last, recent = recent, trend = trend }
   end
   if sortBy == "rate" then
     table.sort(out, function(a, b)
@@ -1229,10 +1247,8 @@ function P.AllSpots(limit)
   for _, id in ipairs({ "herbalism", "mining", "skinning", "fishing" }) do
     for _, z in ipairs(P.Spots(id)) do z.skill = id out[#out + 1] = z end
   end
+  -- 3.13.0 : par points gagnés (le rythme en min/pt dépend trop du rang pour comparer des zones)
   table.sort(out, function(a, b)
-    local ra = (a.avg and a.pts >= 3) and a.avg or math.huge
-    local rb = (b.avg and b.pts >= 3) and b.avg or math.huge
-    if ra ~= rb then return ra < rb end
     if a.pts ~= b.pts then return a.pts > b.pts end
     return tostring(a.zone) < tostring(b.zone)
   end)

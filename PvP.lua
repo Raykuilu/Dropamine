@@ -541,9 +541,34 @@ function PV.OnKillsChanged()
   elseif not hk then PV.OnKill(1) end    -- API absente : l'événement compte pour 1
   if hk then S.lastHK = hk end
 end
+-- 3.12.2 : semaine JcJ tenue par l'addon (GetPVPThisWeekStats ne répond pas sur Forever) : victoires honorables et
+-- honneur estimé lus dans le message du jeu (texte officiel, toutes langues), remis à zéro à la remise hebdomadaire.
+function PV.WeekKey(now)
+  now = now or N(Call(_G.time)) or 0
+  local DT = rawget(_G, "C_DateAndTime")
+  local left = type(DT) == "table" and type(DT.GetSecondsUntilWeeklyReset) == "function" and N(Call(DT.GetSecondsUntilWeeklyReset)) or nil
+  if left and left > 0 then return math.floor((now + left) / 3600) end   -- heure de la prochaine remise : la même toute la semaine
+  return math.floor((now - 3 * 86400) / (7 * 86400))                     -- repli : semaines du jeudi au mercredi (UTC)
+end
+function PV.Week()
+  local c = CDB()
+  local k = PV.WeekKey()
+  if type(c.week) ~= "table" or c.week.key ~= k then c.week = { key = k, hk = 0, honor = 0 } end
+  return c.week
+end
+function PV.HonorOfMsg(msg)
+  if type(msg) ~= "string" or not ns.MatchGlobal then return nil end
+  local _, _, pts = ns.MatchGlobal("COMBATLOG_HONORGAIN", msg)
+  if pts then return N(pts) end
+  local _, pts2 = ns.MatchGlobal("COMBATLOG_HONORGAIN_NO_RANK", msg)
+  if pts2 then return N(pts2) end
+  return nil
+end
 function PV.OnHonorMsg(msg)
   PV.stats.events = PV.stats.events + 1
   S.lastHonorMsg = msg
+  local pts = PV.HonorOfMsg(msg)
+  if pts then local w = PV.Week() w.hk, w.honor = w.hk + 1, w.honor + pts end
   if not InCombat() then PV._dirty = true end
 end
 function PV.OnDeath()

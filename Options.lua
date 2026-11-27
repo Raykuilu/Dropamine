@@ -15,11 +15,16 @@ local function LayoutM() return ns.Layout end
 
 Options.SECTIONS = {
   { id = "display", title = "Affichage", desc = "Apparence, disposition, transparence, liseré selon la cible et icônes d'état.", items = {
-    { type = "radio", key = "theme", label = "Thème", default = "flare", cmd = "/drop theme flare|flare2|leger|classic",
-      choices = { { "flare2", "FlareUI" }, { "flare", "Moderne" }, { "leger", "Léger (cases seules, sans cadre)" }, { "classic", "Classique (look Blizzard)" } },
-      help = "Change l'habillage du panneau, des cases et des toasts.",
-      get = function() return ns.Theme and ns.Theme.Choice() or "flare" end,
-      set = function(v) if ns.Theme then ns.Theme.Set(v) end end },
+    { type = "radio", key = "theme", label = "Thème", default = "dropamine", cmd = "/drop theme dropamine|neutre|leger",
+      choices = { { "dropamine", "Dropamine (bord bronze à losange)" }, { "neutre", "Neutre (fond sombre, bord fin)" }, { "leger", "Léger (discret, sans cadre)" } },
+      help = "Habillage du panneau des cases et des toasts (les fenêtres gardent le cadre du jeu). Pris en compte après /reload.",
+      get = function() return ns.Theme and ns.Theme.Choice() or "dropamine" end,
+      set = function(v)
+        if not ns.Theme then return end
+        local before = ns.Theme.Choice and ns.Theme.Choice()
+        ns.Theme.Set(v)
+        if ns.AskReload and ns.Theme.Choice and ns.Theme.Choice() ~= before then ns.AskReload() end
+      end },
     -- 3.5.19 : langue des textes (enregistrée dans DropamineDB.ui.lang, « auto » par défaut)
     { type = "radio", key = "lang", label = "Langue", default = "auto", noReset = true, cmd = "/drop lang auto|en|fr|de|es|it|pt|ru",
       choices = { { "auto", "Auto (langue du jeu)" }, { "en", "English" }, { "fr", "Français" }, { "de", "Deutsch" }, { "es", "Español" },
@@ -119,6 +124,9 @@ Options.SECTIONS = {
     -- 3.9.0 : objet recherché repéré dans les fenêtres de butin et de jet de groupe
     { type = "check", key = "huntRoll", label = "Repérer l'objet au butin", default = true, cmd = "Réglage de ce panneau",
       help = "Cadre doré sur l'objet de ta chasse dans la fenêtre de butin et au jet de groupe, avec un toast pour le jet." },
+    -- 3.13.0 : chasse partagée avec le groupe (GroupHunt.lua)
+    { type = "check", key = "huntShare", label = "Partager ma chasse avec mon groupe", default = true, cmd = "Réglage de ce panneau",
+      help = "Les addons Dropamine de ton groupe s'échangent les objets recherchés (numéros seulement, rien hors du groupe) : au jet de groupe et dans l'infobulle, tu vois qui chasse l'objet." },
     { type = "slider", key = "dropWidth", label = "Largeur des notifs", default = 0, min = 0, max = 480, step = 10, unit = "pxauto",
       help = "Auto : suit la largeur du panneau, avec un minimum lisible (260 px à l'échelle). Une valeur fixe impose la largeur. Si le toast est plus large que le panneau, il s'aligne sur le bord du panneau du côté de l'écran, sans dépasser." },
     { type = "slider", key = "dropDuration", label = "Durée d'affichage", default = 2.6, min = 1, max = 10, step = 0.5, cmd = "/drop drops duree <1-10>", unit = "s",
@@ -286,7 +294,7 @@ Options.MAP = {
     { "Fenêtre et infobulles", { "styleMetiers", "openProf", "grpTips" } },
   },
   hunt = {
-    { "Chasse", { "huntOn", "huntAlert", "huntRoll", "lootAlerts" } },
+    { "Chasse", { "huntOn", "huntAlert", "huntRoll", "huntShare", "lootAlerts" } },
     { "Découvertes", { "collection" } },
   },
   progress = {
@@ -1932,6 +1940,8 @@ function Options.Open()
     p:SetSize(640, math.max(420, (Options.height or 400) + 20))
     p:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     p:SetFrameStrata("DIALOG")
+    -- 3.13.0 : au premier plan (Dungeon Journal…) : un clic ou l'ouverture le remet devant
+    p:SetToplevel(true) p:Raise() p:HookScript("OnShow", function(self) self:Raise() end)
     if p.SetBackdrop then
       pcall(p.SetBackdrop, p, { bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background", edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border", tile = true, tileSize = 32, edgeSize = 32, insets = { left = 11, right = 12, top = 12, bottom = 11 } })
     end

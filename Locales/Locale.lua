@@ -301,5 +301,18 @@ local function SlashLang(rest)
   return true
 end
 ns.SlashExt.lang = SlashLang
+-- 3.13.0 : /drop traduction : le lien pour signaler un mot faux (copié depuis le chat, ouvert dans le navigateur)
+local function SlashTr()
+  local Tr = ns.L
+  if ns.Print then
+    ns.Print(Tr["Un mot faux dans ta langue ? Signale-le ici (copie le lien dans ton navigateur) :"])
+    ns.Print("https://github.com/Raykuilu/Dropamine/issues/new?labels=translation&title=%5B" .. tostring(ns.LangCode()) .. "%5D")
+  end
+  return true
+end
+ns.SlashExt.traduction = SlashTr
+ns.SlashExt.translation = SlashTr
+ns.HelpExt = ns.HelpExt or {}
+ns.HelpExt[#ns.HelpExt + 1] = "/drop traduction : signaler un mot faux dans ta langue"
 ns.SlashExt.langue = SlashLang
 ns.SlashExt.language = SlashLang

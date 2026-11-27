@@ -25,9 +25,10 @@ local PU = {}
 ns.ProgressUI = PU
 
 PU.NAME = "DropamineProgressFrame"
-PU.W, PU.H = 680, 500
+PU.W, PU.H = 680, 524      -- 3.13.0 : +24 px pour la rangée des vues sous les onglets
 PU.PAD = 12
-PU.CONTENT_Y = 158
+PU.CONTENT_Y = 182
+PU.VIEWS_Y = 153          -- 3.13.0 : en-tête de page sous les onglets : titre et description à gauche, vues à droite
 PU.CONTENT_W, PU.CONTENT_H = 656, 318
 PU.MEDIA = "Interface\\AddOns\\Dropamine\\Media\\"
 PU.LOGO = PU.MEDIA .. "Dropamine-Logo-64"            -- Media/Dropamine-Logo.tga (128 px, tiré du PNG)
@@ -36,14 +37,15 @@ PU.WHITE = "Interface\\Buttons\\WHITE8X8"
 PU.MAX_BARS = 30
 PU.CURVE_COLS = 110            -- colonnes de 2 px
 PU.REFRESH_WAIT = { idle = 0.5, combat = 2.0 }
+-- 3.13.0 : 6 onglets rangés par usage ; Aperçu (Aujourd'hui · Graphiques · Semaine) et Collection (Carnet · Chasse)
+-- ont leurs vues en pastilles, comme Farm (Spots · Efficacité)
 PU.TABS = {
-  { id = "overview", label = "Vue d'ensemble", pages = { "overview" } },
-  { id = "charts", label = "Graphiques", pages = { "charts", "weekly" } },
-  { id = "ach", label = "Succès", pages = { "ach" } },
-  { id = "farm", label = "Farm", pages = { "spots", "efficiency" } },
-  { id = "hunt", label = "Chasse", pages = { "hunt" } },
-  { id = "collection", label = "Collection", pages = { "collection" } },
-  { id = "chars", label = "Personnages", pages = { "chars" } },
+  { id = "overview", label = "Aperçu", pages = { "overview", "charts", "weekly" }, desc = "ta progression d'un coup d'œil" },
+  { id = "skills", label = "Compétences", pages = { "skills" }, desc = "chaque compétence, jour après jour" },
+  { id = "farm", label = "Farm", pages = { "now", "spots", "efficiency" }, desc = "où et comment tu montes le plus vite" },
+  { id = "collection", label = "Collection", pages = { "collection", "hunt" }, desc = "ton carnet et les objets que tu chasses" },
+  { id = "ach", label = "Succès", pages = { "ach" }, desc = "tes succès Dropamine" },
+  { id = "chars", label = "Personnages", pages = { "chars" }, desc = "tous les personnages du compte" },
 }
 function PU.Endgame() return ns.Hunt and ns.Hunt.Endgame and ns.Hunt.Endgame() or false end
 function PU.GroupOf(pageId)
@@ -54,8 +56,14 @@ function PU.GroupOf(pageId)
 end
 function PU.GroupDefault(gid)
   local ui = PU.State and PU.State() or nil
+  if gid == "overview" then return (ui and ui.overSub) or "overview" end
   if gid == "charts" then return (ui and ui.chartsSub) or "charts" end
-  if gid == "farm" then return (ui and ui.farmSub) or "spots" end
+  if gid == "farm" then return (ui and ui.farmSub) or "now" end
+  if gid == "collection" then
+    local sub = (ui and ui.collSub) or "collection"
+    if sub == "hunt" and ns.Hunt and ns.Hunt.On and not ns.Hunt.On() then sub = "collection" end
+    return sub
+  end
   return gid
 end
 PU.CHAR_MAX = 16
@@ -104,10 +112,10 @@ end
 local function State()
   local s = UIDB()
   if s.tab ~= "overview" and s.tab ~= "charts" and s.tab ~= "ach" and s.tab ~= "spots" and s.tab ~= "weekly" and s.tab ~= "efficiency" and s.tab ~= "chars"
-    and s.tab ~= "hunt" and s.tab ~= "collection" then s.tab = "overview" end
+    and s.tab ~= "hunt" and s.tab ~= "collection" and s.tab ~= "skills" and s.tab ~= "now" then s.tab = "overview" end   -- 3.13.0 : + Compétences
   if s.tab == "hunt" and ns.Hunt and ns.Hunt.On and not ns.Hunt.On() then s.tab = "overview" end
   if s.chartsSub ~= "weekly" then s.chartsSub = "charts" end
-  if s.farmSub ~= "efficiency" then s.farmSub = "spots" end
+  if s.farmSub ~= "efficiency" and s.farmSub ~= "spots" then s.farmSub = "now" end
   if s.effPeriod ~= "session" and s.effPeriod ~= "d7" and s.effPeriod ~= "d30" then s.effPeriod = "session" end
   if s.period ~= "session" and s.period ~= "d7" and s.period ~= "d30" then s.period = "d7" end
   if s.metric ~= "total" and s.metric ~= "xph" and s.metric ~= "cat" then s.metric = "cat" end
@@ -169,25 +177,21 @@ local BRONZE = (ns.STYLE and ns.STYLE.BORDER) or { 0.65, 0.49, 0.27, 1 }
 local SP = ns.Style and ns.Style.PALETTE or {}
 local function Col(c, fallback) return (type(c) == "table" and c) or fallback end
 PU.THEMES = {
+  -- 3.13.0 : thème Dropamine = la charte du site (dropamine.app) : fond brun très sombre, filets fins,
+  -- titres or, pastilles détourées (l'active pleine, or, texte sombre), liseré tricolore sous l'en-tête
   flare = {
-    skin = true, bgAlpha = 0.96,
-    card = { 0.153, 0.137, 0.125, 0.92 },                         -- #272320 (Style.PALETTE.sectionBg)
-    cardEdge = { BRONZE[1], BRONZE[2], BRONZE[3], 0.55 },
-    cardHi = { 0.30, 0.23, 0.12, 0.92 },
-    title = Col(SP.titleYellow, { 1, 0.847, 0 }),
-    text = Col(SP.bodyText, { 0.875, 0.875, 0.875 }),
-    sub = Col(SP.subtitleGrey, { 0.69, 0.65, 0.60 }),
-    label = Col(SP.categoryText, { 0.71, 0.61, 0.43 }),
-    accent = { BRONZE[1], BRONZE[2], BRONZE[3], 1 },
-    accentHi = Col(SP.selectedAccent, { 0.99, 0.82, 0.44 }),
-    pillOn = { 0.50, 0.37, 0.18, 1 }, pillOff = { 0.17, 0.15, 0.13, 1 },
-    pillEdge = { BRONZE[1], BRONZE[2], BRONZE[3], 0.75 },
-    button = { 0.47, 0.33, 0.15, 1 }, buttonEdge = { 0.99, 0.82, 0.44, 0.9 }, buttonText = { 1, 0.92, 0.72 },
-    track = { 0, 0, 0, 0.55 }, grid = { 1, 1, 1, 0.07 },
-    bar = { 0.80, 0.62, 0.30, 1 }, barHi = { 1, 0.84, 0.40, 1 },
-    line1 = { 1, 0.84, 0.35, 1 }, line2 = { 0.80, 0.80, 0.86, 1 }, fill1 = { 0.80, 0.62, 0.30, 0.22 },
-    good = { 0.35, 0.95, 0.35 }, bad = { 1, 0.45, 0.40 }, gold = { 1, 0.82, 0 },
-    mini = { 0.09, 0.08, 0.07, 0.96 },
+    skin = false, bgAlpha = 0.97, site = true,
+    flat = { 0.067, 0.051, 0.035, 0.97 }, edge = { 0.541, 0.416, 0.227, 1 },
+    card = { 0.098, 0.075, 0.051, 0.96 }, cardEdge = { 0.18, 0.141, 0.094, 1 }, cardHi = { 0.16, 0.12, 0.07, 0.96 },
+    title = { 0.91, 0.784, 0.541 }, text = { 0.937, 0.886, 0.776 }, sub = { 0.659, 0.58, 0.435 }, label = { 0.769, 0.604, 0.361 },
+    accent = { 0.769, 0.604, 0.361, 1 }, accentHi = { 0.91, 0.784, 0.541 },
+    pillOn = { 0.91, 0.784, 0.541, 1 }, pillOff = { 0.098, 0.075, 0.051, 0 }, pillEdge = { 0.235, 0.184, 0.118, 1 }, pillOnText = { 0.1, 0.07, 0.04 },
+    button = { 0.098, 0.075, 0.051, 0 }, buttonEdge = { 0.235, 0.184, 0.118, 1 }, buttonText = { 0.91, 0.784, 0.541 },
+    track = { 0.043, 0.031, 0.024, 1 }, grid = { 0.91, 0.784, 0.541, 0.06 },
+    bar = { 0.769, 0.604, 0.361, 1 }, barHi = { 0.91, 0.784, 0.541, 1 },
+    line1 = { 0.91, 0.784, 0.541, 1 }, line2 = { 0.612, 0.714, 0.878, 1 }, fill1 = { 0.91, 0.784, 0.541, 0.16 },
+    good = { 0.549, 0.769, 0.447 }, bad = { 0.851, 0.541, 0.451 }, gold = { 0.91, 0.784, 0.541 },
+    mini = { 0.067, 0.051, 0.035, 0.96 },
   },
   leger = {
     skin = false, bgAlpha = 0.90,
@@ -217,13 +221,28 @@ PU.THEMES = {
     mini = { 0.06, 0.06, 0.08, 0.96 },
   },
 }
+-- 3.13.0 : cadre « jeu » = tout aux couleurs et éléments du jeu (encadrés d'options, boutons rouges et or,
+-- onglets, barres de compétence). Seules les couleurs Niveau / Armes / Métiers restent celles de Dropamine.
+PU.THEMES.native = {
+  skin = false, bgAlpha = 1,
+  card = { 0, 0, 0, 0.4 }, cardEdge = { BRONZE[1], BRONZE[2], BRONZE[3], 1 }, cardHi = { 0.20, 0.16, 0.02, 0.45 },
+  title = { 1, 0.82, 0 }, text = { 1, 1, 1 }, sub = { 0.72, 0.72, 0.72 }, label = { 1, 0.82, 0 },
+  accent = { 1, 0.82, 0, 1 }, accentHi = { 1, 0.9, 0.45 },
+  pillOn = { 0.3, 0.25, 0.05, 1 }, pillOff = { 0.1, 0.1, 0.1, 1 }, pillEdge = { 0.55, 0.55, 0.55, 1 },
+  button = { 0.5, 0.08, 0.06, 1 }, buttonEdge = { 0.85, 0.7, 0.3, 1 }, buttonText = { 1, 0.82, 0 },
+  track = { 0, 0, 0, 0.6 }, grid = { 1, 1, 1, 0.08 },
+  bar = { 0.95, 0.72, 0.15, 1 }, barHi = { 1, 0.86, 0.35, 1 },
+  line1 = { 1, 0.82, 0, 1 }, line2 = { 0.6, 0.75, 1, 1 }, fill1 = { 1, 0.82, 0, 0.2 },
+  good = { 0.25, 1, 0.25 }, bad = { 1, 0.35, 0.35 }, gold = { 1, 0.82, 0 },
+  mini = { 0, 0, 0, 0.85 },
+}
 function PU.Mode()
   local Th = ns.Theme
   local m = Th and Th.Mode and Call(Th.Mode) or "flare"
   if not PU.THEMES[m] then m = "flare" end
   return m
 end
-function PU.Pal() return PU.THEMES[PU.Mode()] end
+function PU.Pal() return PU.native and PU.THEMES.native or PU.THEMES[PU.Mode()] end
 function PU.SegColors()
   local Wd = ns.Wide
   return (Wd and Wd.SEG_COLORS) or { { 0.616, 0.278, 0.227, 1 }, { 0.329, 0.408, 0.604, 1 }, { 0.310, 0.498, 0.243, 1 } }
@@ -236,6 +255,7 @@ PU.CAT_INDEX = { level = 1, combat = 2, prof = 3 }
 local function Paint(t, c, a)
   if not (t and c) then return end
   local alpha = a or c[4] or 1
+
   local ok = t.SetColorTexture and pcall(t.SetColorTexture, t, c[1], c[2], c[3], alpha)
   if not ok then
     pcall(t.SetTexture, t, PU.WHITE)
@@ -359,13 +379,13 @@ function PU.BindTruncateTip(fs, fullText, extra, visW)
   if not hit then return end
   hit._full = fullText
   hit._extra = extra
-  hit._active = trunc and type(fullText) == "string" and fullText ~= ""
+  local vis = not fs.IsShown or fs:IsShown()   -- 3.13.0 : un texte caché ne garde pas sa bulle
+  hit._active = vis and trunc and type(fullText) == "string" and fullText ~= ""
   if hit.EnableMouse then pcall(hit.EnableMouse, hit, hit._active and true or false) end
   if hit.SetAllPoints then pcall(hit.SetAllPoints, hit, fs) end
 end
 
 function PU.BindTip(fs, fullText, extra, visW)
-  -- comme BindTruncateTip, mais aussi quand on a un détail utile, même non tronqué
   if not fs then return end
   local trunc = PU.IsTruncated(fs, visW)
   local hasExtra = (type(extra) == "table" and #extra > 0) or (type(extra) == "string" and extra ~= "")
@@ -373,7 +393,8 @@ function PU.BindTip(fs, fullText, extra, visW)
   if not hit then return end
   hit._full = fullText
   hit._extra = extra
-  hit._active = (trunc or hasExtra) and type(fullText) == "string" and fullText ~= ""
+  local vis = not fs.IsShown or fs:IsShown()
+  hit._active = vis and (trunc or hasExtra) and type(fullText) == "string" and fullText ~= ""
   if hit.EnableMouse then pcall(hit.EnableMouse, hit, hit._active and true or false) end
   if hit.SetAllPoints then pcall(hit.SetAllPoints, hit, fs) end
 end
@@ -390,8 +411,12 @@ end
 PU.FmtWhen = FmtWhen
 
 
+local CARD_BACKDROP = { bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+  edgeSize = 14, insets = { left = 3, right = 3, top = 3, bottom = 3 } }
 function PU.Card(parent, x, y, w, h, title)
-  local c = CreateFrame("Frame", nil, parent)
+  local okC, c = pcall(CreateFrame, "Frame", nil, parent, PU.native and "BackdropTemplate" or nil)
+  if not (okC and c) then c = CreateFrame("Frame", nil, parent) end
+  if PU.native and c.SetBackdrop and pcall(c.SetBackdrop, c, CARD_BACKDROP) then c._bd = true end
   Place(c, parent, x, y, w, h)
   c.bg = Tex(c, "BACKGROUND", 1)
   c.bg:SetAllPoints(c)
@@ -407,6 +432,13 @@ function PU.Card(parent, x, y, w, h, title)
 end
 function PU.PaintCard(c, hi)
   local pal = PU.Pal()
+  if c._bd then
+    c.bg:Hide() ShowEdge(c.edge, false)
+    local bg, e = c._solid and { 0.07, 0.065, 0.055, 0.97 } or pal.card, hi and { 1, 0.82, 0, 1 } or pal.cardEdge
+    if c.SetBackdropColor then pcall(c.SetBackdropColor, c, bg[1], bg[2], bg[3], bg[4]) end
+    if c.SetBackdropBorderColor then pcall(c.SetBackdropBorderColor, c, e[1], e[2], e[3], e[4] or 1) end
+    return
+  end
   Paint(c.bg, hi and pal.cardHi or pal.card)
   PaintEdge(c.edge, hi and { pal.accentHi[1], pal.accentHi[2], pal.accentHi[3], 0.8 } or pal.cardEdge)
 end
@@ -428,7 +460,35 @@ local function TipOn(o, title, line)
 end
 PU.TipOn = TipOn
 
+local function NativeButton(parent, w, h, label, kind, onClick)
+  local isTab = kind == "tab"
+  local name = isTab and ("DropamineProgressTab" .. (#PU.buttons + 1)) or nil
+  local ok, b = pcall(CreateFrame, "Button", name, parent, isTab and "TabButtonTemplate" or "UIPanelButtonTemplate")
+  if not (ok and b) and isTab then ok, b = pcall(CreateFrame, "Button", nil, parent, "UIPanelButtonTemplate") isTab = false end
+  if not (ok and b) then return nil end
+  b:SetSize(w, math.max(h, kind == "pill" and 18 or 22))
+  b:SetText(label or "")
+  if kind == "pill" or kind == "small" then
+    if b.SetNormalFontObject then pcall(b.SetNormalFontObject, b, "GameFontHighlightSmall") end
+    if b.SetHighlightFontObject then pcall(b.SetHighlightFontObject, b, "GameFontHighlightSmall") end
+  end
+  b.fs = (b.GetFontString and b:GetFontString()) or b.Text
+  b.kind, b.native, b.isTab = kind or "small", true, isTab
+  -- textures de l'ancien habillage, gardées cachées (le reste du code peut encore les peindre)
+  b.bg = b:CreateTexture(nil, "BACKGROUND") b.bg:Hide()
+  b.edge = Edge(b) ShowEdge(b.edge, false)
+  b.hl = b.bg
+  if isTab then b:SetScript("OnShow", nil) end   -- pas de redimensionnement auto : la rangée d'onglets décide
+  if b.RegisterForClicks then pcall(b.RegisterForClicks, b, "LeftButtonUp") end
+  b:SetScript("OnClick", function(self, button) if onClick then onClick(self, button) end end)
+  PU.buttons[#PU.buttons + 1] = b
+  return b
+end
 function PU.Button(parent, w, h, label, kind, onClick)
+  if PU.native and kind ~= "close" and kind ~= "row" then   -- 3.13.0 : une ligne de liste reste une ligne (pas un bouton rouge)
+    local nb = NativeButton(parent, w, h, label, kind, onClick)
+    if nb then return nb end
+  end
   local b = CreateFrame("Button", nil, parent)
   b:SetSize(w, h)
   b.bg = Tex(b, "BACKGROUND", 1)
@@ -449,10 +509,24 @@ end
 function PU.PaintButton(b)
   local pal = PU.Pal()
   local k = b.kind
+  if b.native then
+    if b.isTab then
+      local f = b.on and _G.PanelTemplates_SelectTab or _G.PanelTemplates_DeselectTab
+      if f then pcall(f, b) end
+    elseif k == "pill" or k == "tab" then
+      if b.on then pcall(b.LockHighlight, b) else pcall(b.UnlockHighlight, b) end
+      if b.fs and b.fs.SetTextColor then if b.on then b.fs:SetTextColor(1, 1, 1) else b.fs:SetTextColor(1, 0.82, 0) end end
+    end
+    return
+  end
   if k == "pill" or k == "tab" then
     Paint(b.bg, b.on and pal.pillOn or pal.pillOff)
     PaintEdge(b.edge, b.on and { pal.accentHi[1], pal.accentHi[2], pal.accentHi[3], 0.9 } or pal.pillEdge)
-    TextColor(b.fs, b.on and ((k == "tab") and pal.title or { 1, 1, 1 }) or pal.sub)
+    TextColor(b.fs, b.on and (pal.pillOnText or ((k == "tab") and pal.title or { 1, 1, 1 })) or pal.sub)
+  elseif k == "row" then   -- 3.13.0 : ligne de liste cliquable : fond discret, filet bronze léger
+    Paint(b.bg, { 0, 0, 0, 0.25 })
+    PaintEdge(b.edge, { BRONZE[1], BRONZE[2], BRONZE[3], 0.35 })
+    TextColor(b.fs, pal.text)
   elseif k == "share" then
     Paint(b.bg, pal.button)
     PaintEdge(b.edge, pal.buttonEdge)
@@ -484,6 +558,15 @@ function PU.Pills(parent, defs, right, y, get, set)
   group.left = x
   PU.pillGroups[#PU.pillGroups + 1] = group
   return group
+end
+-- pastilles posées de gauche à droite depuis x (PU.Pills les pose de droite à gauche)
+function PU.LeftAlign(parent, grp, x, y)
+  for i = #grp.list, 1, -1 do
+    local b = grp.list[i]
+    b:ClearAllPoints()
+    b:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -y)
+    x = x + ((b.GetWidth and b:GetWidth()) or 60) + 4
+  end
 end
 function PU.SyncPills()
   for _, g in ipairs(PU.pillGroups or {}) do
@@ -1004,12 +1087,26 @@ function PU.BuildHeader(f)
   f.about = PU.Button(f, 22, 20, "?", "share", function() if ns.Setup and ns.Setup.OpenAbout then ns.Setup.OpenAbout() end end)
   f.about:SetPoint("RIGHT", f.recap, "LEFT", -6, 0)
   TipOn(f.about, Tr["À propos"], Tr["Version, liens et signalement de bug."])
+  f.app = PU.Button(f, 112, 20, "Dropamine.app", "share", function() local HS = ns.Hiscores if HS and HS.OpenApp then HS.OpenApp() end end)
+  f.app:SetPoint("RIGHT", f.about, "LEFT", -6, 0)
+  TipOn(f.app, "Dropamine.app", Tr["Envoyer ta ligne au site, recevoir ta chasse et tes sorties."])
   TipOn(f.recap, Tr["Récap session"], Tr["Durée, temps actif, progression normalisée, paliers, recettes, morts, butin perdu, meilleur spot, succès, valeur marchand et comparaisons."])
   TipOn(f.share, Tr["Partager"], Tr["Pose le récap de ta session dans la zone de saisie du chat : rien n'est envoyé tant que tu n'appuies pas sur Entrée."])
   f.divider = Tex(f, "ARTWORK", 1)
   f.divider:SetPoint("TOPLEFT", f, "TOPLEFT", PU.PAD, -50)
   f.divider:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PU.PAD, -50)
   f.divider:SetHeight(1)
+  -- 3.13.0 : thème Dropamine : liseré tricolore (niveau, armes, métiers) à la place du filet, comme sur le site
+  f.tri = {}
+  for i = 1, 3 do
+    local t = Tex(f, "ARTWORK", 2)
+    t:SetHeight(2)
+    f.tri[i] = t
+  end
+  local third = math.floor(PU.CONTENT_W / 3)
+  f.tri[1]:SetPoint("TOPLEFT", f, "TOPLEFT", PU.PAD, -50) f.tri[1]:SetWidth(third)
+  f.tri[2]:SetPoint("TOPLEFT", f.tri[1], "TOPRIGHT", 0, 0) f.tri[2]:SetWidth(third)
+  f.tri[3]:SetPoint("TOPLEFT", f.tri[2], "TOPRIGHT", 0, 0) f.tri[3]:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PU.PAD, -50)
 end
 
 function PU.BuildBanner(f)
@@ -1026,6 +1123,24 @@ function PU.BuildBanner(f)
   Place(b.track, b, 10, 31, b.barW, 8)
   b.segs = {}
   for i = 1, 3 do b.segs[i] = Tex(b, "ARTWORK", 2) end
+  -- cadre jeu : la jauge du panneau de compétences (piste Dropamine-Bar, filet bronze Dropamine-Thin, reflet 1 px)
+  if PU.native then
+    local MEDIA = "Interface\\AddOns\\Dropamine\\Media\\"
+    b.gauge = true
+    pcall(b.track.SetTexture, b.track, MEDIA .. "Dropamine-Bar")
+    if b.track.SetVertexColor then pcall(b.track.SetVertexColor, b.track, 0.15, 0.15, 0.15, 0.9) end
+    b.sheen = Tex(b, "ARTWORK", 3)
+    Paint(b.sheen, { 1, 0.95, 0.85, 0.28 })
+    b.sheen:Hide()
+    local okE, e = pcall(CreateFrame, "Frame", nil, b, "BackdropTemplate")
+    if okE and e and e.SetBackdrop and pcall(e.SetBackdrop, e, { edgeFile = MEDIA .. "Dropamine-Thin", edgeSize = 8 }) then
+      e:SetPoint("TOPLEFT", b.track, "TOPLEFT", -3, 3)
+      e:SetPoint("BOTTOMRIGHT", b.track, "BOTTOMRIGHT", 3, -3)
+      if e.SetBackdropBorderColor then pcall(e.SetBackdropBorderColor, e, BRONZE[1], BRONZE[2], BRONZE[3], 1) end
+      if e.EnableMouse then e:EnableMouse(false) end
+      b.gaugeEdge = e
+    end
+  end
   b.hit = CreateFrame("Frame", nil, b)
   Place(b.hit, b, 10, 28, b.barW, 14)
   if b.hit.EnableMouse then b.hit:EnableMouse(true) end
@@ -1056,7 +1171,11 @@ function PU.BuildTabs(f)
     btn.id = id
     btn.endgame = t.endgame
     local w = math.floor(Width(btn.fs, 60) + 22 + 0.5)
-    if id == "ach" then w = w + 30 end   -- place pour « (N/27) »
+    if id == "ach" then   -- 3.13.0 : largeur mesurée avec le compteur (« Succès (88/88) »), plus une marge fixe
+      btn.fs:SetText(Tr[t.label] .. " (88/88)")
+      w = math.floor(Width(btn.fs, 90) + 22 + 0.5)
+      btn.fs:SetText(Tr[t.label])
+    end
     btn._w0 = w
     f.tabs[#f.tabs + 1] = btn
   end
@@ -1079,6 +1198,7 @@ function PU.LayoutTabs(f)
   for _, btn in ipairs(vis) do
     local w = (scale < 1) and math.max(44, math.floor(btn._w0 * scale + 0.5)) or btn._w0
     btn:SetWidth(w)
+    if btn.isTab and _G.PanelTemplates_TabResize then pcall(_G.PanelTemplates_TabResize, btn, 0, w) end   -- onglet du jeu : ses 3 morceaux suivent la largeur
     btn:ClearAllPoints()
     btn:SetPoint("TOPLEFT", f, "TOPLEFT", x, -126)
     btn:Show()
@@ -1101,7 +1221,7 @@ function PU.BuildOverview(f)
   local p = Page(f, "overview")
   local kw = math.floor((PU.CONTENT_W - 24) / 4)
   p.kpi = {}
-  local titles = { Tr["Rythme XP"], Tr["Rythme points"], Tr["Série & records"], Tr["Objectif session"] }
+  local titles = { Tr["Rythme XP"], Tr["Points de la session"], Tr["Série & records"], Tr["Objectif session"] }
   for i = 1, 4 do
     local c = PU.Card(p, (i - 1) * (kw + 8), 0, kw, 58, titles[i])
     c.value = FS(c, "GameFontNormalLarge", "text")
@@ -1208,7 +1328,7 @@ function PU.BuildOverview(f)
     local c = PU.Card(p, (i - 1) * (bw + 8), 260, bw, 56)
     c.icon = Tex(c, "ARTWORK", 2)
     Place(c.icon, c, 10, 14, 28, 28)
-    c.head = FS(c, "GameFontNormal", "title")
+    c.head = FS(c, PU.native and "GameFontNormalSmall" or "GameFontNormal", PU.native and "label" or "title")
     c.head:SetPoint("TOPLEFT", c, "TOPLEFT", 46, -12)
     if c.head.SetWidth then c.head:SetWidth(bw - 54) end
     c.line = FS(c, "GameFontHighlightSmall", "text")
@@ -1272,9 +1392,32 @@ function PU.BuildAch(f)
   if sf.SetScrollChild then sf:SetScrollChild(child) end
   if sf.EnableMouseWheel then sf:EnableMouseWheel(true) end
   sf:SetScript("OnMouseWheel", function(_, delta) PU.ScrollAch(-(N(delta) or 0) * 40) end)
+  if sf.EnableMouse then sf:EnableMouse(true) end   -- 3.13.0 : glisser dans la liste ne déplace plus la fenêtre
   p.scroll, p.child = sf, child
+  -- 3.13.0 : barre qu'on peut saisir (comme celle de la Collection) ; le glisser suit le curseur jusqu'au relâchement
+  local grab = CreateFrame("Button", nil, p)
+  Place(grab, p, PU.CONTENT_W - 9, 0, 12, PU.CONTENT_H)
+  if grab.EnableMouseWheel then grab:EnableMouseWheel(true) end
+  grab:SetScript("OnMouseWheel", function(_, delta) PU.ScrollAch(-(N(delta) or 0) * 40) end)
+  local function DragTo(self)
+    local maxY = math.max(0, (p.childH or 0) - PU.CONTENT_H)
+    if maxY <= 0 then return end
+    local _, cy = _G.GetCursorPosition()
+    local scale = (self.GetEffectiveScale and self:GetEffectiveScale()) or 1
+    local top = (self.GetTop and self:GetTop()) or 0
+    local frac = math.max(0, math.min(1, (top - cy / scale) / PU.CONTENT_H))
+    PU.ScrollAch(frac * maxY - (p.scrollY or 0))
+  end
+  local function DragUpdate(self)
+    local down = _G.IsMouseButtonDown
+    if type(down) == "function" and not down("LeftButton") then self:SetScript("OnUpdate", nil) return end
+    DragTo(self)
+  end
+  grab:SetScript("OnMouseDown", function(self) DragTo(self) self:SetScript("OnUpdate", DragUpdate) end)
+  grab:SetScript("OnMouseUp", function(self) self:SetScript("OnUpdate", nil) end)
+  p.grab = grab
   p.thumbTrack = Tex(p, "ARTWORK", 1)
-  Place(p.thumbTrack, p, PU.CONTENT_W - 5, 0, 3, PU.CONTENT_H)
+  Place(p.thumbTrack, p, PU.CONTENT_W - 7, 0, 6, PU.CONTENT_H)
   p.thumb = Tex(p, "ARTWORK", 2)
   p.cards = {}
   local n = (P and P.ACHIEVEMENTS and #P.ACHIEVEMENTS) or 18
@@ -1304,13 +1447,26 @@ function PU.BuildAch(f)
 end
 
 -- Onglet 4 : Spots de farm ---------------------------------------------------
-PU.SPOT_ROWS = 12
+PU.SPOT_ROWS = 8
+PU.SPOT_TOP = 96            -- 3.13.0 : bandeau des meilleures zones au-dessus du tableau
 PU.SPOT_COLS = { 10, 290, 430, 530 }
 function PU.BuildSpots(f)
   local p = Page(f, "spots")
-  local c = PU.Card(p, 0, 0, PU.CONTENT_W, PU.CONTENT_H)
+  -- 3.13.0 : une carte par métier de récolte : meilleure zone en points/h, tendance, meilleure zone en or/h
+  p.best = {}
+  local bw = math.floor((PU.CONTENT_W - 3 * 8) / 4)
+  for i = 1, 4 do
+    local b = PU.Card(p, (i - 1) * (bw + 8), 0, bw, PU.SPOT_TOP - 8, "")
+    b.skill = FS(b, "GameFontNormalSmall", "label") b.skill:SetPoint("TOPLEFT", b, "TOPLEFT", 8, -7) b.skill:SetWidth(bw - 16)
+    b.zone = FS(b, "GameFontHighlight", "text") b.zone:SetPoint("TOPLEFT", b, "TOPLEFT", 8, -22) b.zone:SetWidth(bw - 16)
+    b.rate = FS(b, "GameFontHighlightSmall", "text") b.rate:SetPoint("TOPLEFT", b, "TOPLEFT", 8, -40) b.rate:SetWidth(bw - 16)
+    b.gold = FS(b, "GameFontHighlightSmall", "sub") b.gold:SetPoint("TOPLEFT", b, "TOPLEFT", 8, -56) b.gold:SetWidth(bw - 16)
+    b.gold2 = FS(b, "GameFontDisableSmall", "sub") b.gold2:SetPoint("TOPLEFT", b, "TOPLEFT", 8, -69) b.gold2:SetWidth(bw - 16)
+    p.best[i] = b
+  end
+  local c = PU.Card(p, 0, PU.SPOT_TOP, PU.CONTENT_W, PU.CONTENT_H - PU.SPOT_TOP)
   p.card = c
-  local heads = { Tr["Zone"], Tr["Métier"], Tr["Points"], Tr["Rythme (min/pt)"] }
+  local heads = { Tr["Zone"], Tr["Métier"], Tr["Points"], Tr["Temps"] }
   c.heads = {}
   for i, h in ipairs(heads) do
     local fs = FS(c, "GameFontNormalSmall", "label", (i >= 3) and "RIGHT" or "LEFT")
@@ -1334,7 +1490,7 @@ function PU.BuildSpots(f)
     c.rows[i] = r
   end
   c.empty = FS(c, "GameFontHighlight", "sub", "CENTER")
-  c.empty:SetPoint("CENTER", c, "CENTER", 0, 10)
+  c.empty:SetPoint("CENTER", c, "CENTER", 0, 6)
   if c.empty.SetWidth then c.empty:SetWidth(PU.CONTENT_W - 80) end
   if c.empty.SetWordWrap then pcall(c.empty.SetWordWrap, c.empty, true) end
   c.note = FS(c, "GameFontDisableSmall", "sub")
@@ -1494,7 +1650,7 @@ function PU.BuildRecap(f)
   p.histCard = hist
   p.hist = {}
   for i = 1, 10 do
-    local btn = PU.Button(hist, hw - 12, 20, "", "small", function()
+    local btn = PU.Button(hist, hw - 12, 20, "", "row", function()
       local it = p.hist[i] and p.hist[i]._item
       if it then
         State().recapId = it.id
@@ -1812,6 +1968,7 @@ function PU.BuildChars(f)
   child:SetSize(PU.CONTENT_W - 16, 10)
   if sf.SetScrollChild then sf:SetScrollChild(child) end
   if sf.EnableMouseWheel then sf:EnableMouseWheel(true) end
+  if sf.EnableMouse then sf:EnableMouse(true) end   -- 3.13.0 : glisser dans la liste ne déplace plus la fenêtre
   sf:SetScript("OnMouseWheel", function(_, delta)
     local cur = (sf.GetVerticalScroll and sf:GetVerticalScroll()) or 0
     local maxs = (sf.GetVerticalScrollRange and sf:GetVerticalScrollRange()) or 0
@@ -2033,7 +2190,7 @@ function PU.BuildHunt(f)
       if it then
         tt:AddLine(tostring(it.name), 1, 0.82, 0)
         if it.boss then tt:AddLine(tostring(it.boss) .. " · " .. tostring(it.dungeon or ""), 1, 1, 1) end
-        tt:AddLine(string.format(Tr["%d tentatives · %d trouvé(s)"], it.attempts, it.drops), 0.8, 0.8, 0.8)
+        tt:AddLine(PU.Tries(it.attempts, it.drops), 0.8, 0.8, 0.8)
         tt:AddLine(Tr["Clic droit : retirer"], 0.6, 0.6, 0.6)
       else
         tt:AddLine(ns.Hunt.TileLabel(self.tile), 1, 0.82, 0)
@@ -2043,6 +2200,21 @@ function PU.BuildHunt(f)
     end)
     b:SetScript("OnLeave", function() if _G.GameTooltip then _G.GameTooltip:Hide() end end)
     c.tiles[i] = b
+  end
+  do   -- 3.13.0 : tous les libellés à la même taille, celle qui fait tenir le plus long (« Distance ») dans sa case
+    local k = 1
+    for _, b in ipairs(c.tiles) do
+      local w = b.lab and b.lab.GetStringWidth and N(b.lab:GetStringWidth()) or 0
+      if w > 36 then k = math.min(k, 36 / w) end
+    end
+    if k < 1 then
+      for _, b in ipairs(c.tiles) do
+        if b.lab and b.lab.GetFont and b.lab.SetFont then
+          local file, size, flags = b.lab:GetFont()
+          if file and size then pcall(b.lab.SetFont, b.lab, file, math.max(7, math.floor(size * k)), flags) end
+        end
+      end
+    end
   end
   -- volet de droite : liste suivie
   c.hint = FS(c, "GameFontHighlightSmall", "sub")
@@ -2086,7 +2258,7 @@ function PU.BuildHunt(f)
   c.search.edge = Edge(c.search)
   c.search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
   c.search:SetScript("OnTextChanged", function(self)
-    c.ui.search = self:GetText() or ""
+    c.ui.search = self:GetText() or "" c.ui.coff = 0
     if c:IsShown() then PU.RefreshHunt() end
   end)
   c.mineBtn = PU.Button(c, 90, 16, "", "small", function() c.ui.mine = not c.ui.mine PU.RefreshHunt() end)
@@ -2098,7 +2270,7 @@ function PU.BuildHunt(f)
   c.cands = {}
   for i = 1, 7 do
     local y = 46 + (i - 1) * 27
-    local b = PU.Button(c, HW, 23, "", "small", function(self) PU.HuntPick(i) end)
+    local b = PU.Button(c, HW, 23, "", "row", function(self) PU.HuntPick(i) end)
     b:ClearAllPoints()
     b:SetPoint("TOPLEFT", c, "TOPLEFT", HX, -y)
     b.fs:ClearAllPoints()
@@ -2122,33 +2294,70 @@ function PU.BuildHunt(f)
     eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     return eb
   end
-  c.link = MakeBox(HX, 160, 200)
-  c.rate = MakeBox(HX + 166, 32, 5)
-  c.rateLbl = FS(c, "GameFontDisableSmall", "sub")
-  c.rateLbl:SetPoint("LEFT", c.rate, "RIGHT", 3, 0)
-  c.rateLbl:SetText("%")
-  local function doAdd()
-    local H = ns.Hunt
-    if not H then return end
-    local txt = c.link:GetText() or ""
-    local rate = tonumber(((c.rate:GetText() or ""):gsub(",", ".")))
-    local it, why
-    if txt == "" then it, why = H.AddLast() else it, why = H.Add(txt, rate) end
+  -- 3.12.1 : une seule case : on tape, les résultats s'affichent à droite, un clic ajoute (case rangée toute seule) ;
+  -- Entrée : le premier résultat, ou le lien / numéro collé. Plus de champ « % » (taux lu dans le Journal) ni de bouton Ajouter.
+  c.link = MakeBox(HX, HW - 124, 200)   -- 3.13.0 : s'arrête avant « Importer… » (bouton plus large dans le cadre jeu)
+  c.linkHint = FS(c.link, "GameFontDisableSmall", "sub")
+  c.linkHint:SetPoint("LEFT", c.link, "LEFT", 6, 0)
+  c.linkHint:SetPoint("RIGHT", c.link, "RIGHT", -6, 0)   -- 3.13.0 : le texte d'aide reste dans la case
+  c.linkHint:SetText(Tr["Rechercher un objet, ou Maj+clic sur un objet (sacs, chat, butin, autres addons)"])
+  local function hintShown()
+    local empty = (c.link:GetText() or "") == ""
+    local focus = c.link.HasFocus and c.link:HasFocus()
+    if empty and not focus then c.linkHint:Show() else c.linkHint:Hide() end
+  end
+  c.link:SetScript("OnEditFocusGained", hintShown)
+  c.link:SetScript("OnEditFocusLost", hintShown)
+  function PU.HuntResult(it, why)
     if it and why ~= "dup" then
-      c.link:SetText("") c.rate:SetText("")
+      c.link:SetText("") c.ui.q = "" c.ui.coff = 0
       if c.link.ClearFocus then c.link:ClearFocus() end
       c.msg:SetText(Tr["Suivi : "] .. tostring(it.name or it.id))
     elseif why == "dup" then c.msg:SetText(Tr["Déjà suivi."])
     elseif why == "full" then c.msg:SetText(Tr["Liste pleine (20 objets maximum)."])
     elseif why == "none" then c.msg:SetText(Tr["Aucun butin récent : ouvre un butin d'abord."])
     else c.msg:SetText(Tr["Objet non reconnu : Maj+clic sur un objet, ou tape son nom."]) end
+    hintShown()
     PU.Refresh()
   end
+  local function doAdd()
+    local H = ns.Hunt
+    if not H then return end
+    local txt = c.link:GetText() or ""
+    if txt == "" then return end
+    -- code copié sur dropamine.app (« Copier pour le jeu », avec ou sans /drop) : toute la liste d'un coup
+    if txt:find("DROP%-CH1:") then
+      local added, dup, full = H.ImportCode(txt)
+      if added == nil then c.msg:SetText(Tr["Code non reconnu : copie-le à nouveau sur dropamine.app."])
+      else
+        c.link:SetText("") c.ui.q = "" if c.link.ClearFocus then c.link:ClearFocus() end
+        c.msg:SetText(string.format(Tr["dropamine.app : %d ajoutés, %d déjà suivis."], added, dup or 0) .. (full and (" " .. Tr["Liste pleine (20 objets maximum)."]) or ""))
+      end
+      hintShown() PU.Refresh() return
+    end
+    -- lien, numéro d'objet : tel quel ; sinon le premier résultat de la recherche, sinon le nom tapé
+    local first = (not txt:find("|H", 1, true) and not txt:match("^%s*%d+%s*$")) and c.candList and c.candList[1]
+    PU.HuntResult(H.Add(first and first.id or txt))
+  end
   c.link:SetScript("OnEnterPressed", doAdd)
-  c.addBtn = PU.Button(c, 54, 18, Tr["Ajouter"], "small", doAdd)
-  c.addBtn:ClearAllPoints() c.addBtn:SetPoint("TOPLEFT", c, "TOPLEFT", HX + 218, -(yb + 1))
-  c.lastBtn = PU.Button(c, 92, 18, Tr["Dernier butin"], "small", function() c.link:SetText("") doAdd() end)
-  c.favBtn = PU.Button(c, 116, 18, Tr["Favoris du Journal"], "small", function()
+  c.link:SetScript("OnTextChanged", function(self)
+    c.ui.q = self:GetText() or "" c.ui.coff = 0
+    if c.ui.q:find("DROP%-CH1:") or c.ui.q:find("|H", 1, true) then c.ui.q = "" end
+    hintShown()
+    if c:IsShown() then PU.RefreshHunt() end
+  end)
+  -- « Importer… » : le dernier butin et les favoris du Journal, rangés dans un petit menu
+  c.importBtn = PU.Button(c, 112, 18, Tr["Importer…"], "small", function()
+    c.ui.importOpen = not c.ui.importOpen
+    if c.ui.importOpen then c.lastBtn:Show() c.favBtn:Show() c.siteBtn:Show() else c.lastBtn:Hide() c.favBtn:Hide() c.siteBtn:Hide() end
+  end)
+  c.importBtn:ClearAllPoints() c.importBtn:SetPoint("TOPRIGHT", c, "TOPRIGHT", -10, -(yb + 1))
+  c.lastBtn = PU.Button(c, 120, 18, Tr["Dernier butin"], "small", function()
+    c.ui.importOpen = false c.lastBtn:Hide() c.favBtn:Hide() c.siteBtn:Hide()
+    PU.HuntResult(ns.Hunt.AddLast())
+  end)
+  c.favBtn = PU.Button(c, 120, 18, Tr["Favoris du Journal"], "small", function()
+    c.ui.importOpen = false c.lastBtn:Hide() c.favBtn:Hide() c.siteBtn:Hide()
     local H = ns.Hunt
     local a, d, full = H.ImportFavourites()
     if not H.HasSource() then c.msg:SetText(Tr["Installe l'addon Dungeon Journal pour voir les objets de donjon. Les statistiques restent disponibles."])
@@ -2156,24 +2365,67 @@ function PU.BuildHunt(f)
     else c.msg:SetText(string.format(Tr["Favoris du Journal : %d ajoutés, %d déjà suivis."], a, d) .. (full and (" " .. Tr["Liste pleine (20 objets maximum)."]) or "")) end
     PU.Refresh()
   end)
-  c.favBtn:ClearAllPoints() c.favBtn:SetPoint("TOPLEFT", c, "TOPLEFT", HX + 366, -(yb + 1))
-  c.lastBtn:ClearAllPoints() c.lastBtn:SetPoint("TOPLEFT", c, "TOPLEFT", HX + 278, -(yb + 1))
+  c.siteBtn = PU.Button(c, 120, 18, Tr["Depuis dropamine.app"], "small", function()
+    c.ui.importOpen = false c.lastBtn:Hide() c.favBtn:Hide() c.siteBtn:Hide()
+    local HS = ns.Hiscores
+    if HS and HS.OpenApp then HS.OpenApp(true) return end   -- 3.13.0 : un seul endroit pour recevoir du site
+    c.link:SetText("") if c.link.SetFocus then c.link:SetFocus() end
+    c.msg:SetText(Tr["Colle le code copié sur dropamine.app (Ctrl+V), puis Entrée."])
+  end)
+  c.favBtn:ClearAllPoints() c.favBtn:SetPoint("BOTTOMRIGHT", c.importBtn, "TOPRIGHT", 0, 2)
+  c.lastBtn:ClearAllPoints() c.lastBtn:SetPoint("BOTTOMRIGHT", c.favBtn, "TOPRIGHT", 0, 2)
+  c.siteBtn:ClearAllPoints() c.siteBtn:SetPoint("BOTTOMRIGHT", c.lastBtn, "TOPRIGHT", 0, 2)
+  c.favBtn:Hide() c.lastBtn:Hide() c.siteBtn:Hide()
+  for _, b in ipairs({ c.favBtn, c.lastBtn, c.siteBtn }) do if b.SetFrameLevel and c.GetFrameLevel then pcall(b.SetFrameLevel, b, c:GetFrameLevel() + 20) end end
   c.msg = FS(c, "GameFontDisableSmall", "sub")
   c.msg:SetPoint("TOPLEFT", c, "TOPLEFT", HX, -(yb - 15))
   c.msg:SetWidth(HW)
   c:EnableMouseWheel(true)
   c:SetScript("OnMouseWheel", function(_, delta)
+    if c.ui.tile or #(c.ui.q or "") >= 2 then
+      c.ui.coff = math.max(0, math.min(math.max(0, (c.candTotal or 0) - 7), (c.ui.coff or 0) - (N(delta) or 0)))
+      PU.RefreshHunt() return
+    end
     local n = #((ns.Hunt and ns.Hunt.List()) or {})
     c.ui.offset = math.max(0, math.min(math.max(0, n - 7), c.ui.offset - (N(delta) or 0)))
     if not c.ui.tile then PU.RefreshHunt() end
   end)
-  if type(_G.hooksecurefunc) == "function" and type(_G.ChatEdit_InsertLink) == "function" and not PU._huntHook then
+  -- Maj+clic sur un objet : dans la case du bas si elle a le curseur ; sinon, onglet Chasse ouvert et pas de saisie
+  -- dans le chat : l'objet est ajouté directement. 3.12.2 : deux chemins écoutés (ChatEdit_InsertLink, et
+  -- HandleModifiedItemClick que les clients récents utilisent pour les sacs et l'équipement), un seul ajout par clic.
+  if type(_G.hooksecurefunc) == "function" and not PU._huntHook then
     PU._huntHook = true
-    pcall(_G.hooksecurefunc, "ChatEdit_InsertLink", function(text)
+    local lastLink, lastAt = nil, 0
+    local function onLink(text)
+      if type(text) ~= "string" or not text:find("|Hitem:", 1, true) then return end
       local pg = PU.frame and PU.frame.pages and PU.frame.pages.hunt
-      local eb = pg and pg.card and pg.card.link
-      if eb and text and eb.HasFocus and eb:HasFocus() then eb:Insert(text) end
-    end)
+      local card = pg and pg.card
+      local eb = card and card.link
+      if not eb then return end
+      local now = (type(_G.GetTime) == "function" and _G.GetTime()) or 0
+      if text == lastLink and now - lastAt < 0.3 then return end   -- même clic vu par les deux chemins
+      lastLink, lastAt = text, now
+      local fp = PU.frame and PU.frame.pages and PU.frame.pages.now
+      local fR = fp and fp.R
+      if fR and fR.gbox then
+        if fR.gbox.HasFocus and fR.gbox:HasFocus() then fR.gbox:Insert(text) return end
+        local chat = type(_G.ChatEdit_GetActiveWindow) == "function" and _G.ChatEdit_GetActiveWindow()
+        if fR.IsVisible and fR:IsVisible() and not chat then PU.FarmAddFromText(text, N(fR.gqty and fR.gqty:GetText()) or 20) return end
+      end
+      if eb.HasFocus and eb:HasFocus() then eb:Insert(text) return end
+      local shown = card.IsVisible and card:IsVisible()
+      local chatOpen = type(_G.ChatEdit_GetActiveWindow) == "function" and _G.ChatEdit_GetActiveWindow()
+      if shown and not chatOpen and PU.HuntResult and ns.Hunt then PU.HuntResult(ns.Hunt.Add(text)) end
+    end
+    if type(_G.ChatEdit_InsertLink) == "function" then pcall(_G.hooksecurefunc, "ChatEdit_InsertLink", onLink) end
+    if type(_G.HandleModifiedItemClick) == "function" then
+      pcall(_G.hooksecurefunc, "HandleModifiedItemClick", function(link)
+        local shift = type(_G.IsShiftKeyDown) == "function" and _G.IsShiftKeyDown()
+        if shift then onLink(link) end
+      end)
+    end
+    local CFU = rawget(_G, "ChatFrameUtil")
+    if type(CFU) == "table" and type(CFU.InsertLink) == "function" then pcall(_G.hooksecurefunc, CFU, "InsertLink", onLink) end
   end
   return p
 end
@@ -2202,7 +2454,7 @@ function PU.HuntTileClick(tileId, btn)
     c.ui.tile = nil
   else
     c.ui.tile = tileId
-    c.ui.search = ""
+    c.ui.search = "" c.ui.coff = 0
     c.search:SetText("")
   end
   PU.Refresh()
@@ -2211,10 +2463,14 @@ function PU.HuntPick(i)
   local pg = PU.frame and PU.frame.pages.hunt
   local c = pg and pg.card
   local e = c and c.candList and c.candList[i]
-  if not (e and c.ui.tile and ns.Hunt) then return end
-  ns.Hunt.Add(e.id, nil, { tile = c.ui.tile })
-  c.ui.tile = nil
-  PU.Refresh()
+  if not (e and ns.Hunt) then return end
+  if c.ui.tile then
+    ns.Hunt.Add(e.id, nil, { tile = c.ui.tile })
+    c.ui.tile = nil
+    PU.Refresh()
+  else
+    PU.HuntResult(ns.Hunt.Add(e.id))   -- recherche du bas : la case se range toute seule
+  end
 end
 
 function PU.RefreshHunt(p)
@@ -2222,8 +2478,8 @@ function PU.RefreshHunt(p)
   if not p then return end
   local c, pal, H = p.card, PU.Pal(), ns.Hunt
   if not H then return end
-  for _, eb in ipairs({ c.link, c.rate, c.search }) do
-    if eb and eb.bg then Paint(eb.bg, pal.track) PaintEdge(eb.edge, pal.accentHi) end
+  for _, eb in ipairs({ c.link, c.search }) do
+    if eb and eb.bg then Paint(eb.bg, pal.track) PaintEdge(eb.edge, PU.native and { BRONZE[1], BRONZE[2], BRONZE[3], 0.9 } or pal.accentHi) end
   end
   local list = H.List()
   local byTile = H.ByTile()
@@ -2242,24 +2498,38 @@ function PU.RefreshHunt(p)
       b.icon:Hide() b.lab:Show() b.ok:SetText("")
     end
   end
-  c.msg:SetText((c.msg:GetText() or "") ~= "" and c.msg:GetText() or Tr["Maj+clic sur un objet, ou tape son nom, puis Ajouter (ou « Suivre le dernier butin »)."])
-  if c.ui.tile then
-    -- choix de l'objet pour la case sélectionnée
+  c.msg:SetText((c.msg:GetText() or "") ~= "" and c.msg:GetText() or Tr["Tape le nom d'un objet ici, ou clique une case de l'équipement."])
+  -- 3.12.1 : choix d'un objet : la case cliquée (son emplacement) ou la recherche du bas (tous emplacements) ;
+  -- toute la liste, qui défile à la molette (avant : 7 résultats et « précise la recherche »)
+  local q = c.ui.q or ""
+  if c.ui.tile or #q >= 2 then
     local tile
     for _, t in ipairs(H.TILES) do if t[1] == c.ui.tile then tile = t end end
     c.hint:Hide() c.empty:Hide()
     for _, e in ipairs(c.rows) do e.name:Hide() e.info:Hide() e.del:Hide() e.bar.track:Hide() e.bar.fill:Hide() end
-    c.pickTitle:SetText(Tr["Choisir : "] .. H.TileLabel(tile))
-    c.pickTitle:Show() c.search:Show() c.mineBtn:Show() c.backBtn:Show()
-    c.mineBtn.fs:SetText(c.ui.mine and Tr["Armure : classe"] or Tr["Armure : toutes"])
+    if tile then
+      c.pickTitle:SetText(Tr["Choisir : "] .. H.TileLabel(tile))
+      c.pickTitle:Show() c.search:Show() c.mineBtn:Show() c.backBtn:Show()
+      c.mineBtn.fs:SetText(c.ui.mine and Tr["Armure : classe"] or Tr["Armure : toutes"])
+    else
+      c.pickTitle:SetText(Tr["Résultats : "] .. q)
+      c.pickTitle:Show() c.search:Hide() c.mineBtn:Hide() c.backBtn:Hide()
+    end
     if not H.HasSource() then
       c.candList = {}
-      c.empty:SetText(Tr["Pour choisir dans une liste, installe l'addon Dungeon Journal. Sinon, tape un nom ou colle un lien ci-dessous."])
+      c.empty:SetText(tile and Tr["Pour choisir dans une liste, installe l'addon Dungeon Journal. Sinon, tape un nom ou colle un lien ci-dessous."]
+        or Tr["Sans l'addon Dungeon Journal : Entrée ajoute l'objet par son nom, ou Maj+clic sur un objet."])
       c.empty:Show()
       for _, b in ipairs(c.cands) do b:Hide() end
       return
     end
-    local res, total = H.Candidates(tile and tile[3], c.ui.search, c.ui.mine, 7)
+    local all, total = H.Candidates(tile and tile[3], tile and c.ui.search or q, tile and c.ui.mine or false)
+    total = total or #all
+    c.candTotal = total
+    local off = math.max(0, math.min(c.ui.coff or 0, math.max(0, total - #c.cands)))
+    c.ui.coff = off
+    local res = {}
+    for i = 1, #c.cands do res[i] = all[off + i] end
     c.candList = res
     for i, b in ipairs(c.cands) do
       local e = res[i]
@@ -2272,12 +2542,13 @@ function PU.RefreshHunt(p)
         b:Hide()
       end
     end
-    if #res == 0 then
-      c.empty:SetText(Tr["Aucun objet trouvé. Essaie « Armure : toutes » ou une autre recherche."])
+    if total == 0 then
+      c.empty:SetText(tile and Tr["Aucun objet trouvé. Essaie « Armure : toutes » ou une autre recherche."]
+        or Tr["Aucun objet de donjon trouvé : Entrée ajoute l'objet par son nom."])
       c.empty:Show()
     else
       c.empty:Hide()
-      if total > #res then c.msg:SetText(string.format(Tr["%d résultats : précise la recherche pour affiner."], total)) end
+      if total > #c.cands then c.msg:SetText(string.format(Tr["%d–%d sur %d · molette pour défiler"], off + 1, math.min(total, off + #c.cands), total)) end
     end
     return
   end
@@ -2294,7 +2565,7 @@ function PU.RefreshHunt(p)
     e.idx = it and it.i or nil
     if it then
       local ch = H.Chance({ rate = it.rate, attempts = it.attempts })
-      local info = string.format(Tr["%d tentatives · %d trouvé(s)"], it.attempts, it.drops)
+      local info = PU.Tries(it.attempts, it.drops)
       if it.boss then info = tostring(H.LocBoss(it.boss)) .. " · " .. info end
       if ch then info = info .. string.format(" · " .. Tr["chance %d %%"], math.floor(ch * 100 + 0.5)) end
       PU.SetClipped(e.info, info, math.floor(HW * 0.5))
@@ -2910,14 +3181,53 @@ function PU.OnModeChanged()
   PU.Refresh()
 end
 
+-- 3.13.0 : habillage de la fenêtre. « jeu » = cadre à portrait du jeu (comme /drop hiscores) ;
+-- « dropamine » = notre cadre d'avant, gardé intact (/drop progression cadre dropamine).
+-- 3.13.0 : la fenêtre Progression (et les fenêtres de la visite / À propos) prend toujours le cadre du jeu ;
+-- le thème (jeu / dropamine / léger) ne concerne que le panneau des cases et les toasts
+function PU.FrameStyle() return "jeu" end
+PU.native = true
+local function NativeShell()
+  local ok, f = pcall(CreateFrame, "Frame", PU.NAME, _G.UIParent, "PortraitFrameTemplate")
+  if not (ok and f) then return nil end
+  if type(f.SetTitle) == "function" then pcall(f.SetTitle, f, "Dropamine · " .. Tr["Progression"]) end
+  local DW = ns.DebugWindow
+  if DW and DW.DecoratePortrait then local okP, ic = pcall(DW.DecoratePortrait, f) if okP then f.portraitIcon = ic end end
+  f.native = true
+  return f
+end
+-- Après les en-têtes : le cadre du jeu a déjà titre, portrait et ✕ ; on range les nôtres
+function PU.FitNative(f)
+  if not f.native then return end
+  if f.logo then f.logo:Hide() end
+  if f.titleFS then f.titleFS:Hide() end
+  if f.divider then f.divider:Hide() end   -- le filet doré passait sous les boutons descendus d'une ligne ; la carte du total sépare déjà
+  if f.subFS then
+    f.subFS:ClearAllPoints() f.subFS:SetPoint("LEFT", f, "TOPLEFT", 64, -40)
+    local font = _G.GameFontHighlightLarge or _G.GameFontNormalLarge
+    if font and f.subFS.SetFontObject then pcall(f.subFS.SetFontObject, f.subFS, font) end
+    f.subFS._role = nil   -- couleur fixe (blanc), la classe est colorée dans le texte
+    for i = #PU.texts, 1, -1 do if PU.texts[i][1] == f.subFS then table.remove(PU.texts, i) end end
+  end
+  local close = rawget(f, "CloseButton")
+  if type(close) == "table" then
+    if f.close then f.close:Hide() end
+    if close.SetScript then close:SetScript("OnClick", function() PU.Close() end) end
+    if f.share then f.share:ClearAllPoints() f.share:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -29) end
+  elseif f.close then
+    f.close:ClearAllPoints() f.close:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -29)
+  end
+end
+
 function PU.Build()
   if PU.frame then return PU.frame end
   if InCombat() then return nil end
   if type(_G.CreateFrame) ~= "function" then return nil end
   PU.cards, PU.buttons, PU.texts, PU.pillGroups, PU.charts, PU.curves = {}, {}, {}, {}, {}, {}
-  local f = CreateFrame("Frame", PU.NAME, _G.UIParent)
+  local f = (PU.FrameStyle() == "jeu") and NativeShell() or CreateFrame("Frame", PU.NAME, _G.UIParent)
+  PU.native = f.native == true
   f:SetSize(PU.W, PU.H)
-  f:SetFrameStrata("HIGH")
+  f:SetFrameStrata("DIALOG")   -- 3.13.0 : même étage que le Dungeon Journal (HIGH restait toujours dessous)
   if f.SetToplevel then pcall(f.SetToplevel, f, true) end
   if f.SetMovable then f:SetMovable(true) end
   f:EnableMouse(true)
@@ -2930,13 +3240,14 @@ function PU.Build()
   f.flat:SetAllPoints(f)
   f.edge = Edge(f, "BORDER")
   local Sk = ns.Skin
-  if Sk and Sk.Host and Sk.enabled ~= false then
+  if not f.native and Sk and Sk.Host and Sk.enabled ~= false then
     local ok, h = pcall(Sk.Host, f, true)
     if ok and h then f.skin = h end
   end
   f.pages = {}
   PU.frame = f
   PU.BuildHeader(f)
+  PU.FitNative(f)
   PU.BuildBanner(f)
   PU.BuildTabs(f)
   PU.BuildOverview(f)
@@ -2946,6 +3257,8 @@ function PU.Build()
   PU.BuildWeekly(f)
   PU.BuildEfficiency(f)
   PU.BuildChars(f)
+  PU.BuildSkills(f)
+  PU.BuildFarmNow(f)
   PU.BuildHunt(f)
   PU.BuildCollection(f)
   PU.BuildRecap(f)
@@ -2953,12 +3266,23 @@ function PU.Build()
   f.foot:SetPoint("BOTTOM", f, "BOTTOM", 0, 9)
   f.foot:SetText(Tr["Clic gauche sur la goutte ou /drop progression · Échap pour fermer"])
   f.subs = {
-    charts = PU.Pills(f, { { id = "charts", label = "Graphiques" }, { id = "weekly", label = "Hebdo" } }, PU.W - PU.PAD, PU.H - 26,
+    overview = PU.Pills(f, { { id = "overview", label = "Aujourd'hui" }, { id = "charts", label = "Graphiques" }, { id = "weekly", label = "Semaine" } }, PU.W - PU.PAD, PU.VIEWS_Y,
       function() return State().tab end, function(id) PU.SetTab(id) end),
-    farm = PU.Pills(f, { { id = "spots", label = "Spots" }, { id = "efficiency", label = "Efficacité" } }, PU.W - PU.PAD, PU.H - 26,
+    collection = PU.Pills(f, { { id = "collection", label = "Carnet" }, { id = "hunt", label = "Chasse" } }, PU.W - PU.PAD, PU.VIEWS_Y,
+      function() return State().tab end, function(id) PU.SetTab(id) end),
+    farm = PU.Pills(f, { { id = "now", label = "Maintenant" }, { id = "spots", label = "Spots" }, { id = "efficiency", label = "Efficacité" } }, PU.W - PU.PAD, PU.VIEWS_Y,
       function() return State().tab end, function(id) PU.SetTab(id) end),
   }
-  f:SetScript("OnShow", function() PU.OnShow() end)
+  f.pageTitle = FS(f, "GameFontNormal", "title")
+  f.pageTitle:SetPoint("TOPLEFT", f, "TOPLEFT", PU.PAD + 2, -(PU.VIEWS_Y + 3))
+  f.pageDesc = FS(f, "GameFontHighlightSmall", "sub")
+  f.pageDesc:SetPoint("LEFT", f.pageTitle, "RIGHT", 8, 0)
+  f.pageLine = Tex(f, "ARTWORK", 1)
+  f.pageLine:SetPoint("TOPLEFT", f, "TOPLEFT", PU.PAD, -(PU.VIEWS_Y + 23))
+  f.pageLine:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PU.PAD, -(PU.VIEWS_Y + 23))
+  f.pageLine:SetHeight(1)
+  Paint(f.pageLine, { BRONZE[1], BRONZE[2], BRONZE[3], 0.6 })
+  f:SetScript("OnShow", function(self) if self.Raise then self:Raise() end PU.OnShow() end)   -- 3.13.0 : rouverte = devant
   f:SetScript("OnHide", function() PU.OnHide() end)
   -- Échap : NOTRE cadre ajouté à la liste (aucun cadre de Blizzard modifié)
   local sf = _G.UISpecialFrames
@@ -2981,7 +3305,12 @@ function PU.ApplyTheme()
   local mode = PU.Mode()
   local pal = PU.Pal()
   local Sk = ns.Skin
-  if pal.skin and f.skin and Sk then
+  if f.native then
+    -- cadre du jeu : son fond et sa bordure, rien de peint par-dessus
+    if f.skin then f.skin:Hide() end
+    f.flat:Hide()
+    ShowEdge(f.edge, false)
+  elseif pal.skin and f.skin and Sk then
     pcall(f.skin.SetBackdrop, f.skin, Sk.Backdrop(f.skin))
     pcall(Sk.Paint, f.skin, pal.bgAlpha)
     f.skin:Show()
@@ -2996,6 +3325,12 @@ function PU.ApplyTheme()
     ShowEdge(f.edge, true)
   end
   Paint(f.divider, { pal.accent[1], pal.accent[2], pal.accent[3], 0.45 })
+  local tri = pal.site and not f.native
+  local seg = PU.SegColors()
+  for i, t in ipairs(f.tri or {}) do
+    if tri then Paint(t, seg[i]) t:Show() else t:Hide() end
+  end
+  if f.divider and not f.native then if tri then f.divider:Hide() else f.divider:Show() end end
   for _, c in ipairs(PU.cards) do PU.PaintCard(c, c._hi) end
   for _, b in ipairs(PU.buttons) do PU.PaintButton(b) end
   for _, e in ipairs(PU.texts) do
@@ -3003,14 +3338,16 @@ function PU.ApplyTheme()
     if c then TextColor(e[1], c) end
   end
   local eb = f.pages.overview and f.pages.overview.kpi[4].input
-  if eb then Paint(eb.bg, pal.track) PaintEdge(eb.edge, pal.accentHi) end
+  if eb then Paint(eb.bg, pal.track) PaintEdge(eb.edge, PU.native and { BRONZE[1], BRONZE[2], BRONZE[3], 0.9 } or pal.accentHi) end
   local ach = f.pages.ach
   if ach then Paint(ach.thumbTrack, pal.track) Paint(ach.thumb, pal.accent) end
   local ov = f.pages.overview
   if ov then Paint(ov.right.k1, pal.line1) Paint(ov.right.k2, pal.line2) end
   local sp = f.pages.spots
   if sp then Paint(sp.card.line, pal.cardEdge) end
-  for _, g in ipairs(f.banner.badges) do Paint(g.bg, pal.pillOff) PaintEdge(g.edge, pal.pillEdge) end
+  for _, g in ipairs(f.banner.badges) do
+    if PU.native then g.bg:Hide() ShowEdge(g.edge, false) else Paint(g.bg, pal.pillOff) PaintEdge(g.edge, pal.pillEdge) end
+  end
   PU.SyncPills()
   f._theme = mode
   PU.themeApplied = mode
@@ -3033,6 +3370,12 @@ function PU.RefreshHeader()
   local name = Call(_G.UnitName, "player") or "?"
   local cls = Call(_G.UnitClass, "player") or ""
   local lvl = N(ns.GetPlayerLevel and Call(ns.GetPlayerLevel)) or N(Call(_G.UnitLevel, "player")) or 0
+  if f.native then
+    -- cadre jeu : la classe dans sa couleur (comme la fiche du personnage)
+    local _, file = Call(_G.UnitClass, "player")
+    local cc = file and _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[file]
+    if cc then cls = string.format("|cff%02x%02x%02x%s|r", math.floor(cc.r * 255), math.floor(cc.g * 255), math.floor(cc.b * 255), tostring(cls)) end
+  end
   f.subFS:SetText(string.format(Tr["%s · %s niv. %d"], tostring(name), tostring(cls), lvl))
   local snap = Snap()
   local cur = snap and (N(snap.total) or N(snap.ficTotal)) or N(ns.CharDB and ns.CharDB().lastTotal) or 0
@@ -3042,7 +3385,7 @@ function PU.RefreshHeader()
   b.maxFS:SetText("/ " .. tostring(mx))
   b.pctFS:SetText((mx > 0) and (string.format("%d %%", math.floor(cur / mx * 100 + 0.5))) or "")
   local pal = PU.Pal()
-  Paint(b.track, pal.track)
+  if not b.gauge then Paint(b.track, pal.track) end
   local segs = PU.Segments()
   local widths
   local Wd = ns.Wide
@@ -3062,6 +3405,9 @@ function PU.RefreshHeader()
     else t:Hide() end
   end
   b.widths = widths
+  if b.sheen then
+    if x > 10 then b.sheen:ClearAllPoints() b.sheen:SetPoint("TOPLEFT", b, "TOPLEFT", 10, -31) b.sheen:SetSize(x - 10, 1) b.sheen:Show() else b.sheen:Hide() end
+  end
   local labels = { Tr["Niv."], Tr["Armes et Défense"], Tr["Métiers"] }
   local bx = 10
   for i = 1, 3 do
@@ -3086,6 +3432,13 @@ function PU.RefreshHeader()
     if t.id == "ach" then t.fs:SetText(Tr["Succès"] .. " (" .. got .. "/" .. all .. ")") end
     PU.SetOn(t, t.id == curGroup)
   end
+  if f.pageTitle then
+    local def
+    for _, t in ipairs(PU.TABS) do if t.id == curGroup then def = t end end
+    f.pageTitle:SetText(def and Tr[def.label] or "")
+    f.pageDesc:SetText(def and def.desc and Tr[def.desc] or "")
+    if def then f.pageLine:Show() else f.pageLine:Hide() end
+  end
   -- sélecteurs de sous-page (bas à droite) : Graphiques/Hebdo et Spots/Efficacité
   if f.subs then
     -- Efficacité n'apparaît que lorsqu'il existe des mesures (30 jours) : sinon il ne reste que « Spots »
@@ -3097,22 +3450,19 @@ function PU.RefreshHeader()
       effOk = okR and type(rep) == "table" and (N(rep.total) or 0) >= ((E and E.MIN_SECS) or 60)
       PU._effOk, PU._effAt = effOk, nowT
     end
-    if not effOk and State().farmSub == "efficiency" and State().tab == "efficiency" then PU.SetTab("spots", true) end
+    if not effOk and State().farmSub == "efficiency" and State().tab == "efficiency" then PU.SetTab("now", true) end
     for gid, grp in pairs(f.subs) do
       for _, b in ipairs(grp.list) do
-        local hide = (gid ~= curGroup) or (gid == "farm" and b.id == "efficiency" and not effOk)
+        local huntOff = ns.Hunt and ns.Hunt.On and not ns.Hunt.On()
+        local hide = (gid ~= curGroup) or (gid == "farm" and b.id == "efficiency" and not effOk) or (gid == "collection" and b.id == "hunt" and huntOff)
         if hide then b:Hide() else b:Show() end
       end
-      if gid == "farm" then
-        -- sans Efficacité, « Spots » prend la place de droite
-        for _, bt in ipairs(grp.list) do
-          if bt.id == "spots" then
-            if not bt._orig then bt._orig = { bt:GetPoint(1) } end
-            bt:ClearAllPoints()
-            local o = bt._orig
-            if effOk and o[1] then bt:SetPoint(o[1], o[2], o[3], o[4], o[5])
-            else bt:SetPoint("TOPLEFT", f, "TOPLEFT", PU.W - PU.PAD - (bt:GetWidth() or 60), -(PU.H - 26)) end
-          end
+      local x = PU.W - PU.PAD
+      for _, b in ipairs(grp.list) do
+        if b:IsShown() then
+          x = x - ((b.GetWidth and b:GetWidth()) or 60)
+          b:ClearAllPoints() b:SetPoint("TOPLEFT", f, "TOPLEFT", x, -PU.VIEWS_Y)
+          x = x - 4
         end
       end
     end
@@ -3151,7 +3501,7 @@ function PU.RefreshOverview(p)
     local ch = ns.Hunt.Chance({ rate = it.rate, attempts = it.attempts })
     k[1].title:SetText(Tr["Chasse"])
     PU.SetFittedText(k[1].value, { tostring(it.name) }, (k[1]._w or 150) - 16)
-    k[1].sub:SetText(string.format(Tr["%d tentatives · %d trouvé(s)"], it.attempts, it.drops) .. (ch and string.format(" · %d %%", math.floor(ch * 100 + 0.5)) or ""))
+    k[1].sub:SetText(PU.Tries(it.attempts, it.drops) .. (ch and string.format(" · %d %%", math.floor(ch * 100 + 0.5)) or ""))
     k[1].value._tipExtra, k[1].sub._tipExtra = nil, nil
   elseif maxed then
     k[1].title:SetText(Tr["Niveau max"])
@@ -3186,11 +3536,12 @@ function PU.RefreshOverview(p)
     k[2].value:SetText(cy > 0 and string.format("%d / %d", cx, cy) or "—")
     k[2].sub:SetText(cy > 0 and string.format(Tr["%d %% des objets de donjon · clic : ouvrir"], math.floor(cx / cy * 100 + 0.5)) or Tr["Clic : ouvrir le collection log"])
   else
-    k[2].title:SetText(Tr["Rythme points"])
+    k[2].title:SetText(Tr["Points de la session"])
   end
   if not eg then
-    k[2].value:SetText(r.pph and ("+" .. Fmt1(r.pph) .. Tr[" pts/h"]) or "—")
-    k[2].sub:SetText(string.format(Tr["Session : +%d pts en %s"], s.pts or 0, Dur(r.elapsed)))
+    -- 3.13.0 : plus de points/heure (un métier monte bien plus vite au rang 50 qu'au rang 250) : le total, et la durée
+    k[2].value:SetText(string.format(Tr["+%d pts"], s.pts or 0))
+    k[2].sub:SetText(string.format(Tr["en %s · aujourd'hui +%d"], Dur(r.elapsed), N(P.DayPoints and P.DayPoints(P.Today())) or 0))
   end
   -- 3. Série & records
   local st = P.Streak()
@@ -3450,14 +3801,28 @@ function PU.ScrollAch(delta)
   if p.scroll.SetVerticalScroll then pcall(p.scroll.SetVerticalScroll, p.scroll, p.scrollY) end
   local th = math.max(20, math.floor(PU.CONTENT_H * PU.CONTENT_H / math.max(PU.CONTENT_H, p.childH)))
   local ty = (maxY > 0) and math.floor((PU.CONTENT_H - th) * p.scrollY / maxY) or 0
-  Place(p.thumb, p, PU.CONTENT_W - 5, ty, 3, th)
+  Place(p.thumb, p, PU.CONTENT_W - 7, ty, 6, th)
   if maxY > 0 then p.thumb:Show() p.thumbTrack:Show() else p.thumb:Hide() p.thumbTrack:Hide() end
+  if p.grab then if maxY > 0 then p.grab:Show() else p.grab:Hide() end end
   return p.scrollY
 end
 
 function PU.RefreshSpots(p)
   local c = p.card
   local pal = PU.Pal()
+  local best = PU.BestSpots()
+  for i, b in ipairs(p.best or {}) do
+    local x = best[i]
+    if x then
+      b.skill:SetText(PU.SkillName(x.skill))
+      b.zone:SetText(tostring(x.zone))
+      b.rate:SetText(string.format(Tr["+%d pts · %s"], x.pts, (N(x.minutes) or 0) >= 1 and Dur(math.floor(x.minutes * 60)) or "—"))
+      TextColor(b.rate, pal.text)
+      if x.gold then b.gold:SetText(string.format(Tr["Or : %s /h"], PU.GoldStr(x.gold.gph))) b.gold2:SetText(tostring(x.gold.zone))
+      else b.gold:SetText(Tr["Or : pas encore mesuré"]) b.gold2:SetText("") end
+      b:Show()
+    else b:Hide() end
+  end
   local list = P.AllSpots()
   for i, r in ipairs(c.rows) do
     local z = list[i]
@@ -3465,9 +3830,9 @@ function PU.RefreshSpots(p)
       r.zone:SetText(z.zone .. ((z.sub and z.sub ~= z.zone) and (" · " .. z.sub) or ""))
       r.skill:SetText(PU.SkillName(z.skill))
       r.pts:SetText("+" .. z.pts)
-      r.rate:SetText(z.avg and (Fmt1(z.avg)) or "—")
+      r.rate:SetText((N(z.minutes) or 0) >= 1 and Dur(math.floor(z.minutes * 60)) or "—")
       Paint(r.bg, (i % 2 == 1) and { 1, 1, 1, 0.035 } or { 0, 0, 0, 0 })
-      if i == 1 and z.avg then Paint(r.bg, pal.cardHi) end
+      if i == 1 then Paint(r.bg, pal.cardHi) end
       r.bg:Show() r.zone:Show() r.skill:Show() r.pts:Show() r.rate:Show()
     else
       r.bg:Hide() r.zone:Hide() r.skill:Hide() r.pts:Hide() r.rate:Hide()
@@ -3480,7 +3845,7 @@ function PU.RefreshSpots(p)
     c.line:Hide()
   else c.empty:Hide() c.line:Show() end
   local more = #list - #c.rows
-  c.note:SetText(Tr["Trié du rythme le plus rapide au plus lent (au moins 3 points mesurés)."] .. ((more > 0) and (" " .. string.format(Tr["+%d autres zones."], more)) or ""))
+  c.note:SetText(Tr["Trié par points gagnés dans la zone."] .. ((more > 0) and (" " .. string.format(Tr["+%d autres zones."], more)) or ""))
   c.count = #list
 end
 
@@ -3711,7 +4076,482 @@ function PU.RefreshEfficiency(p)
   p.tip._fullText = rep.tip or ""
 end
 
-PU.REFRESHERS = { overview = "RefreshOverview", charts = "RefreshCharts", ach = "RefreshAch", spots = "RefreshSpots", weekly = "RefreshWeekly", efficiency = "RefreshEfficiency", chars = "RefreshChars", hunt = "RefreshHunt", collection = "RefreshCollection" }
+------------------------------------------------------------------------------
+-- 3.13.0 : Farm · vue « Maintenant » — ta session dans la zone où tu es (temps, points/h, or/h, sacs, ce que tu
+-- ramasses), ce qu'il manque pour le prochain +1 de chaque métier, et tes objectifs de farm.
+------------------------------------------------------------------------------
+local function GoldStr(copper)
+  local E = ns.Efficiency
+  return (E and E.FormatMoney and E.FormatMoney(copper, false)) or tostring(math.floor((N(copper) or 0) / 10000)) .. "g"
+end
+PU.GoldStr = GoldStr
+local function ItemInfo(id)
+  local gi = _G.GetItemInfo or (type(_G.C_Item) == "table" and _G.C_Item.GetItemInfo)
+  local name, _, _, _, _, _, _, _, _, icon = Call(gi, id)
+  if not icon and type(_G.GetItemIcon) == "function" then icon = Call(_G.GetItemIcon, id) end
+  return name, icon
+end
+-- l'or par heure de chaque zone (30 jours), seulement au-delà de 10 minutes mesurées
+function PU.ZoneGold()
+  local E = ns.Efficiency
+  local okR, rep = pcall(function() return E and E.Report and E.Report("d30") end)
+  local out = {}
+  if not (okR and type(rep) == "table") then return out end
+  for z, v in pairs(rep.moneyByZone or {}) do
+    local secs = N((rep.zoneSecs or {})[z]) or 0
+    local val = type(v) == "table" and (N(v.net) or N(v.value) or 0) or (N(v) or 0)
+    if secs >= 600 and val > 0 then out[z] = { value = val, secs = secs, gph = val / (secs / 3600) } end
+  end
+  return out
+end
+
+function PU.BuildFarmNow(f)
+  local p = Page(f, "now")
+  local LW = 318
+  local L = PU.Card(p, 0, 0, LW, PU.CONTENT_H, "")
+  local R = PU.Card(p, LW + 8, 0, PU.CONTENT_W - LW - 8, PU.CONTENT_H, "")
+  p.L, p.R = L, R
+  L.head = FS(L, "GameFontNormalSmall", "label") L.head:SetPoint("TOPLEFT", L, "TOPLEFT", 10, -8) L.head:SetWidth(LW - 20)
+  L.kv = {}
+  for i = 1, 4 do
+    local y = 26 + (i - 1) * 30
+    local k = FS(L, "GameFontHighlightSmall", "sub") k:SetPoint("TOPLEFT", L, "TOPLEFT", 10, -y)
+    local v = FS(L, "GameFontHighlight", "text") v:SetPoint("TOPLEFT", L, "TOPLEFT", 10, -(y + 11)) v:SetWidth(LW - 20)
+    L.kv[i] = { k = k, v = v }
+  end
+  L.items = FS(L, "GameFontNormalSmall", "label") L.items:SetPoint("TOPLEFT", L, "TOPLEFT", 10, -150)
+  L.rows = {}
+  for i = 1, 6 do
+    local y = 168 + (i - 1) * 22
+    local ic = Tex(L, "ARTWORK", 1) Place(ic, L, 10, y, 18, 18)
+    local nm = FS(L, "GameFontHighlightSmall", "text") nm:SetPoint("TOPLEFT", L, "TOPLEFT", 34, -(y + 3)) nm:SetWidth(LW - 90)
+    local n = FS(L, "GameFontNormalSmall", "title", "RIGHT") n:SetPoint("TOPRIGHT", L, "TOPLEFT", LW - 10, -(y + 3))
+    L.rows[i] = { ic = ic, nm = nm, n = n }
+  end
+  L.empty = FS(L, "GameFontDisableSmall", "sub") L.empty:SetPoint("TOPLEFT", L, "TOPLEFT", 10, -170) L.empty:SetWidth(LW - 20)
+  if L.empty.SetWordWrap then pcall(L.empty.SetWordWrap, L.empty, true) end
+  -- à droite : ce qu'il manque, puis les objectifs
+  local RW = PU.CONTENT_W - LW - 8
+  R.head = FS(R, "GameFontNormalSmall", "label") R.head:SetPoint("TOPLEFT", R, "TOPLEFT", 10, -8)
+  R.need = {}
+  for i = 1, 3 do
+    local y = 26 + (i - 1) * 40
+    local a = FS(R, "GameFontHighlightSmall", "text") a:SetPoint("TOPLEFT", R, "TOPLEFT", 10, -y) a:SetWidth(RW - 20)
+    local b = FS(R, "GameFontHighlightSmall", "sub") b:SetPoint("TOPLEFT", R, "TOPLEFT", 10, -(y + 13)) b:SetWidth(RW - 20)
+    local c = FS(R, "GameFontDisableSmall", "sub") c:SetPoint("TOPLEFT", R, "TOPLEFT", 10, -(y + 25)) c:SetWidth(RW - 20)
+    -- « + » : le réactif qui manque devient un objectif (quantité manquante)
+    local add = PU.Button(R, 18, 16, "+", "small", function(self) if self.goal then PU.FarmAdd(self.goal.id, self.goal.qty) end end)
+    add:ClearAllPoints() add:SetPoint("TOPRIGHT", R, "TOPRIGHT", -8, -(y + 11))
+    b:SetWidth(RW - 46)
+    PU.TipOn(add, Tr["Objectif de farm"], Tr["Ajoute ce qui manque à tes objectifs de farm."])
+    R.need[i] = { a = a, b = b, c = c, add = add }
+  end
+  R.needEmpty = FS(R, "GameFontDisableSmall", "sub") R.needEmpty:SetPoint("TOPLEFT", R, "TOPLEFT", 10, -28) R.needEmpty:SetWidth(RW - 20)
+  if R.needEmpty.SetWordWrap then pcall(R.needEmpty.SetWordWrap, R.needEmpty, true) end
+  R.goalHead = FS(R, "GameFontNormalSmall", "label") R.goalHead:SetPoint("TOPLEFT", R, "TOPLEFT", 10, -150)
+  -- saisie : Maj+clic sur un objet (sacs, chat, butin) ou son numéro, quantité, Ajouter
+  local function Box(x, w, maxl, numeric)
+    local okB, eb = pcall(CreateFrame, "EditBox", nil, R)
+    if not (okB and eb) then return nil end
+    eb:SetSize(w, 18) eb:SetPoint("TOPLEFT", R, "TOPLEFT", x, -166)
+    if eb.SetAutoFocus then pcall(eb.SetAutoFocus, eb, false) end
+    if eb.SetMaxLetters then pcall(eb.SetMaxLetters, eb, maxl) end
+    if numeric and eb.SetNumeric then pcall(eb.SetNumeric, eb, true) end
+    if eb.SetFontObject then pcall(eb.SetFontObject, eb, _G.GameFontHighlightSmall or "GameFontHighlightSmall") end
+    if eb.SetTextInsets then pcall(eb.SetTextInsets, eb, 5, 5, 0, 0) end
+    eb.bg = Tex(eb, "BACKGROUND", 1) eb.bg:SetAllPoints(eb) Paint(eb.bg, { 0, 0, 0, 0.5 })
+    eb.edge = Edge(eb) PaintEdge(eb.edge, { BRONZE[1], BRONZE[2], BRONZE[3], 0.8 })
+    eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    return eb
+  end
+  R.gbox = Box(10, RW - 128, 300, false)
+  R.gqty = Box(RW - 112, 36, 4, true)
+  if R.gqty then R.gqty:SetText("20") end
+  R.gadd = PU.Button(R, 58, 18, Tr["Ajouter"], "small", function() PU.FarmAddFromBox() end)
+  R.gadd:ClearAllPoints() R.gadd:SetPoint("TOPRIGHT", R, "TOPRIGHT", -8, -166)
+  if R.gbox then
+    R.ghint = FS(R.gbox, "GameFontDisableSmall", "sub")
+    R.ghint:SetPoint("LEFT", R.gbox, "LEFT", 6, 0) R.ghint:SetPoint("RIGHT", R.gbox, "RIGHT", -6, 0)
+    R.ghint:SetText(Tr["Maj+clic sur un objet, ou son numéro"])
+    local function hint() local e = (R.gbox:GetText() or "") == "" local f = R.gbox.HasFocus and R.gbox:HasFocus() if e and not f then R.ghint:Show() else R.ghint:Hide() end end
+    R.gbox:SetScript("OnEditFocusGained", hint) R.gbox:SetScript("OnEditFocusLost", hint) R.gbox:HookScript("OnTextChanged", hint)
+    R.gbox:SetScript("OnEnterPressed", function() PU.FarmAddFromBox() end)
+  end
+  if R.gqty then R.gqty:SetScript("OnEnterPressed", function() PU.FarmAddFromBox() end) end
+  R.goals = {}
+  for i = 1, 4 do
+    local y = 192 + (i - 1) * 28
+    local ic = Tex(R, "ARTWORK", 1) Place(ic, R, 10, y, 16, 16)
+    local nm = FS(R, "GameFontHighlightSmall", "text") nm:SetPoint("TOPLEFT", R, "TOPLEFT", 32, -(y + 1)) nm:SetWidth(RW - 110)
+    local n = FS(R, "GameFontHighlightSmall", "text", "RIGHT") n:SetPoint("TOPRIGHT", R, "TOPLEFT", RW - 34, -(y + 1))
+    local bar = PU.NewBar(R, 32, y + 15, RW - 66, 3)
+    -- « x » : retrait en deux clics (le premier arme « ? », le second dans les 4 s retire), comme la Chasse
+    local del = PU.Button(R, 18, 16, "x", "small", function(self)
+      if not self.idx then return end
+      if PU.ConfirmArm("goal:" .. self.idx) then local E = ns.Efficiency if E and E.GoalRemove then E.GoalRemove(self.idx) end end
+      PU.Refresh()
+    end)
+    del:ClearAllPoints() del:SetPoint("TOPRIGHT", R, "TOPRIGHT", -8, -y)
+    PU.TipOn(del, Tr["Retirer"], Tr["Clique deux fois pour retirer cet objectif."])
+    R.goals[i] = { ic = ic, nm = nm, n = n, bar = bar, del = del }
+  end
+  R.goalEmpty = FS(R, "GameFontDisableSmall", "sub") R.goalEmpty:SetPoint("TOPLEFT", R, "TOPLEFT", 10, -194) R.goalEmpty:SetWidth(RW - 20)
+  if R.goalEmpty.SetWordWrap then pcall(R.goalEmpty.SetWordWrap, R.goalEmpty, true) end
+  return p
+end
+
+function PU.FarmAdd(id, qty)
+  local E = ns.Efficiency
+  if not (E and E.GoalAdd) then return end
+  local x, err = E.GoalAdd(id, qty)
+  if x and err ~= "same" and ns.Print then ns.Print(string.format(Tr["Objectif de farm : %s × %d"], (select(1, ItemInfo(x.id))) or ("#" .. x.id), x.qty))
+  elseif err == "full" and ns.Print then ns.Print(string.format(Tr["%d objectifs au plus."], E.GOALS_MAX)) end
+  PU.Refresh()
+  return x
+end
+function PU.FarmAddFromText(text, qty)
+  text = tostring(text or "")
+  local id = N(text:match("item:(%d+)")) or N(text:match("^%s*(%d+)%s*$"))
+  if not id then if ns.Print then ns.Print(Tr["Maj+clic sur un objet, ou son numéro"]) end return nil end
+  return PU.FarmAdd(id, qty)
+end
+function PU.FarmAddFromBox()
+  local R = PU.frame and PU.frame.pages.now and PU.frame.pages.now.R
+  if not (R and R.gbox) then return end
+  local qty = N(R.gqty and R.gqty:GetText()) or 20
+  if PU.FarmAddFromText(R.gbox:GetText(), qty) then R.gbox:SetText("") R.gbox:ClearFocus() end
+end
+function PU.RefreshFarmNow(p)
+  if not p then return end
+  local L, R = p.L, p.R
+  local pal = PU.Pal()
+  local E = ns.Efficiency
+  local zone = (P.Zone and Call(P.Zone)) or "?"
+  local e = E and E.Sess and E.Sess() or {}
+  local s = P.Session and P.Session() or {}
+  local secs = N((e.zoneSecs or {})[zone]) or 0
+  local hours = secs / 3600
+  L.head:SetText(string.format(Tr["Ta session ici · %s"], tostring(zone)))
+  -- 1) temps et points de récolte (face à ton rythme habituel dans la zone)
+  local pts = N((s.zoneGather or {})[zone]) or 0
+  local lines = {}
+  lines[1] = { Tr["Temps dans la zone"], secs >= 60 and Dur(secs) or Tr["vient d'arriver"] }
+  lines[2] = { Tr["Points de récolte"], string.format("+%d", pts) }
+  local lz = (e.lootByZone or {})[zone]
+  local val = type(lz) == "table" and (N(lz.value) or 0) or 0
+  local goldTxt = GoldStr(val)
+  if val > 0 and hours >= 0.05 then goldTxt = goldTxt .. " · " .. GoldStr(val / hours) .. Tr[" /h"] end
+  local zg = PU.ZoneGold()[zone]
+  lines[3] = { Tr["Butin (valeur marchand)"] .. (zg and string.format(Tr[" (d'habitude %s)"], GoldStr(zg.gph) .. Tr[" /h"]) or ""), goldTxt }
+  local S = ns.Slot
+  local free = S and S.FreeBagSlots and Call(S.FreeBagSlots)
+  local bag = free and string.format(Tr["%d places libres"], free) or "—"
+  local miss = N(e.bagMiss) or 0
+  if miss > 0 then bag = bag .. string.format(Tr[" · sacs pleins %d fois"], miss) end
+  lines[4] = { Tr["Sacs"], bag }
+  for i, kv in ipairs(L.kv) do
+    kv.k:SetText(lines[i][1]) kv.v:SetText(lines[i][2])
+    if i == 4 then TextColor(kv.v, (free and free <= 2) and pal.bad or pal.text) end
+  end
+  -- 2) ce que tu ramasses ici
+  L.items:SetText(Tr["Ramassé ici"])
+  local items = E and E.SessionItems and E.SessionItems(zone, #L.rows) or {}
+  for i, r in ipairs(L.rows) do
+    local it = items[i]
+    if it then
+      local name, icon = ItemInfo(it.id)
+      pcall(r.ic.SetTexture, r.ic, icon or ns.FALLBACK_ICON)
+      r.nm:SetText(name or ("#" .. it.id)) r.n:SetText("×" .. it.n)
+      r.ic:Show() r.nm:Show() r.n:Show()
+    else r.ic:Hide() r.nm:Hide() r.n:Hide() end
+  end
+  if #items == 0 then L.empty:SetText(Tr["Rien ramassé dans cette zone pour l'instant cette session."]) L.empty:Show() else L.empty:Hide() end
+  -- 3) ce qu'il te manque pour le prochain +1 (métiers dont l'addon connaît les recettes)
+  R.head:SetText(Tr["Ce qu'il te manque"])
+  local C = ns.Craft
+  local recs = (ns.CharDB and ns.CharDB().recipes) or {}
+  local needs = {}
+  for skill in pairs(recs) do
+    local okB, nb = pcall(function() return C and C.NextBest and C.NextBest(skill) end)
+    if okB and nb and nb.recipe then needs[#needs + 1] = { skill = skill, nb = nb } end
+  end
+  table.sort(needs, function(a, b) return tostring(a.skill) < tostring(b.skill) end)
+  for i, r in ipairs(R.need) do
+    local x = needs[i]
+    if x then
+      local parts = {}
+      for _, m in ipairs(x.nb.missing or {}) do parts[#parts + 1] = string.format("%s ×%d", tostring(m.name), (N(m.need) or 0) - (N(m.have) or 0)) end
+      local rec = C.Paint and C.Paint(x.nb.diff, tostring(x.nb.recipe.name)) or tostring(x.nb.recipe.name)
+      r.a:SetText(PU.SkillName(x.skill) .. " · " .. rec)
+      r.b:SetText(Tr["Il manque : "] .. table.concat(parts, ", "))
+      local m1 = (x.nb.missing or {})[1]
+      local src = m1 and C.SourcesOf and C.SourcesOf(m1.id, 1)[1]
+      r.c:SetText(src and string.format(Tr["%s : %s (niv. %d-%d, %d %%)"], tostring(m1.name), src.name, src.lo, src.hi, math.floor(src.chance + 0.5)) or "")
+      r.add.goal = m1 and m1.id and { id = m1.id, qty = math.max(1, (N(m1.need) or 0) - (N(m1.have) or 0)) } or nil
+      r.a:Show() r.b:Show() r.c:Show() if r.add.goal then r.add:Show() else r.add:Hide() end
+    else r.a:Hide() r.b:Hide() r.c:Hide() r.add:Hide() end
+  end
+  if #needs == 0 then
+    R.needEmpty:SetText(next(recs) and Tr["Rien ne manque : tu as de quoi faire ton prochain +1 dans chaque métier."]
+      or Tr["Ouvre la fenêtre d'un métier une fois : l'addon lira tes recettes et te dira quoi farmer."])
+    R.needEmpty:Show()
+  else R.needEmpty:Hide() end
+  -- 4) objectifs de farm (avancement lu dans les sacs)
+  R.goalHead:SetText(Tr["Objectifs de farm"])
+  local goals = E and E.GoalList and E.GoalList() or {}
+  for i, g in ipairs(R.goals) do
+    local x = goals[i]
+    if x then
+      pcall(g.ic.SetTexture, g.ic, x.icon or ns.FALLBACK_ICON)
+      g.nm:SetText(x.name or ("#" .. x.id))
+      g.n:SetText(string.format("%d / %d", math.min(x.have, x.qty), x.qty))
+      TextColor(g.n, x.done and pal.good or pal.text)
+      PU.SetBar(g.bar, x.frac, x.done and pal.good or pal.bar)
+      g.del.idx = x.i
+      if g.del.fs then g.del.fs:SetText(PU.IsArmed("goal:" .. x.i) and "?" or "x") end
+      g.ic:Show() g.nm:Show() g.n:Show() g.bar.track:Show() g.del:Show() if x.frac > 0 then g.bar.fill:Show() end
+    else g.ic:Hide() g.nm:Hide() g.n:Hide() g.bar.track:Hide() g.bar.fill:Hide() g.del:Hide() g.del.idx = nil end
+  end
+  if #goals == 0 then R.goalEmpty:SetText(Tr["Aucun objectif : Maj+clic sur un objet, ou « + » à côté de ce qui te manque."]) R.goalEmpty:Show() else R.goalEmpty:Hide() end
+end
+
+-- Spots en classement : pour chaque métier de récolte, la meilleure zone en points/h et en or/h, et la tendance
+PU.TREND = { slower = { "ralentit ↓", "bad" }, faster = { "accélère ↑", "good" }, steady = { "stable", "sub" } }
+function PU.BestSpots()
+  local gold = PU.ZoneGold()
+  local out = {}
+  for _, id in ipairs({ "herbalism", "mining", "skinning", "fishing" }) do
+    local list = P.Spots and P.Spots(id) or {}
+    local best = list[1]
+    if best and best.pts > 0 then
+      local bg
+      for _, z in ipairs(list) do local g = gold[z.zone] if g and (not bg or g.gph > bg.gph) then bg = { zone = z.zone, gph = g.gph } end end
+      out[#out + 1] = { skill = id, zone = best.zone, pts = best.pts, minutes = best.minutes, gold = bg }
+    end
+  end
+  return out
+end
+
+------------------------------------------------------------------------------
+-- 3.13.0 : onglet Compétences — toutes tes compétences (rang, gain du jour, 7 jours) et le détail de
+-- la compétence choisie : courbe 30 jours, rythme, prochain rang de métier et où l'apprendre, prochaine recette.
+-- Données : historique quotidien de Progress (gains par compétence, 30 jours) et cases du panneau.
+------------------------------------------------------------------------------
+PU.SK_ROWS = 12
+PU.SK_SORTS = { { id = "gain", label = "Plus progressé" }, { id = "gap", label = "Plus loin du max" }, { id = "panel", label = "Ordre du panneau" } }
+local SK_KINDS = { level = true, profession = true, secondary = true, melee = true, ranged = true, feral = true, defense = true }
+-- gains d'une compétence sur les « n » derniers jours (aujourd'hui compris) et par jour (du plus ancien au plus récent)
+-- 3.13.0 : « 1 tentative » au singulier
+function PU.Tries(n, d)
+  return string.format(Tr[(N(n) or 0) == 1 and "%d tentative · %d trouvé(s)" or "%d tentatives · %d trouvé(s)"], n, d)
+end
+function PU.SkillGains(key, n)
+  local P = ns.Progress
+  if not (P and P.C and P.Today and P.DayOffset) then return 0, {} end
+  local _, c = P.C()
+  local hist = c and c.history or {}
+  local today, sum, days = P.Today(), 0, {}
+  for i = (n or 30) - 1, 0, -1 do
+    local day = P.DayOffset(today, -i)
+    local h = day and hist[day]
+    local v = type(h) == "table" and type(h.skills) == "table" and N(h.skills[key]) or 0
+    days[#days + 1] = v
+    sum = sum + v
+  end
+  return sum, days
+end
+-- les compétences du panneau (apprises, hors caractéristiques et monte)
+function PU.SkillList()
+  local snap = Snap()
+  local tiles = snap and (snap.allTiles or snap.tiles) or {}
+  local out, seen = {}, {}
+  for i, d in ipairs(tiles) do
+    local cur = N(d.current) or 0
+    if d and not d.placeholder and SK_KINDS[d.kind] and cur > 0 and not d.excludedMonte and d.id ~= "riding" and not seen[d.id or d.name] then
+      seen[d.id or d.name] = true
+      local key = d.id or d.name
+      local max = N(d.apiMax) or N(d.max) or 0
+      if d.kind == "level" then max = N(ns.GetLevelCap and Call(ns.GetLevelCap)) or 60 end
+      local g7, days = PU.SkillGains(key, 30)
+      local w7 = 0 for j = #days - 6, #days do w7 = w7 + (days[j] or 0) end
+      out[#out + 1] = { d = d, key = key, name = d.skillName or d.catName or d.name or key, cur = cur, max = max,
+        today = days[#days] or 0, w7 = w7, g30 = g7, days = days, ord = i, icon = d.icon,
+        cat = (d.kind == "level") and 1 or (d.kind == "profession" or d.kind == "secondary") and 3 or 2 }
+    end
+  end
+  return out
+end
+function PU.SortSkills(list, how)
+  table.sort(list, function(a, b)
+    if how == "gap" then local ga, gb = math.max(0, a.max - a.cur), math.max(0, b.max - b.cur) if ga ~= gb then return ga > gb end
+    elseif how == "gain" then if a.w7 ~= b.w7 then return a.w7 > b.w7 end if a.today ~= b.today then return a.today > b.today end end
+    return a.ord < b.ord
+  end)
+  return list
+end
+-- détail : lignes « libellé · valeur »
+function PU.SkillDetail(e)
+  local L = {}
+  local rate = e.w7 / 7
+  L[#L + 1] = { Tr["Gagné"], string.format(Tr["aujourd'hui +%d · 7 j +%d · 30 j +%d"], e.today, e.w7, e.g30) }
+  L[#L + 1] = { Tr["Rythme récent"], rate > 0 and string.format(Tr["+%s / jour"], (rate >= 10 or rate == math.floor(rate)) and tostring(math.floor(rate + 0.5)) or string.format("%.1f", rate)) or "—" }
+  local d, kind = e.d, e.d.kind
+  if kind == "melee" or kind == "ranged" or kind == "feral" or kind == "defense" then
+    local lvl = N(ns.GetPlayerLevel and Call(ns.GetPlayerLevel)) or N(Call(_G.UnitLevel, "player")) or 0
+    L[#L + 1] = { Tr["Maximum à ton niveau"], string.format("5 × %d = %d", lvl, 5 * lvl) }
+  end
+  if kind == "profession" or kind == "secondary" then
+    local tiers = ns.PROF_TIERS and ns.PROF_TIERS[d.id]
+    local final = N(ns.PROF_FINAL_CAP) or 300
+    local nx = tiers and tiers[e.max]
+    if e.max >= final then L[#L + 1] = { Tr["Prochain rang"], Tr["rang maximum atteint"] }
+    elseif nx and nx.rank then
+      local how = nx.src == "livre" and Tr[" (livre)"] or nx.src == "quête" and Tr[" (quête)"] or ""
+      L[#L + 1] = { Tr["Prochain rang"], string.format(Tr["%s dès %d%s"], Tr[nx.rank], N(nx.skill) or e.max, how) }
+      local fac = Call(_G.UnitFactionGroup, "player")
+      local where = type(nx.where) == "table" and (nx.where[fac] or nx.where.Alliance) or nx.where
+      if type(where) == "string" and where ~= "" then L[#L + 1] = { Tr["Où l'apprendre"], Tr[where] } end
+    end
+    local C = ns.Craft
+    if C and C.NextBest then
+      local okB, nb = pcall(C.NextBest, d.id)
+      if okB and nb and nb.recipe and nb.recipe.name then
+        local txt = C.Paint and C.Paint(nb.diff, tostring(nb.recipe.name)) or tostring(nb.recipe.name)
+        L[#L + 1] = { Tr["Prochaine recette utile"], txt }
+      end
+    end
+  end
+  if e.max > 0 then
+    if e.cur >= e.max then L[#L + 1] = { Tr["Maximum"], Tr["atteint"] }
+    elseif rate > 0 then
+      local days = math.ceil((e.max - e.cur) / rate)
+      L[#L + 1] = { Tr["Maximum estimé"], days <= 1 and Tr["≈ 1 jour"] or string.format(Tr["≈ %d jours"], days) }
+    end
+  end
+  return L
+end
+
+function PU.BuildSkills(f)
+  local p = Page(f, "skills")
+  local LW = 372
+  local left = PU.Card(p, 0, 0, LW, PU.CONTENT_H, "")
+  local right = PU.Card(p, LW + 8, 0, PU.CONTENT_W - LW - 8, PU.CONTENT_H, "")
+  p.left, p.right = left, right
+  left.sort = PU.Pills(left, PU.SK_SORTS, LW - 8, 4, function() return State().skSort or "gain" end,
+    function(id) State().skSort = id State().skOff = 0 PU.Refresh() end)
+  left.rows = {}
+  for i = 1, PU.SK_ROWS do
+    local r = CreateFrame("Button", nil, left)
+    Place(r, left, 6, 24 + (i - 1) * 22, LW - 12, 21)
+    r.hl = Tex(r, "BACKGROUND", 2) r.hl:SetAllPoints(r)
+    r.ic = Tex(r, "ARTWORK", 1) Place(r.ic, r, 2, 2, 17, 17)
+    r.name = FS(r, "GameFontHighlightSmall", "text") r.name:SetPoint("TOPLEFT", r, "TOPLEFT", 24, -2) r.name:SetWidth(150)
+    r.bar = PU.NewBar(r, 24, 15, 150, 3)
+    r.rank = FS(r, "GameFontHighlightSmall", "text", "RIGHT") r.rank:SetPoint("RIGHT", r, "LEFT", 248, 0)
+    r.day = FS(r, "GameFontHighlightSmall", "good", "RIGHT") r.day:SetPoint("RIGHT", r, "LEFT", 298, 0)
+    r.week = FS(r, "GameFontHighlightSmall", "good", "RIGHT") r.week:SetPoint("RIGHT", r, "LEFT", LW - 18, 0)
+    r:SetScript("OnClick", function(self) if self.key then State().skSel = self.key PU.Refresh() end end)
+    left.rows[i] = r
+  end
+  left.more = FS(left, "GameFontDisableSmall", "sub") left.more:SetPoint("BOTTOMLEFT", left, "BOTTOMLEFT", 10, 6)
+  if left.EnableMouseWheel then left:EnableMouseWheel(true) end
+  left:SetScript("OnMouseWheel", function(_, delta)
+    local s = State()
+    s.skOff = math.max(0, math.min(math.max(0, (p.n or 0) - PU.SK_ROWS), (s.skOff or 0) - (N(delta) or 0)))
+    PU.Refresh()
+  end)
+  -- détail
+  local RW = PU.CONTENT_W - LW - 8
+  right.head = FS(right, "GameFontNormalSmall", "label") right.head:SetPoint("TOPLEFT", right, "TOPLEFT", 10, -8) right.head:SetWidth(RW - 20)
+  right.big = FS(right, "GameFontNormalLarge", "text") right.big:SetPoint("TOPLEFT", right, "TOPLEFT", 10, -24)
+  right.sub = FS(right, "GameFontHighlightSmall", "sub") right.sub:SetPoint("TOPLEFT", right, "TOPLEFT", 10, -48)
+  right.sub:SetText(Tr["30 derniers jours"])
+  right.cols = {}
+  local cw = math.floor((RW - 20) / 30)
+  for i = 1, 30 do
+    local t = Tex(right, "ARTWORK", 2)
+    t:SetPoint("BOTTOMLEFT", right, "TOPLEFT", 10 + (i - 1) * cw, -128)
+    t:SetSize(math.max(2, cw - 2), 2)
+    right.cols[i] = t
+  end
+  right.kv = {}
+  for i = 1, 7 do
+    local y = 136 + (i - 1) * 25
+    local k = FS(right, "GameFontHighlightSmall", "sub") k:SetPoint("TOPLEFT", right, "TOPLEFT", 10, -y)
+    local v = FS(right, "GameFontHighlightSmall", "text", "LEFT") v:SetPoint("TOPLEFT", right, "TOPLEFT", 10, -(y + 11)) v:SetWidth(RW - 20)
+    if v.SetWordWrap then pcall(v.SetWordWrap, v, true) end
+    right.kv[i] = { k = k, v = v }
+  end
+  right.empty = FS(right, "GameFontDisableSmall", "sub", "CENTER") right.empty:SetPoint("CENTER", right, "CENTER", 0, 0)
+  return p
+end
+
+function PU.RefreshSkills(p)
+  if not p then return end
+  local s = State()
+  local list = PU.SortSkills(PU.SkillList(), s.skSort or "gain")
+  p.n = #list
+  local left, right = p.left, p.right
+  local pal = PU.Pal()
+  local colors = PU.SegColors()
+  local off = math.max(0, math.min(math.max(0, #list - PU.SK_ROWS), s.skOff or 0))
+  local sel
+  for _, e in ipairs(list) do if e.key == s.skSel then sel = e end end
+  sel = sel or list[1]
+  for i, r in ipairs(left.rows) do
+    local e = list[off + i]
+    if e then
+      r.key = e.key
+      pcall(r.ic.SetTexture, r.ic, e.icon or ns.FALLBACK_ICON)
+      r.name:SetText(tostring(e.name))
+      PU.SetBar(r.bar, e.max > 0 and e.cur / e.max or 0, colors[e.cat])
+      r.rank:SetText(e.max > 0 and (e.cur .. " / " .. e.max) or tostring(e.cur))
+      r.day:SetText("+" .. e.today) r.week:SetText("+" .. e.w7)
+      TextColor(r.day, e.today > 0 and pal.good or pal.sub) TextColor(r.week, e.w7 > 0 and pal.good or pal.sub)
+      Paint(r.hl, (e == sel) and { 1, 0.82, 0, 0.12 } or { 0, 0, 0, 0 })
+      r:Show()
+    else r.key = nil r:Hide() end
+  end
+  local rest = #list - off - PU.SK_ROWS
+  left.more:SetText(rest > 0 and string.format(Tr["+ %d autres · molette pour défiler"], rest) or (#list > 0 and Tr["clic sur une compétence pour le détail"] or ""))
+  if not sel then
+    right.head:SetText("") right.big:SetText("") right.sub:Hide()
+    for _, t in ipairs(right.cols) do t:Hide() end
+    for _, kv in ipairs(right.kv) do kv.k:SetText("") kv.v:SetText("") end
+    right.empty:SetText(Tr["Ouvre le panneau (/drop) pour lire tes compétences."]) right.empty:Show()
+    return
+  end
+  right.empty:Hide() right.sub:Show()
+  right.head:SetText(tostring(sel.name))
+  right.big:SetText(sel.max > 0 and (sel.cur .. "  / " .. sel.max) or tostring(sel.cur))
+  -- courbe : rang reconstitué jour par jour (rang actuel moins les gains des jours suivants)
+  local ranks, after = {}, 0
+  for i = #sel.days, 1, -1 do ranks[i] = sel.cur - after after = after + (sel.days[i] or 0) end
+  local lo, hi = math.huge, 0
+  for _, v in ipairs(ranks) do lo = math.min(lo, v) hi = math.max(hi, v) end
+  if lo == hi then lo = math.max(0, hi - 10) end
+  for i, t in ipairs(right.cols) do
+    local v = ranks[i] or sel.cur
+    t:SetHeight(math.max(2, math.floor(4 + 56 * (v - lo) / math.max(1, hi - lo) + 0.5)))
+    Paint(t, (sel.days[i] or 0) > 0 and colors[sel.cat] or { colors[sel.cat][1], colors[sel.cat][2], colors[sel.cat][3], 0.45 })
+    t:Show()
+  end
+  local L = PU.SkillDetail(sel)
+  -- lignes empilées : une adresse de maître sur deux lignes pousse la suite, rien ne déborde du cadre
+  local y = 136
+  for i, kv in ipairs(right.kv) do
+    local line = L[i]
+    kv.k:SetText(line and line[1] or "") kv.v:SetText(line and line[2] or "")
+    kv.k:ClearAllPoints() kv.k:SetPoint("TOPLEFT", right, "TOPLEFT", 10, -y)
+    kv.v:ClearAllPoints() kv.v:SetPoint("TOPLEFT", right, "TOPLEFT", 10, -(y + 11))
+    local vh = (line and kv.v.GetStringHeight and N(kv.v:GetStringHeight())) or 10
+    y = y + 11 + math.max(10, vh) + 5
+    local fits = line and y <= PU.CONTENT_H - 4
+    if fits then kv.k:Show() kv.v:Show() else kv.k:Hide() kv.v:Hide() end
+  end
+end
+
+PU.REFRESHERS = { now = "RefreshFarmNow", skills = "RefreshSkills", overview = "RefreshOverview", charts = "RefreshCharts", ach = "RefreshAch", spots = "RefreshSpots", weekly = "RefreshWeekly", efficiency = "RefreshEfficiency", chars = "RefreshChars", hunt = "RefreshHunt", collection = "RefreshCollection" }
 function PU.Refresh()
   local f = PU.frame
   if not (f and f:IsShown()) then return false end
@@ -3761,7 +4601,9 @@ function PU.SetTab(id, quiet)
   s.tab = id
   s.recapOpen = nil   -- 3.8.1 : un clic sur un onglet ferme le récap de session
   if id == "weekly" or id == "charts" then s.chartsSub = id end
-  if id == "spots" or id == "efficiency" then s.farmSub = id end
+  if id == "overview" or id == "weekly" or id == "charts" then s.overSub = id end
+  if id == "now" or id == "spots" or id == "efficiency" then s.farmSub = id end
+  if id == "collection" or id == "hunt" then s.collSub = id end
   if not quiet then PU.Refresh() end
   return id
 end
@@ -4099,6 +4941,8 @@ do
   PU.PrintSummary = printSummary
   local TAB = { vue = "overview", overview = "overview", graphiques = "charts", graphes = "charts", charts = "charts", graphs = "charts",
     succes = "ach", ["succès"] = "ach", achievements = "ach", spots = "spots", farm = "spots",
+    maintenant = "now", now = "now", competences = "skills", ["compétences"] = "skills", skills = "skills", apercu = "overview", ["aperçu"] = "overview",
+    collection = "collection", carnet = "collection", chasse = "hunt", hunt = "hunt",
     semaine = "weekly", hebdo = "weekly", week = "weekly", weekly = "weekly" }
   local function cmd(rest)
     local low = (rest or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
@@ -4107,6 +4951,9 @@ do
       return
     end
     if TAB[low] then return PU.Open(TAB[low]) end
+    -- 3.13.0 : /drop progression cadre jeu|dropamine (habillage ; pris en compte au /reload)
+    -- 3.13.0 : un seul cadre (celui du jeu) : l'ancienne commande /drop progression cadre … ouvre simplement la fenêtre
+    if low:match("^cadre") or low:match("^frame") then return PU.Open() end
     return PU.Toggle()
   end
   ns.SlashExt.progression = cmd

@@ -15,10 +15,18 @@ local MEDIA = "Interface\\AddOns\\Dropamine\\Media\\"
 -- 3.3.13 : deux thèmes seulement — « flare » (fond + bord arrondi FlareUI,
 -- défaut) et « leger » (sans cadre, sobre, cases flottantes). Alias : cadre → flare,
 -- sans → leger.
-Th.MODES = { flare = true, flare2 = true, leger = true, classic = true }   -- 3.3.17 : + « classic » (textures Blizzard)
-Th.ALIASES = { cadre = "flare", frame = "flare", avec = "flare", flareui = "flare2", moderne = "flare", modern = "flare", ancien = "flare", old = "flare", oldschool = "flare", new = "flare2", nouveau = "flare2", flareui2 = "flare2",
-  sans = "leger", ["léger"] = "leger", light = "leger", sanscadre = "leger", ["sans-cadre"] = "leger", none = "leger", aucun = "leger",
-  classique = "classic", blizzard = "classic", natif = "classic", native = "classic", default = "classic", ["défaut"] = "classic" }
+-- 3.13.0 : trois thèmes, un par intention :
+--   « dropamine » (défaut, rien d'enregistré) : le beau cadre, bord bronze épais et trait à losange (ancien « FlareUI ») ;
+--   « neutre » (enregistré « flare ») : fond sombre et bord fin (ancien « Moderne ») ;
+--   « leger » : discret, cases flottantes sans cadre.
+-- Le thème Classique (textures Blizzard) est retiré : qui l'avait passe sur Neutre. Les anciens noms restent acceptés.
+Th.MODES = { flare = true, leger = true }
+Th.ALIASES = { dropamine = "dropamine", perso = "dropamine", flareui = "dropamine", flare2 = "dropamine", flareui2 = "dropamine", new = "dropamine", nouveau = "dropamine", bronze = "dropamine",
+  neutre = "neutre", flare = "neutre", moderne = "neutre", modern = "neutre", cadre = "neutre", frame = "neutre", avec = "neutre", ancien = "neutre", old = "neutre", oldschool = "neutre",
+  classic = "neutre", classique = "neutre", jeu = "neutre", game = "neutre", blizzard = "neutre", natif = "neutre", native = "neutre",
+  leger = "leger", sans = "leger", ["léger"] = "leger", light = "leger", discret = "leger", sanscadre = "leger", ["sans-cadre"] = "leger", none = "leger", aucun = "leger" }
+-- choix → valeur enregistrée (nil = défaut Dropamine)
+Th.STORE = { dropamine = false, neutre = "flare", leger = "leger" }
 Th.BRONZE = ns.STYLE.BORDER                              -- #A67D45, jeton unique (STYLE.md)
 Th.BRONZE_DARK = { 40 / 255, 31 / 255, 20 / 255, 0.55 } -- liseré intérieur (petit ombrage)
 Th.SHADOW_TEX = MEDIA .. "SoftShadow"   -- 64 px : rectangle arrondi flouté (zone pleine 12..52)
@@ -32,12 +40,17 @@ Th.BADGE_OVERLAP = -1                   -- 3.3.17 : plaquette posée 1 px AU-DES
 
 function Th.Mode()
   local m = DB().theme
-  if m == "classic" then return "classic" end
+  if m == "flare2" then DB().theme = nil m = nil end            -- 3.13.0 : FlareUI → Dropamine (le défaut)
+  if m == "classic" then DB().theme = "flare" m = "flare" end   -- 3.13.0 : Classique retiré → Neutre
   return (m == "leger" or m == "sans") and "leger" or "flare"
 end
--- Variante « FlareUI (New) » : le cadre du chat FlareUI (bord épais + trait à nœuds). Th.Mode() reste « flare ».
-function Th.IsNew() return DB().theme == "flare2" end
-function Th.Choice() local m = DB().theme if m == "flare2" then return "flare2" end return Th.Mode() end
+-- Cadre épais bronze à losange (ancien « FlareUI (New) ») : c'est le thème Dropamine. Th.Mode() reste « flare ».
+function Th.IsNew() return Th.Mode() == "flare" and DB().theme ~= "flare" end
+-- choix affiché : dropamine | neutre | leger
+function Th.Choice()
+  if Th.Mode() == "leger" then return "leger" end
+  return Th.IsNew() and "dropamine" or "neutre"
+end
 
 function Th.IsSans() return Th.Mode() == "leger" end
 
@@ -446,11 +459,14 @@ end
 
 function Th.Set(m)
   m = type(m) == "string" and m:lower() or ""
-  m = Th.ALIASES[m] or m
-  if not Th.MODES[m] then return nil end
-  DB().theme = (m ~= "flare") and m or nil
-  if ns.Skin and ns.Skin.RefreshArt then pcall(ns.Skin.RefreshArt) end       -- défaut (flare) : rien d'enregistré
+  local choice = Th.ALIASES[m]
+  if not choice then return nil end
+  local store = Th.STORE[choice] or nil   -- défaut (Dropamine) : rien d'enregistré
+  m = (choice == "leger") and "leger" or "flare"
+  DB().theme = store
+  if ns.Skin and ns.Skin.RefreshArt then pcall(ns.Skin.RefreshArt) end
   if Th.OnModeChanged then pcall(Th.OnModeChanged, m) end
+  DB().theme = store   -- ClassicTheme réécrit la valeur dans son crochet : on remet la bonne
   Th.ApplyPanel()
   Th.RestyleToasts()
   if ns.Panel and ns.Panel.ApplyOpacity then pcall(ns.Panel.ApplyOpacity) end
@@ -793,16 +809,18 @@ ns.SlashExt = ns.SlashExt or {}
 local function Say(s) print(Tr["|cffffd100Dropamine|r "] .. s) end
 ns.SlashExt.theme = function(rest)
   local a = (rest or ""):match("^%s*(%S*)") or ""
-  if a == "" then Say(Tr["thème : "] .. Th.Choice() .. Tr[" (/drop theme flare|flare2|leger|classic)"]) return end
+  if a == "" then Say(Tr["thème : "] .. Th.Choice() .. " (/drop theme dropamine|neutre|leger)") return end
+  local before = Th.Choice()
   local m = Th.Set(a)
-  local DESC = { leger = Tr[" (léger : cases flottantes, sans fond ni bord)"], classic = Tr[" (classique : cadres et barres de l'interface Blizzard)"], flare = Tr[" (Moderne : fond sombre + bord arrondi)"], flare2 = Tr[" (FlareUI : comme le cadre du chat FlareUI)"] }
-  if m then Say(Tr["thème : "] .. m .. (DESC[m] or ""))
-  else Say(Tr["usage : /drop theme flare|flare2|leger|classic (alias : old, new, sans, classique)"]) end
+  if m and Th.Choice() ~= before and ns.AskReload then ns.AskReload() end
+  local DESC = { leger = Tr[" (léger : cases flottantes, sans fond ni bord)"], neutre = Tr[" (neutre : fond sombre, bord fin)"], dropamine = Tr[" (Dropamine : bord bronze à losange)"] }
+  if m then Say(Tr["thème : "] .. Th.Choice() .. (DESC[Th.Choice()] or ""))
+  else Say("usage : /drop theme dropamine|neutre|leger") end
 end
 ns.SlashExt["thème"] = ns.SlashExt.theme
 
 ns.HelpExt = ns.HelpExt or {}
-ns.HelpExt[#ns.HelpExt + 1] = ("/drop theme flareui|moderne|leger|classic — panneau FlareUI (cadre du chat), Moderne, léger (cases flottantes) ou classique (textures Blizzard)")
+ns.HelpExt[#ns.HelpExt + 1] = ("/drop theme dropamine|neutre|leger — cases et toasts : bord bronze à losange, fond sombre à bord fin, ou discret (cases flottantes)")
 
 ns.DebugExt = ns.DebugExt or {}
 ns.DebugExt[#ns.DebugExt + 1] = (function()

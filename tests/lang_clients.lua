@@ -76,4 +76,15 @@ do
   local e = ns.LookupCatalog("Kochkunst")
   assert(e and e.id == "cooking", "Kochkunst sans ligne → Cuisine")
 end
+-- deux lignes pour la même compétence (Forever : combat farouche 134 à 1, 3014 à 179) : la plus haute
+do
+  local ns = Boot("enUS")
+  local src = io.open("Core.lua"):read("*a")
+  local s0 = src:find("function ns%.PickLine%(")
+  local e0 = src:find("\nend\n", s0)
+  assert(load("local ns = ...\n" .. src:sub(s0, e0 + 4)))(ns)
+  local byLine = { [134] = { name = "Feral Combat", rank = 1 }, [3014] = { name = "Feral Combat", rank = 179 } }
+  assert(ns.PickLine(byLine, ns.SKILL_LINES.feral).rank == 179, "combat farouche : la ligne à 179")
+  assert(ns.PickLine({ [3014] = { rank = 5 } }, { 134, 3014 }).rank == 5, "une seule ligne lue")
+end
 print("OK : 7 langues de client, compétences par ligne, changement de langue sans case figée")

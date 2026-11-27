@@ -2,6 +2,26 @@
 
 Version française du journal (le journal de référence est CHANGELOG.md, en anglais). Les versions plus anciennes ne sont qu'en anglais.
 
+## 3.13.0
+
+### Nouveautés
+- Chasse partagée avec le groupe : les addons Dropamine d'un même groupe s'échangent les objets recherchés (numéros seulement, rien hors du groupe). Au jet de groupe, une ligne dans le chat dit qui chasse l'objet, et l'infobulle de l'objet aussi. Réglages > Chasse > « Partager ma chasse avec mon groupe ».
+- Semaine JcJ : Dropamine compte tes victoires honorables et l'honneur estimé de chacune (lu dans le message du jeu, dans toutes les langues), remis à zéro à la remise hebdomadaire. `/drop hiscores` a un nouveau groupe « JcJ » qui les envoie, pour le classement « Honneur par victoire » de dropamine.app (élevé = des adversaires à ta taille ou plus forts).
+- Onglet Chasse, ajout plus simple : une seule case de recherche en bas ; les résultats s'affichent pendant la frappe, un clic ajoute l'objet et le range sur sa case (Entrée ajoute le premier résultat ou un lien collé). Toute la liste défile à la molette (fini « 7 résultats, précise ta recherche »), aussi quand tu cliques une case. Maj+clic sur un objet n'importe où (sacs, chat, butin, AtlasLoot, le Journal) pendant que l'onglet Chasse est ouvert l'ajoute directement. « Dernier butin », « Favoris du Journal » et « Depuis dropamine.app » sont dans « Importer… » (colle dans la case le code « Copier pour le jeu » du site, avec ou sans /drop, puis Entrée) ; la case « % » et le bouton Ajouter disparaissent (taux lus dans le Journal).
+- Fenêtre Progression refaite dans le cadre du jeu (celui des fenêtres Blizzard), quel que soit le thème : 6 onglets avec un en-tête de page (Aperçu, Compétences, Farm, Collection, Succès, Personnages).
+- Onglet Farm en trois vues : Maintenant (ta session, « Ce qu'il te manque », tes objectifs de farm), Spots (les meilleures zones) et Efficacité.
+- Fenêtre Dropamine.app (`/drop app`) : un seul endroit pour envoyer ta ligne au site et recevoir ses codes (liste de chasse, sorties de groupe), anciens codes compris.
+- Visite guidée refaite (`/drop setup`) : cadre du jeu, 8 pages, points de progression cliquables, une page « Récompenses » qui regroupe gains, niveau et paliers, et un récapitulatif final. La page « Les cases » montre un vrai aperçu de chaque thème : le cadre du panneau et des cases habillées comme en jeu.
+
+### Changements
+- Trois thèmes, un par intention : `/drop theme dropamine` (défaut : bord bronze épais à losange), `neutre` (fond sombre, bord fin) et `leger` (cases flottantes, sans cadre). Le thème ne change plus que le panneau des cases et les toasts. FlareUI devient Dropamine, Moderne et Classique deviennent Neutre ; les anciens noms restent acceptés.
+- Fenêtre Progression : les points par heure ne sont plus affichés (le suivi continue).
+- À propos, la visite et les fenêtres Dropamine.app, Options et Progression passent devant le Journal des donjons au lieu de rester dessous (un clic les remet devant).
+
+### Corrections
+- Export `/drop hiscores` des druides : le combat farouche envoyé est le bon rang (Forever le donne sur deux lignes, la première pouvait être à 1), et l'export lit les compétences même si le panneau n'a jamais été ouvert.
+- Les noms des objets propres à Forever arrivent sur dropamine.app dans la langue de ton client.
+
 ## 3.12.1
 
 ### Corrections

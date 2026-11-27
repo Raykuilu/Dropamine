@@ -23,6 +23,8 @@ run "$LUA" tests/hunt_link_format.lua
 run "$LUA" tests/locales.lua
 run "$LUA" tests/lang_clients.lua
 run "$LUA" tests/recipe_locale.lua
+run "$LUA" tests/pvp_week.lua
+run "$LUA" tests/group_hunt.lua
 run "$LUA" tests/needle.lua
 run "$LUA" tests/hiscores.lua
 run "$LUA" tests/collection_not_mine.lua
@@ -30,6 +32,10 @@ run "$LUA" tests/hunt_attempts_here.lua
 run "$LUA" tests/hunt_import.lua
 run "$LUA" tests/hunt_outing.lua
 run "$LUA" tests/hunt_off.lua
+run "$LUA" tests/progress_native.lua
+run "$LUA" tests/farm_data.lua
+run "$LUA" tests/app_bridge.lua
+run "$LUA" tests/setup_tour.lua
 for t in hunt_autotile hunt_loot_kc hunt_rare_alert hunt_missing progress_run collection_home recap_table; do
   run "$LUA" tests/$t.lua >/dev/null
 done

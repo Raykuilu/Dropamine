@@ -419,11 +419,12 @@ function H.Add(text, rate, opts)
     it.dungeon, it.boss = src.dungeon, src.boss   -- plusieurs sources : affichage seul, tentatives par butin
   end
   s.items[#s.items + 1] = it
+  if ns.GroupHunt and ns.GroupHunt.Send then pcall(ns.GroupHunt.Send) end   -- 3.13.0 : le groupe voit la nouvelle liste
   return it
 end
 function H.Remove(i)
   local s = Store()
-  if s and s.items[i] then table.remove(s.items, i) return true end
+  if s and s.items[i] then table.remove(s.items, i) if ns.GroupHunt and ns.GroupHunt.Send then pcall(ns.GroupHunt.Send) end return true end
   return false
 end
 function H.ResetOne(i)
@@ -878,6 +879,7 @@ function H.TestRoll()
     f:SetSize(260, 56)
     f:SetPoint("CENTER", UIParent, "CENTER", 0, 160)
     f:SetFrameStrata("DIALOG")
+    f:SetToplevel(true) f:Raise() f:HookScript("OnShow", function(self) self:Raise() end)   -- 3.13.0 : devant le Dungeon Journal
     if f.SetBackdrop then
       pcall(f.SetBackdrop, f, { bgFile = "Interface\\Tooltips\\UI-Tooltip-Background", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         tile = true, tileSize = 16, edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 } })

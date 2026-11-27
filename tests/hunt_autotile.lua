@@ -32,3 +32,12 @@ for _, it in ipairs(store.hunt.items) do if it.id == 7754 then saved = it.tile e
 assert(saved == "feet", "la case est enregistrée avec l'objet")
 assert(H.ByTile().weapon and H.ByTile().weapon.id == 9240, "le maillet garde sa case")
 print("OK : sans le Journal des donjons, l'objet garde sa case")
+-- 3.12.1 : recherche du bas (tous emplacements, sans limite : la liste défile)
+_G.ForeverDungeonJournal_NS = { DB = { ["Dungeon"] = { level = "20-30", bosses = {
+  { name = "Reth", loot = { { 1, "Rugged Spaulders", "Shoulder, Leather", 3 }, { 2, "Shoulder B", "Shoulder, Plate", 4 } } },
+  { name = "Lok", loot = { { 3, "Dog Whistle", "Trinket", 3 }, { 4, "Trink2", "Trinket", 3 }, { 5, "Trink3", "Trinket", 4 } } } } } } }
+local all, total = H.Candidates(nil, "trink", false)
+assert(total == 2 and #all == 2, "recherche sans case ni limite : " .. tostring(total))
+local every = select(2, H.Candidates(nil, "", false))
+assert(every == 5, "sans texte : tout le Journal (" .. tostring(every) .. ")")
+print("OK : recherche de la barre du bas, tous emplacements, sans limite")

@@ -141,7 +141,8 @@ function Sk.ArtInfo()
   end
   return Sk._artInfo or nil
 end
-local function PlaceLine(owner, info)
+-- capMax (facultatif) : largeur maximale de chaque bout, pour un cadre étroit (aperçu de la visite)
+local function PlaceLine(owner, info, capMax)
   local st = {}
   for _, part in ipairs({ "L", "M", "R" }) do
     local t = owner:CreateTexture(nil, "BACKGROUND", nil, -1)
@@ -158,6 +159,7 @@ local function PlaceLine(owner, info)
   local rightOut = reach + Sk.ART_TITLE_RIGHT - Sk.ART_KNOB_IN - Sk.ART_TITLE_LEFT
   local span = r - l
   local cap = math.floor(info.width * Sk.ART_CAP + 0.5)
+  if capMax and cap > capMax then cap = math.max(1, math.floor(capMax)) end
   local capSpan = span * cap / info.width
   local mid = l + span / 2
   for _, t in pairs(st) do t:SetTexture(info.file) t:ClearAllPoints() t:SetHeight(height) end
@@ -198,6 +200,50 @@ function Sk.RefreshArt()
       Sk.UpdateArt(h)
     end
   end
+end
+
+-- 3.13.0 : aperçu du cadre d'un thème (visite, page « Les cases »), INDÉPENDANT du thème actif.
+-- mode « dropamine » : bord épais + trait à losange ; « neutre » : bord fin ; autre (« leger ») : rien.
+-- w = largeur prévue de l'aperçu (sert à garder les bouts du trait dans le cadre).
+Sk.PREVIEW_BG_A = 0.92
+function Sk.PreviewHost(parent, mode, w)
+  if type(parent) ~= "table" or not parent.CreateTexture then return nil end
+  if mode ~= "dropamine" and mode ~= "neutre" then return nil end
+  local h
+  if not Sk.forceTextures and _G.BackdropTemplateMixin then
+    local ok, fr = pcall(CreateFrame, "Frame", nil, parent, "BackdropTemplate")
+    if ok and fr then h = fr end
+    if h and not h.SetBackdrop and _G.Mixin then pcall(_G.Mixin, h, _G.BackdropTemplateMixin) end
+    if h and not h.SetBackdrop then h = nil end
+  end
+  if not h then h = Sk.TexHost(parent) end
+  if not h then return nil end
+  if h.EnableMouse then h:EnableMouse(false) end
+  local thick = mode == "dropamine"
+  pcall(h.SetBackdrop, h, { bgFile = Sk.BG_FILE, edgeFile = thick and Sk.EDGE_FILE_THICK or Sk.EDGE_FILE, tile = false, tileSize = 0,
+    edgeSize = Sk.EDGE_SIZE, insets = { left = Sk.INSET, right = Sk.INSET, top = Sk.INSET, bottom = Sk.INSET } })
+  pcall(h.SetBackdropColor, h, 1, 1, 1, Sk.PREVIEW_BG_A)
+  local b = Sk.BORDER
+  pcall(h.SetBackdropBorderColor, h, b[1], b[2], b[3], 1)
+  h._previewMode = mode
+  h._previewEdge = thick and Sk.EDGE_FILE_THICK or Sk.EDGE_FILE
+  -- trait à losange (même pose que le panneau, sans passer par Th.IsNew)
+  local info = thick and Sk.ArtInfo()
+  if info then
+    local capMax = w and math.max(4, math.floor((w - 2 * Sk.ART_INSET) / 2) - 2) or nil
+    h._art = {}
+    for i, side in ipairs({ "TOP", "BOTTOM" }) do
+      local o = CreateFrame("Frame", nil, h)
+      local sgn = (side == "TOP") and -1 or 1
+      o:SetPoint(side .. "LEFT", h, side .. "LEFT", Sk.ART_INSET, sgn * Sk.ART_EDGE_Y)
+      o:SetPoint(side .. "RIGHT", h, side .. "RIGHT", -Sk.ART_INSET, sgn * Sk.ART_EDGE_Y)
+      o:SetHeight(1)
+      if o.EnableMouse then o:EnableMouse(false) end
+      PlaceLine(o, info, capMax)
+      h._art[i] = o
+    end
+  end
+  return h
 end
 
 -- Pose fond + bord ; a = alpha du fond. Renvoie le cadre.

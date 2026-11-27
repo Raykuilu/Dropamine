@@ -66,6 +66,23 @@ function ns.InCombat()
   return ok and v == true
 end
 ns._afterCombat = {}
+-- 3.13.0 : réglage qui ne s'applique qu'après un rechargement (thème, style de la fenêtre Progression) :
+-- on propose de recharger, on ne recharge jamais tout seul. Plus tard = au prochain rechargement / connexion.
+function ns.AskReload()
+  if type(_G.StaticPopupDialogs) ~= "table" or type(_G.StaticPopup_Show) ~= "function" or type(_G.ReloadUI) ~= "function" then return false end
+  local L = ns.L or {}
+  if not _G.StaticPopupDialogs.DROPAMINE_RELOAD then
+    _G.StaticPopupDialogs.DROPAMINE_RELOAD = {
+      text = L["Ce changement s'applique après un rechargement de l'interface. Recharger maintenant ?"] or "Reload now?",
+      button1 = L["Recharger"] or "Reload", button2 = L["Plus tard"] or "Later",
+      OnAccept = function() _G.ReloadUI() end,
+      timeout = 0, whileDead = 1, hideOnEscape = 1, preferredIndex = 3,
+    }
+  end
+  local function show() pcall(_G.StaticPopup_Show, "DROPAMINE_RELOAD") end
+  if ns.AfterCombat then ns.AfterCombat("ask-reload", show) else show() end
+  return true
+end
 function ns.AfterCombat(key, fn)
   if not ns.InCombat() then fn() return true end
   ns._afterCombat[key] = fn
@@ -1358,6 +1375,16 @@ function ns.ResolveSkillIndexByName(name)
   return nil
 end
 
+-- 3.13.0 : parmi les lignes d'une même compétence lues en jeu, celle au rang le plus haut
+function ns.PickLine(byLine, lines)
+  local best
+  for _, ln in ipairs(lines or {}) do
+    local s = byLine[ln]
+    if s and (not best or (ns.N(s.rank) or 0) > (ns.N(best.rank) or 0)) then best = s end
+  end
+  return best
+end
+
 function ns.Collect()
   local live, source, reports = ns.CollectLiveSkills()
   ns.lastSource, ns.lastReports = source, reports
@@ -1396,10 +1423,9 @@ function ns.Collect()
       tiles[#tiles + 1] = t
     else
       local liveS
-      for _, ln in ipairs((ns.SKILL_LINES and ns.SKILL_LINES[e.id]) or (e.skillLine and { e.skillLine }) or {}) do
-        liveS = byLine[ln]
-        if liveS then break end
-      end
+      -- 3.13.0 : plusieurs lignes pour la même compétence (Forever : combat farouche 134 à 1 et 3014 à 179,
+      -- dépeçage, herboristerie) : la ligne au rang le plus haut, pas la première trouvée
+      liveS = ns.PickLine(byLine, (ns.SKILL_LINES and ns.SKILL_LINES[e.id]) or (e.skillLine and { e.skillLine }) or {})
       liveS = liveS or byName[ns.Fold(e.name)]
       if not liveS and e.aliases then
         for j = 1, #e.aliases do
@@ -1814,13 +1840,13 @@ local function ClassifySkill(name, id, kind, header, rank, maxv)
   if (ns.IsLanguageOrArmorJunk and ns.IsLanguageOrArmorJunk(name, header, maxv)) then return nil end
   if kind == "stat" or kind == "level" then return nil end
   if kind == "profession" or kind == "secondary" then
-    return "profession", SheetRec(name, rank, maxv, id or (e and e.id), kind)
+    return "profession", SheetRec(name, rank, maxv, (e and e.id) or id, kind)
   end
   if kind == "defense" or (e and e.kind == "defense") then
-    return "defense", SheetRec(name, rank, maxv, id or (e and e.id), "defense")
+    return "defense", SheetRec(name, rank, maxv, (e and e.id) or id, "defense")
   end
   if ns.IsWeaponSkill and ns.IsWeaponSkill(id or (e and e.id), kind, name) then
-    return "weapon", SheetRec(name, rank, maxv, id or (e and e.id), kind or (e and e.kind))
+    return "weapon", SheetRec(name, rank, maxv, (e and e.id) or id, kind or (e and e.kind))
   end
   return nil
 end
@@ -1867,9 +1893,10 @@ function ns.SkillsForCharSheet(snap)
         local s = live[i]
         if s and not s.header then
           local k, rec = ClassifySkill(s.name, s.skillID or s.id, s.kind, s.headerName, s.rank, s.max)
-          if k == "profession" and rec and not seenP[rec.name] then
+          -- même compétence sur plusieurs lignes : toutes ajoutées, dedupe() garde la plus haute
+          if k == "profession" and rec then
             add(profs, rec) seenP[rec.name] = true
-          elseif k == "weapon" and rec and not seenW[rec.name] then
+          elseif k == "weapon" and rec then
             add(weapons, rec) seenW[rec.name] = true
           elseif k == "defense" and rec and not defense then
             defense = rec
@@ -1878,7 +1905,20 @@ function ns.SkillsForCharSheet(snap)
       end
     end
   end
-  return profs, weapons, defense
+  -- 3.13.0 : une seule entrée par compétence, la plus haute (Forever : combat farouche lu sur 2 lignes, 134 à 1 et 3014 à 184 ;
+  -- l'export prenait la première vue)
+  local function dedupe(list)
+    local out, at = {}, {}
+    for i = 1, #list do
+      local r = list[i]
+      local k = tostring(r.id or (ns.Fold and ns.Fold(r.name or "")) or r.name)
+      local j = at[k]
+      if not j then out[#out + 1] = r at[k] = #out
+      elseif (ns.N(r.rank) or 0) > (ns.N(out[j].rank) or 0) then out[j] = r end
+    end
+    return out
+  end
+  return dedupe(profs), dedupe(weapons), defense
 end
 
 function ns.CaptureCharSheet(snap)
@@ -3867,6 +3907,9 @@ end
 local function slashHandler(msg)
   -- 3.11.1 : un seul geste depuis dropamine.app : « /drop <code> » reconnaît le code (liste d'objets, sortie)
   local raw = tostring(msg or "")
+  if (raw:find("DROP:SYNC1:", 1, true) or raw:find("DROP:CH1:", 1, true) or raw:find("DROP:RUN1:", 1, true)) and ns.Hiscores and ns.Hiscores.ApplyFromChat then
+    ns.Hiscores.ApplyFromChat(raw) return   -- 3.13.0 : guichet unique (chasse + sorties en un code)
+  end
   if raw:find("DROP%-CH1:") and ns.SlashExt.chasse then ns.SlashExt.chasse("import " .. raw) return end
   if raw:find("DROP%-RUN1:") and ns.SlashExt.sortie then ns.SlashExt.sortie(raw) return end
   msg = ns.NormalizeSlash(msg)

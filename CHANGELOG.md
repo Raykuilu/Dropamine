@@ -1,5 +1,25 @@
 # Changelog
 
+## 3.13.0
+
+### New
+- Hunt shared with your group: Dropamine addons in the same group swap their wanted items (item numbers only, nothing outside the group). At group rolls a chat line says who hunts the item, and the item tooltip shows it too. Settings > Hunt > "Share my hunt with my group".
+- PvP week: Dropamine now counts your honorable kills and the estimated honor of each one (read from the game's message, in every language), reset at the weekly reset. `/drop hiscores` has a new "PvP" group that sends them, for the "Honor per kill" ranking on dropamine.app (high = opponents your size or stronger).
+- Hunt tab, easier adding: one search box at the bottom; results show while you type, a click adds the item and puts it on its slot (Enter adds the first result or a pasted link). The whole list scrolls with the mouse wheel (no more "7 results, refine your search"), also when you click a slot. Shift+click an item anywhere (bags, chat, loot, AtlasLoot, the Journal) while the Hunt tab is open adds it directly. "Last loot", "Journal favourites" and "From dropamine.app" are under "Import…" (paste the site's "Copy for the game" code in the box, with or without /drop, then Enter); the "%" box and the Add button are gone (drop rates come from the Journal).
+- Progression window rebuilt in the game's own frame (the Blizzard window look), whatever the theme: 6 tabs with a page header (Overview, Skills, Farm, Collection, Achievements, Characters).
+- Farm tab in three views: Now (your session, "What you're missing", your farm goals), Spots (the best zones) and Efficiency.
+- Dropamine.app window (`/drop app`): one place to send your line to the site and to receive its codes (hunt list, group outings), old codes included.
+- Guided tour rebuilt (`/drop setup`): game frame, 8 pages, clickable progress dots, a "Rewards" page that groups gains, level and milestones, and a final recap. The "Tiles" page shows a real preview of each theme: the panel frame and tiles styled as in game.
+
+### Changes
+- Three themes, one per intent: `/drop theme dropamine` (default: thick bronze border with a diamond line), `neutre` (dark background, thin border) and `leger` (floating tiles, no frame). The theme now only changes the tile panel and the toasts. FlareUI becomes Dropamine, Modern and Classic become Neutral; the old names are still accepted.
+- Progression window: points per hour are no longer shown (tracking goes on).
+- About, the tour and the Dropamine.app, Options and Progression windows now come in front of the Dungeon Journal instead of staying under it (a click brings them back to the front).
+
+### Fixes
+- `/drop hiscores` export for druids: Feral Combat is sent at the right rank (Forever gives it on two lines and the first one could be 1), and the export reads skills even if the panel was never opened.
+- Forever-only item names reach dropamine.app in your client's language.
+
 ## 3.12.1
 
 ### Fixes

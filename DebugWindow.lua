@@ -20,6 +20,20 @@ local function NativeFrame()
   if not (ok and f) then return nil end
   f:SetSize(DW.W, DW.H)
   if type(f.SetTitle) == "function" then pcall(f.SetTitle, f, "Dropamine") end
+  DW.portraitIcon = DW.DecoratePortrait(f)
+  local hint = f:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+  hint:SetPoint("TOPLEFT", f, "TOPLEFT", 70, -32)
+  hint:SetPoint("RIGHT", f, "RIGHT", -16, 0)
+  if hint.SetJustifyH then hint:SetJustifyH("LEFT") end
+  DW.title = hint
+  local okI, inset = pcall(CreateFrame, "Frame", nil, f, "InsetFrameTemplate")
+  DW.inset = okI and inset or nil
+  DW.native = true
+  return f
+end
+-- 3.13.0 : portrait d'un cadre du jeu (PortraitFrameTemplate) : disque noir, goutte Dropamine au centre.
+-- Partagé avec la fenêtre Progression (style « jeu »).
+function DW.DecoratePortrait(f)
   local portrait = (type(f.GetPortrait) == "function" and select(2, pcall(f.GetPortrait, f))) or f.portrait
     or (f.PortraitContainer and f.PortraitContainer.portrait)
   if portrait and portrait.SetTexture then
@@ -38,17 +52,9 @@ local function NativeFrame()
     icon:SetSize(pw * 0.62, pw * 0.62)
     icon:SetPoint("CENTER", portrait, "CENTER", 0, 0)
     pcall(icon.SetTexture, icon, DW.ICON)
-    DW.portraitIcon = icon
+    return icon
   end
-  local hint = f:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-  hint:SetPoint("TOPLEFT", f, "TOPLEFT", 70, -32)
-  hint:SetPoint("RIGHT", f, "RIGHT", -16, 0)
-  if hint.SetJustifyH then hint:SetJustifyH("LEFT") end
-  DW.title = hint
-  local okI, inset = pcall(CreateFrame, "Frame", nil, f, "InsetFrameTemplate")
-  DW.inset = okI and inset or nil
-  DW.native = true
-  return f
+  return nil
 end
 function DW.Build()
   if DW.frame then return DW.frame end
