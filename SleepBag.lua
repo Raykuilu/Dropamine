@@ -22,6 +22,14 @@ local function Call(fn, ...)
   return a, b, c
 end
 local function now() return Call(_G.GetTime) or 0 end
+-- fenêtre d'invitation : heure réelle (time()), gardée dans DropamineDB, donc elle survit à un /reload
+local function epoch() return Call(_G.time) or 0 end
+function SB.OpenWindow() if ns.db then ns.db.sleepBagWin = epoch() end SB.state.until_ = now() + SB.WINDOW end
+function SB.IsOpen()
+  if now() <= SB.state.until_ then return true end
+  local at = ns.db and ns.db.sleepBagWin
+  return type(at) == "number" and epoch() - at >= 0 and epoch() - at < SB.WINDOW
+end
 local function lower(s) return (string.lower(tostring(s or ""))) end
 
 -- noms de l'objet dans les langues des clients (recherche dans les sacs : l'identifiant est ensuite gardé)
@@ -145,11 +153,12 @@ function SB.Announce()
     if not SB.Ready(id) then return false, "pas posé" end
   end
   local t = now()
-  if t - st.lastAnnounce < SB.ANNOUNCE_GAP then st.until_ = t + SB.WINDOW return false, "déjà annoncé" end
+  if t - st.lastAnnounce < SB.ANNOUNCE_GAP then SB.OpenWindow() return false, "déjà annoncé" end
   if type(_G.SendChatMessage) ~= "function" then return false, "chat" end
   local ok = pcall(_G.SendChatMessage, SB.Text(Call(_G.UnitName, "player")), "SAY")
   if not ok then return false, "chat" end
-  st.lastAnnounce, st.until_, st.invited, st.pending = t, t + SB.WINDOW, {}, nil
+  st.lastAnnounce, st.invited, st.pending = t, {}, nil
+  SB.OpenWindow()
   return true
 end
 
@@ -178,7 +187,7 @@ function SB.Flush()   -- appelé pendant un clic du joueur (macro) : les invitat
 end
 function SB.OnWhisper(msg, sender)
   local st = SB.state
-  if now() > st.until_ then return false end
+  if not SB.IsOpen() then return false end
   local word = lower(msg):gsub("^%s+", ""):gsub("%s+$", "")
   if not SB.WORDS[word] then return false end
   local who = tostring(sender or "")
@@ -263,6 +272,7 @@ local function slash(rest)
     SB.Announce() return
   end
   if lower(rest):match("^%s*debug") then SB.Debug() return end
+  if lower(rest):match("^%s*ouvr") or lower(rest):match("^%s*open") then SB.OpenWindow() SB.state.invited = {} ns.Print(Tr["Invitations automatiques ouvertes 5 minutes : qui te chuchote « inv » est invité."]) return end
   local ok, info = SB.MakeMacro()
   if not ok then ns.Print(info) return end
   ns.Print(Tr["Macro « Sac Dropamine » sur ton curseur : pose-la dans ta barre. Un clic pose le sac, l'annonce en /dire et invite pendant 5 minutes qui te chuchote « inv »."]

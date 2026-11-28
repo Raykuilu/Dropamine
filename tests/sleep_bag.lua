@@ -5,6 +5,7 @@ local said, invited, macros, cursor = {}, {}, {}, nil
 local combat, cd, casting, group, leader, raid = false, { 0, 0 }, nil, 0, false, false
 local BAG = 99001
 _G.GetTime = function() return T end
+_G.time = function() return 1700000000 + T end
 _G.UnitName = function() return "Ray" end
 _G.C_Container = {
   GetContainerNumSlots = function(b) return b == 0 and 2 or 0 end,
@@ -115,5 +116,12 @@ whisper("inv", "Cid") check(#invited == 2 and #SB.state.queue == 2, "en mode cli
 T = 5100 cd = { 5099, 600 } ns.SlashExt.sac("annonce")
 check(invited[3] == "Bea" and invited[4] == "Cid" and #SB.state.queue == 0, "clic sur la macro : Bea et Cid invités")
 SB.OnBlocked("AutreAddon", "InviteUnit()") SB.OnBlocked("Dropamine", "CastSpell()")
+-- /reload : la mémoire de l'addon repart à zéro, mais la fenêtre (heure réelle, dans DropamineDB) reste ouverte
+T = 6000 cd = { 5999, 600 } ns.db.sleepBagClick = nil said = {} invited = {}
+ns.SlashExt.sac("annonce") check(#said == 1, "annonce avant /reload")
+SB.state.until_ = 0 SB.state.lastAnnounce = -1e9 SB.state.invited = {} SB.state.queue = {}
+T = 6100 whisper("inv", "Dan") check(invited[1] == "Dan", "après /reload : toujours invité")
+T = 6000 + 301 whisper("inv", "Eve") check(#invited == 1, "5 minutes passées : fini")
+T = 9000 invited = {} ns.SlashExt.sac("ouvrir") whisper("inv", "Fay") check(invited[1] == "Fay", "/drop sac ouvrir : invitations ouvertes sans annonce")
 print(fail == 0 and "OK : sac de couchage" or (fail .. " échec(s)"))
 os.exit(fail == 0 and 0 or 1)

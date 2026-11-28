@@ -2197,6 +2197,7 @@ T["Recherché dans ton groupe par : "] = "Ищут в твоей группе: "
 T["Un mot faux dans ta langue ? Signale-le ici (copie le lien dans ton navigateur) :"] = "Неверное слово на твоём языке? Сообщи здесь (скопируй ссылку в браузер):"
 T["/drop traduction : signaler un mot faux dans ta langue"] = "/drop translation: сообщить о неверном слове на твоём языке"
 -- SleepBag.lua (3.14.0)
+T["Invitations automatiques ouvertes 5 minutes : qui te chuchote « inv » est invité."] = "Автоприглашения открыты на 5 минут: кто шепнёт тебе «inv», будет приглашён."
 T["%s demande une invitation."] = "%s просит приглашение."
 T["Le jeu bloque l'invitation automatique : clique sur ta macro sac pour inviter %s."] = "Игра блокирует автоприглашение: нажми макрос спальника, чтобы пригласить %s."
 T["Sac posé : reclique sur la macro pour l'annoncer."] = "Спальник разложен: снова нажми макрос, чтобы объявить его."
