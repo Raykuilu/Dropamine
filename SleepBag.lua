@@ -25,14 +25,22 @@ local function now() return Call(_G.GetTime) or 0 end
 local function lower(s) return (string.lower(tostring(s or ""))) end
 
 -- noms de l'objet dans les langues des clients (recherche dans les sacs : l'identifiant est ensuite gardé)
-SB.NAMES = { "sac de couchage", "sleeping bag", "schlafsack", "saco de dormir", "sacco a pelo", "спальн" }
+SB.NAMES = { "sac de couchage", "couchage", "sleeping bag", "bedroll", "bed roll", "schlafsack", "saco de dormir", "sacco a pelo", "спальн" }
 function SB.IsBagName(name)
   local n = lower(name)
   if n == "" then return false end
   for _, k in ipairs(SB.NAMES) do if string.find(n, k, 1, true) then return true end end
   return false
 end
-function SB.FindItem()
+-- Sur Forever, un objet ajouté par le serveur peut avoir un nom interne différent de celui de l'infobulle :
+-- on regarde le nom de GetItemInfo, celui du lien de l'objet (tel qu'affiché) et le nom du sort « Utiliser ».
+local function linkName(link) return type(link) == "string" and link:match("|h%[(.-)%]|h") or nil end
+function SB.Names(bag, slot, id)
+  local C = _G.C_Container
+  local getLink = (C and C.GetContainerItemLink) or _G.GetContainerItemLink
+  return Call(_G.GetItemInfo, id), linkName(Call(getLink, bag, slot)), Call(_G.GetItemSpell, id)
+end
+function SB.Each(fn)
   local C = _G.C_Container
   local getN = (C and C.GetContainerNumSlots) or _G.GetContainerNumSlots
   local getId = (C and C.GetContainerItemID) or _G.GetContainerItemID
@@ -40,10 +48,28 @@ function SB.FindItem()
   for bag = 0, 4 do
     for slot = 1, (Call(getN, bag) or 0) do
       local id = Call(getId, bag, slot)
-      if id and SB.IsBagName(Call(_G.GetItemInfo, id)) then return id end
+      if id then local r = fn(bag, slot, id) if r then return r end end
     end
   end
   return nil
+end
+function SB.FindItem()
+  return SB.Each(function(bag, slot, id)
+    local a, b, s = SB.Names(bag, slot, id)
+    if SB.IsBagName(a) or SB.IsBagName(b) or SB.IsBagName(s) then return id end
+  end)
+end
+-- /drop sac debug : les objets utilisables des sacs (identifiant, nom interne, nom affiché, sort), pour comprendre un « pas trouvé »
+function SB.Debug()
+  local n = 0
+  SB.Each(function(bag, slot, id)
+    local a, b, s = SB.Names(bag, slot, id)
+    if s or SB.IsBagName(a) or SB.IsBagName(b) then
+      n = n + 1
+      ns.Print(string.format("%d · %s · %s · %s%s", id, tostring(a), tostring(b), tostring(s), (SB.IsBagName(a) or SB.IsBagName(b) or SB.IsBagName(s)) and "  <= sac" or ""))
+    end
+  end)
+  ns.Print(n == 0 and "sac debug : aucun objet utilisable dans les sacs" or ("sac debug : " .. n .. " objet(s) utilisable(s)"))
 end
 local function knownId()
   local db = ns.db
@@ -135,6 +161,7 @@ end
 ns.SlashExt = ns.SlashExt or {}
 local function slash(rest)
   if lower(rest):match("^%s*annonce") or lower(rest):match("^%s*announce") then SB.Announce() return end
+  if lower(rest):match("^%s*debug") then SB.Debug() return end
   local ok, info = SB.MakeMacro()
   if not ok then ns.Print(info) return end
   ns.Print(Tr["Macro « Sac Dropamine » sur ton curseur : pose-la dans ta barre. Un clic pose le sac, l'annonce en /dire et invite pendant 5 minutes qui te chuchote « inv »."]

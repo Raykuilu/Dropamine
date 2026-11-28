@@ -70,5 +70,14 @@ group, raid = 2, true whisper("inv", "Max") check(#invited == 3, "raid : rien")
 raid = false T = 110 + 301 whisper("inv", "Max") check(#invited == 3, "après 5 minutes : fini")
 
 check(ns.HelpExt[1]:find("/drop sac", 1, true) == 1, "ligne d'aide")
+-- nom interne différent de l'infobulle (objet du serveur) : reconnu par le nom affiché dans son lien
+_G.GetItemInfo = function(id) return id == BAG and "Cozy Bedding" or "Pain" end
+check(SB.FindItem() == nil, "nom interne inconnu, rien d'autre : pas trouvé")
+_G.C_Container.GetContainerItemLink = function(b, s) return (b == 0 and s == 2) and "|cffffffff|Hitem:99001::::|h[Sac de couchage douillet]|h|r" or nil end
+check(SB.FindItem() == BAG, "reconnu par le nom du lien")
+_G.C_Container.GetContainerItemLink = nil
+_G.GetItemSpell = function(id) return id == BAG and "Sleeping Bag" or nil end
+check(SB.FindItem() == BAG, "reconnu par le nom du sort")
+prints = {} ns.SlashExt.sac("debug") check(#prints >= 2 and prints[1]:find("<= sac", 1, true), "debug : liste et marque le sac")
 print(fail == 0 and "OK : sac de couchage" or (fail .. " échec(s)"))
 os.exit(fail == 0 and 0 or 1)
