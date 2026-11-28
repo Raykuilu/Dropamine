@@ -1089,6 +1089,11 @@ function PU.BuildHeader(f)
   TipOn(f.about, Tr["À propos"], Tr["Version, liens et signalement de bug."])
   f.app = PU.Button(f, 112, 20, "Dropamine.app", "share", function() local HS = ns.Hiscores if HS and HS.OpenApp then HS.OpenApp() end end)
   f.app:SetPoint("RIGHT", f.about, "LEFT", -6, 0)
+  -- 3.14.0 : sac de couchage (bonus d'XP de groupe) : bouton montré seulement à qui possède le sac (PU.RefreshHeader)
+  f.bag = PU.Button(f, 44, 20, Tr["Sac"], "share", function() local SB = ns.SleepBag if SB and SB.Give then SB.Give() end end)
+  f.bag:SetPoint("RIGHT", f.app, "LEFT", -6, 0)
+  f.bag:Hide()
+  TipOn(f.bag, Tr["Sac de couchage"], Tr["Macro du sac sur ton curseur : un clic le pose à tes pieds, l'annonce en /dire et invite pendant 5 minutes qui te chuchote « inv »."])
   TipOn(f.app, "Dropamine.app", Tr["Envoyer ta ligne au site, recevoir ta chasse et tes sorties."])
   TipOn(f.recap, Tr["Récap session"], Tr["Durée, temps actif, progression normalisée, paliers, recettes, morts, butin perdu, meilleur spot, succès, valeur marchand et comparaisons."])
   TipOn(f.share, Tr["Partager"], Tr["Pose le récap de ta session dans la zone de saisie du chat : rien n'est envoyé tant que tu n'appuies pas sur Entrée."])
@@ -3367,6 +3372,7 @@ function PU.Segments()
 end
 function PU.RefreshHeader()
   local f = PU.frame
+  if f.bag then local SB = ns.SleepBag f.bag:SetShown(SB and SB.Has and SB.Has() or false) end
   local name = Call(_G.UnitName, "player") or "?"
   local cls = Call(_G.UnitClass, "player") or ""
   local lvl = N(ns.GetPlayerLevel and Call(ns.GetPlayerLevel)) or N(Call(_G.UnitLevel, "player")) or 0

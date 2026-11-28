@@ -2234,6 +2234,10 @@ E["Un mot faux dans ta langue ? Signale-le ici (copie le lien dans ton navigateu
 E["/drop traduction : signaler un mot faux dans ta langue"] = "/drop translation: report a wrong word in your language"
 
 -- SleepBag.lua (3.14.0)
+E["Tu as un sac de couchage : /drop sac (ou le bouton Sac de la fenêtre Progression) crée une macro qui le pose, l'annonce et invite qui te chuchote « inv »."] = "You have a sleeping bag: /drop bag (or the Bag button in the Progression window) creates a macro that puts it down, announces it and invites whoever whispers you “inv”."
+E["Sac"] = "Bag"
+E["Sac de couchage"] = "Sleeping bag"
+E["Macro du sac sur ton curseur : un clic le pose à tes pieds, l'annonce en /dire et invite pendant 5 minutes qui te chuchote « inv »."] = "Bag macro on your cursor: one click puts it down at your feet, announces it in /say and, for 5 minutes, invites whoever whispers you “inv”."
 E["Invitations automatiques ouvertes 5 minutes : qui te chuchote « inv » est invité."] = "Auto invites open for 5 minutes: whoever whispers you “inv” is invited."
 E["%s demande une invitation."] = "%s asks for an invite."
 E["Le jeu bloque l'invitation automatique : clique sur ta macro sac pour inviter %s."] = "The game blocks automatic invites: click your bag macro to invite %s."

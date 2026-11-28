@@ -57,7 +57,7 @@ cd = { 50, 600 } ns.SlashExt.sac("annonce")
 check(#said == 0, "recharge commencée il y a longtemps : rien n'est dit")
 casting = "Dérouler le sac" ns.SlashExt.sac("annonce") casting = nil
 check(#said == 1 and said[1][2] == "SAY", "pendant le déroulement du sac : annonce en /dire")
-check(said[1][1] == "Sleeping bag (group XP bonus): /w Ray inv · auto-invite Dropamine", "message sobre, en anglais pour tous : " .. tostring(said[1] and said[1][1]))
+check(said[1][1] == "Sleeping bag down, group XP bonus! /w Ray inv to join · auto-invite by Dropamine", "message sobre, en anglais pour tous : " .. tostring(said[1] and said[1][1]))
 T = 110 cd = { 109.5, 600 } ns.SlashExt.sac("annonce")
 check(#said == 1, "une annonce par minute au plus")
 
@@ -136,5 +136,11 @@ handlers.CHAT_MSG_BN_WHISPER("CHAT_MSG_BN_WHISPER", "inv", "|Kq1|k", "", "", "",
 check(invited[1] == "Framby", "chuchotement Battle.net « inv » : Framby invité")
 handlers.CHAT_MSG_BN_WHISPER("CHAT_MSG_BN_WHISPER", "inv", "|Kq2|k", "", "", "", "", 0, 0, "", 0, 8, "", 44)
 check(#invited == 1, "ami pas en jeu : rien")
+-- rappel automatique, une seule fois, quand le sac est dans les sacs ; bouton de la fenêtre Progression = macro
+prints = {} ns.db.sleepBagHint = nil
+check(SB.HintOnce() == true and prints[1]:find("/drop sac", 1, true), "rappel la première fois")
+check(SB.HintOnce() == false and #prints == 1, "puis plus jamais")
+check(SB.Has() == true, "possède le sac")
+check(SB.Give() == true and cursor ~= nil, "bouton Sac : macro sur le curseur")
 print(fail == 0 and "OK : sac de couchage" or (fail .. " échec(s)"))
 os.exit(fail == 0 and 0 or 1)

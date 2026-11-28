@@ -97,7 +97,7 @@ function SB.MacroBody(id)
   return (id and ("/use [@player] item:" .. id) or "/use [@player] Sac de couchage douillet") .. "\n/drop sac annonce"
 end
 -- annonce en /dire : en anglais pour tout le monde (serveurs aux langues mêlées), quelle que soit la langue du client
-SB.SAY = "Sleeping bag (group XP bonus): /w %s inv · auto-invite Dropamine"
+SB.SAY = "Sleeping bag down, group XP bonus! /w %s inv to join · auto-invite by Dropamine"
 function SB.Text(name)
   return string.format(SB.SAY, name or "?")
 end
@@ -324,10 +324,30 @@ local function slash(rest)
     return
   end
   if lower(rest):match("^%s*ouvr") or lower(rest):match("^%s*open") then SB.OpenWindow() SB.state.invited = {} ns.Print(Tr["Invitations automatiques ouvertes 5 minutes : qui te chuchote « inv » est invité."]) return end
+  SB.Give()
+end
+-- macro sur le curseur, avec l'explication (commande /drop sac et bouton Sac de la fenêtre Progression)
+function SB.Give()
   local ok, info = SB.MakeMacro()
-  if not ok then ns.Print(info) return end
+  if not ok then ns.Print(info) return false end
   ns.Print(Tr["Macro « Sac Dropamine » sur ton curseur : pose-la dans ta barre. Un clic pose le sac, l'annonce en /dire et invite pendant 5 minutes qui te chuchote « inv »."]
     .. (info and "" or (" " .. Tr["(sac pas trouvé dans tes sacs : la macro utilise son nom)"])))
+  return true
+end
+-- possède le sac ? (pour n'afficher le bouton qu'à ceux qui l'ont)
+function SB.Has() return SB.FindItem() ~= nil end
+-- rappel automatique, une seule fois par personnage : la première fois que le sac est dans les sacs
+function SB.HintOnce()
+  local db = ns.db
+  if not db or db.sleepBagHint then return false end
+  if not SB.Has() then return false end
+  db.sleepBagHint = true
+  ns.Print(Tr["Tu as un sac de couchage : /drop sac (ou le bouton Sac de la fenêtre Progression) crée une macro qui le pose, l'annonce et invite qui te chuchote « inv »."])
+  return true
+end
+if ns.On then
+  ns.On("BAG_UPDATE_DELAYED", function() SB.HintOnce() end)
+  ns.On("PLAYER_ENTERING_WORLD", function() SB.HintOnce() end)
 end
 ns.SlashExt.sac, ns.SlashExt.bag, ns.SlashExt.sleepingbag = slash, slash, slash
 ns.HelpExt = ns.HelpExt or {}
