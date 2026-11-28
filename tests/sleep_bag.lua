@@ -89,7 +89,8 @@ check(SB.FindItem() == BAG, "reconnu par le nom du lien")
 _G.C_Container.GetContainerItemLink = nil
 _G.GetItemSpell = function(id) return id == BAG and "Sleeping Bag" or nil end
 check(SB.FindItem() == BAG, "reconnu par le nom du sort")
-prints = {} ns.SlashExt.sac("debug") check(#prints >= 2 and prints[1]:find("<= sac", 1, true), "debug : liste et marque le sac")
+prints = {} ns.SlashExt.sac("debug") check(#prints >= 2 and prints[1]:find("<= sac", 1, true) and ns.db.sleepBagDebug == true, "debug : liste, marque le sac, traces activées")
+ns.SlashExt.sac("debug") check(ns.db.sleepBagDebug == false, "debug : deuxième fois, traces coupées")
 -- premier clic ([@player]) : sac prêt, immobile, hors combat → annonce tout de suite ; en mouvement → rien
 _G.IsUsableItem = function() return true end
 local speed = 0 _G.GetUnitSpeed = function() return speed end

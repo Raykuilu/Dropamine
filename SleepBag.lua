@@ -185,15 +185,21 @@ function SB.Flush()   -- appelé pendant un clic du joueur (macro) : les invitat
   st.queue = {}
   return #out
 end
+-- /drop sac debug : en plus de la liste des objets, trace chaque chuchotement reçu (ce que l'addon voit, et pourquoi il refuse)
+local function trace(...) if ns.db and ns.db.sleepBagDebug then ns.Print("sac debug : " .. table.concat({ ... }, " · ")) end end
+SB.trace = trace
 function SB.OnWhisper(msg, sender)
   local st = SB.state
+  local secret = type(_G.issecretvalue) == "function" and (_G.issecretvalue(msg) or _G.issecretvalue(sender))
+  trace("chuchotement", type(msg), secret and "secret" or tostring(msg), tostring(sender), SB.IsOpen() and "fenêtre ouverte" or "fenêtre fermée")
   if not SB.IsOpen() then return false end
   local word = lower(msg):gsub("^%s+", ""):gsub("%s+$", "")
-  if not SB.WORDS[word] then return false end
+  if not SB.WORDS[word] then trace("mot non reconnu", "[" .. word .. "]") return false end
   local who = tostring(sender or "")
-  if who == "" or st.invited[who] then return false end
-  for _, q in ipairs(st.queue) do if q == who then return false end end
-  if not SB.CanInvite() then return false end
+  if who == "" or st.invited[who] then trace("déjà invité ou sans nom", who) return false end
+  for _, q in ipairs(st.queue) do if q == who then trace("déjà en attente", who) return false end end
+  local can, why = SB.CanInvite()
+  if not can then trace("invitation impossible", tostring(why)) return false end
   st.queue[#st.queue + 1] = who
   if ns.db and ns.db.sleepBagClick then
     ns.Print(string.format(Tr["Le jeu bloque l'invitation automatique : clique sur ta macro sac pour inviter %s."], names(st.queue)))
@@ -202,7 +208,7 @@ function SB.OnWhisper(msg, sender)
   ns.Print(string.format(Tr["%s demande une invitation."], who))
   local invite = inviteFn()
   st.trying = who
-  if type(invite) == "function" then pcall(invite, who) end
+  if type(invite) == "function" then local ok, err = pcall(invite, who) trace("invitation tentée", who, ok and "sans erreur" or tostring(err)) else trace("pas de fonction d'invitation") end
   st.trying = nil
   return true
 end
@@ -271,7 +277,12 @@ local function slash(rest)
     if #SB.state.queue > 0 then SB.Flush() end   -- clic pendant que des joueurs attendent : on les invite aussi
     SB.Announce() return
   end
-  if lower(rest):match("^%s*debug") then SB.Debug() return end
+  if lower(rest):match("^%s*debug") then
+    if ns.db then ns.db.sleepBagDebug = not ns.db.sleepBagDebug end
+    SB.Debug()
+    ns.Print("sac debug : traces des chuchotements " .. ((ns.db and ns.db.sleepBagDebug) and "ACTIVÉES (/drop sac debug pour couper)" or "coupées"))
+    return
+  end
   if lower(rest):match("^%s*ouvr") or lower(rest):match("^%s*open") then SB.OpenWindow() SB.state.invited = {} ns.Print(Tr["Invitations automatiques ouvertes 5 minutes : qui te chuchote « inv » est invité."]) return end
   local ok, info = SB.MakeMacro()
   if not ok then ns.Print(info) return end
