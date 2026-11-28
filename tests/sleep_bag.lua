@@ -54,7 +54,7 @@ cd = { 50, 600 } ns.SlashExt.sac("annonce")
 check(#said == 0, "recharge commencée il y a longtemps : rien n'est dit")
 casting = "Dérouler le sac" ns.SlashExt.sac("annonce") casting = nil
 check(#said == 1 and said[1][2] == "SAY", "pendant le déroulement du sac : annonce en /dire")
-check(said[1][1] == "Sac de couchage (bonus XP groupe) : /w Ray inv · auto-invite Dropamine", "message sobre : " .. tostring(said[1] and said[1][1]))
+check(said[1][1] == "Sleeping bag (group XP bonus): /w Ray inv · auto-invite Dropamine", "message sobre, en anglais pour tous : " .. tostring(said[1] and said[1][1]))
 T = 110 cd = { 109.5, 600 } ns.SlashExt.sac("annonce")
 check(#said == 1, "une annonce par minute au plus")
 

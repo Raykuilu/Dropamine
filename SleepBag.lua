@@ -56,8 +56,10 @@ function SB.MacroBody(id)
   -- l'identifiant marche dans toutes les langues ; sans lui (sac pas encore vu), le nom français, seul connu
   return (id and ("/use item:" .. id) or "/use Sac de couchage douillet") .. "\n/drop sac annonce"
 end
+-- annonce en /dire : en anglais pour tout le monde (serveurs aux langues mêlées), quelle que soit la langue du client
+SB.SAY = "Sleeping bag (group XP bonus): /w %s inv · auto-invite Dropamine"
 function SB.Text(name)
-  return string.format(Tr["Sac de couchage (bonus XP groupe) : /w %s inv · auto-invite Dropamine"], name or "?")
+  return string.format(SB.SAY, name or "?")
 end
 
 -- vient d'être posé : on est en train de le dérouler (incantation du sort de l'objet), ou sa recharge a commencé

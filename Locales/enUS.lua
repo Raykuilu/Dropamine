@@ -2235,7 +2235,6 @@ E["/drop traduction : signaler un mot faux dans ta langue"] = "/drop translation
 
 -- SleepBag.lua (3.14.0)
 E["Sac Dropamine"] = "Dropamine Bag"
-E["Sac de couchage (bonus XP groupe) : /w %s inv · auto-invite Dropamine"] = "Sleeping bag (group XP bonus): /w %s inv · auto-invite Dropamine"
 E["Hors combat seulement."] = "Out of combat only."
 E["Macros indisponibles."] = "Macros unavailable."
 E["Plus de place pour une macro de personnage."] = "No room left for a character macro."

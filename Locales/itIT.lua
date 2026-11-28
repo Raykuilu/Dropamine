@@ -2199,7 +2199,6 @@ T["Un mot faux dans ta langue ? Signale-le ici (copie le lien dans ton navigateu
 T["/drop traduction : signaler un mot faux dans ta langue"] = "/drop translation: segnala una parola sbagliata nella tua lingua"
 -- SleepBag.lua (3.14.0)
 T["Sac Dropamine"] = "Sacco Dropamine"
-T["Sac de couchage (bonus XP groupe) : /w %s inv · auto-invite Dropamine"] = "Sacco a pelo (bonus PE di gruppo): /w %s inv · auto-invito Dropamine"
 T["Hors combat seulement."] = "Solo fuori dal combattimento."
 T["Macros indisponibles."] = "Macro non disponibili."
 T["Plus de place pour une macro de personnage."] = "Non c'è più posto per una macro del personaggio."
