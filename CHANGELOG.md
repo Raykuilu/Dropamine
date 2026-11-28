@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.14.0
+
+### New
+- Sleeping bag ("Cozy sleeping bag", XP bonus shared with the group): `/drop bag`, or the "Bag" button in the Progression window (shown only if you own the bag), creates a macro to drag onto your bar, with the bag's icon and cooldown. One click puts the bag down at your feet and announces it in /say, in English for everyone: "Sleeping bag down, group XP bonus! /w First Last inv to join · auto-invite by Dropamine".
+- For 5 minutes, whoever whispers you "inv" (or "invite", "123"), Battle.net messages included, is invited automatically: only if you are alone or the leader, the group is not full, never in a raid, once per player. If the game required a click to invite, the addon notices and one click on the macro invites everyone waiting.
+- If the placement circle opens anyway, put the bag down then click the macro again during the unroll: the announcement goes out. A reminder shows when the unroll ends with nothing announced. `/drop bag open` opens invites without announcing.
+- One-time hint the first time the bag is in your bags. Messages in all 7 languages.
+
 ## 3.13.0
 
 ### New

@@ -89,8 +89,6 @@ check(SB.FindItem() == BAG, "reconnu par le nom du lien")
 _G.C_Container.GetContainerItemLink = nil
 _G.GetItemSpell = function(id) return id == BAG and "Sleeping Bag" or nil end
 check(SB.FindItem() == BAG, "reconnu par le nom du sort")
-prints = {} ns.SlashExt.sac("debug") check(#prints >= 2 and prints[1]:find("<= sac", 1, true) and ns.db.sleepBagDebug == true, "debug : liste, marque le sac, traces activées")
-ns.SlashExt.sac("debug") check(ns.db.sleepBagDebug == false, "debug : deuxième fois, traces coupées")
 -- premier clic ([@player]) : sac prêt, immobile, hors combat → annonce tout de suite ; en mouvement → rien
 _G.IsUsableItem = function() return true end
 local speed = 0 _G.GetUnitSpeed = function() return speed end
@@ -142,17 +140,11 @@ check(SB.HintOnce() == true and prints[1]:find("/drop sac", 1, true), "rappel la
 check(SB.HintOnce() == false and #prints == 1, "puis plus jamais")
 check(SB.Has() == true, "possède le sac")
 check(SB.Give() == true and cursor ~= nil, "bouton Sac : macro sur le curseur")
--- prénom + nom (Forever) : appris dans le chat sur nos propres lignes, puis utilisé dans l'annonce
-local cdb = {} ns.CharDB = function() return cdb end
-_G.UnitGUID = function() return "Player-1-ME" end
-check(SB.FullName() == "Ray", "rien appris : prénom seul")
-handlers.CHAT_MSG_SAY("CHAT_MSG_SAY", "salut", "Bob Leponge", "", "", "", "", 0, 0, "", 0, 1, "Player-1-OTHER")
-check(SB.FullName() == "Ray", "la ligne d'un autre joueur ne compte pas")
-handlers.CHAT_MSG_SAY("CHAT_MSG_SAY", "salut", "Ray Kuilu-Forever", "", "", "", "", 0, 0, "", 0, 2, "Player-1-ME")
-check(SB.FullName() == "Ray Kuilu", "appris sur notre ligne (royaume retiré) : " .. tostring(SB.FullName()))
+-- prénom + nom (Forever) : UnitName donne les deux ; l'annonce les met
+check(SB.FullName() == "Ray", "prénom seul si le jeu ne donne pas le nom")
+_G.UnitName = function() return "Ray", "Kuilu" end
+check(SB.FullName() == "Ray Kuilu", "prénom et nom")
 check(SB.Text(SB.FullName()) == "Sleeping bag down, group XP bonus! /w Ray Kuilu inv to join · auto-invite by Dropamine", "annonce avec prénom et nom")
-cdb.fullName = nil _G.UnitName = function() return "Ray", "Kuilu" end
-check(SB.FullName() == "Ray Kuilu", "UnitName qui renvoie aussi le nom")
 _G.UnitName = function() return "Ray" end
 print(fail == 0 and "OK : sac de couchage" or (fail .. " échec(s)"))
 os.exit(fail == 0 and 0 or 1)

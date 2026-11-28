@@ -2,6 +2,14 @@
 
 Version française du journal (le journal de référence est CHANGELOG.md, en anglais). Les versions plus anciennes ne sont qu'en anglais.
 
+## 3.14.0
+
+### Nouveautés
+- Sac de couchage (« Sac de couchage douillet », bonus d'XP partagé en groupe) : `/drop sac`, ou le bouton « Sac » de la fenêtre Progression (affiché seulement si tu as le sac), crée une macro à glisser dans ta barre, avec l'icône du sac et sa recharge. Un clic pose le sac à tes pieds et l'annonce en /dire, en anglais pour tous : « Sleeping bag down, group XP bonus! /w Prénom Nom inv to join · auto-invite by Dropamine ».
+- Pendant 5 minutes, qui te chuchote « inv » (ou « invite », « 123 »), aussi par message Battle.net, est invité automatiquement : seulement si tu es seul ou chef, groupe pas plein, jamais en raid, une fois par joueur. Si le jeu exigeait un clic pour inviter, l'addon le détecte et un clic sur la macro invite tous ceux qui attendent.
+- Si le cercle de placement s'ouvre quand même, pose le sac puis reclique sur la macro pendant le déroulement : l'annonce part. Rappel à la fin du déroulement si rien n'a été annoncé. `/drop sac ouvrir` ouvre les invitations sans annonce.
+- Rappel unique la première fois que le sac est dans tes sacs. Messages traduits dans les 7 langues.
+
 ## 3.13.0
 
 ### Nouveautés

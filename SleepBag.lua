@@ -1,15 +1,17 @@
--- Dropamine 3.14.0 : le sac de couchage (objet de vendeur de Forever, « Sac de couchage douillet ») : bonus d'XP partagé
--- avec le groupe. /drop sac crée une macro à glisser dans la barre : un clic pose le sac, l'annonce en /dire
--- (une ligne sobre : « /w <toi> inv », mention discrète de Dropamine en fin de message) et, pendant 5 minutes,
--- invite qui te chuchote « inv » (ou « invite », « 123 »).
---  * L'annonce passe par /drop sac annonce dans la macro : c'est un clic (le jeu l'exige pour /dire hors instance).
---  * Rien n'est annoncé si le sac n'a pas été posé à l'instant (recharge, combat, objet absent).
---  * Invitations : seulement si tu es seul ou chef, groupe pas plein (5), une fois par joueur, jamais en raid.
---  * Créer la macro : hors combat seulement (règle du jeu).
+-- Dropamine 3.14.0 : le sac de couchage (« Sac de couchage douillet », objet de vendeur de Forever) : bonus d'XP
+-- partagé avec le groupe. /drop sac (ou le bouton Sac de la fenêtre Progression) crée une macro à glisser dans la barre :
+--  * un clic pose le sac à tes pieds ([@player], sans cercle de placement) et l'annonce en /dire, en anglais pour
+--    tous (serveurs aux langues mêlées) : « Sleeping bag down, group XP bonus! /w Prénom Nom inv to join · auto-invite
+--    by Dropamine » ; le jeu n'autorise /dire que pendant un clic, d'où l'annonce dans la macro ;
+--  * pendant 5 minutes, qui te chuchote « inv » (ou « invite », « 123 »), aussi par Battle.net, est invité :
+--    seulement si tu es seul ou chef, groupe pas plein, jamais en raid, une fois par joueur ;
+--  * si le jeu exigeait un clic pour inviter, les demandes attendent le prochain clic sur la macro ;
+--  * rappel unique la première fois que le sac est dans les sacs.
 local _, ns = ...
 local Tr = ns.L
 
-local SB = { WINDOW = 300, ANNOUNCE_GAP = 60, PENDING = 120, MACRO = "Sac Dropamine",   -- nom français ; la macro prend le nom traduit (Tr) et retrouve l'ancien
+local SB = { WINDOW = 300, ANNOUNCE_GAP = 60, PENDING = 120,
+  MACRO = "Sac Dropamine",   -- nom français ; la macro prend le nom traduit (Tr) et retrouve l'ancien
   WORDS = { inv = true, invite = true, ["123"] = true } }
 ns.SleepBag = SB
 SB.state = { until_ = 0, lastAnnounce = -1e9, invited = {}, queue = {} }
@@ -22,7 +24,9 @@ local function Call(fn, ...)
   return a, b, c
 end
 local function now() return Call(_G.GetTime) or 0 end
--- fenêtre d'invitation : heure réelle (time()), gardée dans DropamineDB, donc elle survit à un /reload
+local function lower(s) return (string.lower(tostring(s or ""))) end
+
+-- fenêtre d'invitation : aussi en heure réelle (time()) dans DropamineDB, pour survivre à un /reload
 local function epoch() return Call(_G.time) or 0 end
 function SB.OpenWindow() if ns.db then ns.db.sleepBagWin = epoch() end SB.state.until_ = now() + SB.WINDOW end
 function SB.IsOpen()
@@ -30,9 +34,10 @@ function SB.IsOpen()
   local at = ns.db and ns.db.sleepBagWin
   return type(at) == "number" and epoch() - at >= 0 and epoch() - at < SB.WINDOW
 end
-local function lower(s) return (string.lower(tostring(s or ""))) end
 
--- noms de l'objet dans les langues des clients (recherche dans les sacs : l'identifiant est ensuite gardé)
+-- ------------------------------------------------------------------------------------------------ l'objet
+-- Sur Forever, le nom interne d'un objet du serveur peut manquer : on regarde aussi le nom affiché dans son lien
+-- et celui de son sort « Utiliser ». L'identifiant trouvé est gardé.
 SB.NAMES = { "sac de couchage", "couchage", "sleeping bag", "bedroll", "bed roll", "schlafsack", "saco de dormir", "sacco a pelo", "спальн" }
 function SB.IsBagName(name)
   local n = lower(name)
@@ -40,14 +45,7 @@ function SB.IsBagName(name)
   for _, k in ipairs(SB.NAMES) do if string.find(n, k, 1, true) then return true end end
   return false
 end
--- Sur Forever, un objet ajouté par le serveur peut avoir un nom interne différent de celui de l'infobulle :
--- on regarde le nom de GetItemInfo, celui du lien de l'objet (tel qu'affiché) et le nom du sort « Utiliser ».
 local function linkName(link) return type(link) == "string" and link:match("|h%[(.-)%]|h") or nil end
-function SB.Names(bag, slot, id)
-  local C = _G.C_Container
-  local getLink = (C and C.GetContainerItemLink) or _G.GetContainerItemLink
-  return Call(_G.GetItemInfo, id), linkName(Call(getLink, bag, slot)), Call(_G.GetItemSpell, id)
-end
 function SB.Each(fn)
   local C = _G.C_Container
   local getN = (C and C.GetContainerNumSlots) or _G.GetContainerNumSlots
@@ -62,29 +60,11 @@ function SB.Each(fn)
   return nil
 end
 function SB.FindItem()
+  local C = _G.C_Container
+  local getLink = (C and C.GetContainerItemLink) or _G.GetContainerItemLink
   return SB.Each(function(bag, slot, id)
-    local a, b, s = SB.Names(bag, slot, id)
-    if SB.IsBagName(a) or SB.IsBagName(b) or SB.IsBagName(s) then return id end
+    if SB.IsBagName(Call(_G.GetItemInfo, id)) or SB.IsBagName(linkName(Call(getLink, bag, slot))) or SB.IsBagName(Call(_G.GetItemSpell, id)) then return id end
   end)
-end
--- /drop sac debug : les objets utilisables des sacs (identifiant, nom interne, nom affiché, sort), pour comprendre un « pas trouvé »
-function SB.Debug()
-  local n = 0
-  SB.Each(function(bag, slot, id)
-    local a, b, s = SB.Names(bag, slot, id)
-    if s or SB.IsBagName(a) or SB.IsBagName(b) then
-      n = n + 1
-      ns.Print(string.format("%d · %s · %s · %s%s", id, tostring(a), tostring(b), tostring(s), (SB.IsBagName(a) or SB.IsBagName(b) or SB.IsBagName(s)) and "  <= sac" or ""))
-    end
-  end)
-  ns.Print(n == 0 and "sac debug : aucun objet utilisable dans les sacs" or ("sac debug : " .. n .. " objet(s) utilisable(s)"))
-  local n1, n2 = Call(_G.UnitName, "player")
-  local cdb = ns.CharDB and ns.CharDB()
-  ns.Print("sac debug : nom · UnitName = " .. tostring(n1) .. " / " .. tostring(n2) .. " · appris dans le chat = " .. tostring(cdb and cdb.fullName) .. " · annonce : /w " .. tostring(SB.FullName()))
-  local h = SB.hooks or {}
-  ns.Print("sac debug : écoute des chuchotements · événement " .. (h.event and "ok" or "REFUSÉ") .. (h.event_vu and " (reçu)" or "")
-    .. " · filtre du chat " .. (h.filter and "ok" or "absent") .. (h.filter_vu and " (reçu)" or "")
-    .. " · Battle.net " .. (h.bnet and "ok" or "REFUSÉ") .. (h.bnet_vu and " (reçu)" or ""))
 end
 local function knownId()
   local db = ns.db
@@ -92,44 +72,23 @@ local function knownId()
   if id and db then db.sleepBagItem = id end
   return id or (db and db.sleepBagItem)
 end
+function SB.Has() return SB.FindItem() ~= nil end
 
+-- ------------------------------------------------------------------------------------------------ l'annonce
 function SB.MacroBody(id)
-  -- l'identifiant marche dans toutes les langues ; sans lui (sac pas encore vu), le nom français, seul connu.
-  -- [@player] : le sac se pose à tes pieds sans cercle de placement, donc l'annonce part dans le même clic
-  -- (le jeu n'autorise /dire que pendant un clic : impossible d'annoncer après un clic au sol).
+  -- l'identifiant marche dans toutes les langues ; sans lui (sac pas encore vu), le nom français, seul connu
   return (id and ("/use [@player] item:" .. id) or "/use [@player] Sac de couchage douillet") .. "\n/drop sac annonce"
 end
--- annonce en /dire : en anglais pour tout le monde (serveurs aux langues mêlées), quelle que soit la langue du client
 SB.SAY = "Sleeping bag down, group XP bonus! /w %s inv to join · auto-invite by Dropamine"
-function SB.Text(name)
-  return string.format(SB.SAY, name or "?")
-end
--- Sur Forever, chaque personnage a un prénom ET un nom (« Ray Kuilu ») : pour le chuchoter, il faut les deux.
--- 1) le nom complet appris dans le chat (nos propres lignes : l'expéditeur affiché, reconnu par notre GUID), gardé par
---    personnage ; 2) UnitName s'il renvoie aussi le nom de famille ; 3) le prénom seul en dernier recours.
-local function clean(s) return type(s) == "string" and s:gsub("%-[^%s]*$", "") or nil end   -- « Nom-Royaume » → « Nom »
+function SB.Text(name) return string.format(SB.SAY, name or "?") end
+-- sur Forever, UnitName donne le prénom puis le nom de famille : il faut les deux pour chuchoter
 function SB.FullName()
-  local cdb = ns.CharDB and ns.CharDB()
-  local learned = cdb and cdb.fullName
-  if type(learned) == "string" and learned:find(" ", 1, true) then return learned end
-  local first, second = Call(_G.UnitName, "player")
-  if type(second) == "string" and second ~= "" and not second:find("%-") then return first .. " " .. second end
+  local first, last = Call(_G.UnitName, "player")
+  if type(last) == "string" and last ~= "" and not last:find("%-") then return first .. " " .. last end
   return first
 end
-function SB.Learn(sender, guid)
-  if type(sender) ~= "string" or not sender:find(" ", 1, true) then return end
-  if not guid or guid ~= Call(_G.UnitGUID, "player") then return end
-  local cdb = ns.CharDB and ns.CharDB()
-  if cdb then cdb.fullName = clean(sender) end
-end
-if ns.On then
-  for _, ev in ipairs({ "CHAT_MSG_SAY", "CHAT_MSG_YELL", "CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER", "CHAT_MSG_GUILD", "CHAT_MSG_WHISPER", "CHAT_MSG_CHANNEL", "CHAT_MSG_EMOTE" }) do
-    ns.On(ev, function(_, _, sender, _, _, _, _, _, _, _, _, _, guid) SB.Learn(sender, guid) end)
-  end
-end
 
--- Nom du déroulement : celui du sort de l'objet (GetItemSpell, dans la langue du client) ; en secours, ces mots
--- (« Déroulement de sac » sur un client français : environ 15 s d'incantation).
+-- nom du déroulement : celui du sort de l'objet (langue du client) ; en secours, ces mots (« Déroulement de sac », ~15 s)
 SB.CAST_WORDS = { "déroulement", "unroll", "bedroll", "sleeping bag", "schlafsack", "saco", "sacco", "спальн" }
 function SB.IsCast(name, spell)
   if not name then return false end
@@ -142,7 +101,7 @@ local function cooldown(id)
   local get = (_G.C_Container and _G.C_Container.GetItemCooldown) or _G.GetItemCooldown
   return Call(get, id)
 end
--- vient d'être posé : déroulement en cours, déroulement fini depuis peu sans annonce, ou recharge commencée à l'instant
+-- vient d'être posé : déroulement en cours, fini depuis peu sans annonce, ou recharge commencée à l'instant
 -- (2 minutes si le cercle de placement attendait un clic au sol)
 function SB.JustUsed(id)
   if not id then return false end
@@ -157,103 +116,92 @@ function SB.JustUsed(id)
   end
   return false
 end
--- prêt à être posé à tes pieds par ce clic ([@player]) : utilisable, pas en recharge, immobile, hors combat
+-- prêt à être posé par ce clic : utilisable, pas en recharge, immobile
 function SB.Ready(id)
   if not id then return false end
-  local usable = Call(_G.IsUsableItem, id)
-  if usable == false then return false end
+  if Call(_G.IsUsableItem, id) == false then return false end
   local start, dur = cooldown(id)
   if start and dur and dur > 0 and start > 0 and start + dur > now() then return false end
   local speed = Call(_G.GetUnitSpeed, "player")
-  if speed and speed > 0 then return false end
-  return true
+  return not (speed and speed > 0)
 end
-
 function SB.Announce()
   local st = SB.state
-  if ns.InCombat and ns.InCombat() then return false, "combat" end
+  if ns.InCombat and ns.InCombat() then return false end
   local id = knownId()
   if not SB.JustUsed(id) then
-    if Call(_G.SpellIsTargeting) then   -- cercle de placement ouvert (client sans [@player]) : on attend le clic au sol
+    if Call(_G.SpellIsTargeting) then   -- cercle de placement ouvert : on attend le clic au sol
       if not (st.pending and now() - st.pending < SB.PENDING) then ns.Print(Tr["Pose le sac au sol, puis reclique sur la macro pour l'annoncer."]) end
       st.pending = now()
-      return false, "à placer"
+      return false
     end
-    -- même clic que /use [@player] : le déroulement commence tout juste, le jeu ne le montre pas encore
-    if not SB.Ready(id) then return false, "pas posé" end
+    if not SB.Ready(id) then return false end   -- même clic que /use [@player] : le déroulement commence à peine
   end
   local t = now()
-  if t - st.lastAnnounce < SB.ANNOUNCE_GAP then SB.OpenWindow() return false, "déjà annoncé" end
-  if type(_G.SendChatMessage) ~= "function" then return false, "chat" end
-  local ok = pcall(_G.SendChatMessage, SB.Text(SB.FullName()), "SAY")
-  if not ok then return false, "chat" end
+  if t - st.lastAnnounce < SB.ANNOUNCE_GAP then SB.OpenWindow() return false end
+  if type(_G.SendChatMessage) ~= "function" or not pcall(_G.SendChatMessage, SB.Text(SB.FullName()), "SAY") then return false end
   st.lastAnnounce, st.invited, st.pending = t, {}, nil
   SB.OpenWindow()
   return true
 end
-
-function SB.CanInvite()
-  if Call(_G.IsInRaid) then return false, "raid" end
-  local n = Call(_G.GetNumGroupMembers) or 0
-  if n >= 5 then return false, "plein" end
-  if n > 0 and not Call(_G.UnitIsGroupLeader, "player") then return false, "pas chef" end
-  return true
+-- fin du déroulement sans annonce : rappel (un addon ne peut pas écrire en /dire tout seul)
+function SB.OnCast(unit, spellID)
+  if unit ~= "player" then return end
+  local id = ns.db and ns.db.sleepBagItem
+  if not SB.IsCast(Call(_G.GetSpellInfo, spellID), id and Call(_G.GetItemSpell, id)) then return end
+  local st, t = SB.state, now()
+  st.lastCast = t
+  if t - st.lastAnnounce > 30 then ns.Print(Tr["Sac posé : reclique sur la macro pour l'annoncer."]) end
 end
 
--- Invitation : tentée tout de suite ; si le jeu l'exige d'un clic du joueur (versions Classic), il la bloque
--- (ADDON_ACTION_BLOCKED) : on le retient (db.sleepBagClick) et les demandes attendent le prochain clic sur la macro,
--- qui invite tout le monde d'un coup. Le message système « Vous avez invité … » confirme.
+-- ------------------------------------------------------------------------------------------------ les invitations
+function SB.CanInvite()
+  if Call(_G.IsInRaid) then return false end
+  local n = Call(_G.GetNumGroupMembers) or 0
+  if n >= 5 then return false end
+  if n > 0 and not Call(_G.UnitIsGroupLeader, "player") then return false end
+  return true
+end
 local function inviteFn() return (_G.C_PartyInfo and _G.C_PartyInfo.InviteUnit) or _G.InviteUnit end
-local function names(list) return table.concat(list, ", ") end
-function SB.Flush()   -- appelé pendant un clic du joueur (macro) : les invitations en attente partent
-  local st, out = SB.state, {}
+local function blockedText() return string.format(Tr["Le jeu bloque l'invitation automatique : clique sur ta macro sac pour inviter %s."], table.concat(SB.state.queue, ", ")) end
+-- pendant un clic du joueur (macro) : les invitations en attente partent
+function SB.Flush()
+  local st, n = SB.state, 0
   local invite = inviteFn()
   if type(invite) ~= "function" then return 0 end
   for _, who in ipairs(st.queue) do
-    if SB.CanInvite() and pcall(invite, who) then st.invited[who] = true out[#out + 1] = who end
+    if SB.CanInvite() and pcall(invite, who) then st.invited[who] = true n = n + 1 end
   end
   st.queue = {}
-  return #out
+  return n
 end
--- /drop sac debug : en plus de la liste des objets, trace chaque chuchotement reçu (ce que l'addon voit, et pourquoi il refuse)
-local function trace(...) if ns.db and ns.db.sleepBagDebug then ns.Print("sac debug : " .. table.concat({ ... }, " · ")) end end
-SB.trace = trace
 function SB.OnWhisper(msg, sender)
   local st = SB.state
-  local secret = type(_G.issecretvalue) == "function" and (_G.issecretvalue(msg) or _G.issecretvalue(sender))
-  trace("chuchotement", type(msg), secret and "secret" or tostring(msg), tostring(sender), SB.IsOpen() and "fenêtre ouverte" or "fenêtre fermée")
   if not SB.IsOpen() then return false end
   local word = lower(msg):gsub("^%s+", ""):gsub("%s+$", "")
-  if not SB.WORDS[word] then trace("mot non reconnu", "[" .. word .. "]") return false end
+  if not SB.WORDS[word] then return false end
   local who = tostring(sender or "")
-  if who == "" or st.invited[who] then trace("déjà invité ou sans nom", who) return false end
-  for _, q in ipairs(st.queue) do if q == who then trace("déjà en attente", who) return false end end
-  local can, why = SB.CanInvite()
-  if not can then trace("invitation impossible", tostring(why)) return false end
+  if who == "" or st.invited[who] then return false end
+  for _, q in ipairs(st.queue) do if q == who then return false end end
+  if not SB.CanInvite() then return false end
   st.queue[#st.queue + 1] = who
-  if ns.db and ns.db.sleepBagClick then
-    ns.Print(string.format(Tr["Le jeu bloque l'invitation automatique : clique sur ta macro sac pour inviter %s."], names(st.queue)))
-    return false
-  end
+  if ns.db and ns.db.sleepBagClick then ns.Print(blockedText()) return false end
   ns.Print(string.format(Tr["%s demande une invitation."], who))
   local invite = inviteFn()
-  st.trying = who
-  if type(invite) == "function" then local ok, err = pcall(invite, who) trace("invitation tentée", who, ok and "sans erreur" or tostring(err)) else trace("pas de fonction d'invitation") end
-  st.trying = nil
+  if type(invite) == "function" then pcall(invite, who) end
   return true
 end
--- le jeu a bloqué l'invitation : on passe en mode « clic » pour la suite
+-- le jeu a bloqué l'invitation : mode « clic » pour la suite
 function SB.OnBlocked(addon, fn)
   if tostring(addon) ~= "Dropamine" or not tostring(fn):find("InviteUnit", 1, true) then return end
   if ns.db then ns.db.sleepBagClick = true end
-  if #SB.state.queue > 0 then ns.Print(string.format(Tr["Le jeu bloque l'invitation automatique : clique sur ta macro sac pour inviter %s."], names(SB.state.queue))) end
+  if #SB.state.queue > 0 then ns.Print(blockedText()) end
 end
 -- « Vous avez invité X à rejoindre votre groupe. » (texte du jeu, dans sa langue) : X sort de la file
 function SB.OnSystem(msg)
   local fmt = _G.ERR_INVITE_PLAYER_S
   if type(fmt) ~= "string" or type(msg) ~= "string" then return end
-  local pat = "^" .. fmt:gsub("([%^%$%(%)%.%[%]%*%+%-%?])", "%%%1"):gsub("%%s", "(.+)") .. "$"
-  local who = msg:match(pat)
+  local who = msg:match("^" .. fmt:gsub("([%^%$%(%)%.%[%]%*%+%-%?])", "%%%1"):gsub("%%s", "(.+)") .. "$")
   if not who then return end
   local st = SB.state
   for i = #st.queue, 1, -1 do
@@ -261,69 +209,48 @@ function SB.OnSystem(msg)
     if q == who or q:match("^([^%-]+)") == who then st.invited[q] = true table.remove(st.queue, i) end
   end
 end
-if ns.On then
-  ns.On("ADDON_ACTION_BLOCKED", function(_, addon, fn) SB.OnBlocked(addon, fn) end)
-  ns.On("ADDON_ACTION_FORBIDDEN", function(_, addon, fn) SB.OnBlocked(addon, fn) end)
-  ns.On("CHAT_MSG_SYSTEM", function(_, msg) SB.OnSystem(msg) end)
-end
--- Deux écoutes des chuchotements (certains clients refusent l'une ou l'autre aux addons) : l'événement, et le filtre
--- de la fenêtre de chat (comme les addons de chat). Un même chuchotement n'est traité qu'une fois.
-SB.hooks = {}
-local seen = {}
-local function heard(how, msg, sender)
-  SB.hooks[how .. "_vu"] = true
-  local key = tostring(sender) .. "|" .. tostring(msg)
-  local t = now()
-  local s = seen[key]   -- le même chuchotement arrive par les deux écoutes : traité une seule fois
-  if s and s.how ~= how and t - s.t < 1 then return end
-  seen[key] = { t = t, how = how }
-  SB.OnWhisper(msg, sender)
-end
-SB.hooks.event = ns.On and ns.On("CHAT_MSG_WHISPER", function(_, msg, sender) heard("event", msg, sender) end) or false
-if type(_G.ChatFrame_AddMessageEventFilter) == "function" then
-  SB.hooks.filter = pcall(_G.ChatFrame_AddMessageEventFilter, "CHAT_MSG_WHISPER", function(_, _, msg, sender) heard("filter", msg, sender) return false end)
-end
--- Messages Battle.net (ami BattleTag) : l'expéditeur est un compte, pas un personnage. On retrouve le personnage
--- WoW qu'il joue (même jeu, connecté) pour l'inviter ; « Nom-Royaume » s'il est sur un autre royaume.
+-- messages Battle.net : l'expéditeur est un compte ; on invite le personnage WoW qu'il joue (« Nom-Royaume » ailleurs)
 function SB.BNetCharacter(bnID)
   local B = _G.C_BattleNet
   local info = B and type(B.GetAccountInfoByID) == "function" and Call(B.GetAccountInfoByID, bnID)
   local g = type(info) == "table" and info.gameAccountInfo
-  if type(g) ~= "table" or not g.characterName or g.characterName == "" then return nil, "pas en jeu" end
-  if g.clientProgram and g.clientProgram ~= "WoW" then return nil, "autre jeu" end
-  if g.wowProjectID and _G.WOW_PROJECT_ID and g.wowProjectID ~= _G.WOW_PROJECT_ID then return nil, "autre version de WoW" end
+  if type(g) ~= "table" or not g.characterName or g.characterName == "" then return nil end
+  if g.clientProgram and g.clientProgram ~= "WoW" then return nil end
+  if g.wowProjectID and _G.WOW_PROJECT_ID and g.wowProjectID ~= _G.WOW_PROJECT_ID then return nil end
   local mine = (Call(_G.GetRealmName) or ""):gsub("%s", "")
   local realm = tostring(g.realmName or ""):gsub("%s", "")
   return (realm ~= "" and realm ~= mine) and (g.characterName .. "-" .. realm) or g.characterName
 end
-function SB.OnBNetWhisper(msg, bnID)
-  local who, why = SB.BNetCharacter(bnID)
-  trace("message Battle.net", tostring(msg), who or tostring(why))
-  if who then heard("bnet", msg, who) end
+-- deux écoutes des chuchotements (l'événement et le filtre du chat) : un même message n'est traité qu'une fois
+local seen = {}
+local function heard(how, msg, sender)
+  local key, t = tostring(sender) .. "|" .. tostring(msg), now()
+  local s = seen[key]
+  if s and s.how ~= how and t - s.t < 1 then return end
+  seen[key] = { t = t, how = how }
+  SB.OnWhisper(msg, sender)
 end
--- bnSenderID : 13e argument de l'événement (12e après le texte)
-SB.hooks.bnet = ns.On and ns.On("CHAT_MSG_BN_WHISPER", function(_, msg, ...) SB.OnBNetWhisper(msg, (select(12, ...))) end) or false
--- fin du déroulement : notée (le clic suivant peut annoncer) ; rappel si rien n'a été annoncé
--- (un addon ne peut pas écrire en /dire tout seul, seulement pendant un clic du joueur)
-function SB.OnCast(unit, spellID)
-  if unit ~= "player" then return end
-  local id = ns.db and ns.db.sleepBagItem
-  local name = Call(_G.GetSpellInfo, spellID)
-  if not SB.IsCast(name, id and Call(_G.GetItemSpell, id)) then return end
-  local st, t = SB.state, now()
-  st.lastCast = t
-  if t - st.lastAnnounce > 30 then ns.Print(Tr["Sac posé : reclique sur la macro pour l'annoncer."]) end
+if ns.On then
+  ns.On("CHAT_MSG_WHISPER", function(_, msg, sender) heard("event", msg, sender) end)
+  -- bnSenderID : 13e argument de l'événement (12e après le texte)
+  ns.On("CHAT_MSG_BN_WHISPER", function(_, msg, ...) local who = SB.BNetCharacter((select(12, ...))) if who then heard("bnet", msg, who) end end)
+  ns.On("ADDON_ACTION_BLOCKED", function(_, addon, fn) SB.OnBlocked(addon, fn) end)
+  ns.On("ADDON_ACTION_FORBIDDEN", function(_, addon, fn) SB.OnBlocked(addon, fn) end)
+  ns.On("CHAT_MSG_SYSTEM", function(_, msg) SB.OnSystem(msg) end)
+  ns.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, _, spellID) SB.OnCast(unit, spellID) end)
 end
-if ns.On then ns.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, _, spellID) SB.OnCast(unit, spellID) end) end
+if type(_G.ChatFrame_AddMessageEventFilter) == "function" then
+  pcall(_G.ChatFrame_AddMessageEventFilter, "CHAT_MSG_WHISPER", function(_, _, msg, sender) heard("filter", msg, sender) return false end)
+end
 
--- macro « Sac Dropamine » (par personnage), créée ou mise à jour, puis posée sur le curseur pour la barre
+-- ------------------------------------------------------------------------------------------------ la macro
+-- « Sac Dropamine » (par personnage), créée ou mise à jour, puis posée sur le curseur pour la barre
 function SB.MakeMacro()
   if ns.InCombat and ns.InCombat() then return false, Tr["Hors combat seulement."] end
   if type(_G.CreateMacro) ~= "function" then return false, Tr["Macros indisponibles."] end
   local id = knownId()
-  -- icône « ? » (134400) : le jeu montre alors celle de l'objet utilisé par la macro (le vrai sac), avec sa recharge
-  local body, icon = SB.MacroBody(id), 134400
-  local name = Tr[SB.MACRO]
+  -- icône « ? » (134400) : le jeu montre celle de l'objet utilisé par la macro (le vrai sac), avec sa recharge
+  local body, icon, name = SB.MacroBody(id), 134400, Tr[SB.MACRO]
   local idx = Call(_G.GetMacroIndexByName, name) or 0
   if idx <= 0 then idx = Call(_G.GetMacroIndexByName, SB.MACRO) or 0 end
   if idx > 0 then Call(_G.EditMacro, idx, name, icon, body)
@@ -336,22 +263,6 @@ function SB.MakeMacro()
   Call(_G.PickupMacro, idx)
   return true, id
 end
-
-ns.SlashExt = ns.SlashExt or {}
-local function slash(rest)
-  if lower(rest):match("^%s*annonce") or lower(rest):match("^%s*announce") then
-    if #SB.state.queue > 0 then SB.Flush() end   -- clic pendant que des joueurs attendent : on les invite aussi
-    SB.Announce() return
-  end
-  if lower(rest):match("^%s*debug") then
-    if ns.db then ns.db.sleepBagDebug = not ns.db.sleepBagDebug end
-    SB.Debug()
-    ns.Print("sac debug : traces des chuchotements " .. ((ns.db and ns.db.sleepBagDebug) and "ACTIVÉES (/drop sac debug pour couper)" or "coupées"))
-    return
-  end
-  if lower(rest):match("^%s*ouvr") or lower(rest):match("^%s*open") then SB.OpenWindow() SB.state.invited = {} ns.Print(Tr["Invitations automatiques ouvertes 5 minutes : qui te chuchote « inv » est invité."]) return end
-  SB.Give()
-end
 -- macro sur le curseur, avec l'explication (commande /drop sac et bouton Sac de la fenêtre Progression)
 function SB.Give()
   local ok, info = SB.MakeMacro()
@@ -360,13 +271,10 @@ function SB.Give()
     .. (info and "" or (" " .. Tr["(sac pas trouvé dans tes sacs : la macro utilise son nom)"])))
   return true
 end
--- possède le sac ? (pour n'afficher le bouton qu'à ceux qui l'ont)
-function SB.Has() return SB.FindItem() ~= nil end
--- rappel automatique, une seule fois par personnage : la première fois que le sac est dans les sacs
+-- rappel automatique, une seule fois : la première fois que le sac est dans les sacs
 function SB.HintOnce()
   local db = ns.db
-  if not db or db.sleepBagHint then return false end
-  if not SB.Has() then return false end
+  if not db or db.sleepBagHint or not SB.Has() then return false end
   db.sleepBagHint = true
   ns.Print(Tr["Tu as un sac de couchage : /drop sac (ou le bouton Sac de la fenêtre Progression) crée une macro qui le pose, l'annonce et invite qui te chuchote « inv »."])
   return true
@@ -374,6 +282,20 @@ end
 if ns.On then
   ns.On("BAG_UPDATE_DELAYED", function() SB.HintOnce() end)
   ns.On("PLAYER_ENTERING_WORLD", function() SB.HintOnce() end)
+end
+
+ns.SlashExt = ns.SlashExt or {}
+local function slash(rest)
+  local r = lower(rest)
+  if r:match("^%s*annonce") or r:match("^%s*announce") then
+    if #SB.state.queue > 0 then SB.Flush() end   -- des joueurs attendent : ce clic les invite aussi
+    SB.Announce()
+  elseif r:match("^%s*ouvr") or r:match("^%s*open") then   -- invitations ouvertes sans annonce (annonce faite à la main)
+    SB.OpenWindow() SB.state.invited = {}
+    ns.Print(Tr["Invitations automatiques ouvertes 5 minutes : qui te chuchote « inv » est invité."])
+  else
+    SB.Give()
+  end
 end
 ns.SlashExt.sac, ns.SlashExt.bag, ns.SlashExt.sleepingbag = slash, slash, slash
 ns.HelpExt = ns.HelpExt or {}
