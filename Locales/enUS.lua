@@ -2232,3 +2232,13 @@ E["Les addons Dropamine de ton groupe s'échangent les objets recherchés (numé
 E["Recherché dans ton groupe par : "] = "Wanted in your group by: "
 E["Un mot faux dans ta langue ? Signale-le ici (copie le lien dans ton navigateur) :"] = "A wrong word in your language? Report it here (copy the link into your browser):"
 E["/drop traduction : signaler un mot faux dans ta langue"] = "/drop translation: report a wrong word in your language"
+
+-- SleepBag.lua (3.14.0)
+E["Sac Dropamine"] = "Dropamine Bag"
+E["Sac de couchage (bonus XP groupe) : /w %s inv · auto-invite Dropamine"] = "Sleeping bag (group XP bonus): /w %s inv · auto-invite Dropamine"
+E["Hors combat seulement."] = "Out of combat only."
+E["Macros indisponibles."] = "Macros unavailable."
+E["Plus de place pour une macro de personnage."] = "No room left for a character macro."
+E["Macro « Sac Dropamine » sur ton curseur : pose-la dans ta barre. Un clic pose le sac, l'annonce en /dire et invite pendant 5 minutes qui te chuchote « inv »."] = "“Dropamine Bag” macro on your cursor: drop it on your bar. One click puts the bag down, announces it in /say and, for 5 minutes, invites whoever whispers you “inv”."
+E["(sac pas trouvé dans tes sacs : la macro utilise son nom)"] = "(bag not found in your bags: the macro uses its name)"
+E["/drop sac : macro du sac de couchage (pose, annonce, invitations auto sur « inv »)"] = "/drop bag: sleeping bag macro (put down, announce, auto invite on “inv”)"

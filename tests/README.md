@@ -19,6 +19,7 @@ Run them from the addon root (the folder with `Dropamine.toc`), with Lua 5.2+ (`
     lua tests/weapons_level.lua         # weapons to level: grey level, suggested monster levels, list by gap
     lua tests/collection_sort_share.lua # collection log: sort by level or %, chat share text
     lua tests/quiet_pvp.lua             # quiet mode turns on in battlegrounds and arenas
+    lua tests/sleep_bag.lua             # sleeping bag: macro, sober /say line, auto invite on "inv"
     lua tests/profile_search.lua        # settings export / import round trip, settings search
     lua tests/bug_report.lua            # /drop bug report: versions, GitHub link, check, errors, loaded addons
     lua tests/progress_run.lua          # active-time streak and new achievements

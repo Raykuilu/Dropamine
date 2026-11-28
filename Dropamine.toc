@@ -63,6 +63,7 @@ ToastFit.lua
 Progress.lua
 ProgressUI.lua
 Rested.lua
+SleepBag.lua
 Slot.lua
 RankToast.lua
 Efficiency.lua

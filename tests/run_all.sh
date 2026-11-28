@@ -14,6 +14,7 @@ run "$LUA" tests/craft_nextbest.lua
 run "$LUA" tests/weapons_level.lua
 run "$LUA" tests/collection_sort_share.lua
 run "$LUA" tests/quiet_pvp.lua
+run "$LUA" tests/sleep_bag.lua
 run "$LUA" tests/profile_search.lua
 run "$LUA" tests/bug_report.lua
 run "$LUA" tests/hardcore.lua

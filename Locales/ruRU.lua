@@ -2196,4 +2196,13 @@ T["Les addons Dropamine de ton groupe s'échangent les objets recherchés (numé
 T["Recherché dans ton groupe par : "] = "Ищут в твоей группе: "
 T["Un mot faux dans ta langue ? Signale-le ici (copie le lien dans ton navigateur) :"] = "Неверное слово на твоём языке? Сообщи здесь (скопируй ссылку в браузер):"
 T["/drop traduction : signaler un mot faux dans ta langue"] = "/drop translation: сообщить о неверном слове на твоём языке"
+-- SleepBag.lua (3.14.0)
+T["Sac Dropamine"] = "Спальник Dropamine"
+T["Sac de couchage (bonus XP groupe) : /w %s inv · auto-invite Dropamine"] = "Спальник (групповой бонус опыта): /w %s inv · автоприглашение Dropamine"
+T["Hors combat seulement."] = "Только вне боя."
+T["Macros indisponibles."] = "Макросы недоступны."
+T["Plus de place pour une macro de personnage."] = "Нет места для макроса персонажа."
+T["Macro « Sac Dropamine » sur ton curseur : pose-la dans ta barre. Un clic pose le sac, l'annonce en /dire et invite pendant 5 minutes qui te chuchote « inv »."] = "Макрос «Спальник Dropamine» на курсоре: перетащи его на панель. Клик раскладывает спальник, объявляет в /сказать и 5 минут приглашает всех, кто шепнёт тебе «inv»."
+T["(sac pas trouvé dans tes sacs : la macro utilise son nom)"] = "(спальник не найден в сумках: макрос использует его название)"
+T["/drop sac : macro du sac de couchage (pose, annonce, invitations auto sur « inv »)"] = "/drop bag: макрос спальника (разложить, объявить, автоприглашение на «inv»)"
 end)

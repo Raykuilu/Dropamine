@@ -2197,4 +2197,13 @@ T["Les addons Dropamine de ton groupe s'échangent les objets recherchés (numé
 T["Recherché dans ton groupe par : "] = "Procurado no seu grupo por: "
 T["Un mot faux dans ta langue ? Signale-le ici (copie le lien dans ton navigateur) :"] = "Uma palavra errada no seu idioma? Informe aqui (copie o link no navegador):"
 T["/drop traduction : signaler un mot faux dans ta langue"] = "/drop translation: informar uma palavra errada no seu idioma"
+-- SleepBag.lua (3.14.0)
+T["Sac Dropamine"] = "Saco Dropamine"
+T["Sac de couchage (bonus XP groupe) : /w %s inv · auto-invite Dropamine"] = "Saco de dormir (bônus de XP em grupo): /w %s inv · autoconvite Dropamine"
+T["Hors combat seulement."] = "Só fora de combate."
+T["Macros indisponibles."] = "Macros indisponíveis."
+T["Plus de place pour une macro de personnage."] = "Sem espaço para uma macro de personagem."
+T["Macro « Sac Dropamine » sur ton curseur : pose-la dans ta barre. Un clic pose le sac, l'annonce en /dire et invite pendant 5 minutes qui te chuchote « inv »."] = "Macro «Saco Dropamine» no cursor: coloque-a na barra. Um clique abre o saco, anuncia em /dizer e, por 5 minutos, convida quem sussurrar «inv»."
+T["(sac pas trouvé dans tes sacs : la macro utilise son nom)"] = "(saco não encontrado nas bolsas: a macro usa o nome dele)"
+T["/drop sac : macro du sac de couchage (pose, annonce, invitations auto sur « inv »)"] = "/drop bag: macro do saco de dormir (abrir, anunciar, convite auto com «inv»)"
 end)
