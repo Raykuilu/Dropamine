@@ -78,6 +78,9 @@ function SB.Debug()
     end
   end)
   ns.Print(n == 0 and "sac debug : aucun objet utilisable dans les sacs" or ("sac debug : " .. n .. " objet(s) utilisable(s)"))
+  local h = SB.hooks or {}
+  ns.Print("sac debug : écoute des chuchotements · événement " .. (h.event and "ok" or "REFUSÉ") .. (h.event_vu and " (reçu)" or "")
+    .. " · filtre du chat " .. (h.filter and "ok" or "absent") .. (h.filter_vu and " (reçu)" or ""))
 end
 local function knownId()
   local db = ns.db
@@ -236,7 +239,23 @@ if ns.On then
   ns.On("ADDON_ACTION_FORBIDDEN", function(_, addon, fn) SB.OnBlocked(addon, fn) end)
   ns.On("CHAT_MSG_SYSTEM", function(_, msg) SB.OnSystem(msg) end)
 end
-if ns.On then ns.On("CHAT_MSG_WHISPER", function(_, msg, sender) SB.OnWhisper(msg, sender) end) end
+-- Deux écoutes des chuchotements (certains clients refusent l'une ou l'autre aux addons) : l'événement, et le filtre
+-- de la fenêtre de chat (comme les addons de chat). Un même chuchotement n'est traité qu'une fois.
+SB.hooks = {}
+local seen = {}
+local function heard(how, msg, sender)
+  SB.hooks[how .. "_vu"] = true
+  local key = tostring(sender) .. "|" .. tostring(msg)
+  local t = now()
+  local s = seen[key]   -- le même chuchotement arrive par les deux écoutes : traité une seule fois
+  if s and s.how ~= how and t - s.t < 1 then return end
+  seen[key] = { t = t, how = how }
+  SB.OnWhisper(msg, sender)
+end
+SB.hooks.event = ns.On and ns.On("CHAT_MSG_WHISPER", function(_, msg, sender) heard("event", msg, sender) end) or false
+if type(_G.ChatFrame_AddMessageEventFilter) == "function" then
+  SB.hooks.filter = pcall(_G.ChatFrame_AddMessageEventFilter, "CHAT_MSG_WHISPER", function(_, _, msg, sender) heard("filter", msg, sender) return false end)
+end
 -- fin du déroulement : notée (le clic suivant peut annoncer) ; rappel si rien n'a été annoncé
 -- (un addon ne peut pas écrire en /dire tout seul, seulement pendant un clic du joueur)
 function SB.OnCast(unit, spellID)
