@@ -2234,6 +2234,8 @@ E["Un mot faux dans ta langue ? Signale-le ici (copie le lien dans ton navigateu
 E["/drop traduction : signaler un mot faux dans ta langue"] = "/drop translation: report a wrong word in your language"
 
 -- SleepBag.lua (3.14.0)
+E["%s demande une invitation."] = "%s asks for an invite."
+E["Le jeu bloque l'invitation automatique : clique sur ta macro sac pour inviter %s."] = "The game blocks automatic invites: click your bag macro to invite %s."
 E["Sac posé : reclique sur la macro pour l'annoncer."] = "Bag down: click the macro again to announce it."
 E["Pose le sac au sol, puis reclique sur la macro pour l'annoncer."] = "Put the bag down on the ground, then click the macro again to announce it."
 E["Sac Dropamine"] = "Dropamine Bag"

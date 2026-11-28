@@ -12,7 +12,7 @@ local Tr = ns.L
 local SB = { WINDOW = 300, ANNOUNCE_GAP = 60, PENDING = 120, MACRO = "Sac Dropamine",   -- nom français ; la macro prend le nom traduit (Tr) et retrouve l'ancien
   WORDS = { inv = true, invite = true, ["123"] = true } }
 ns.SleepBag = SB
-SB.state = { until_ = 0, lastAnnounce = -1e9, invited = {} }
+SB.state = { until_ = 0, lastAnnounce = -1e9, invited = {}, queue = {} }
 
 local function Call(fn, ...)
   if type(fn) ~= "function" then return nil end
@@ -161,6 +161,21 @@ function SB.CanInvite()
   return true
 end
 
+-- Invitation : tentée tout de suite ; si le jeu l'exige d'un clic du joueur (versions Classic), il la bloque
+-- (ADDON_ACTION_BLOCKED) : on le retient (db.sleepBagClick) et les demandes attendent le prochain clic sur la macro,
+-- qui invite tout le monde d'un coup. Le message système « Vous avez invité … » confirme.
+local function inviteFn() return (_G.C_PartyInfo and _G.C_PartyInfo.InviteUnit) or _G.InviteUnit end
+local function names(list) return table.concat(list, ", ") end
+function SB.Flush()   -- appelé pendant un clic du joueur (macro) : les invitations en attente partent
+  local st, out = SB.state, {}
+  local invite = inviteFn()
+  if type(invite) ~= "function" then return 0 end
+  for _, who in ipairs(st.queue) do
+    if SB.CanInvite() and pcall(invite, who) then st.invited[who] = true out[#out + 1] = who end
+  end
+  st.queue = {}
+  return #out
+end
 function SB.OnWhisper(msg, sender)
   local st = SB.state
   if now() > st.until_ then return false end
@@ -168,11 +183,43 @@ function SB.OnWhisper(msg, sender)
   if not SB.WORDS[word] then return false end
   local who = tostring(sender or "")
   if who == "" or st.invited[who] then return false end
+  for _, q in ipairs(st.queue) do if q == who then return false end end
   if not SB.CanInvite() then return false end
-  local invite = (_G.C_PartyInfo and _G.C_PartyInfo.InviteUnit) or _G.InviteUnit
-  if type(invite) ~= "function" or not pcall(invite, who) then return false end
-  st.invited[who] = true
+  st.queue[#st.queue + 1] = who
+  if ns.db and ns.db.sleepBagClick then
+    ns.Print(string.format(Tr["Le jeu bloque l'invitation automatique : clique sur ta macro sac pour inviter %s."], names(st.queue)))
+    return false
+  end
+  ns.Print(string.format(Tr["%s demande une invitation."], who))
+  local invite = inviteFn()
+  st.trying = who
+  if type(invite) == "function" then pcall(invite, who) end
+  st.trying = nil
   return true
+end
+-- le jeu a bloqué l'invitation : on passe en mode « clic » pour la suite
+function SB.OnBlocked(addon, fn)
+  if tostring(addon) ~= "Dropamine" or not tostring(fn):find("InviteUnit", 1, true) then return end
+  if ns.db then ns.db.sleepBagClick = true end
+  if #SB.state.queue > 0 then ns.Print(string.format(Tr["Le jeu bloque l'invitation automatique : clique sur ta macro sac pour inviter %s."], names(SB.state.queue))) end
+end
+-- « Vous avez invité X à rejoindre votre groupe. » (texte du jeu, dans sa langue) : X sort de la file
+function SB.OnSystem(msg)
+  local fmt = _G.ERR_INVITE_PLAYER_S
+  if type(fmt) ~= "string" or type(msg) ~= "string" then return end
+  local pat = "^" .. fmt:gsub("([%^%$%(%)%.%[%]%*%+%-%?])", "%%%1"):gsub("%%s", "(.+)") .. "$"
+  local who = msg:match(pat)
+  if not who then return end
+  local st = SB.state
+  for i = #st.queue, 1, -1 do
+    local q = st.queue[i]
+    if q == who or q:match("^([^%-]+)") == who then st.invited[q] = true table.remove(st.queue, i) end
+  end
+end
+if ns.On then
+  ns.On("ADDON_ACTION_BLOCKED", function(_, addon, fn) SB.OnBlocked(addon, fn) end)
+  ns.On("ADDON_ACTION_FORBIDDEN", function(_, addon, fn) SB.OnBlocked(addon, fn) end)
+  ns.On("CHAT_MSG_SYSTEM", function(_, msg) SB.OnSystem(msg) end)
 end
 if ns.On then ns.On("CHAT_MSG_WHISPER", function(_, msg, sender) SB.OnWhisper(msg, sender) end) end
 -- fin du déroulement : notée (le clic suivant peut annoncer) ; rappel si rien n'a été annoncé
@@ -211,7 +258,10 @@ end
 
 ns.SlashExt = ns.SlashExt or {}
 local function slash(rest)
-  if lower(rest):match("^%s*annonce") or lower(rest):match("^%s*announce") then SB.Announce() return end
+  if lower(rest):match("^%s*annonce") or lower(rest):match("^%s*announce") then
+    if #SB.state.queue > 0 then SB.Flush() end   -- clic pendant que des joueurs attendent : on les invite aussi
+    SB.Announce() return
+  end
   if lower(rest):match("^%s*debug") then SB.Debug() return end
   local ok, info = SB.MakeMacro()
   if not ok then ns.Print(info) return end

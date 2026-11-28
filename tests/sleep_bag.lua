@@ -103,5 +103,17 @@ _G.GetSpellInfo = function(sid) return sid == 777 and "Déroulement de sac" or "
 SB.OnCast("player", 777) check(prints[1] == "Sac posé : reclique sur la macro pour l'annoncer.", "rappel à la fin du déroulement")
 SB.OnCast("party1", 777) check(#prints == 1, "un autre joueur : rien")
 T = 4030 ns.SlashExt.sac("annonce") check(#said == 1, "clic après le déroulement : annoncé")
+-- invitation bloquée par le jeu (clic exigé) : retenu, file d'attente, le clic suivant sur la macro invite tout le monde
+_G.ERR_INVITE_PLAYER_S = "Vous avez invité %s à rejoindre votre groupe."
+T = 5000 cd = { 4999, 600 } said = {} prints = {} invited = {} group, leader, raid = 0, false, false
+ns.SlashExt.sac("annonce") check(#said == 1, "annonce (fenêtre d'invitation ouverte)")
+whisper("inv", "Ana") check(prints[#prints] == "Ana demande une invitation." and invited[1] == "Ana", "tentée tout de suite, signalée")
+SB.OnSystem("Vous avez invité Ana à rejoindre votre groupe.") check(#SB.state.queue == 0, "confirmée par le jeu : sortie de la file")
+whisper("inv", "Bea") SB.OnBlocked("Dropamine", "InviteUnit()")
+check(ns.db.sleepBagClick == true and prints[#prints]:find("clique sur ta macro sac pour inviter Bea", 1, true), "bloquée : mode clic, message")
+whisper("inv", "Cid") check(#invited == 2 and #SB.state.queue == 2, "en mode clic : Cid attend sans tentative")
+T = 5100 cd = { 5099, 600 } ns.SlashExt.sac("annonce")
+check(invited[3] == "Bea" and invited[4] == "Cid" and #SB.state.queue == 0, "clic sur la macro : Bea et Cid invités")
+SB.OnBlocked("AutreAddon", "InviteUnit()") SB.OnBlocked("Dropamine", "CastSpell()")
 print(fail == 0 and "OK : sac de couchage" or (fail .. " échec(s)"))
 os.exit(fail == 0 and 0 or 1)

@@ -2198,6 +2198,8 @@ T["Recherché dans ton groupe par : "] = "In deiner Gruppe gesucht von: "
 T["Un mot faux dans ta langue ? Signale-le ici (copie le lien dans ton navigateur) :"] = "Ein falsches Wort in deiner Sprache? Melde es hier (kopiere den Link in deinen Browser):"
 T["/drop traduction : signaler un mot faux dans ta langue"] = "/drop translation: ein falsches Wort in deiner Sprache melden"
 -- SleepBag.lua (3.14.0)
+T["%s demande une invitation."] = "%s bittet um eine Einladung."
+T["Le jeu bloque l'invitation automatique : clique sur ta macro sac pour inviter %s."] = "Das Spiel blockiert automatische Einladungen: klicke auf dein Schlafsack-Makro, um %s einzuladen."
 T["Sac posé : reclique sur la macro pour l'annoncer."] = "Schlafsack liegt: klicke erneut auf das Makro, um ihn anzukündigen."
 T["Pose le sac au sol, puis reclique sur la macro pour l'annoncer."] = "Lege den Schlafsack auf den Boden und klicke dann erneut auf das Makro, um ihn anzukündigen."
 T["Sac Dropamine"] = "Dropamine-Schlafsack"
