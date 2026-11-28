@@ -78,6 +78,9 @@ function SB.Debug()
     end
   end)
   ns.Print(n == 0 and "sac debug : aucun objet utilisable dans les sacs" or ("sac debug : " .. n .. " objet(s) utilisable(s)"))
+  local n1, n2 = Call(_G.UnitName, "player")
+  local cdb = ns.CharDB and ns.CharDB()
+  ns.Print("sac debug : nom · UnitName = " .. tostring(n1) .. " / " .. tostring(n2) .. " · appris dans le chat = " .. tostring(cdb and cdb.fullName) .. " · annonce : /w " .. tostring(SB.FullName()))
   local h = SB.hooks or {}
   ns.Print("sac debug : écoute des chuchotements · événement " .. (h.event and "ok" or "REFUSÉ") .. (h.event_vu and " (reçu)" or "")
     .. " · filtre du chat " .. (h.filter and "ok" or "absent") .. (h.filter_vu and " (reçu)" or "")
@@ -100,6 +103,29 @@ end
 SB.SAY = "Sleeping bag down, group XP bonus! /w %s inv to join · auto-invite by Dropamine"
 function SB.Text(name)
   return string.format(SB.SAY, name or "?")
+end
+-- Sur Forever, chaque personnage a un prénom ET un nom (« Ray Kuilu ») : pour le chuchoter, il faut les deux.
+-- 1) le nom complet appris dans le chat (nos propres lignes : l'expéditeur affiché, reconnu par notre GUID), gardé par
+--    personnage ; 2) UnitName s'il renvoie aussi le nom de famille ; 3) le prénom seul en dernier recours.
+local function clean(s) return type(s) == "string" and s:gsub("%-[^%s]*$", "") or nil end   -- « Nom-Royaume » → « Nom »
+function SB.FullName()
+  local cdb = ns.CharDB and ns.CharDB()
+  local learned = cdb and cdb.fullName
+  if type(learned) == "string" and learned:find(" ", 1, true) then return learned end
+  local first, second = Call(_G.UnitName, "player")
+  if type(second) == "string" and second ~= "" and not second:find("%-") then return first .. " " .. second end
+  return first
+end
+function SB.Learn(sender, guid)
+  if type(sender) ~= "string" or not sender:find(" ", 1, true) then return end
+  if not guid or guid ~= Call(_G.UnitGUID, "player") then return end
+  local cdb = ns.CharDB and ns.CharDB()
+  if cdb then cdb.fullName = clean(sender) end
+end
+if ns.On then
+  for _, ev in ipairs({ "CHAT_MSG_SAY", "CHAT_MSG_YELL", "CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER", "CHAT_MSG_GUILD", "CHAT_MSG_WHISPER", "CHAT_MSG_CHANNEL", "CHAT_MSG_EMOTE" }) do
+    ns.On(ev, function(_, _, sender, _, _, _, _, _, _, _, _, _, guid) SB.Learn(sender, guid) end)
+  end
 end
 
 -- Nom du déroulement : celui du sort de l'objet (GetItemSpell, dans la langue du client) ; en secours, ces mots
@@ -159,7 +185,7 @@ function SB.Announce()
   local t = now()
   if t - st.lastAnnounce < SB.ANNOUNCE_GAP then SB.OpenWindow() return false, "déjà annoncé" end
   if type(_G.SendChatMessage) ~= "function" then return false, "chat" end
-  local ok = pcall(_G.SendChatMessage, SB.Text(Call(_G.UnitName, "player")), "SAY")
+  local ok = pcall(_G.SendChatMessage, SB.Text(SB.FullName()), "SAY")
   if not ok then return false, "chat" end
   st.lastAnnounce, st.invited, st.pending = t, {}, nil
   SB.OpenWindow()
