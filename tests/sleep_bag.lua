@@ -124,5 +124,17 @@ SB.state.until_ = 0 SB.state.lastAnnounce = -1e9 SB.state.invited = {} SB.state.
 T = 6100 whisper("inv", "Dan") check(invited[1] == "Dan", "après /reload : toujours invité")
 T = 6000 + 301 whisper("inv", "Eve") check(#invited == 1, "5 minutes passées : fini")
 T = 9000 invited = {} ns.SlashExt.sac("ouvrir") whisper("inv", "Fay") check(invited[1] == "Fay", "/drop sac ouvrir : invitations ouvertes sans annonce")
+-- message Battle.net (ami BattleTag) : on invite le personnage qu'il joue
+_G.GetRealmName = function() return "Forever" end
+local acc = { [42] = { gameAccountInfo = { characterName = "Framby", realmName = "Forever", clientProgram = "WoW" } },
+  [43] = { gameAccountInfo = { characterName = "Zoe", realmName = "Autre Royaume", clientProgram = "WoW" } },
+  [44] = { gameAccountInfo = { clientProgram = "App" } } }
+_G.C_BattleNet = { GetAccountInfoByID = function(id) return acc[id] end }
+check(SB.BNetCharacter(42) == "Framby" and SB.BNetCharacter(43) == "Zoe-AutreRoyaume" and SB.BNetCharacter(44) == nil, "personnage d'un ami Battle.net")
+T = 9100 invited = {} ns.SlashExt.sac("ouvrir")
+handlers.CHAT_MSG_BN_WHISPER("CHAT_MSG_BN_WHISPER", "inv", "|Kq1|k", "", "", "", "", 0, 0, "", 0, 7, "", 42)
+check(invited[1] == "Framby", "chuchotement Battle.net « inv » : Framby invité")
+handlers.CHAT_MSG_BN_WHISPER("CHAT_MSG_BN_WHISPER", "inv", "|Kq2|k", "", "", "", "", 0, 0, "", 0, 8, "", 44)
+check(#invited == 1, "ami pas en jeu : rien")
 print(fail == 0 and "OK : sac de couchage" or (fail .. " échec(s)"))
 os.exit(fail == 0 and 0 or 1)

@@ -80,7 +80,8 @@ function SB.Debug()
   ns.Print(n == 0 and "sac debug : aucun objet utilisable dans les sacs" or ("sac debug : " .. n .. " objet(s) utilisable(s)"))
   local h = SB.hooks or {}
   ns.Print("sac debug : écoute des chuchotements · événement " .. (h.event and "ok" or "REFUSÉ") .. (h.event_vu and " (reçu)" or "")
-    .. " · filtre du chat " .. (h.filter and "ok" or "absent") .. (h.filter_vu and " (reçu)" or ""))
+    .. " · filtre du chat " .. (h.filter and "ok" or "absent") .. (h.filter_vu and " (reçu)" or "")
+    .. " · Battle.net " .. (h.bnet and "ok" or "REFUSÉ") .. (h.bnet_vu and " (reçu)" or ""))
 end
 local function knownId()
   local db = ns.db
@@ -256,6 +257,26 @@ SB.hooks.event = ns.On and ns.On("CHAT_MSG_WHISPER", function(_, msg, sender) he
 if type(_G.ChatFrame_AddMessageEventFilter) == "function" then
   SB.hooks.filter = pcall(_G.ChatFrame_AddMessageEventFilter, "CHAT_MSG_WHISPER", function(_, _, msg, sender) heard("filter", msg, sender) return false end)
 end
+-- Messages Battle.net (ami BattleTag) : l'expéditeur est un compte, pas un personnage. On retrouve le personnage
+-- WoW qu'il joue (même jeu, connecté) pour l'inviter ; « Nom-Royaume » s'il est sur un autre royaume.
+function SB.BNetCharacter(bnID)
+  local B = _G.C_BattleNet
+  local info = B and type(B.GetAccountInfoByID) == "function" and Call(B.GetAccountInfoByID, bnID)
+  local g = type(info) == "table" and info.gameAccountInfo
+  if type(g) ~= "table" or not g.characterName or g.characterName == "" then return nil, "pas en jeu" end
+  if g.clientProgram and g.clientProgram ~= "WoW" then return nil, "autre jeu" end
+  if g.wowProjectID and _G.WOW_PROJECT_ID and g.wowProjectID ~= _G.WOW_PROJECT_ID then return nil, "autre version de WoW" end
+  local mine = (Call(_G.GetRealmName) or ""):gsub("%s", "")
+  local realm = tostring(g.realmName or ""):gsub("%s", "")
+  return (realm ~= "" and realm ~= mine) and (g.characterName .. "-" .. realm) or g.characterName
+end
+function SB.OnBNetWhisper(msg, bnID)
+  local who, why = SB.BNetCharacter(bnID)
+  trace("message Battle.net", tostring(msg), who or tostring(why))
+  if who then heard("bnet", msg, who) end
+end
+-- bnSenderID : 13e argument de l'événement (12e après le texte)
+SB.hooks.bnet = ns.On and ns.On("CHAT_MSG_BN_WHISPER", function(_, msg, ...) SB.OnBNetWhisper(msg, (select(12, ...))) end) or false
 -- fin du déroulement : notée (le clic suivant peut annoncer) ; rappel si rien n'a été annoncé
 -- (un addon ne peut pas écrire en /dire tout seul, seulement pendant un clic du joueur)
 function SB.OnCast(unit, spellID)
