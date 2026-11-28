@@ -40,7 +40,7 @@ local function whisper(msg, who) handlers.CHAT_MSG_WHISPER("CHAT_MSG_WHISPER", m
 -- macro : identifiant de l'objet trouvé dans les sacs, annonce par /drop sac annonce, posée sur le curseur
 ns.SlashExt.sac("")
 check(#macros == 1 and macros[1].body == "/use item:99001\n/drop sac annonce", "corps de la macro : " .. tostring(macros[1] and macros[1].body))
-check(macros[1].name == "Sac Dropamine" and macros[1].icon == 134400 and cursor == 1, "nom, icône, curseur")
+check(macros[1].name == "Sac Dropamine" and macros[1].icon == 134400 and cursor == 1, "nom, icône automatique (celle du sac), curseur")
 check(ns.db.sleepBagItem == BAG, "identifiant gardé")
 ns.SlashExt.bag("")
 check(#macros == 1, "deuxième fois : la même macro est mise à jour")

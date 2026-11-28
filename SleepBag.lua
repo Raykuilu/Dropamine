@@ -114,8 +114,8 @@ function SB.MakeMacro()
   if ns.InCombat and ns.InCombat() then return false, Tr["Hors combat seulement."] end
   if type(_G.CreateMacro) ~= "function" then return false, Tr["Macros indisponibles."] end
   local id = knownId()
-  local body, icon = SB.MacroBody(id), "INV_Misc_Bag_08"
-  if id then icon = Call(_G.GetItemIcon, id) or icon end
+  -- icône « ? » (134400) : le jeu montre alors celle de l'objet utilisé par la macro (le vrai sac), avec sa recharge
+  local body, icon = SB.MacroBody(id), 134400
   local name = Tr[SB.MACRO]
   local idx = Call(_G.GetMacroIndexByName, name) or 0
   if idx <= 0 then idx = Call(_G.GetMacroIndexByName, SB.MACRO) or 0 end
