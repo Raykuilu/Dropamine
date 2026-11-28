@@ -2198,6 +2198,8 @@ T["Recherché dans ton groupe par : "] = "Cercato nel tuo gruppo da: "
 T["Un mot faux dans ta langue ? Signale-le ici (copie le lien dans ton navigateur) :"] = "Una parola sbagliata nella tua lingua? Segnalala qui (copia il link nel browser):"
 T["/drop traduction : signaler un mot faux dans ta langue"] = "/drop translation: segnala una parola sbagliata nella tua lingua"
 -- SleepBag.lua (3.14.0)
+T["Sac posé : reclique sur la macro pour l'annoncer."] = "Sacco steso: clicca di nuovo la macro per annunciarlo."
+T["Pose le sac au sol, puis reclique sur la macro pour l'annoncer."] = "Posa il sacco a terra, poi clicca di nuovo la macro per annunciarlo."
 T["Sac Dropamine"] = "Sacco Dropamine"
 T["Hors combat seulement."] = "Solo fuori dal combattimento."
 T["Macros indisponibles."] = "Macro non disponibili."

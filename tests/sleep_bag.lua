@@ -15,6 +15,8 @@ _G.GetItemInfo = function(id) return id == BAG and "Sac de couchage douillet" or
 _G.GetItemSpell = function(id) return id == BAG and "Dérouler le sac" or nil end
 _G.UnitCastingInfo = function() return casting end
 _G.UnitChannelInfo = function() return nil end
+local targeting = false
+_G.SpellIsTargeting = function() return targeting end
 _G.GetItemIcon = function() return 134400 end
 _G.SendChatMessage = function(msg, ch) said[#said + 1] = { msg, ch } end
 _G.InviteUnit = function(who) invited[#invited + 1] = who end
@@ -39,7 +41,7 @@ local function whisper(msg, who) handlers.CHAT_MSG_WHISPER("CHAT_MSG_WHISPER", m
 
 -- macro : identifiant de l'objet trouvé dans les sacs, annonce par /drop sac annonce, posée sur le curseur
 ns.SlashExt.sac("")
-check(#macros == 1 and macros[1].body == "/use item:99001\n/drop sac annonce", "corps de la macro : " .. tostring(macros[1] and macros[1].body))
+check(#macros == 1 and macros[1].body == "/use [@player] item:99001\n/drop sac annonce", "corps de la macro : " .. tostring(macros[1] and macros[1].body))
 check(macros[1].name == "Sac Dropamine" and macros[1].icon == 134400 and cursor == 1, "nom, icône automatique (celle du sac), curseur")
 check(ns.db.sleepBagItem == BAG, "identifiant gardé")
 ns.SlashExt.bag("")
@@ -70,6 +72,14 @@ group, raid = 2, true whisper("inv", "Max") check(#invited == 3, "raid : rien")
 raid = false T = 110 + 301 whisper("inv", "Max") check(#invited == 3, "après 5 minutes : fini")
 
 check(ns.HelpExt[1]:find("/drop sac", 1, true) == 1, "ligne d'aide")
+-- client sans [@player] : cercle de placement ; l'annonce part au clic suivant sur la macro (dans les 2 minutes)
+T = 1000 cd = { 0, 0 } said = {} prints = {}
+targeting = true ns.SlashExt.sac("annonce")
+check(#said == 0 and prints[1] == "Pose le sac au sol, puis reclique sur la macro pour l'annoncer.", "cercle ouvert : on explique, rien n'est dit")
+ns.SlashExt.sac("annonce") check(#prints == 1, "explication une seule fois")
+targeting = false T = 1010 cd = { 1004, 600 }   -- posé au sol 6 s plus tôt
+ns.SlashExt.sac("annonce") check(#said == 1, "clic suivant : annoncé")
+T = 1200 cd = { 1180, 600 } said = {} ns.SlashExt.sac("annonce") check(#said == 0, "sans cercle en attente : seulement à l'instant")
 -- nom interne différent de l'infobulle (objet du serveur) : reconnu par le nom affiché dans son lien
 _G.GetItemInfo = function(id) return id == BAG and "Cozy Bedding" or "Pain" end
 check(SB.FindItem() == nil, "nom interne inconnu, rien d'autre : pas trouvé")
@@ -79,5 +89,19 @@ _G.C_Container.GetContainerItemLink = nil
 _G.GetItemSpell = function(id) return id == BAG and "Sleeping Bag" or nil end
 check(SB.FindItem() == BAG, "reconnu par le nom du sort")
 prints = {} ns.SlashExt.sac("debug") check(#prints >= 2 and prints[1]:find("<= sac", 1, true), "debug : liste et marque le sac")
+-- premier clic ([@player]) : sac prêt, immobile, hors combat → annonce tout de suite ; en mouvement → rien
+_G.IsUsableItem = function() return true end
+local speed = 0 _G.GetUnitSpeed = function() return speed end
+T = 2000 cd = { 0, 0 } said = {} targeting = false casting = nil
+ns.SlashExt.sac("annonce") check(#said == 1, "prêt : annoncé dans le même clic")
+T = 3000 said = {} speed = 7 ns.SlashExt.sac("annonce") check(#said == 0, "en mouvement : rien") speed = 0
+-- nom du déroulement dans la langue du client (lu sur l'objet), ou mots de secours
+check(SB.IsCast("Déroulement de sac", nil) and SB.IsCast("Unroll Bedroll", nil) and not SB.IsCast("Pain", "Dérouler le sac"), "noms du déroulement")
+-- fin du déroulement sans annonce : rappel, puis le clic suivant annonce même hors fenêtre de recharge
+T = 4000 cd = { 3985, 600 } said = {} prints = {}
+_G.GetSpellInfo = function(sid) return sid == 777 and "Déroulement de sac" or "Autre" end
+SB.OnCast("player", 777) check(prints[1] == "Sac posé : reclique sur la macro pour l'annoncer.", "rappel à la fin du déroulement")
+SB.OnCast("party1", 777) check(#prints == 1, "un autre joueur : rien")
+T = 4030 ns.SlashExt.sac("annonce") check(#said == 1, "clic après le déroulement : annoncé")
 print(fail == 0 and "OK : sac de couchage" or (fail .. " échec(s)"))
 os.exit(fail == 0 and 0 or 1)

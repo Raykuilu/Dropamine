@@ -9,7 +9,7 @@
 local _, ns = ...
 local Tr = ns.L
 
-local SB = { WINDOW = 300, ANNOUNCE_GAP = 60, MACRO = "Sac Dropamine",   -- nom français ; la macro prend le nom traduit (Tr) et retrouve l'ancien
+local SB = { WINDOW = 300, ANNOUNCE_GAP = 60, PENDING = 120, MACRO = "Sac Dropamine",   -- nom français ; la macro prend le nom traduit (Tr) et retrouve l'ancien
   WORDS = { inv = true, invite = true, ["123"] = true } }
 ns.SleepBag = SB
 SB.state = { until_ = 0, lastAnnounce = -1e9, invited = {} }
@@ -79,8 +79,10 @@ local function knownId()
 end
 
 function SB.MacroBody(id)
-  -- l'identifiant marche dans toutes les langues ; sans lui (sac pas encore vu), le nom français, seul connu
-  return (id and ("/use item:" .. id) or "/use Sac de couchage douillet") .. "\n/drop sac annonce"
+  -- l'identifiant marche dans toutes les langues ; sans lui (sac pas encore vu), le nom français, seul connu.
+  -- [@player] : le sac se pose à tes pieds sans cercle de placement, donc l'annonce part dans le même clic
+  -- (le jeu n'autorise /dire que pendant un clic : impossible d'annoncer après un clic au sol).
+  return (id and ("/use [@player] item:" .. id) or "/use [@player] Sac de couchage douillet") .. "\n/drop sac annonce"
 end
 -- annonce en /dire : en anglais pour tout le monde (serveurs aux langues mêlées), quelle que soit la langue du client
 SB.SAY = "Sleeping bag (group XP bonus): /w %s inv · auto-invite Dropamine"
@@ -88,29 +90,66 @@ function SB.Text(name)
   return string.format(SB.SAY, name or "?")
 end
 
--- vient d'être posé : on est en train de le dérouler (incantation du sort de l'objet), ou sa recharge a commencé
--- à l'instant (ou l'objet n'a pas de recharge connue)
+-- Nom du déroulement : celui du sort de l'objet (GetItemSpell, dans la langue du client) ; en secours, ces mots
+-- (« Déroulement de sac » sur un client français : environ 15 s d'incantation).
+SB.CAST_WORDS = { "déroulement", "unroll", "bedroll", "sleeping bag", "schlafsack", "saco", "sacco", "спальн" }
+function SB.IsCast(name, spell)
+  if not name then return false end
+  if spell and name == spell then return true end
+  local n = lower(name)
+  for _, k in ipairs(SB.CAST_WORDS) do if string.find(n, k, 1, true) then return true end end
+  return SB.IsBagName(name)
+end
+local function cooldown(id)
+  local get = (_G.C_Container and _G.C_Container.GetItemCooldown) or _G.GetItemCooldown
+  return Call(get, id)
+end
+-- vient d'être posé : déroulement en cours, déroulement fini depuis peu sans annonce, ou recharge commencée à l'instant
+-- (2 minutes si le cercle de placement attendait un clic au sol)
 function SB.JustUsed(id)
   if not id then return false end
+  local st, t = SB.state, now()
   local spell = Call(_G.GetItemSpell, id)
-  if spell and (Call(_G.UnitCastingInfo, "player") == spell or Call(_G.UnitChannelInfo, "player") == spell) then return true end
-  local get = (_G.C_Container and _G.C_Container.GetItemCooldown) or _G.GetItemCooldown
-  local start, dur = Call(get, id)
-  if not start or not dur or dur == 0 then return start ~= nil end
-  return now() - start < 2
+  if SB.IsCast(Call(_G.UnitCastingInfo, "player"), spell) or SB.IsCast(Call(_G.UnitChannelInfo, "player"), spell) then return true end
+  if st.lastCast and t - st.lastCast < SB.PENDING and st.lastCast > st.lastAnnounce then return true end
+  local start, dur = cooldown(id)
+  if start and dur and dur > 0 and start > 0 then
+    local p = st.pending
+    return t - start < ((p and t - p < SB.PENDING) and SB.PENDING or 2)
+  end
+  return false
+end
+-- prêt à être posé à tes pieds par ce clic ([@player]) : utilisable, pas en recharge, immobile, hors combat
+function SB.Ready(id)
+  if not id then return false end
+  local usable = Call(_G.IsUsableItem, id)
+  if usable == false then return false end
+  local start, dur = cooldown(id)
+  if start and dur and dur > 0 and start > 0 and start + dur > now() then return false end
+  local speed = Call(_G.GetUnitSpeed, "player")
+  if speed and speed > 0 then return false end
+  return true
 end
 
 function SB.Announce()
   local st = SB.state
   if ns.InCombat and ns.InCombat() then return false, "combat" end
   local id = knownId()
-  if not SB.JustUsed(id) then return false, "pas posé" end
+  if not SB.JustUsed(id) then
+    if Call(_G.SpellIsTargeting) then   -- cercle de placement ouvert (client sans [@player]) : on attend le clic au sol
+      if not (st.pending and now() - st.pending < SB.PENDING) then ns.Print(Tr["Pose le sac au sol, puis reclique sur la macro pour l'annoncer."]) end
+      st.pending = now()
+      return false, "à placer"
+    end
+    -- même clic que /use [@player] : le déroulement commence tout juste, le jeu ne le montre pas encore
+    if not SB.Ready(id) then return false, "pas posé" end
+  end
   local t = now()
   if t - st.lastAnnounce < SB.ANNOUNCE_GAP then st.until_ = t + SB.WINDOW return false, "déjà annoncé" end
   if type(_G.SendChatMessage) ~= "function" then return false, "chat" end
   local ok = pcall(_G.SendChatMessage, SB.Text(Call(_G.UnitName, "player")), "SAY")
   if not ok then return false, "chat" end
-  st.lastAnnounce, st.until_, st.invited = t, t + SB.WINDOW, {}
+  st.lastAnnounce, st.until_, st.invited, st.pending = t, t + SB.WINDOW, {}, nil
   return true
 end
 
@@ -136,6 +175,18 @@ function SB.OnWhisper(msg, sender)
   return true
 end
 if ns.On then ns.On("CHAT_MSG_WHISPER", function(_, msg, sender) SB.OnWhisper(msg, sender) end) end
+-- fin du déroulement : notée (le clic suivant peut annoncer) ; rappel si rien n'a été annoncé
+-- (un addon ne peut pas écrire en /dire tout seul, seulement pendant un clic du joueur)
+function SB.OnCast(unit, spellID)
+  if unit ~= "player" then return end
+  local id = ns.db and ns.db.sleepBagItem
+  local name = Call(_G.GetSpellInfo, spellID)
+  if not SB.IsCast(name, id and Call(_G.GetItemSpell, id)) then return end
+  local st, t = SB.state, now()
+  st.lastCast = t
+  if t - st.lastAnnounce > 30 then ns.Print(Tr["Sac posé : reclique sur la macro pour l'annoncer."]) end
+end
+if ns.On then ns.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, _, spellID) SB.OnCast(unit, spellID) end) end
 
 -- macro « Sac Dropamine » (par personnage), créée ou mise à jour, puis posée sur le curseur pour la barre
 function SB.MakeMacro()
